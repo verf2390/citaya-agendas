@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
+import { useRouter } from "next/navigation";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -32,16 +32,41 @@ type Professional = {
   tenant_id: string;
 };
 
+// ⚠️ MVP: tenant hardcodeado. Luego lo sacamos desde profiles/slug.
 const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
 
 export default function AgendaPage() {
+  const router = useRouter();
+
+  // ✅ Día 3: guard de sesión
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    const run = async () => {
+      const { data } = await supabase.auth.getSession();
+
+      if (!data.session) {
+        router.push("/login?redirectTo=/admin/agenda");
+        return;
+      }
+
+      setAuthChecked(true);
+    };
+
+    run();
+  }, [router]);
+
+  const onLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
+
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>("");
 
-  // Guardamos el rango visible para recargar cuando cambie el profesional
   const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
 
   const selectedProfessional = useMemo(() => {
@@ -63,7 +88,6 @@ export default function AgendaPage() {
     const list = (data as Professional[] | null) ?? [];
     setProfessionals(list);
 
-    // ✅ si aún no hay seleccionado, elige el primero automáticamente
     if (!selectedProfessionalId && list.length > 0) {
       setSelectedProfessionalId(list[0].id);
     }
@@ -78,15 +102,8 @@ export default function AgendaPage() {
       .eq("tenant_id", TENANT_ID)
       .order("start_at", { ascending: true });
 
-    // ✅ filtrar por profesional seleccionado
-    if (professionalId) {
-      q = q.eq("professional_id", professionalId);
-    }
-
-    // ✅ filtrar por rango visible (semana)
-    if (start && end) {
-      q = q.gte("start_at", start).lt("start_at", end);
-    }
+    if (professionalId) q = q.eq("professional_id", professionalId);
+    if (start && end) q = q.gte("start_at", start).lt("start_at", end);
 
     const { data, error } = await q;
 
@@ -118,13 +135,15 @@ export default function AgendaPage() {
     setLoading(false);
   };
 
-  // ✅ carga profesionales al montar
+  // ✅ Cargar data solo cuando auth está OK
   useEffect(() => {
+    if (!authChecked) return;
     loadProfessionals();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked]);
 
-  // ✅ cuando cambie profesional, recarga citas
   useEffect(() => {
+    if (!authChecked) return;
     if (!selectedProfessionalId) return;
 
     if (visibleRange) {
@@ -133,9 +152,8 @@ export default function AgendaPage() {
       loadAppointments(undefined, undefined, selectedProfessionalId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProfessionalId]);
+  }, [authChecked, selectedProfessionalId]);
 
-  // ✅ handleSelect (CREAR CITA)
   const handleSelect = async (selectInfo: DateSelectArg) => {
     if (!selectedProfessionalId) {
       alert("Selecciona un profesional primero");
@@ -173,10 +191,8 @@ export default function AgendaPage() {
     }
   };
 
-  // ✅ mover (drag & drop)
   const handleEventDrop = async (dropInfo: EventDropArg) => {
     const id = dropInfo.event.id;
-
     const start_at = dropInfo.event.start?.toISOString();
     const end_at = dropInfo.event.end?.toISOString();
 
@@ -199,7 +215,6 @@ export default function AgendaPage() {
     }
   };
 
-  // ✅ cancelar (no borrar)
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const ok = confirm(`¿Cancelar cita de "${clickInfo.event.title}"?`);
     if (!ok) return;
@@ -222,7 +237,6 @@ export default function AgendaPage() {
     }
   };
 
-  // ✅ cuando cambie de semana, guarda rango y carga citas del rango
   const handleDatesSet = async (arg: DatesSetArg) => {
     const start = arg.startStr;
     const end = arg.endStr;
@@ -233,11 +247,32 @@ export default function AgendaPage() {
     await loadAppointments(start, end, selectedProfessionalId);
   };
 
+  if (!authChecked) {
+    return (
+      <main style={{ padding: 20, fontFamily: "system-ui" }}>
+        <p>Validando sesión...</p>
+      </main>
+    );
+  }
+
   return (
     <main style={{ padding: 20, fontFamily: "system-ui" }}>
       <h1>Agenda (Admin)</h1>
 
-      {/* ✅ DROPDOWN PROFESIONAL */}
+      <button
+        onClick={onLogout}
+        style={{
+          padding: 8,
+          marginTop: 8,
+          cursor: "pointer",
+          borderRadius: 8,
+          border: "1px solid #ddd",
+          background: "white",
+        }}
+      >
+        Cerrar sesión
+      </button>
+
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Profesional</div>
