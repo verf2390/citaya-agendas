@@ -194,11 +194,8 @@ function buildUnavailableBgEvents(params: {
 }
 
 // ✅ Helpers WhatsApp / Mensaje (PRO)
-function normalizePhoneToWhatsApp(raw: string) {
-  let p = raw.replace(/\D/g, "");
-  if (p.length === 9 && p.startsWith("9")) p = "56" + p;
-  return p;
-}
+import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
+
 
 function formatDateTimeRange(startISO: string, endISO: string) {
   const start = new Date(startISO);
