@@ -18,19 +18,21 @@ type Props = {
 
   customers: CustomerLite[];
 
-  // ✅ cuando el usuario confirma con un customerId
   onConfirm: (args: { customerId: string }) => Promise<void> | void;
 
-  // ✅ tenant (MVP hardcodeado en agenda page)
   tenantId: string;
 
-  // ✅ opcional: para que el parent recargue customers si quiere
   onCreatedCustomer?: (c: CustomerLite) => void;
 };
 
-/**
- * ✅ Muestra el rango de la cita de forma humana (no ISO feo)
- */
+type PostgrestErrorLike = {
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string | null; // Postgres error code (ej: 23505)
+  status?: number; // HTTP status (a veces viene)
+};
+
 function formatSlotLabel(startISO: string, endISO: string) {
   if (!startISO || !endISO) return "";
   const start = new Date(startISO);
@@ -48,15 +50,29 @@ function formatSlotLabel(startISO: string, endISO: string) {
   return `📅 ${date} • 🕒 ${startTime} – ${endTime}`;
 }
 
-/**
- * ✅ Normaliza teléfono:
- * - deja solo números
- * - si viene como 9XXXXXXXX => 569XXXXXXXX
- */
 function normalizePhone(raw: string) {
   let p = raw.replace(/\D/g, "");
-  if (p.length === 9 && p.startsWith("9")) p = "56" + p;
+  if (p.length === 9 && p.startsWith("9")) p = "56" + p; // 9XXXXXXXX => 569XXXXXXXX
   return p;
+}
+
+function isDuplicateCustomerError(err: PostgrestErrorLike | null) {
+  if (!err) return false;
+
+  // Postgres unique violation
+  if (err.code === "23505") return true;
+
+  // a veces PostgREST manda status 409 en conflictos
+  if (err.status === 409) return true;
+
+  const msg = (err.message ?? "").toLowerCase();
+  const details = (err.details ?? "").toLowerCase();
+
+  // fallback por texto (depende de cómo venga)
+  if (msg.includes("duplicate") || msg.includes("unique")) return true;
+  if (details.includes("duplicate") || details.includes("unique")) return true;
+
+  return false;
 }
 
 export default function AppointmentCreateModal({
@@ -79,10 +95,9 @@ export default function AppointmentCreateModal({
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
 
-  // ✅ Reset cada vez que abres el modal
+  // Reset cada vez que abres el modal
   useEffect(() => {
     if (!open) return;
-
     setQ("");
     setSelected(null);
     setSaving(false);
@@ -94,11 +109,9 @@ export default function AppointmentCreateModal({
   }, [open]);
 
   /**
-   * ✅ Filtrado local:
-   * - si <2 chars => no mostramos lista
-   * - si >=2 => filtra por nombre o teléfono
-   *
-   * (Luego, cuando tengas muchos clientes, lo pasamos a búsqueda server-side)
+   * Filtrado local:
+   * - Si usuario escribe <2 => no mostrar lista
+   * - >=2 => filtra por nombre o teléfono
    */
   const filtered = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -113,20 +126,32 @@ export default function AppointmentCreateModal({
 
   const nothingFound = q.trim().length >= 2 && filtered.length === 0;
 
-  /**
-   * ✅ PRO: auto-selección si hay match exacto por nombre
-   * Ej: escribes "Juan Perez" y existe => se selecciona solo
-   */
-  useEffect(() => {
-    const query = q.trim().toLowerCase();
-    if (!query) return;
+  async function findCustomerByPhone(phoneNormalized: string) {
+    // Buscar por tenant + phone (evita mezclar tenants)
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id, full_name, phone")
+      .eq("tenant_id", tenantId)
+      .eq("phone", phoneNormalized)
+      .maybeSingle();
 
-    const exact = customers.find((c) => c.name.toLowerCase() === query);
-    if (exact) setSelected(exact);
-  }, [q, customers]);
+    if (error) {
+      console.error("Error finding customer by phone:", error);
+      return null;
+    }
+
+    if (!data) return null;
+
+    const existing: CustomerLite = {
+      id: data.id,
+      name: data.full_name,
+      phone: data.phone ?? null,
+    };
+
+    return existing;
+  }
 
   const handleCreateCustomer = async () => {
-    // ✅ Validaciones (nombre + teléfono obligatorio)
     const name = newName.trim();
     if (!name) {
       alert("Ingresa el nombre del cliente");
@@ -149,14 +174,34 @@ export default function AppointmentCreateModal({
           {
             tenant_id: tenantId,
             full_name: name,
-            phone: phoneNormalized, // ✅ obligatorio
-            email, // opcional
+            phone: phoneNormalized,
+            email,
           },
         ])
         .select("id, full_name, phone")
         .single();
 
       if (error) {
+        const pgErr = error as unknown as PostgrestErrorLike;
+
+        if (isDuplicateCustomerError(pgErr)) {
+          const existing = await findCustomerByPhone(phoneNormalized);
+
+          if (existing) {
+            alert("Ya existe un cliente con este teléfono. Seleccionándolo para agendar.");
+            setSelected(existing);
+            setQ(existing.name);
+            setShowCreate(false);
+
+            // opcional: lo agregamos al state del parent para que aparezca en búsquedas
+            onCreatedCustomer?.(existing);
+            return;
+          }
+
+          alert("Este teléfono ya está registrado. Busca y selecciona el cliente existente.");
+          return;
+        }
+
         console.error("Error creating customer:", error);
         alert("No se pudo crear el cliente (revisa consola).");
         return;
@@ -168,11 +213,11 @@ export default function AppointmentCreateModal({
         phone: data.phone ?? null,
       };
 
-      // ✅ seleccionar automáticamente
+      // seleccionar automáticamente
       setSelected(created);
       setQ(created.name);
 
-      // ✅ avisar al parent para que lo agregue a la lista sin recargar
+      // avisar al parent
       onCreatedCustomer?.(created);
 
       // cerrar mini-form
@@ -195,38 +240,6 @@ export default function AppointmentCreateModal({
       setSaving(false);
     }
   };
-
-  /**
-   * ✅ PRO:
-   * - ESC = cerrar
-   * - ENTER:
-   *    - si estás creando cliente => crear cliente
-   *    - si hay cliente seleccionado => confirmar cita
-   */
-  useEffect(() => {
-    if (!open) return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-
-      if (e.key === "Enter") {
-        if (showCreate) {
-          handleCreateCustomer();
-          return;
-        }
-        if (selected) {
-          handleConfirm();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, showCreate, selected]);
 
   if (!open) return null;
 
@@ -322,13 +335,13 @@ export default function AppointmentCreateModal({
             )}
           </div>
 
-          {/* ✅ Crear cliente si no existe */}
+          {/* Crear cliente si no existe */}
           {nothingFound && !showCreate && (
             <div style={{ marginTop: 10 }}>
               <button
                 onClick={() => {
                   setShowCreate(true);
-                  setNewName(q.trim()); // precarga con lo escrito
+                  setNewName(q.trim());
                 }}
                 style={{
                   padding: "8px 10px",
@@ -357,7 +370,7 @@ export default function AppointmentCreateModal({
                 <input
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="Teléfono (WhatsApp obligatorio)"
+                  placeholder="Teléfono (WhatsApp obligatorio, sin duplicados)"
                   style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
                 />
                 <input
@@ -432,10 +445,6 @@ export default function AppointmentCreateModal({
             >
               Confirmar cita
             </button>
-          </div>
-
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
-            Tip: Enter = confirmar • Esc = cerrar
           </div>
         </div>
       </div>

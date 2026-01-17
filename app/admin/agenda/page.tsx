@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -53,6 +54,42 @@ type AvailabilityRow = {
 
 type AvailabilityMap = Record<string, Record<number, AvailabilityRow[]>>;
 
+// ✅ Tipo para los eventos background de FullCalendar
+type BgEvent = {
+  id: string;
+  start: string;
+  end: string;
+  display: "background";
+  classNames: string[];
+};
+
+// ✅ Tipo para los eventos normales del calendario (lo que tú renderizas)
+type CalendarEvent = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  extendedProps: {
+    professional_id: string;
+    customer_phone: string | null;
+    status: AppointmentStatus;
+    customer_id: string | null;
+  };
+};
+
+// ✅ Tipo mínimo para customers desde Supabase
+type CustomerRow = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+};
+
+// ✅ Tipo mínimo para extendedProps (evita any)
+type AppointmentExtendedProps = {
+  customer_phone?: string | null;
+  customer_id?: string | null;
+};
+
 // ⚠️ MVP: tenant hardcodeado. Luego lo sacamos desde profiles/slug.
 const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
 
@@ -99,7 +136,7 @@ function buildUnavailableBgEvents(params: {
   const rangeStart = new Date(rangeStartISO);
   const rangeEnd = new Date(rangeEndISO);
 
-  const results: any[] = [];
+  const results: BgEvent[] = [];
 
   for (let d = new Date(rangeStart); d < rangeEnd; d.setDate(d.getDate() + 1)) {
     const dayOfWeek = d.getDay();
@@ -159,7 +196,6 @@ function buildUnavailableBgEvents(params: {
 // ✅ Helpers WhatsApp / Mensaje (PRO)
 function normalizePhoneToWhatsApp(raw: string) {
   let p = raw.replace(/\D/g, "");
-  // si viene como 9XXXXXXXX => 569XXXXXXXX
   if (p.length === 9 && p.startsWith("9")) p = "56" + p;
   return p;
 }
@@ -196,10 +232,10 @@ function buildConfirmationMessage(args: {
 export default function AgendaPage() {
   const router = useRouter();
 
-  const [bgEvents, setBgEvents] = useState<any[]>([]);
+  const [bgEvents, setBgEvents] = useState<BgEvent[]>([]);
   const [authChecked, setAuthChecked] = useState(false);
 
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -260,12 +296,13 @@ export default function AgendaPage() {
       return;
     }
 
-    const list: CustomerLite[] =
-      (data ?? []).map((c: any) => ({
-        id: c.id,
-        name: c.full_name,
-        phone: c.phone ?? null,
-      })) ?? [];
+    const rows = (data as CustomerRow[] | null) ?? [];
+
+    const list: CustomerLite[] = rows.map((c) => ({
+      id: c.id,
+      name: c.full_name,
+      phone: c.phone ?? null,
+    }));
 
     setCustomers(list);
   };
@@ -276,7 +313,7 @@ export default function AgendaPage() {
     if (!selectedProfessionalId) return;
     if (!visibleRange) return;
 
-    const blocksForPro: any[] = [];
+    const blocksForPro: AvailabilityRow[] = [];
     const proMap = availabilityMap[selectedProfessionalId] ?? {};
     Object.keys(proMap).forEach((dayKey) => {
       const day = Number(dayKey);
@@ -292,7 +329,7 @@ export default function AgendaPage() {
     });
 
     setBgEvents(bg);
-  }, [authChecked, selectedProfessionalId, visibleRange?.start, visibleRange?.end, availabilityMap]);
+  }, [authChecked, selectedProfessionalId, visibleRange, availabilityMap]);
 
   const onLogout = async () => {
     await supabase.auth.signOut();
@@ -405,8 +442,8 @@ export default function AgendaPage() {
       return;
     }
 
-    const mapped =
-      (data as Appointment[] | null)?.map((a) => {
+    const mapped: CalendarEvent[] =
+      ((data as Appointment[] | null) ?? []).map((a) => {
         const isCanceled = a.status === "canceled";
 
         const joinedCustomer = a.customers?.[0] ?? null;
@@ -423,7 +460,7 @@ export default function AgendaPage() {
           extendedProps: {
             professional_id: a.professional_id,
             customer_phone: customerPhone ?? a.customer_phone,
-            status: a.status ?? "confirmed",
+            status: (a.status ?? "confirmed") as AppointmentStatus,
             customer_id: a.customer_id ?? null,
           },
         };
@@ -440,7 +477,6 @@ export default function AgendaPage() {
     loadProfessionals();
     loadAvailability();
     loadCustomers();
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked]);
 
@@ -519,7 +555,6 @@ export default function AgendaPage() {
       return;
     }
 
-    // cerrar modal y limpiar
     setCreateOpen(false);
     setSlot(null);
 
@@ -592,8 +627,10 @@ export default function AgendaPage() {
     const id = clickInfo.event.id;
     const title = clickInfo.event.title;
 
-    const customerPhone = (clickInfo.event.extendedProps as any)?.customer_phone ?? null;
-    const customerId = (clickInfo.event.extendedProps as any)?.customer_id ?? null;
+    const props = (clickInfo.event.extendedProps ?? {}) as AppointmentExtendedProps;
+
+    const customerPhone = props.customer_phone ?? null;
+    const customerId = props.customer_id ?? null;
 
     const startISO = clickInfo.event.start?.toISOString() ?? "";
     const endISO = clickInfo.event.end?.toISOString() ?? "";
@@ -653,7 +690,7 @@ export default function AgendaPage() {
         Cerrar sesión
       </button>
 
-      <a
+      <Link
         href="/admin/customers"
         style={{
           display: "inline-block",
@@ -668,7 +705,7 @@ export default function AgendaPage() {
         }}
       >
         Clientes
-      </a>
+      </Link>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <div>
@@ -732,7 +769,6 @@ export default function AgendaPage() {
         customers={customers}
         tenantId={TENANT_ID}
         onCreatedCustomer={(c) => {
-          // ✅ agregar sin duplicar
           setCustomers((prev) => {
             if (prev.some((x) => x.id === c.id)) return prev;
             return [c, ...prev];
@@ -834,7 +870,7 @@ export default function AgendaPage() {
                     dateLabel: date,
                     startTime,
                     endTime,
-                    businessName: "Citaya", // cámbialo después por el nombre del negocio
+                    businessName: "Citaya",
                   });
 
                   navigator.clipboard.writeText(msg);
