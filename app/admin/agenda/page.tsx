@@ -38,7 +38,7 @@ const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
 export default function AgendaPage() {
   const router = useRouter();
 
-  // ✅ Día 3: guard de sesión
+  // ✅ Día 3: guard de sesión (cliente)
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
@@ -67,11 +67,43 @@ export default function AgendaPage() {
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>("");
 
+  // Guardamos el rango visible para recargar al cambiar semana / profesional
   const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
 
   const selectedProfessional = useMemo(() => {
     return professionals.find((p) => p.id === selectedProfessionalId) ?? null;
   }, [professionals, selectedProfessionalId]);
+
+  // ✅ NO TRASLAPES (MVP)
+  // Retorna true si existe una cita NO cancelada que se cruza con el rango dado
+  const hasOverlap = async (
+    startISO: string,
+    endISO: string,
+    professionalId: string,
+    excludeId?: string
+  ) => {
+    let q = supabase
+      .from("appointments")
+      .select("id, start_at, end_at, status")
+      .eq("tenant_id", TENANT_ID)
+      .eq("professional_id", professionalId)
+      .neq("status", "canceled")
+      // solapa si start_at < endISO y end_at > startISO
+      .lt("start_at", endISO)
+      .gt("end_at", startISO);
+
+    if (excludeId) q = q.neq("id", excludeId);
+
+    const { data, error } = await q;
+
+    if (error) {
+      console.error("Overlap check error:", error);
+      // por seguridad: si falla el check, bloqueamos
+      return true;
+    }
+
+    return (data?.length ?? 0) > 0;
+  };
 
   const loadProfessionals = async () => {
     const { data, error } = await supabase
@@ -88,6 +120,7 @@ export default function AgendaPage() {
     const list = (data as Professional[] | null) ?? [];
     setProfessionals(list);
 
+    // si aún no hay seleccionado, elige el primero automáticamente
     if (!selectedProfessionalId && list.length > 0) {
       setSelectedProfessionalId(list[0].id);
     }
@@ -102,7 +135,10 @@ export default function AgendaPage() {
       .eq("tenant_id", TENANT_ID)
       .order("start_at", { ascending: true });
 
+    // filtrar por profesional seleccionado
     if (professionalId) q = q.eq("professional_id", professionalId);
+
+    // filtrar por rango visible (semana)
     if (start && end) q = q.gte("start_at", start).lt("start_at", end);
 
     const { data, error } = await q;
@@ -142,6 +178,7 @@ export default function AgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked]);
 
+  // ✅ recargar citas cuando cambie el profesional (y auth esté OK)
   useEffect(() => {
     if (!authChecked) return;
     if (!selectedProfessionalId) return;
@@ -154,6 +191,7 @@ export default function AgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, selectedProfessionalId]);
 
+  // ✅ CREAR CITA (con no-traslapes)
   const handleSelect = async (selectInfo: DateSelectArg) => {
     if (!selectedProfessionalId) {
       alert("Selecciona un profesional primero");
@@ -165,6 +203,13 @@ export default function AgendaPage() {
 
     const start_at = selectInfo.startStr;
     const end_at = selectInfo.endStr;
+
+    // ✅ No permitir sobre-reservas
+    const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId);
+    if (overlap) {
+      alert("❌ Ya existe una cita en ese horario (no se permiten traslapes).");
+      return;
+    }
 
     const { error } = await supabase.from("appointments").insert([
       {
@@ -191,10 +236,25 @@ export default function AgendaPage() {
     }
   };
 
+  // ✅ MOVER (drag & drop) con no-traslapes
   const handleEventDrop = async (dropInfo: EventDropArg) => {
     const id = dropInfo.event.id;
     const start_at = dropInfo.event.start?.toISOString();
     const end_at = dropInfo.event.end?.toISOString();
+
+    if (!start_at || !end_at) {
+      alert("Rango inválido");
+      dropInfo.revert();
+      return;
+    }
+
+    // ✅ No permitir mover encima de otra cita
+    const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId, id);
+    if (overlap) {
+      alert("❌ Ese horario ya está ocupado (no se permiten traslapes).");
+      dropInfo.revert();
+      return;
+    }
 
     const { error } = await supabase
       .from("appointments")
@@ -215,6 +275,7 @@ export default function AgendaPage() {
     }
   };
 
+  // ✅ cancelar (no borrar)
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const ok = confirm(`¿Cancelar cita de "${clickInfo.event.title}"?`);
     if (!ok) return;
@@ -237,6 +298,7 @@ export default function AgendaPage() {
     }
   };
 
+  // ✅ cuando cambie de semana, guarda rango y carga citas del rango
   const handleDatesSet = async (arg: DatesSetArg) => {
     const start = arg.startStr;
     const end = arg.endStr;
@@ -247,6 +309,7 @@ export default function AgendaPage() {
     await loadAppointments(start, end, selectedProfessionalId);
   };
 
+  // mientras valida sesión, no mostramos agenda
   if (!authChecked) {
     return (
       <main style={{ padding: 20, fontFamily: "system-ui" }}>
