@@ -2,19 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
 
-import type {
-  DateSelectArg,
-  EventClickArg,
-  EventDropArg,
-  DatesSetArg,
-} from "@fullcalendar/core";
+import type { DateSelectArg, EventClickArg, EventDropArg, DatesSetArg } from "@fullcalendar/core";
 
 import { supabase } from "@/lib/supabaseClient";
+
+// ✅ Modal de creación (Día 6)
+import AppointmentCreateModal, { CustomerLite } from "./components/AppointmentCreateModal";
 
 type AppointmentStatus = "confirmed" | "completed" | "canceled" | "no_show";
 
@@ -33,6 +32,9 @@ type Appointment = {
   start_at: string;
   end_at: string;
   status?: AppointmentStatus | null;
+
+  // ✅ Join: PostgREST a veces lo entrega como array
+  customers?: { full_name: string | null; phone: string | null }[] | null;
 };
 
 type Professional = {
@@ -44,8 +46,8 @@ type Professional = {
 type AvailabilityRow = {
   professional_id: string;
   day_of_week: number; // 0-6 (domingo=0)
-  start_time: string;  // "09:00:00" o "09:00"
-  end_time: string;    // "18:00:00" o "18:00"
+  start_time: string; // "09:00:00" o "09:00"
+  end_time: string; // "18:00:00" o "18:00"
   is_active: boolean;
 };
 
@@ -66,25 +68,15 @@ function dateToMinutes(d: Date) {
 }
 
 /** True si [startMin,endMin] cabe completo dentro de al menos 1 bloque */
-function isWithinAvailability(params: {
-  startMin: number;
-  endMin: number;
-  blocks: AvailabilityRow[];
-}) {
+function isWithinAvailability(params: { startMin: number; endMin: number; blocks: AvailabilityRow[] }) {
   const { startMin, endMin, blocks } = params;
   if (!blocks || blocks.length === 0) return false;
 
   return blocks.some((b) => {
     const bs = timeToMinutes(b.start_time);
     const be = timeToMinutes(b.end_time);
-    return startMin >= bs && endMin <= be; // contiguo permitido
+    return startMin >= bs && endMin <= be;
   });
-}
-
-function minutesToTime(min: number) {
-  const hh = String(Math.floor(min / 60)).padStart(2, "0");
-  const mm = String(min % 60).padStart(2, "0");
-  return `${hh}:${mm}:00`;
 }
 
 function setTimeOnDate(date: Date, timeHHMMSS: string) {
@@ -98,9 +90,9 @@ function setTimeOnDate(date: Date, timeHHMMSS: string) {
 function buildUnavailableBgEvents(params: {
   rangeStartISO: string;
   rangeEndISO: string;
-  blocks: { day_of_week: number; start_time: string; end_time: string }[]; // del profesional seleccionado
-  slotMinTime: string; // "07:00:00"
-  slotMaxTime: string; // "21:00:00"
+  blocks: { day_of_week: number; start_time: string; end_time: string }[];
+  slotMinTime: string;
+  slotMaxTime: string;
 }) {
   const { rangeStartISO, rangeEndISO, blocks, slotMinTime, slotMaxTime } = params;
 
@@ -109,9 +101,8 @@ function buildUnavailableBgEvents(params: {
 
   const results: any[] = [];
 
-  // Recorremos cada día en el rango visible (semana)
   for (let d = new Date(rangeStart); d < rangeEnd; d.setDate(d.getDate() + 1)) {
-    const dayOfWeek = d.getDay(); // 0-6
+    const dayOfWeek = d.getDay();
 
     const dayBlocks = blocks
       .filter((b) => b.day_of_week === dayOfWeek)
@@ -121,7 +112,6 @@ function buildUnavailableBgEvents(params: {
     const dayStart = setTimeOnDate(d, slotMinTime);
     const dayEnd = setTimeOnDate(d, slotMaxTime);
 
-    // Si no hay bloques => todo el día (en la ventana) es NO disponible
     if (dayBlocks.length === 0) {
       results.push({
         id: `bg-${d.toISOString()}-full`,
@@ -133,15 +123,12 @@ function buildUnavailableBgEvents(params: {
       continue;
     }
 
-    // Construimos los "huecos" NO disponibles:
-    // [slotMin -> primer bloque], (entre bloques), [último bloque -> slotMax]
     let cursor = dayStart;
 
     for (const b of dayBlocks) {
       const blockStart = setTimeOnDate(d, b.start_time);
       const blockEnd = setTimeOnDate(d, b.end_time);
 
-      // Hueco antes del bloque
       if (cursor < blockStart) {
         results.push({
           id: `bg-${d.toISOString()}-${cursor.toISOString()}`,
@@ -152,11 +139,9 @@ function buildUnavailableBgEvents(params: {
         });
       }
 
-      // Mover cursor al fin del bloque
       cursor = blockEnd;
     }
 
-    // Hueco después del último bloque
     if (cursor < dayEnd) {
       results.push({
         id: `bg-${d.toISOString()}-end`,
@@ -171,46 +156,47 @@ function buildUnavailableBgEvents(params: {
   return results;
 }
 
-/**
- * ✅ Cliente (nuevo)
- * Hoy lo usamos solo para buscar/seleccionar en el flujo de crear cita.
- * Después, en Día 5, tendremos CRUD completo en /admin/customers.
- */
-type Customer = {
-  id: string;
-  full_name: string;
-  phone: string | null;
-};
+// ✅ Helpers WhatsApp / Mensaje (PRO)
+function normalizePhoneToWhatsApp(raw: string) {
+  let p = raw.replace(/\D/g, "");
+  // si viene como 9XXXXXXXX => 569XXXXXXXX
+  if (p.length === 9 && p.startsWith("9")) p = "56" + p;
+  return p;
+}
 
-/**
- * ✅ Autocomplete MVP (sin modal todavía)
- * - Busca por nombre o teléfono dentro del tenant
- * - Devuelve top 8
- */
-async function searchCustomers(tenantId: string, q: string): Promise<Customer[]> {
-  const query = q.trim();
-  if (query.length < 2) return [];
+function formatDateTimeRange(startISO: string, endISO: string) {
+  const start = new Date(startISO);
+  const end = new Date(endISO);
 
-  const { data, error } = await supabase
-    .from("customers")
-    .select("id, full_name, phone")
-    .eq("tenant_id", tenantId)
-    .ilike("full_name", `%${query}%`)
-    .limit(8);
+  const date = start.toLocaleDateString("es-CL", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  });
 
-  if (error) {
-    console.error("searchCustomers error:", error);
-    return [];
-  }
+  const startTime = start.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  const endTime = end.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
 
-  return data ?? [];
+  return { date, startTime, endTime };
+}
+
+function buildConfirmationMessage(args: {
+  customerName: string;
+  dateLabel: string;
+  startTime: string;
+  endTime: string;
+  businessName?: string;
+}) {
+  const { customerName, dateLabel, startTime, endTime, businessName } = args;
+
+  const header = businessName ? `Hola ${customerName} 👋\nSoy ${businessName}.` : `Hola ${customerName} 👋`;
+  return `${header}\n\n✅ Tu cita quedó agendada para:\n📅 ${dateLabel}\n🕒 ${startTime} – ${endTime}\n\nSi necesitas reprogramar, responde este mensaje.`;
 }
 
 export default function AgendaPage() {
   const router = useRouter();
 
   const [bgEvents, setBgEvents] = useState<any[]>([]);
-
   const [authChecked, setAuthChecked] = useState(false);
 
   const [events, setEvents] = useState<any[]>([]);
@@ -220,8 +206,25 @@ export default function AgendaPage() {
   const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>("");
 
   const [availabilityMap, setAvailabilityMap] = useState<AvailabilityMap>({});
-
   const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
+
+  // ✅ Clientes para el modal
+  const [customers, setCustomers] = useState<CustomerLite[]>([]);
+
+  // ✅ Estado del modal de creación
+  const [createOpen, setCreateOpen] = useState(false);
+  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(null);
+
+  // ✅ Modal de acciones al click en cita (PRO)
+  const [actionOpen, setActionOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<{
+    id: string;
+    title: string;
+    customerPhone: string | null;
+    customerId: string | null;
+    startISO: string;
+    endISO: string;
+  } | null>(null);
 
   const selectedProfessional = useMemo(() => {
     return professionals.find((p) => p.id === selectedProfessionalId) ?? null;
@@ -240,13 +243,39 @@ export default function AgendaPage() {
     run();
   }, [router]);
 
+  /**
+   * ✅ Carga clientes del tenant para el autocomplete del modal.
+   * - Mapea full_name -> name
+   */
+  const loadCustomers = async () => {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id, full_name, phone")
+      .eq("tenant_id", TENANT_ID)
+      .order("full_name", { ascending: true })
+      .limit(500);
+
+    if (error) {
+      console.error("Error loading customers:", error);
+      return;
+    }
+
+    const list: CustomerLite[] =
+      (data ?? []).map((c: any) => ({
+        id: c.id,
+        name: c.full_name,
+        phone: c.phone ?? null,
+      })) ?? [];
+
+    setCustomers(list);
+  };
+
   // ✅ Background de NO disponible según availability + rango visible
   useEffect(() => {
     if (!authChecked) return;
     if (!selectedProfessionalId) return;
     if (!visibleRange) return;
 
-    // Tomamos availability del profesional seleccionado (todos los días)
     const blocksForPro: any[] = [];
     const proMap = availabilityMap[selectedProfessionalId] ?? {};
     Object.keys(proMap).forEach((dayKey) => {
@@ -271,12 +300,7 @@ export default function AgendaPage() {
   };
 
   // ✅ NO TRASLAPES
-  const hasOverlap = async (
-    startISO: string,
-    endISO: string,
-    professionalId: string,
-    excludeId?: string
-  ) => {
+  const hasOverlap = async (startISO: string, endISO: string, professionalId: string, excludeId?: string) => {
     let q = supabase
       .from("appointments")
       .select("id")
@@ -292,7 +316,7 @@ export default function AgendaPage() {
 
     if (error) {
       console.error("Overlap check error:", error);
-      return true; // por seguridad bloquea si falla
+      return true;
     }
 
     return (data?.length ?? 0) > 0;
@@ -341,12 +365,32 @@ export default function AgendaPage() {
     setAvailabilityMap(map);
   };
 
+  /**
+   * ✅ Cargar citas con JOIN a customers
+   * Nota: customers puede venir como array => tomamos el [0]
+   */
   const loadAppointments = async (start?: string, end?: string, professionalId?: string) => {
     setLoading(true);
 
     let q = supabase
       .from("appointments")
-      .select("*")
+      .select(
+        `
+        id,
+        tenant_id,
+        professional_id,
+        customer_id,
+        customer_name,
+        customer_phone,
+        start_at,
+        end_at,
+        status,
+        customers (
+          full_name,
+          phone
+        )
+      `
+      )
       .eq("tenant_id", TENANT_ID)
       .order("start_at", { ascending: true });
 
@@ -364,7 +408,12 @@ export default function AgendaPage() {
     const mapped =
       (data as Appointment[] | null)?.map((a) => {
         const isCanceled = a.status === "canceled";
-        const titleBase = a.customer_name ?? "Cita";
+
+        const joinedCustomer = a.customers?.[0] ?? null;
+        const customerFullName = joinedCustomer?.full_name ?? null;
+        const customerPhone = joinedCustomer?.phone ?? null;
+
+        const titleBase = customerFullName ?? a.customer_name ?? "Cita";
 
         return {
           id: a.id,
@@ -373,7 +422,7 @@ export default function AgendaPage() {
           end: a.end_at,
           extendedProps: {
             professional_id: a.professional_id,
-            customer_phone: a.customer_phone,
+            customer_phone: customerPhone ?? a.customer_phone,
             status: a.status ?? "confirmed",
             customer_id: a.customer_id ?? null,
           },
@@ -387,8 +436,11 @@ export default function AgendaPage() {
   // ✅ Cargar data cuando auth OK
   useEffect(() => {
     if (!authChecked) return;
+
     loadProfessionals();
     loadAvailability();
+    loadCustomers();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked]);
 
@@ -405,15 +457,15 @@ export default function AgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, selectedProfessionalId, visibleRange?.start, visibleRange?.end]);
 
-  // ✅ CREAR CITA (Disponibilidad + no-traslapes) + Cliente buscable (MVP sin modal)
+  /**
+   * ✅ Crear cita: validaciones + abre modal
+   */
   const handleSelect = async (selectInfo: DateSelectArg) => {
     if (!selectedProfessionalId) {
       alert("Selecciona un profesional primero");
       return;
     }
 
-    
-    // ✅ usa Date objects del calendario (evita líos de timezone)
     const startDate = selectInfo.start;
     const endDate = selectInfo.end;
 
@@ -436,99 +488,27 @@ export default function AgendaPage() {
       return;
     }
 
-    // ✅ 1) Buscar cliente (nombre o teléfono)
-    const q = prompt("Buscar cliente (nombre o teléfono). Escribe al menos 2 letras:");
-    if (!q) return;
+    setSlot({ startISO: start_at, endISO: end_at });
+    setCreateOpen(true);
+  };
 
-    const matches = await searchCustomers(TENANT_ID, q);
+  /**
+   * ✅ Inserta cita con customer_id + legacy fields
+   */
+  async function createAppointmentWithCustomer(customerId: string) {
+    if (!slot) return;
 
-    let selectedCustomer: Customer | null = null;
+    const customer = customers.find((c) => c.id === customerId) ?? null;
 
-    if (matches.length > 0) {
-      const options = matches
-        .map((c, idx) => {
-          const phone = c.phone ? ` (${c.phone})` : "";
-          return `${idx + 1}) ${c.full_name}${phone}`;
-        })
-        .join("\n");
-
-
-      const pick = prompt(
-        `Clientes encontrados:\n${options}\n\nEscribe el número para seleccionar, o deja vacío para crear nuevo:`
-      );
-
-      if (pick) {
-        const n = Number(pick);
-        if (!Number.isFinite(n) || n < 1 || n > matches.length) {
-          alert("Número inválido");
-          return;
-        }
-        selectedCustomer = matches[n - 1];
-      }
-    }
-
-    // ✅ 2) Si no eligió existente, crear cliente rápido
-    let customer_id: string | null = selectedCustomer?.id ?? null;
-    let customer_name: string = selectedCustomer?.full_name ?? "";
-    let customer_phone: string = selectedCustomer?.phone ?? "";
-    let customer_email: string = "";
-
-    if (!selectedCustomer) {
-  customer_name = prompt("Nombre del cliente (nuevo):") ?? "";
-  if (!customer_name.trim()) return;
-
-  // ✅ Pedir teléfono primero
-  customer_phone = prompt("Teléfono (opcional). Puedes pegar con +56, se limpia solo:") ?? "";
-
-  // ✅ Normalizar: solo números
-  customer_phone = customer_phone.replace(/\D/g, "");
-
-  // ✅ Si viene como 9XXXXXXXX, lo convertimos a 569XXXXXXXX
-  if (customer_phone.length === 9 && customer_phone.startsWith("9")) {
-    customer_phone = "56" + customer_phone;
-  }
-
-  // ✅ Pedir correo (opcional)
-  customer_email = prompt("Correo (opcional):") ?? "";
-
-  const { data: created, error: createErr } = await supabase
-    .from("customers")
-    .insert([
-      {
-        tenant_id: TENANT_ID,
-        full_name: customer_name.trim(),
-        phone: customer_phone.trim() || null,
-        email: customer_email.trim() || null,
-      },
-    ])
-    .select("id, full_name, phone, email")
-    .single();
-
-  if (createErr) {
-    console.error("Error creando cliente:", createErr);
-    alert("Error creando cliente");
-    return;
-  }
-
-  customer_id = created.id;
-  customer_name = created.full_name;
-  customer_phone = created.phone ?? "";
-  customer_email = created.email ?? "";
-}
-
-
-    
-
-    // ✅ 3) Crear cita (con customer_id + legacy fields por compatibilidad)
     const { error } = await supabase.from("appointments").insert([
       {
         tenant_id: TENANT_ID,
         professional_id: selectedProfessionalId,
-        customer_id,         // ✅ nuevo
-        customer_name,       // ✅ legacy
-        customer_phone,      // ✅ legacy (FIX: ya no lo dejamos vacío)
-        start_at,
-        end_at,
+        customer_id: customerId,
+        customer_name: customer?.name ?? null,
+        customer_phone: customer?.phone ?? null,
+        start_at: slot.startISO,
+        end_at: slot.endISO,
         status: "confirmed",
       },
     ]);
@@ -539,11 +519,15 @@ export default function AgendaPage() {
       return;
     }
 
+    // cerrar modal y limpiar
+    setCreateOpen(false);
+    setSlot(null);
+
     if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
-  };
+  }
 
-  // ✅ MOVER (drag&drop) (Disponibilidad + no-traslapes)
+  // ✅ MOVER (drag&drop)
   const handleEventDrop = async (dropInfo: EventDropArg) => {
     const id = dropInfo.event.id;
 
@@ -577,10 +561,7 @@ export default function AgendaPage() {
       return;
     }
 
-    const { error } = await supabase
-      .from("appointments")
-      .update({ start_at, end_at })
-      .eq("id", id);
+    const { error } = await supabase.from("appointments").update({ start_at, end_at }).eq("id", id);
 
     if (error) {
       console.error("Error updating appointment:", error);
@@ -593,15 +574,8 @@ export default function AgendaPage() {
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   };
 
-  // ✅ Cancelar (no borrar)
-  const handleEventClick = async (clickInfo: EventClickArg) => {
-    const ok = confirm(`¿Cancelar cita de "${clickInfo.event.title}"?`);
-    if (!ok) return;
-
-    const { error } = await supabase
-      .from("appointments")
-      .update({ status: "canceled" })
-      .eq("id", clickInfo.event.id);
+  async function cancelAppointment(appointmentId: string) {
+    const { error } = await supabase.from("appointments").update({ status: "canceled" }).eq("id", appointmentId);
 
     if (error) {
       console.error("Error canceling appointment:", error);
@@ -611,6 +585,29 @@ export default function AgendaPage() {
 
     if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
+  }
+
+  // ✅ Click en cita (PRO): abre panel con acciones
+  const handleEventClick = async (clickInfo: EventClickArg) => {
+    const id = clickInfo.event.id;
+    const title = clickInfo.event.title;
+
+    const customerPhone = (clickInfo.event.extendedProps as any)?.customer_phone ?? null;
+    const customerId = (clickInfo.event.extendedProps as any)?.customer_id ?? null;
+
+    const startISO = clickInfo.event.start?.toISOString() ?? "";
+    const endISO = clickInfo.event.end?.toISOString() ?? "";
+
+    setSelectedEvent({
+      id,
+      title,
+      customerPhone,
+      customerId,
+      startISO,
+      endISO,
+    });
+
+    setActionOpen(true);
   };
 
   // ✅ Cuando cambie de semana
@@ -655,22 +652,23 @@ export default function AgendaPage() {
       >
         Cerrar sesión
       </button>
-        <a
-          href="/admin/customers"
-          style={{
-            display: "inline-block",
-            padding: "8px 12px",
-            marginLeft: 10,
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-            fontSize: 14,
-          }}
->
-  Clientes
-</a>
+
+      <a
+        href="/admin/customers"
+        style={{
+          display: "inline-block",
+          padding: "8px 12px",
+          marginLeft: 10,
+          borderRadius: 8,
+          border: "1px solid #ddd",
+          background: "white",
+          textDecoration: "none",
+          color: "inherit",
+          fontSize: 14,
+        }}
+      >
+        Clientes
+      </a>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <div>
@@ -694,9 +692,7 @@ export default function AgendaPage() {
 
         <div style={{ fontSize: 13, opacity: 0.8 }}>
           Tenant: {TENANT_ID} {loading ? "• cargando..." : ""}
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Mostrando: {selectedProfessional?.name ?? "-"}
-          </div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Mostrando: {selectedProfessional?.name ?? "-"}</div>
         </div>
       </div>
 
@@ -721,8 +717,200 @@ export default function AgendaPage() {
       </div>
 
       <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-        Tip: seleccionar un rango = crear cita • arrastrar = reprogramar • click = cancelar
+        Tip: seleccionar un rango = crear cita • arrastrar = reprogramar • click = acciones
       </p>
+
+      {/* ✅ Modal Día 6 */}
+      <AppointmentCreateModal
+        open={createOpen}
+        onClose={() => {
+          setCreateOpen(false);
+          setSlot(null);
+        }}
+        startISO={slot?.startISO ?? ""}
+        endISO={slot?.endISO ?? ""}
+        customers={customers}
+        tenantId={TENANT_ID}
+        onCreatedCustomer={(c) => {
+          // ✅ agregar sin duplicar
+          setCustomers((prev) => {
+            if (prev.some((x) => x.id === c.id)) return prev;
+            return [c, ...prev];
+          });
+        }}
+        onConfirm={async ({ customerId }) => {
+          await createAppointmentWithCustomer(customerId);
+        }}
+      />
+
+      {/* ✅ Modal acciones al click en cita (PRO) */}
+      {actionOpen && selectedEvent && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 60,
+          }}
+        >
+          <div
+            style={{
+              width: "min(540px, 100%)",
+              background: "white",
+              borderRadius: 12,
+              border: "1px solid #e5e5e5",
+              padding: 16,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 800 }}>Cita</div>
+                {(() => {
+                  const { date, startTime, endTime } = formatDateTimeRange(selectedEvent.startISO, selectedEvent.endISO);
+                  return (
+                    <>
+                      <div style={{ fontSize: 13, opacity: 0.9, fontWeight: 700 }}>{selectedEvent.title}</div>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>
+                        📅 {date} • 🕒 {startTime} – {endTime}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>{selectedEvent.customerPhone ?? "(sin teléfono)"}</div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              <button
+                onClick={() => {
+                  setActionOpen(false);
+                  setSelectedEvent(null);
+                }}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => {
+                  if (!selectedEvent.customerPhone) {
+                    alert("Esta cita no tiene teléfono.");
+                    return;
+                  }
+                  const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
+                  window.open(`https://wa.me/${p}`, "_blank");
+                }}
+                disabled={!selectedEvent.customerPhone}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  cursor: selectedEvent.customerPhone ? "pointer" : "not-allowed",
+                  opacity: selectedEvent.customerPhone ? 1 : 0.5,
+                }}
+              >
+                Abrir WhatsApp
+              </button>
+
+              <button
+                onClick={() => {
+                  const { date, startTime, endTime } = formatDateTimeRange(selectedEvent.startISO, selectedEvent.endISO);
+                  const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
+
+                  const msg = buildConfirmationMessage({
+                    customerName,
+                    dateLabel: date,
+                    startTime,
+                    endTime,
+                    businessName: "Citaya", // cámbialo después por el nombre del negocio
+                  });
+
+                  navigator.clipboard.writeText(msg);
+                  alert("✅ Mensaje copiado al portapapeles");
+                }}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Copiar mensaje confirmación
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!selectedEvent.customerPhone) {
+                    alert("Esta cita no tiene teléfono.");
+                    return;
+                  }
+
+                  const { date, startTime, endTime } = formatDateTimeRange(selectedEvent.startISO, selectedEvent.endISO);
+                  const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
+
+                  const msg = buildConfirmationMessage({
+                    customerName,
+                    dateLabel: date,
+                    startTime,
+                    endTime,
+                    businessName: "Citaya",
+                  });
+
+                  const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
+                  const url = `https://wa.me/${p}?text=${encodeURIComponent(msg)}`;
+                  window.open(url, "_blank");
+                }}
+                disabled={!selectedEvent.customerPhone}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  cursor: selectedEvent.customerPhone ? "pointer" : "not-allowed",
+                  opacity: selectedEvent.customerPhone ? 1 : 0.5,
+                }}
+              >
+                WhatsApp con mensaje listo
+              </button>
+
+              <button
+                onClick={async () => {
+                  const ok = confirm("¿Cancelar esta cita?");
+                  if (!ok) return;
+
+                  await cancelAppointment(selectedEvent.id);
+
+                  setActionOpen(false);
+                  setSelectedEvent(null);
+                }}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Cancelar cita
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
