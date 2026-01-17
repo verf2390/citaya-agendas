@@ -7,7 +7,6 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
 
-
 import type {
   DateSelectArg,
   EventClickArg,
@@ -23,8 +22,14 @@ type Appointment = {
   id: string;
   tenant_id: string;
   professional_id: string;
+
+  // Legacy (MVP anterior)
   customer_name: string | null;
   customer_phone: string | null;
+
+  // Nuevo (relación)
+  customer_id?: string | null;
+
   start_at: string;
   end_at: string;
   status?: AppointmentStatus | null;
@@ -93,7 +98,7 @@ function setTimeOnDate(date: Date, timeHHMMSS: string) {
 function buildUnavailableBgEvents(params: {
   rangeStartISO: string;
   rangeEndISO: string;
-  blocks: { day_of_week: number; start_time: string; end_time: string }[]; // del día seleccionado
+  blocks: { day_of_week: number; start_time: string; end_time: string }[]; // del profesional seleccionado
   slotMinTime: string; // "07:00:00"
   slotMaxTime: string; // "21:00:00"
 }) {
@@ -166,6 +171,41 @@ function buildUnavailableBgEvents(params: {
   return results;
 }
 
+/**
+ * ✅ Cliente (nuevo)
+ * Hoy lo usamos solo para buscar/seleccionar en el flujo de crear cita.
+ * Después, en Día 5, tendremos CRUD completo en /admin/customers.
+ */
+type Customer = {
+  id: string;
+  full_name: string;
+  phone: string | null;
+};
+
+/**
+ * ✅ Autocomplete MVP (sin modal todavía)
+ * - Busca por nombre o teléfono dentro del tenant
+ * - Devuelve top 8
+ */
+async function searchCustomers(tenantId: string, q: string): Promise<Customer[]> {
+  const query = q.trim();
+  if (query.length < 2) return [];
+
+  const { data, error } = await supabase
+    .from("customers")
+    .select("id, full_name, phone")
+    .eq("tenant_id", tenantId)
+    .ilike("full_name", `%${query}%`)
+    .limit(8);
+
+  if (error) {
+    console.error("searchCustomers error:", error);
+    return [];
+  }
+
+  return data ?? [];
+}
+
 export default function AgendaPage() {
   const router = useRouter();
 
@@ -200,30 +240,30 @@ export default function AgendaPage() {
     run();
   }, [router]);
 
-useEffect(() => {
-  if (!authChecked) return;
-  if (!selectedProfessionalId) return;
-  if (!visibleRange) return;
+  // ✅ Background de NO disponible según availability + rango visible
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!selectedProfessionalId) return;
+    if (!visibleRange) return;
 
-  // Tomamos availability del profesional seleccionado (todos los días)
-  const blocksForPro: any[] = [];
-  const proMap = availabilityMap[selectedProfessionalId] ?? {};
-  Object.keys(proMap).forEach((dayKey) => {
-    const day = Number(dayKey);
-    (proMap[day] ?? []).forEach((b) => blocksForPro.push(b));
-  });
+    // Tomamos availability del profesional seleccionado (todos los días)
+    const blocksForPro: any[] = [];
+    const proMap = availabilityMap[selectedProfessionalId] ?? {};
+    Object.keys(proMap).forEach((dayKey) => {
+      const day = Number(dayKey);
+      (proMap[day] ?? []).forEach((b) => blocksForPro.push(b));
+    });
 
-  const bg = buildUnavailableBgEvents({
-    rangeStartISO: visibleRange.start,
-    rangeEndISO: visibleRange.end,
-    blocks: blocksForPro,
-    slotMinTime: "07:00:00",
-    slotMaxTime: "21:00:00",
-  });
+    const bg = buildUnavailableBgEvents({
+      rangeStartISO: visibleRange.start,
+      rangeEndISO: visibleRange.end,
+      blocks: blocksForPro,
+      slotMinTime: "07:00:00",
+      slotMaxTime: "21:00:00",
+    });
 
-  setBgEvents(bg);
-}, [authChecked, selectedProfessionalId, visibleRange?.start, visibleRange?.end, availabilityMap]);
-
+    setBgEvents(bg);
+  }, [authChecked, selectedProfessionalId, visibleRange?.start, visibleRange?.end, availabilityMap]);
 
   const onLogout = async () => {
     await supabase.auth.signOut();
@@ -292,7 +332,7 @@ useEffect(() => {
     }
 
     const map: AvailabilityMap = {};
-    (data as AvailabilityRow[] | null ?? []).forEach((a) => {
+    ((data as AvailabilityRow[] | null) ?? []).forEach((a) => {
       if (!map[a.professional_id]) map[a.professional_id] = {};
       if (!map[a.professional_id][a.day_of_week]) map[a.professional_id][a.day_of_week] = [];
       map[a.professional_id][a.day_of_week].push(a);
@@ -335,6 +375,7 @@ useEffect(() => {
             professional_id: a.professional_id,
             customer_phone: a.customer_phone,
             status: a.status ?? "confirmed",
+            customer_id: a.customer_id ?? null,
           },
         };
       }) ?? [];
@@ -364,16 +405,14 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, selectedProfessionalId, visibleRange?.start, visibleRange?.end]);
 
-  // ✅ CREAR CITA (Disponibilidad + no-traslapes)
+  // ✅ CREAR CITA (Disponibilidad + no-traslapes) + Cliente buscable (MVP sin modal)
   const handleSelect = async (selectInfo: DateSelectArg) => {
     if (!selectedProfessionalId) {
       alert("Selecciona un profesional primero");
       return;
     }
 
-    const customer_name = prompt("Nombre cliente?");
-    if (!customer_name) return;
-
+    
     // ✅ usa Date objects del calendario (evita líos de timezone)
     const startDate = selectInfo.start;
     const endDate = selectInfo.end;
@@ -397,15 +436,100 @@ useEffect(() => {
       return;
     }
 
+    // ✅ 1) Buscar cliente (nombre o teléfono)
+    const q = prompt("Buscar cliente (nombre o teléfono). Escribe al menos 2 letras:");
+    if (!q) return;
+
+    const matches = await searchCustomers(TENANT_ID, q);
+
+    let selectedCustomer: Customer | null = null;
+
+    if (matches.length > 0) {
+      const options = matches
+        .map((c, idx) => {
+          const phone = c.phone ? ` (${c.phone})` : "";
+          return `${idx + 1}) ${c.full_name}${phone}`;
+        })
+        .join("\n");
+
+
+      const pick = prompt(
+        `Clientes encontrados:\n${options}\n\nEscribe el número para seleccionar, o deja vacío para crear nuevo:`
+      );
+
+      if (pick) {
+        const n = Number(pick);
+        if (!Number.isFinite(n) || n < 1 || n > matches.length) {
+          alert("Número inválido");
+          return;
+        }
+        selectedCustomer = matches[n - 1];
+      }
+    }
+
+    // ✅ 2) Si no eligió existente, crear cliente rápido
+    let customer_id: string | null = selectedCustomer?.id ?? null;
+    let customer_name: string = selectedCustomer?.full_name ?? "";
+    let customer_phone: string = selectedCustomer?.phone ?? "";
+    let customer_email: string = "";
+
+    if (!selectedCustomer) {
+  customer_name = prompt("Nombre del cliente (nuevo):") ?? "";
+  if (!customer_name.trim()) return;
+
+  // ✅ Pedir teléfono primero
+  customer_phone = prompt("Teléfono (opcional). Puedes pegar con +56, se limpia solo:") ?? "";
+
+  // ✅ Normalizar: solo números
+  customer_phone = customer_phone.replace(/\D/g, "");
+
+  // ✅ Si viene como 9XXXXXXXX, lo convertimos a 569XXXXXXXX
+  if (customer_phone.length === 9 && customer_phone.startsWith("9")) {
+    customer_phone = "56" + customer_phone;
+  }
+
+  // ✅ Pedir correo (opcional)
+  customer_email = prompt("Correo (opcional):") ?? "";
+
+  const { data: created, error: createErr } = await supabase
+    .from("customers")
+    .insert([
+      {
+        tenant_id: TENANT_ID,
+        full_name: customer_name.trim(),
+        phone: customer_phone.trim() || null,
+        email: customer_email.trim() || null,
+      },
+    ])
+    .select("id, full_name, phone, email")
+    .single();
+
+  if (createErr) {
+    console.error("Error creando cliente:", createErr);
+    alert("Error creando cliente");
+    return;
+  }
+
+  customer_id = created.id;
+  customer_name = created.full_name;
+  customer_phone = created.phone ?? "";
+  customer_email = created.email ?? "";
+}
+
+
+    
+
+    // ✅ 3) Crear cita (con customer_id + legacy fields por compatibilidad)
     const { error } = await supabase.from("appointments").insert([
       {
         tenant_id: TENANT_ID,
         professional_id: selectedProfessionalId,
-        customer_name,
-        customer_phone: "",
+        customer_id,         // ✅ nuevo
+        customer_name,       // ✅ legacy
+        customer_phone,      // ✅ legacy (FIX: ya no lo dejamos vacío)
         start_at,
         end_at,
-        status: "confirmed", // ✅ válido en tu constraint
+        status: "confirmed",
       },
     ]);
 
@@ -513,11 +637,10 @@ useEffect(() => {
       <h1>Agenda (Admin)</h1>
 
       <style>{`
-         .fc-bg-unavailable {
-           background: rgba(0,0,0,0.08);
-          }
-`     }</style>
-
+        .fc-bg-unavailable {
+          background: rgba(0,0,0,0.08);
+        }
+      `}</style>
 
       <button
         onClick={onLogout}
@@ -532,6 +655,22 @@ useEffect(() => {
       >
         Cerrar sesión
       </button>
+        <a
+          href="/admin/customers"
+          style={{
+            display: "inline-block",
+            padding: "8px 12px",
+            marginLeft: 10,
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+            fontSize: 14,
+          }}
+>
+  Clientes
+</a>
 
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
         <div>
