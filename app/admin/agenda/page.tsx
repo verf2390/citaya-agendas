@@ -63,7 +63,7 @@ type BgEvent = {
   classNames: string[];
 };
 
-// ✅ Tipo para los eventos normales del calendario (lo que tú renderizas)
+// ✅ Tipo para los eventos normales del calendario
 type CalendarEvent = {
   id: string;
   title: string;
@@ -196,7 +196,6 @@ function buildUnavailableBgEvents(params: {
 // ✅ Helpers WhatsApp / Mensaje (PRO)
 import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
 
-
 function formatDateTimeRange(startISO: string, endISO: string) {
   const start = new Date(startISO);
   const end = new Date(endISO);
@@ -278,7 +277,6 @@ export default function AgendaPage() {
 
   /**
    * ✅ Carga clientes del tenant para el autocomplete del modal.
-   * - Mapea full_name -> name
    */
   const loadCustomers = async () => {
     const { data, error } = await supabase
@@ -333,7 +331,7 @@ export default function AgendaPage() {
     router.push("/login");
   };
 
-  // ✅ NO TRASLAPES
+  // ✅ NO TRASLAPES (check rápido front; el backend vuelve a validar)
   const hasOverlap = async (startISO: string, endISO: string, professionalId: string, excludeId?: string) => {
     let q = supabase
       .from("appointments")
@@ -401,7 +399,6 @@ export default function AgendaPage() {
 
   /**
    * ✅ Cargar citas con JOIN a customers
-   * Nota: customers puede venir como array => tomamos el [0]
    */
   const loadAppointments = async (start?: string, end?: string, professionalId?: string) => {
     setLoading(true);
@@ -526,29 +523,51 @@ export default function AgendaPage() {
   };
 
   /**
-   * ✅ Inserta cita con customer_id + legacy fields
+   * ✅ NUEVO: crea cita llamando a tu API (usa SERVICE_ROLE en el backend)
+   */
+  async function createAppointmentViaApi(payload: {
+    tenant_id: string;
+    professional_id: string;
+    customer_name: string;
+    customer_phone: string | null;
+    start_at: string;
+    end_at: string;
+  }) {
+    const res = await fetch("/api/appointments/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json?.error ?? "Error creando cita");
+    }
+    return json;
+  }
+
+  /**
+   * ✅ Inserta cita usando customer_id + legacy fields
+   * - Ahora inserta por API (backend)
+   * - customer_id lo dejamos para el siguiente endpoint (Día 9). Hoy guardamos name/phone como MVP.
    */
   async function createAppointmentWithCustomer(customerId: string) {
     if (!slot) return;
 
     const customer = customers.find((c) => c.id === customerId) ?? null;
 
-    const { error } = await supabase.from("appointments").insert([
-      {
+    try {
+      await createAppointmentViaApi({
         tenant_id: TENANT_ID,
         professional_id: selectedProfessionalId,
-        customer_id: customerId,
-        customer_name: customer?.name ?? null,
+        customer_name: customer?.name ?? "Cliente",
         customer_phone: customer?.phone ?? null,
         start_at: slot.startISO,
         end_at: slot.endISO,
-        status: "confirmed",
-      },
-    ]);
-
-    if (error) {
-      console.error("Error creating appointment:", error);
-      alert("Error creando cita");
+      });
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Error creando cita");
       return;
     }
 
