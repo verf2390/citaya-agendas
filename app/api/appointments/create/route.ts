@@ -51,6 +51,7 @@ export async function POST(req: Request) {
           professional_id,
           customer_name,
           customer_phone: customer_phone ?? null,
+          customer_email: body.customer_email, 
           start_at,
           end_at,
           status: "confirmed",
