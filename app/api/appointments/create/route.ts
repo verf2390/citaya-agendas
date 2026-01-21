@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { generateManageToken } from "@/app/lib/manageToken";
 
 /**
  * Dispara n8n server-side para enviar correo de confirmación.
@@ -87,8 +88,12 @@ export async function POST(req: Request) {
     }
 
     // ✅ Insert de la cita
+    const manage_token = generateManageToken();
+    
     const { data, error } = await supabaseServer
       .from("appointments")
+
+      
       .insert([
         {
           tenant_id,
@@ -99,6 +104,8 @@ export async function POST(req: Request) {
           start_at,
           end_at,
           status: "confirmed",
+          manage_token,
+          manage_token_created_at: new Date().toISOString(),
 
           // ✅ anti-duplicado: por defecto aún NO enviada
           confirmation_sent_at: null,
