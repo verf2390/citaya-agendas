@@ -114,7 +114,7 @@ export async function POST(req: Request) {
     // ✅ Disparar n8n server-side SIN bloquear al usuario
     // (si quieres 100% fire-and-forget, igual lo hacemos "await" porque es 5s máx con timeout)
     // Lo importante: si falla, NO rompe.
-    triggerN8nConfirmation(data.id);
+    await triggerN8nConfirmation(data.id);
 
     return NextResponse.json({ ok: true, appointment: data }, { status: 201 });
   } catch (e: any) {

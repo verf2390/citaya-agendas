@@ -1,10 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+/**
+ * Página wrapper: en Next (App Router) useSearchParams() debe estar dentro de <Suspense>.
+ * Por eso, el componente que usa useSearchParams va adentro.
+ */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+/** Fallback simple mientras Next resuelve los search params */
+function LoginFallback() {
+  return (
+    <main style={{ padding: 30, fontFamily: "system-ui", maxWidth: 420 }}>
+      <h1>Login — Citaya</h1>
+      <p>Cargando…</p>
+    </main>
+  );
+}
+
+function LoginInner() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirectTo") || "/admin/agenda";
 
@@ -30,7 +52,7 @@ export default function LoginPage() {
       return;
     }
 
-    // navegación fuerte (evita temas de refresh)
+    // Navegación fuerte (evita temas de refresh)
     window.location.href = redirectTo;
   };
 
@@ -76,10 +98,9 @@ export default function LoginPage() {
           {loading ? "Ingresando..." : "Ingresar"}
         </button>
 
-        {errorMsg && (
-          <p style={{ color: "crimson", margin: 0 }}>❌ {errorMsg}</p>
-        )}
+        {errorMsg && <p style={{ color: "crimson", margin: 0 }}>❌ {errorMsg}</p>}
       </form>
     </main>
   );
 }
+

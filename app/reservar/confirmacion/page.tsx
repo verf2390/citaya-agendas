@@ -1,9 +1,30 @@
 "use client";
 
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 
+/**
+ * Next App Router: useSearchParams() debe ir dentro de <Suspense>.
+ * Por eso separamos en wrapper + inner.
+ */
 export default function ConfirmacionPage() {
+  return (
+    <Suspense fallback={<ConfirmacionFallback />}>
+      <ConfirmacionInner />
+    </Suspense>
+  );
+}
+
+function ConfirmacionFallback() {
+  return (
+    <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
+      <h1 style={{ marginBottom: 6 }}>✅ Reserva confirmada</h1>
+      <p style={{ marginTop: 0, opacity: 0.75 }}>Cargando detalles…</p>
+    </main>
+  );
+}
+
+function ConfirmacionInner() {
   const sp = useSearchParams();
 
   const start = sp.get("start") ?? "";
@@ -87,3 +108,4 @@ export default function ConfirmacionPage() {
     </main>
   );
 }
+
