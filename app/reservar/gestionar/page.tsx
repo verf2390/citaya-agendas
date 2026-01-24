@@ -155,6 +155,18 @@ function GestionarCitaInner() {
 
   const onCancel = async () => {
     if (!token) return;
+
+    // ✅ Bloqueo: no permitir cancelar con menos de 3 horas
+    if (appt?.start_at) {
+      const msLeft = new Date(appt.start_at).getTime() - Date.now();
+      const hoursLeft = msLeft / (1000 * 60 * 60);
+      if (hoursLeft < 3) {
+        setError("No puedes cancelar con menos de 3 horas de anticipación.");
+        return;
+      }
+    }
+
+    // ✅ Confirm solo si pasa el bloqueo
     if (!confirm("¿Seguro que quieres cancelar esta cita?")) return;
 
     setBusy("cancel");
@@ -181,6 +193,17 @@ function GestionarCitaInner() {
 
   const onRescheduleInline = async () => {
     if (!token) return;
+
+    // ✅ Bloqueo: no permitir reagendar con menos de 3 horas
+    if (appt?.start_at) {
+      const msLeft = new Date(appt.start_at).getTime() - Date.now();
+      const hoursLeft = msLeft / (1000 * 60 * 60);
+      if (hoursLeft < 3) {
+        setError("No puedes reagendar con menos de 3 horas de anticipación.");
+        return;
+      }
+    }
+
     if (!newStartLocal) {
       setError("Selecciona una nueva fecha/hora de inicio.");
       return;
