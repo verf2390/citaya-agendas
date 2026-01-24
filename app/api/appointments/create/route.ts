@@ -1,12 +1,25 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import crypto from "crypto";
+
+/**
+ * Token URL-safe para gestionar la cita desde link público
+ */
+function makeManageToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
 
 /**
  * Dispara n8n server-side para enviar correo de confirmación.
  * - No debe romper la reserva si n8n falla.
  * - Se protege con header secreto.
+ * - Enviamos manage_token + public_base_url para link real.
  */
-async function triggerN8nConfirmation(appointmentId: string) {
+async function triggerN8nConfirmation(payload: {
+  appointment_id: string;
+  manage_token: string;
+  public_base_url: string;
+}) {
   const url = process.env.N8N_WEBHOOK_URL;
   const secret = process.env.N8N_WEBHOOK_SECRET;
 
@@ -15,7 +28,6 @@ async function triggerN8nConfirmation(appointmentId: string) {
     return;
   }
 
-  // Timeout para no colgar el POST de reserva
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
@@ -26,7 +38,7 @@ async function triggerN8nConfirmation(appointmentId: string) {
         "content-type": "application/json",
         "x-citaya-secret": secret,
       },
-      body: JSON.stringify({ appointment_id: appointmentId }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
@@ -50,7 +62,7 @@ export async function POST(req: Request) {
       professional_id,
       customer_name,
       customer_phone,
-      customer_email, // ✅ lo sacamos del body una vez
+      customer_email,
       start_at,
       end_at,
     } = body;
@@ -59,7 +71,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Faltan campos obligatorios" }, { status: 400 });
     }
 
-    // (Recomendado) valida email mínimo (MVP)
+    // (MVP) valida email mínimo
     if (!customer_email || typeof customer_email !== "string" || !customer_email.includes("@")) {
       return NextResponse.json({ error: "Email inválido" }, { status: 400 });
     }
@@ -86,7 +98,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Insert de la cita
+    // ✅ Generar token de gestión
+    const manage_token = makeManageToken();
+
+    // ✅ Insert de la cita (incluye manage_token)
     const { data, error } = await supabaseServer
       .from("appointments")
       .insert([
@@ -100,8 +115,11 @@ export async function POST(req: Request) {
           end_at,
           status: "confirmed",
 
-          // ✅ anti-duplicado: por defecto aún NO enviada
+          // anti-duplicado: por defecto aún NO enviada
           confirmation_sent_at: null,
+
+          // NUEVO: token de gestión
+          manage_token,
         },
       ])
       .select()
@@ -111,16 +129,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // ✅ Disparar n8n server-side SIN bloquear al usuario
-    // (si quieres 100% fire-and-forget, igual lo hacemos "await" porque es 5s máx con timeout)
-    // Lo importante: si falla, NO rompe.
-    await triggerN8nConfirmation(data.id);
+    // ✅ Disparar n8n SIN bloquear al usuario (máx 5s)
+    // Mandamos token + base url para armar el link real en el correo.
+    const public_base_url = "https://app.citaya.online";
+    await triggerN8nConfirmation({
+      appointment_id: data.id,
+      manage_token,
+      public_base_url,
+    });
 
     return NextResponse.json({ ok: true, appointment: data }, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message ?? "Error inesperado" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message ?? "Error inesperado" }, { status: 500 });
   }
 }
