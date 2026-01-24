@@ -1,286 +1,396 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-type Appointment = {
+type Appt = {
   id: string;
+  status: string;
   customer_name: string | null;
   customer_phone: string | null;
   customer_email: string | null;
   start_at: string;
   end_at: string;
-  status: string;
+  professional_name?: string | null;
+  service_name?: string | null;
 };
 
-const SLOT_MINUTES = 60; // tramos de 1 hora
+const tz = "America/Santiago";
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
+const fmtLongDate = (iso: string) =>
+  new Intl.DateTimeFormat("es-CL", {
+    timeZone: tz,
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(iso));
+
+const fmtTime = (iso: string) =>
+  new Intl.DateTimeFormat("es-CL", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(iso));
+
+const fmtDateTimeShort = (iso: string) =>
+  new Intl.DateTimeFormat("es-CL", {
+    timeZone: tz,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+
+function toLocalDatetimeValue(isoUTC: string) {
+  const d = new Date(isoUTC);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-function toLocalInput(iso: string) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(
-    d.getHours()
-  )}:${pad2(d.getMinutes())}`;
+function addMinutesISOFromLocalDatetime(localDT: string, mins: number) {
+  const d = new Date(localDT);
+  const end = new Date(d.getTime() + mins * 60 * 1000);
+  return { startISO: d.toISOString(), endISO: end.toISOString() };
 }
 
-function addMinutes(localInput: string, minutes: number) {
-  // localInput: yyyy-MM-ddTHH:mm
-  const d = new Date(localInput);
-  d.setMinutes(d.getMinutes() + minutes);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(
-    d.getHours()
-  )}:${pad2(d.getMinutes())}`;
+function StatusBadge({ status }: { status: string }) {
+  const s = (status || "").toLowerCase();
+  const meta =
+    s === "canceled"
+      ? { label: "Cancelada", cls: "bg-red-50 text-red-700 border-red-200" }
+      : s === "rescheduled"
+        ? { label: "Reagendada", cls: "bg-amber-50 text-amber-800 border-amber-200" }
+        : s === "confirmed"
+          ? { label: "Confirmada", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" }
+          : { label: status || "Estado", cls: "bg-slate-50 text-slate-700 border-slate-200" };
+
+  return (
+    <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold ${meta.cls}`}>
+      <span className="inline-block w-2 h-2 rounded-full bg-current opacity-60" />
+      {meta.label}
+    </span>
+  );
 }
 
-function ManageInner() {
+function GestionarCitaInner() {
   const router = useRouter();
   const sp = useSearchParams();
-  const token = sp.get("token");
+  const token = sp.get("token") || "";
 
+  const [appt, setAppt] = useState<Appt | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [appt, setAppt] = useState<Appointment | null>(null);
+  const [busy, setBusy] = useState<null | "cancel" | "reschedule">(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [newStart, setNewStart] = useState(""); // solo inicio
-  const newEnd = useMemo(() => (newStart ? addMinutes(newStart, SLOT_MINUTES) : ""), [newStart]);
+  const [newStartLocal, setNewStartLocal] = useState<string>("");
 
-  const isCanceled = appt?.status === "canceled";
-
-  const go = (url: string) => {
-    // Router push + fallback por si el cliente no navega por alguna razón
-    try {
-      router.push(url);
-      // fallback suave por si no navega (no bloquea si sí navega)
-      setTimeout(() => {
-        if (typeof window !== "undefined" && window.location.pathname !== "/reservar/resultado") {
-          // si ya navegó, no hace nada; si no, fuerza navegación
-          window.location.href = url;
-        }
-      }, 250);
-    } catch {
-      if (typeof window !== "undefined") window.location.href = url;
-    }
+  const rescheduleRef = useRef<HTMLDivElement | null>(null);
+  const scrollToReschedule = () => {
+    rescheduleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+
+  const durationMins = useMemo(() => {
+    if (!appt?.start_at || !appt?.end_at) return 60;
+    const a = new Date(appt.start_at).getTime();
+    const b = new Date(appt.end_at).getTime();
+    const diff = Math.max(0, b - a);
+    return Math.max(30, Math.round(diff / (60 * 1000)));
+  }, [appt?.start_at, appt?.end_at]);
 
   useEffect(() => {
     const run = async () => {
+      setLoading(true);
+      setError(null);
+
       if (!token) {
-        setErr("Falta el token.");
+        setError("Falta el token. Abre este enlace desde tu correo de confirmación.");
         setLoading(false);
         return;
       }
 
-      const res = await fetch(`/api/appointments/by-token?token=${encodeURIComponent(token)}`);
-      const json = await res.json();
+      try {
+        const res = await fetch(`/api/appointments/by-token?token=${encodeURIComponent(token)}`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
 
-      if (!json.ok) {
-        setErr(json.error ?? "Token inválido.");
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          throw new Error(t || `No se pudo cargar la cita (HTTP ${res.status})`);
+        }
+
+        const data = await res.json();
+        const row: Appt = data?.appointment ?? data;
+
+        setAppt(row);
+        if (row?.start_at) setNewStartLocal(toLocalDatetimeValue(row.start_at));
+      } catch (e: any) {
+        setError(e?.message || "Error cargando la cita");
+      } finally {
         setLoading(false);
-        return;
       }
-
-      const a: Appointment = json.appointment;
-      setAppt(a);
-      setNewStart(toLocalInput(a.start_at)); // fin queda auto por SLOT_MINUTES
-      setLoading(false);
     };
 
-    run().catch((e) => {
-      console.error(e);
-      setErr("Error cargando la cita.");
-      setLoading(false);
-    });
+    run();
   }, [token]);
 
-  const cancel = async () => {
-    if (!token || busy) return;
-    setBusy(true);
-    setErr(null);
+  const isCanceled = (appt?.status || "").toLowerCase() === "canceled";
 
+  const goResult = (qs: string) => {
     try {
-      const res = await fetch("/api/appointments/cancel", {
+      router.push(`/reservar/resultado${qs}`);
+    } catch {
+      window.location.href = `/reservar/resultado${qs}`;
+    }
+  };
+
+  const onCancel = async () => {
+    if (!token) return;
+    if (!confirm("¿Seguro que quieres cancelar esta cita?")) return;
+
+    setBusy("cancel");
+    setError(null);
+    try {
+      const res = await fetch(`/api/appointments/cancel`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
 
-      const json = await res.json();
-      if (!json.ok) {
-        setErr(json.error ?? "No se pudo cancelar.");
-        return;
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(t || `No se pudo cancelar (HTTP ${res.status})`);
       }
 
-      setAppt((prev) => (prev ? { ...prev, status: "canceled" } : prev));
-      go("/reservar/resultado?status=canceled");
-    } catch (e) {
-      console.error(e);
-      setErr("Error cancelando la cita.");
+      goResult(`?status=canceled`);
+    } catch (e: any) {
+      setError(e?.message || "Error al cancelar");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  const reschedule = async () => {
-    if (!token || busy) return;
-    setErr(null);
-
-    if (!newStart || !newEnd) {
-      setErr("Debes elegir una nueva hora de inicio.");
+  const onRescheduleInline = async () => {
+    if (!token) return;
+    if (!newStartLocal) {
+      setError("Selecciona una nueva fecha/hora de inicio.");
       return;
     }
 
-    setBusy(true);
-
+    setBusy("reschedule");
+    setError(null);
     try {
-      const startISO = new Date(newStart).toISOString();
-      const endISO = new Date(newEnd).toISOString();
+      const { startISO, endISO } = addMinutesISOFromLocalDatetime(newStartLocal, durationMins);
 
-      const res = await fetch("/api/appointments/reschedule", {
+      const res = await fetch(`/api/appointments/reschedule`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, start_at: startISO, end_at: endISO }),
       });
 
-      const json = await res.json();
-      if (!json.ok) {
-        setErr(json.error ?? "No se pudo reagendar.");
-        return;
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(t || `No se pudo reagendar (HTTP ${res.status})`);
       }
 
-      setAppt((prev) =>
-        prev
-          ? { ...prev, start_at: json.appointment.start_at, end_at: json.appointment.end_at }
-          : prev
-      );
-
-      const url =
-        `/reservar/resultado?status=rescheduled` +
-        `&start=${encodeURIComponent(json.appointment.start_at)}` +
-        `&end=${encodeURIComponent(json.appointment.end_at)}`;
-
-      go(url);
-    } catch (e) {
-      console.error(e);
-      setErr("Error reagendando la cita.");
+      goResult(`?status=rescheduled&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(endISO)}`);
+    } catch (e: any) {
+      setError(e?.message || "Error al reagendar");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  if (loading) return <main style={{ padding: 24 }}>Cargando…</main>;
-
-  if (err) {
-    return (
-      <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 720 }}>
-        <h1>Gestionar cita</h1>
-        <p style={{ color: "crimson" }}>{err}</p>
-      </main>
-    );
-  }
-
-  if (!appt) return null;
-
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 720 }}>
-      <h1>Gestionar cita</h1>
+    <main className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900">
+                  Gestionar cita
+                </h1>
+                <p className="mt-1 text-sm text-slate-600">
+                  Reagenda o cancela tu hora desde este enlace privado.
+                </p>
+              </div>
 
-      <div style={{ marginTop: 12, padding: 16, border: "1px solid #ddd", borderRadius: 10 }}>
-        <div>
-          <b>Estado:</b> {appt.status}
+              <div className="flex flex-col items-end gap-2">
+                <StatusBadge status={appt?.status || "loading"} />
+                <div className="text-[11px] text-slate-500">🔒 Enlace privado · no lo compartas</div>
+              </div>
+            </div>
+
+            {error ? (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {error}
+              </div>
+            ) : null}
+
+            {loading ? (
+              <div className="mt-5 grid gap-3">
+                <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
+                <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+              </div>
+            ) : null}
+
+            {!loading && appt ? (
+              <div className="mt-5 grid gap-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-white border border-slate-200 p-4">
+                      <div className="text-xs font-semibold text-slate-500">Cliente</div>
+                      <div className="mt-1 text-sm font-bold text-slate-900">{appt.customer_name || "—"}</div>
+
+                      <div className="mt-3 text-xs font-semibold text-slate-500">Contacto</div>
+                      <div className="mt-1 text-sm text-slate-800">
+                        {appt.customer_phone ? `📞 ${appt.customer_phone}` : "📞 —"}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-800">
+                        {appt.customer_email ? `✉️ ${appt.customer_email}` : "✉️ —"}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-white border border-slate-200 p-4">
+                      <div className="text-xs font-semibold text-slate-500">Tu cita</div>
+                      <div className="mt-1 text-sm font-bold text-slate-900">{fmtLongDate(appt.start_at)}</div>
+                      <div className="mt-1 text-sm text-slate-800">
+                        🕒 {fmtTime(appt.start_at)} – {fmtTime(appt.end_at)}
+                      </div>
+
+                      <div className="mt-3 text-xs font-semibold text-slate-500">Profesional</div>
+                      <div className="mt-1 text-sm text-slate-800">
+                        {appt.professional_name ? `👤 ${appt.professional_name}` : "👤 —"}
+                      </div>
+
+                      <div className="mt-3 text-xs font-semibold text-slate-500">Código</div>
+                      <div className="mt-1 font-mono text-xs text-slate-700">{appt.id}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+                  <div className="text-sm font-extrabold text-slate-900">Acciones</div>
+                  <div className="mt-1 text-sm text-slate-600">Puedes reagendar o cancelar tu cita en segundos.</div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={scrollToReschedule}
+                      disabled={busy !== null || isCanceled}
+                      className={`rounded-xl px-4 py-3 text-sm font-extrabold shadow-sm transition
+                        ${isCanceled ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-900 text-white hover:opacity-95"}
+                      `}
+                    >
+                      {isCanceled ? "Reagendar (no disponible)" : "Reagendar cita"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={onCancel}
+                      disabled={busy !== null || isCanceled}
+                      className={`rounded-xl px-4 py-3 text-sm font-extrabold shadow-sm transition
+                        ${isCanceled ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-red-600 text-white hover:opacity-95"}
+                      `}
+                    >
+                      {busy === "cancel" ? "Cancelando..." : isCanceled ? "Cita cancelada" : "Cancelar cita"}
+                    </button>
+                  </div>
+
+                  <div ref={rescheduleRef} className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-extrabold text-slate-900">Reagendar</div>
+                        <div className="mt-1 text-sm text-slate-600">
+                          Cambia la hora aquí mismo (duración fija: <b>{durationMins} min</b>)
+                        </div>
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        {appt.start_at ? `Actual: ${fmtDateTimeShort(appt.start_at)}` : ""}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] items-end">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600">Nueva fecha y hora (inicio)</label>
+                        <input
+                          type="datetime-local"
+                          value={newStartLocal}
+                          onChange={(e) => setNewStartLocal(e.target.value)}
+                          disabled={busy !== null || isCanceled}
+                          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-900/20"
+                        />
+                        <div className="mt-2 text-xs text-slate-600">
+                          Fin automático:{" "}
+                          <b>
+                            {newStartLocal
+                              ? fmtDateTimeShort(addMinutesISOFromLocalDatetime(newStartLocal, durationMins).endISO)
+                              : "—"}
+                          </b>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={onRescheduleInline}
+                        disabled={busy !== null || isCanceled}
+                        className={`rounded-xl px-4 py-3 text-sm font-extrabold shadow-sm transition
+                          ${isCanceled ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-amber-500 text-slate-900 hover:opacity-95"}
+                        `}
+                      >
+                        {busy === "reschedule" ? "Guardando..." : "Guardar reagendamiento"}
+                      </button>
+                    </div>
+
+                    {isCanceled ? (
+                      <div className="mt-3 text-xs text-slate-500">Esta cita está cancelada; no se puede reagendar.</div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 text-xs text-slate-500">
+                    💡 Si este enlace fue compartido por error, crea una nueva reserva y usa el nuevo correo.
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div>
-          <b>Cliente:</b> {appt.customer_name ?? "—"}
-        </div>
-        <div>
-          <b>Teléfono:</b> {appt.customer_phone ?? "—"}
-        </div>
-        <div>
-          <b>Email:</b> {appt.customer_email ?? "—"}
-        </div>
-
-        <div style={{ marginTop: 8 }}>
-          <b>Inicio:</b>{" "}
-          {new Date(appt.start_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}
-        </div>
-        <div>
-          <b>Fin:</b>{" "}
-          {new Date(appt.end_at).toLocaleString("es-CL", { timeZone: "America/Santiago" })}
-        </div>
-      </div>
-
-      <h2 style={{ marginTop: 20 }}>Reagendar</h2>
-
-      <div style={{ display: "grid", gap: 10, maxWidth: 420 }}>
-        <label>
-          Nueva hora inicio
-          <input
-            type="datetime-local"
-            value={newStart}
-            onChange={(e) => setNewStart(e.target.value)}
-            disabled={!!isCanceled || busy}
-            style={{ width: "100%", padding: 8 }}
-          />
-        </label>
-
-        <div style={{ fontSize: 14, color: "#444" }}>
-          <b>Duración:</b> {SLOT_MINUTES} min &nbsp;·&nbsp; <b>Nueva hora fin:</b>{" "}
-          {newEnd ? newEnd.replace("T", " ") : "—"}
-        </div>
-
-        <button
-          onClick={reschedule}
-          disabled={!!isCanceled || busy}
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #111",
-            background: "#111",
-            color: "white",
-            cursor: isCanceled || busy ? "not-allowed" : "pointer",
-            fontWeight: 600,
-            opacity: isCanceled || busy ? 0.7 : 1,
-          }}
-        >
-          {busy ? "Guardando..." : `Guardar reagendamiento (+${SLOT_MINUTES} min)`}
-        </button>
-      </div>
-
-      <h2 style={{ marginTop: 22 }}>Acciones</h2>
-
-      <div style={{ marginTop: 10 }}>
-        <button
-          onClick={cancel}
-          disabled={!!isCanceled || busy}
-          style={{
-            padding: 12,
-            borderRadius: 10,
-            border: 0,
-            background: "crimson",
-            color: "white",
-            cursor: isCanceled || busy ? "not-allowed" : "pointer",
-            fontWeight: 600,
-            opacity: isCanceled || busy ? 0.7 : 1,
-          }}
-        >
-          {busy ? "Procesando..." : "Cancelar cita"}
-        </button>
-
-        {isCanceled && (
-          <p style={{ marginTop: 10, color: "#666" }}>Esta cita ya está cancelada.</p>
-        )}
       </div>
     </main>
   );
 }
 
-export default function ManagePage() {
+function PageSkeleton() {
   return (
-    <Suspense fallback={<main style={{ padding: 24 }}>Cargando…</main>}>
-      <ManageInner />
+    <main className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
+          <div className="h-6 w-40 rounded bg-slate-100 animate-pulse" />
+          <div className="mt-3 h-4 w-64 rounded bg-slate-100 animate-pulse" />
+          <div className="mt-6 grid gap-3">
+            <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
+            <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <GestionarCitaInner />
     </Suspense>
   );
 }
