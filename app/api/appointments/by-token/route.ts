@@ -1,6 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+function normalizeIso(v: any) {
+  const s = String(v ?? "").trim();
+  if (!s) return s;
+
+  // Si viene "YYYY-MM-DD HH:mm:ss+00" => "YYYY-MM-DDTHH:mm:ss+00"
+  // Esto evita interpretaciones raras en new Date()
+  if (s.includes(" ")) return s.replace(" ", "T");
+
+  return s;
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const token = searchParams.get("token");
@@ -26,5 +37,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, appointment: data });
+  // ✅ Normalizar timestamps para asegurar ISO estable hacia el frontend
+  const appointment = {
+    ...data,
+    start_at: normalizeIso(data.start_at),
+    end_at: normalizeIso(data.end_at),
+  };
+
+  return NextResponse.json({ ok: true, appointment });
 }
