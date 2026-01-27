@@ -25,8 +25,8 @@ export default function ConfirmacionPage() {
 function ConfirmacionFallback() {
   return (
     <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
-      <h1 style={{ marginBottom: 6 }}>✅ Reserva confirmada</h1>
-      <p style={{ marginTop: 0, opacity: 0.75 }}>Cargando detalles…</p>
+      <h1 style={{ marginBottom: 6 }}>Cargando…</h1>
+      <p style={{ marginTop: 0, opacity: 0.75 }}>Estamos preparando los detalles de tu cita.</p>
     </main>
   );
 }
@@ -34,22 +34,24 @@ function ConfirmacionFallback() {
 function ConfirmacionInner() {
   const sp = useSearchParams();
 
-  // Nuevo: soportar ?id=...
+  // Confirmación definitiva: SOLO por ?id=UUID
   const id = sp.get("id") ?? "";
 
-  // Fallback (modo antiguo por query params)
-  const startQP = sp.get("start") ?? "";
-  const profQP = sp.get("prof") ?? "Profesional";
-  const emailQP = sp.get("email") ?? "";
-  const phoneQP = sp.get("phone") ?? "";
+  // 🚫 Sin id = link inválido (no renderizar confirmación)
+  if (!id) {
+    return (
+      <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
+        <h1 style={{ marginBottom: 6 }}>⚠️ Link inválido</h1>
+        <p style={{ color: "crimson", fontWeight: 700 }}>Falta el id de la cita.</p>
+      </main>
+    );
+  }
 
-  const [loading, setLoading] = useState<boolean>(!!id);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [appt, setAppt] = useState<Appt | null>(null);
 
   useEffect(() => {
-    if (!id) return;
-
     let cancelled = false;
 
     (async () => {
@@ -80,46 +82,46 @@ function ConfirmacionInner() {
     };
   }, [id]);
 
-  // Datos finales a mostrar (prioriza appt si existe)
-  const start = appt?.start_at ?? startQP;
-  const email = appt?.customer_email ?? emailQP;
-  const phone = appt?.customer_phone ?? phoneQP;
+  // 🚫 Si hubo error cargando la cita, no mostrar confirmación
+  if (error) {
+    return (
+      <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
+        <h1 style={{ marginBottom: 6 }}>⚠️ No se pudo cargar la cita</h1>
+        <p style={{ marginTop: 0, color: "crimson", fontWeight: 700 }}>{error}</p>
+      </main>
+    );
+  }
 
-  // (por ahora) nombre del profesional
-  const prof = profQP;
+  // Datos a mostrar (solo desde la cita real)
+  const start = appt?.start_at ?? "";
+  const email = appt?.customer_email ?? "";
+  const phone = appt?.customer_phone ?? "";
+  const prof = "Profesional";
 
   // Normaliza teléfono a formato internacional CHILE: 56 + 9 + XXXXXXXX
   const phoneE164 = useMemo(() => {
     const raw = String(phone ?? "").trim();
     if (!raw) return "";
 
-    const digits = raw.replace(/\D/g, ""); // solo números
+    const digits = raw.replace(/\D/g, "");
 
-    // Si viene como 569XXXXXXXX -> ok
     if (digits.startsWith("569") && digits.length >= 11) return digits;
-
-    // Si viene como 56 + algo
     if (digits.startsWith("56") && digits.length >= 11) return digits;
-
-    // Si viene como 9XXXXXXXX (9 dígitos) -> agregar 56
     if (digits.startsWith("9") && digits.length >= 9) return `56${digits}`;
 
-    // Si viene como XXXXXXXX (sin 9) no adivinamos
     return "";
   }, [phone]);
-
 
   const wa = useMemo(() => {
     if (!phoneE164) return "";
     const msg = encodeURIComponent("Hola, acabo de reservar una cita. ¿Me confirmas por favor?");
     const isMobile =
-      typeof navigator !== "undefined" &&
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
     return isMobile
       ? `https://api.whatsapp.com/send?phone=${phoneE164}&text=${msg}`
       : `https://web.whatsapp.com/send?phone=${phoneE164}&text=${msg}`;
-   }, [phoneE164]);
+  }, [phoneE164]);
 
   const canOpenWA = !!wa;
 
@@ -143,12 +145,6 @@ function ConfirmacionInner() {
       </p>
 
       {loading && <p style={{ marginTop: 10, opacity: 0.75 }}>Cargando detalles de tu cita…</p>}
-
-      {!!error && (
-        <p style={{ marginTop: 10, color: "crimson" }}>
-          {error} {id ? `(id: ${id})` : ""}
-        </p>
-      )}
 
       <section
         style={{
@@ -196,12 +192,6 @@ function ConfirmacionInner() {
             Abrir WhatsApp (opcional)
           </a>
         </div>
-
-	<p style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
-           <b>DEBUG wa:</b> {wa || "(vacío)"} <br />
-           <b>DEBUG phoneE164:</b> {phoneE164 || "(vacío)"}
-        </p>
-
 
         {!canOpenWA && (
           <p style={{ marginTop: 10, opacity: 0.75, fontSize: 13 }}>
