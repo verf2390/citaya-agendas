@@ -56,16 +56,26 @@ export async function proxy(request: NextRequest) {
   const hostNoPort = host.split(":")[0]; // saca puerto si existe
   const parts = hostNoPort.split(".");
 
-  // Necesitamos que sea un host con subdominio real, ej: paola.citaya.online (3+ partes)
-  if (parts.length < 3) return response;
+  // 🚫 Si viene por IP o localhost (ej: 127.0.0.1 / localhost), NO aplicar modo subdominio
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostNoPort);
+  if (isIp || hostNoPort === "localhost") return response;
 
-  const subdomain = parts[0];
+  // ✅ Solo aplicar para *.citaya.online
+  const ROOT_DOMAIN = "citaya.online";
+  if (!hostNoPort.endsWith(`.${ROOT_DOMAIN}`)) return response;
+
+  // subdomain = primera parte antes del root
+  const subdomain = hostNoPort.replace(`.${ROOT_DOMAIN}`, "").split(".")[0];
+  if (!subdomain) return response;
 
   // Si es subdominio reservado, no tocar
   if (!subdomain || RESERVED.has(subdomain)) return response;
 
   // Si ya estás dentro de /tenants/<slug>, no re-reescribir (evita loops)
   if (pathname.startsWith("/tenants/")) return response;
+
+  // 🚫 Rutas públicas (reserva) NO usan esquema /tenants/*
+  if (pathname.startsWith("/reservar")) return response;
 
   // ✅ Reescribe a /tenants/<slug> + path
   const rewriteUrl = url.clone();

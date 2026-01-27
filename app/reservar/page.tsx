@@ -57,9 +57,17 @@ function ReservarInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // viene desde el botón "Reservar"
-  const tenantSlug = searchParams.get("tenant") || "";
-  const serviceId = searchParams.get("service") || "";
+  // Tenant: primero por query (?tenant=), si no existe por subdominio (fajaspaola.citaya.online)
+  const tenantFromQuery = searchParams.get("tenant") || "";
+  const host =
+    typeof window !== "undefined" ? window.location.hostname.split(":")[0].toLowerCase() : "";
+  const tenantFromSubdomain =
+    host.endsWith(".citaya.online") ? host.replace(".citaya.online", "").split(".")[0] : "";
+
+   const tenantSlug = tenantFromQuery || tenantFromSubdomain;
+
+   // viene desde URL
+   const serviceId = searchParams.get("service") || "";
 
   const [tenantId, setTenantId] = useState<string>("");
   const [tenantName, setTenantName] = useState<string>("");
@@ -228,18 +236,24 @@ function ReservarInner() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "No se pudo crear la cita");
 
-      const msg = `Hola! Soy ${fullName}. Reservé una hora para ${formatCL(selectedSlot.start_at)} con ${professionalName}.`;
-      const wa = whatsappLink(phoneNorm, msg);
+      
+      const appointmentId = json?.appointment?.id;
+      const manageToken = json?.appointment?.manage_token;
 
-      const qs = new URLSearchParams({
-        start: selectedSlot.start_at,
-        prof: professionalName,
-        wa,
-        email: email.trim(),
-        phone: phoneNorm.trim(),
-      }).toString();
+      if (!appointmentId) throw new Error("Reserva creada pero falta id en respuesta.");
 
-      router.push(`/reservar/confirmacion?${qs}`);
+      const qs = new URLSearchParams({ id: appointmentId }).toString();
+
+      // (opcional) guardamos token en sessionStorage para luego cancelar desde la UI
+      if (manageToken) {
+        try {
+           sessionStorage.setItem(`citaya_manage_token:${appointmentId}`, manageToken);
+         } catch {}
+       }
+
+       router.push(`/reservar/confirmacion?${qs}`);
+      
+
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? "Error reservando");
