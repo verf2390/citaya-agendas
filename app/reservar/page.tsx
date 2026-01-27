@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-
-const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
+import { useEffect, useMemo, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const PROFESSIONALS = [
   { id: "f0e085dd-22ff-4c43-98bd-41eeaf9f4861", name: "Paola" },
@@ -33,18 +31,11 @@ function dayLabelCL(dateISO: string) {
   return new Intl.DateTimeFormat("es-CL", { weekday: "long", day: "2-digit", month: "short" }).format(d);
 }
 
-/**
- * Normaliza teléfono Chile a formato WhatsApp:
- * - "912345678" -> "+56912345678"
- * - "56 9 1234 5678" -> "+56912345678"
- * - si ya viene "+569..." lo deja
- */
 function normalizeCLPhone(input: string) {
   const trimmed = input.trim();
   if (trimmed.startsWith("+")) return trimmed;
 
   const digits = trimmed.replace(/\D/g, "");
-
   if (digits.startsWith("56") && digits.length >= 11) return `+${digits}`;
   if (digits.length === 9 && digits.startsWith("9")) return `+56${digits}`;
 
@@ -61,10 +52,18 @@ function whatsappLink(phoneE164: string, message: string) {
   return `https://wa.me/${cleaned}?text=${text}`;
 }
 
-export default function ReservarPage() {
+/** ✅ Importante: useSearchParams() vive aquí adentro */
+function ReservarInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // ✅ Rango por defecto 31 días (lo que pediste)
+  // viene desde el botón "Reservar"
+  const tenantSlug = searchParams.get("tenant") || "";
+  const serviceId = searchParams.get("service") || "";
+
+  const [tenantId, setTenantId] = useState<string>("");
+  const [tenantName, setTenantName] = useState<string>("");
+
   const [daysAhead, setDaysAhead] = useState<number>(31);
 
   const [professionalId, setProfessionalId] = useState(PROFESSIONALS[0]?.id ?? "");
@@ -77,11 +76,49 @@ export default function ReservarPage() {
   const [email, setEmail] = useState("");
 
   const [saving, setSaving] = useState(false);
-
-  // ✅ Extra: error visible sin alert (igual dejamos alert si quieres)
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // ✅ Rango dinámico según daysAhead
+  const phoneNorm = useMemo(() => normalizeCLPhone(phone), [phone]);
+
+  // 1) Cargar tenantId por slug
+  useEffect(() => {
+    if (!tenantSlug) {
+      setTenantId("");
+      setTenantName("");
+      setLoadError("Falta tenant en la URL (query param).");
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setLoadError(null);
+
+        const res = await fetch(`/api/tenants/by-slug?slug=${encodeURIComponent(tenantSlug)}`, { cache: "no-store" });
+        const json = await res.json();
+
+        if (!res.ok) throw new Error(json?.error ?? "No se pudo cargar tenant");
+
+        if (!cancelled) {
+          setTenantId(json?.tenant?.id ?? "");
+          setTenantName(json?.tenant?.name ?? "");
+        }
+      } catch (e: any) {
+        console.error(e);
+        if (!cancelled) {
+          setTenantId("");
+          setTenantName("");
+          setLoadError(e?.message ?? "No se pudo cargar tenant");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantSlug]);
+
   const range = useMemo(() => {
     const now = new Date();
     const from = new Date(now);
@@ -95,16 +132,16 @@ export default function ReservarPage() {
   }, [professionalId]);
 
   const availabilityUrl = useMemo(() => {
-    return `/api/appointments/availability?tenantId=${encodeURIComponent(
-      TENANT_ID
-    )}&professionalId=${encodeURIComponent(professionalId)}&from=${encodeURIComponent(
-      range.from
-    )}&to=${encodeURIComponent(range.to)}`;
-  }, [professionalId, range.from, range.to]);
+    if (!tenantId || !professionalId) return "";
+    return `/api/appointments/availability?tenantId=${encodeURIComponent(tenantId)}&professionalId=${encodeURIComponent(
+      professionalId
+    )}&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+  }, [tenantId, professionalId, range.from, range.to]);
 
-  // ✅ Función para cargar slots (reusable para botón "Recargar")
   const loadSlots = async () => {
+    if (!tenantId) return;
     if (!professionalId) return;
+    if (!availabilityUrl) return;
 
     setLoadingSlots(true);
     setLoadError(null);
@@ -113,7 +150,6 @@ export default function ReservarPage() {
     try {
       const res = await fetch(availabilityUrl, { cache: "no-store" });
       const json = await res.json();
-
       if (!res.ok) throw new Error(json?.error ?? "Error cargando slots");
 
       setSlots(Array.isArray(json.slots) ? json.slots : []);
@@ -126,13 +162,13 @@ export default function ReservarPage() {
     }
   };
 
-  // Cargar disponibilidad cada vez que cambie profesional o rango
+  // 2) Cargar slots SOLO cuando ya tenemos tenantId
   useEffect(() => {
+    if (!tenantId) return;
     loadSlots();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [availabilityUrl, professionalId]);
+  }, [tenantId, availabilityUrl, professionalId]);
 
-  // Agrupar slots por día y ordenarlos dentro del día
   const grouped = useMemo(() => {
     const map = new Map<string, Slot[]>();
 
@@ -152,10 +188,9 @@ export default function ReservarPage() {
     });
   }, [slots]);
 
-  const phoneNorm = useMemo(() => normalizeCLPhone(phone), [phone]);
-
   const canSubmit =
     !!selectedSlot &&
+    !!tenantId &&
     fullName.trim().length >= 2 &&
     phoneNorm.trim().length >= 10 &&
     isValidEmail(email) &&
@@ -163,12 +198,16 @@ export default function ReservarPage() {
 
   const handleReserve = async () => {
     if (!selectedSlot) return;
+    if (!tenantId) {
+      alert("No se pudo identificar el tenant.");
+      return;
+    }
 
     setSaving(true);
 
     try {
       const payload = {
-        tenant_id: TENANT_ID,
+        tenant_id: tenantId,
         professional_id: professionalId,
         customer_name: fullName.trim(),
         customer_phone: phoneNorm.trim(),
@@ -176,6 +215,8 @@ export default function ReservarPage() {
         start_at: selectedSlot.start_at,
         end_at: selectedSlot.end_at,
         status: "confirmed",
+        // opcional (por si luego lo usas)
+        service_id: serviceId || null,
       };
 
       const res = await fetch("/api/appointments/create", {
@@ -209,10 +250,21 @@ export default function ReservarPage() {
 
   return (
     <main style={{ maxWidth: 900, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
+      {/* Debug mínimo */}
+      <div style={{ marginBottom: 10, padding: 10, border: "1px dashed #ddd", borderRadius: 12 }}>
+        <div>
+          <b>tenant</b>: {tenantSlug || "—"} {tenantName ? `(${tenantName})` : ""}
+        </div>
+        <div>
+          <b>tenantId</b>: {tenantId || "—"}
+        </div>
+        <div>
+          <b>service</b>: {serviceId || "—"}
+        </div>
+      </div>
+
       <h1 style={{ marginBottom: 6 }}>Reservar hora</h1>
-      <p style={{ marginTop: 0, opacity: 0.75 }}>
-        Selecciona un profesional, elige un horario y confirma tu reserva.
-      </p>
+      <p style={{ marginTop: 0, opacity: 0.75 }}>Selecciona un profesional, elige un horario y confirma tu reserva.</p>
 
       {/* PROFESIONAL */}
       <section style={{ marginTop: 14, padding: 16, border: "1px solid #e5e5e5", borderRadius: 12 }}>
@@ -220,7 +272,7 @@ export default function ReservarPage() {
 
         <select
           value={professionalId}
-          disabled={saving}
+          disabled={saving || !tenantId}
           onChange={(e) => setProfessionalId(e.target.value)}
           style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
         >
@@ -241,7 +293,7 @@ export default function ReservarPage() {
             <label style={{ fontWeight: 700, opacity: 0.9 }}>Ver:</label>
             <select
               value={daysAhead}
-              disabled={saving || loadingSlots}
+              disabled={saving || loadingSlots || !tenantId}
               onChange={(e) => setDaysAhead(Number(e.target.value))}
               style={{ padding: 8, borderRadius: 10, border: "1px solid #ccc" }}
             >
@@ -252,13 +304,13 @@ export default function ReservarPage() {
 
             <button
               onClick={loadSlots}
-              disabled={saving || loadingSlots}
+              disabled={saving || loadingSlots || !tenantId}
               style={{
                 padding: "8px 10px",
                 borderRadius: 10,
                 border: "1px solid #ccc",
                 background: "#fff",
-                cursor: saving || loadingSlots ? "not-allowed" : "pointer",
+                cursor: saving || loadingSlots || !tenantId ? "not-allowed" : "pointer",
                 fontWeight: 700,
               }}
             >
@@ -277,14 +329,7 @@ export default function ReservarPage() {
           <p style={{ marginTop: 12, opacity: 0.75 }}>No hay horarios disponibles en este rango.</p>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-            gap: 12,
-            marginTop: 12,
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 12 }}>
           {grouped.map((g) => (
             <div key={g.dayKey} style={{ border: "1px solid #eee", borderRadius: 12, padding: 12 }}>
               <div style={{ fontWeight: 800, marginBottom: 10, textTransform: "capitalize" }}>{g.label}</div>
@@ -296,7 +341,7 @@ export default function ReservarPage() {
                   return (
                     <button
                       key={s.start_at}
-                      disabled={saving}
+                      disabled={saving || !tenantId}
                       onClick={() => setSelectedSlot(s)}
                       style={{
                         padding: "8px 10px",
@@ -304,8 +349,8 @@ export default function ReservarPage() {
                         border: active ? "2px solid #111" : "1px solid #ccc",
                         background: active ? "#111" : "#fff",
                         color: active ? "#fff" : "#111",
-                        cursor: saving ? "not-allowed" : "pointer",
-                        opacity: saving ? 0.6 : 1,
+                        cursor: saving || !tenantId ? "not-allowed" : "pointer",
+                        opacity: saving || !tenantId ? 0.6 : 1,
                         fontWeight: 700,
                       }}
                     >
@@ -333,7 +378,7 @@ export default function ReservarPage() {
             <label style={{ display: "block", marginBottom: 8, fontWeight: 700 }}>Nombre</label>
             <input
               value={fullName}
-              disabled={saving}
+              disabled={saving || !tenantId}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Ej: Juan Pérez"
               style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
@@ -344,7 +389,7 @@ export default function ReservarPage() {
             <label style={{ display: "block", marginBottom: 8, fontWeight: 700 }}>Celular</label>
             <input
               value={phone}
-              disabled={saving}
+              disabled={saving || !tenantId}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="Ej: 912345678 o +56912345678"
               style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
@@ -359,7 +404,7 @@ export default function ReservarPage() {
           <label style={{ display: "block", marginBottom: 8, fontWeight: 700 }}>Correo</label>
           <input
             value={email}
-            disabled={saving}
+            disabled={saving || !tenantId}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Ej: nombre@gmail.com"
             style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
@@ -388,5 +433,19 @@ export default function ReservarPage() {
         </button>
       </section>
     </main>
+  );
+}
+
+export default function ReservarPage() {
+  return (
+    <Suspense
+      fallback={
+        <main style={{ maxWidth: 900, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
+          Cargando…
+        </main>
+      }
+    >
+      <ReservarInner />
+    </Suspense>
   );
 }
