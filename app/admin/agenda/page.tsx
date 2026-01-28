@@ -1,5 +1,22 @@
 "use client";
 
+/**
+ * =====================================================
+ * ADMIN AGENDA — UI SaaS Clean (MULTI-TENANT)
+ * =====================================================
+ *
+ * 👉 ZONAS DE MANTENCIÓN / CONFIGURACIÓN RÁPIDA
+ * -----------------------------------------------------
+ * - Horario visible del calendario
+ * - Mensajes / textos
+ * - Estilo visual
+ *
+ * ⚠️ NO TOCAR:
+ * - Resolución tenant
+ * - Auth
+ * - Queries Supabase
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -9,15 +26,35 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
-import type { DateSelectArg, EventClickArg, EventDropArg, DatesSetArg } from "@fullcalendar/core";
+import type {
+  DateSelectArg,
+  EventClickArg,
+  EventDropArg,
+  DatesSetArg,
+} from "@fullcalendar/core";
 
 import { supabase } from "@/lib/supabaseClient";
+import AppointmentCreateModal, {
+  CustomerLite,
+} from "./components/AppointmentCreateModal";
 
-// ✅ Modal de creación (Día 6)
-import AppointmentCreateModal, { CustomerLite } from "./components/AppointmentCreateModal";
-
-// ✅ Helpers WhatsApp / Mensaje (PRO)
 import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
+
+/* =====================================================
+   CONFIGURACIÓN RÁPIDA (MANTENCIÓN / SERVICIO)
+   👉 puedes modificar sin romper lógica
+===================================================== */
+
+const UI_CONFIG = {
+  SLOT_MIN_TIME: "07:00:00", // ⏰ inicio día visible
+  SLOT_MAX_TIME: "21:00:00", // ⏰ fin día visible
+  CALENDAR_VIEW: "timeGridWeek", // timeGridDay | timeGridWeek
+  BUSINESS_NAME: "Citaya", // usado en mensajes
+};
+
+/* =====================================================
+   TIPOS
+===================================================== */
 
 type AppointmentStatus = "confirmed" | "completed" | "canceled" | "no_show";
 
@@ -25,16 +62,12 @@ type Appointment = {
   id: string;
   tenant_id: string;
   professional_id: string;
-
   customer_name: string | null;
   customer_phone: string | null;
-
   customer_id?: string | null;
-
   start_at: string;
   end_at: string;
   status?: AppointmentStatus | null;
-
   customers?: { full_name: string | null; phone: string | null }[] | null;
 };
 
@@ -46,9 +79,9 @@ type Professional = {
 
 type AvailabilityRow = {
   professional_id: string;
-  day_of_week: number; // 0-6 (domingo=0)
-  start_time: string; // "09:00:00" o "09:00"
-  end_time: string; // "18:00:00" o "18:00"
+  day_of_week: number; // 0 = domingo
+  start_time: string;
+  end_time: string;
   is_active: boolean;
 };
 
@@ -81,42 +114,42 @@ type CustomerRow = {
   phone: string | null;
 };
 
-type AppointmentExtendedProps = {
-  customer_phone?: string | null;
-  customer_id?: string | null;
-};
+/* =====================================================
+   HELPERS (NO TOCAR)
+===================================================== */
 
-/** "HH:MM:SS" o "HH:MM" -> minutos desde 00:00 */
-function timeToMinutes(time: string) {
+const timeToMinutes = (time: string) => {
   const [hh, mm] = time.split(":").map(Number);
   return hh * 60 + mm;
-}
+};
 
-/** Date -> minutos del día */
-function dateToMinutes(d: Date) {
-  return d.getHours() * 60 + d.getMinutes();
-}
+const dateToMinutes = (d: Date) => d.getHours() * 60 + d.getMinutes();
 
-/** True si [startMin,endMin] cabe completo dentro de al menos 1 bloque */
-function isWithinAvailability(params: { startMin: number; endMin: number; blocks: AvailabilityRow[] }) {
-  const { startMin, endMin, blocks } = params;
-  if (!blocks || blocks.length === 0) return false;
-
-  return blocks.some((b) => {
+const isWithinAvailability = ({
+  startMin,
+  endMin,
+  blocks,
+}: {
+  startMin: number;
+  endMin: number;
+  blocks: AvailabilityRow[];
+}) =>
+  blocks.some((b) => {
     const bs = timeToMinutes(b.start_time);
     const be = timeToMinutes(b.end_time);
     return startMin >= bs && endMin <= be;
   });
-}
 
-function setTimeOnDate(date: Date, timeHHMMSS: string) {
-  const [hh, mm] = timeHHMMSS.split(":").map(Number);
+const setTimeOnDate = (date: Date, time: string) => {
+  const [hh, mm] = time.split(":").map(Number);
   const d = new Date(date);
   d.setHours(hh, mm, 0, 0);
   return d;
-}
+};
+/* =====================================================
+   BACKGROUND: NO DISPONIBLE (generación de bloques)
+===================================================== */
 
-// Crea eventos "background" marcando NO disponible dentro de la ventana visible.
 function buildUnavailableBgEvents(params: {
   rangeStartISO: string;
   rangeEndISO: string;
@@ -214,6 +247,137 @@ function buildConfirmationMessage(args: {
   return `${header}\n\n✅ Tu cita quedó agendada para:\n📅 ${dateLabel}\n🕒 ${startTime} – ${endTime}\n\nSi necesitas reprogramar, responde este mensaje.`;
 }
 
+/* =====================================================
+   UI: pequeños componentes inline (sin dependencias)
+   (para que el archivo sea 1 sola pieza)
+===================================================== */
+
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: "1px solid #e5e7eb",
+        background: "white",
+        fontSize: 12,
+        fontWeight: 650,
+        color: "#111827",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        background: "white",
+        borderRadius: 16,
+        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function CardBody({ children }: { children: React.ReactNode }) {
+  return <div style={{ padding: 14 }}>{children}</div>;
+}
+
+function SecondaryButton({
+  children,
+  onClick,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "10px 12px",
+        borderRadius: 12,
+        border: "1px solid #e5e7eb",
+        background: "white",
+        cursor: "pointer",
+        fontSize: 14,
+        fontWeight: 650,
+        color: "#111",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "10px 12px",
+        borderRadius: 12,
+        border: "1px solid #111827",
+        background: "#111827",
+        color: "white",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        fontSize: 14,
+        fontWeight: 650,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmptyState({
+  title,
+  desc,
+  action,
+}: {
+  title: string;
+  desc: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardBody>
+        <div style={{ fontWeight: 850, fontSize: 16 }}>{title}</div>
+        <div style={{ marginTop: 6, fontSize: 13, opacity: 0.78, lineHeight: 1.5 }}>{desc}</div>
+        {action ? <div style={{ marginTop: 12 }}>{action}</div> : null}
+      </CardBody>
+    </Card>
+  );
+}
+
+/* =====================================================
+   PAGE
+===================================================== */
+
 export default function AgendaPage() {
   const router = useRouter();
 
@@ -257,9 +421,13 @@ export default function AgendaPage() {
     return professionals.find((p) => p.id === selectedProfessionalId) ?? null;
   }, [professionals, selectedProfessionalId]);
 
-  // -----------------------------
-  // HOOKS (todos arriba, sin returns antes)
-  // -----------------------------
+  const noProfessionals = professionals.length === 0;
+  const proName = selectedProfessional?.name ?? "(sin nombre)";
+
+  /* =====================================================
+     HOOKS (todos arriba, sin returns antes)
+     ⚠️ No moverlos de orden para evitar error React (#310)
+  ===================================================== */
 
   // 1) Resolver tenant
   useEffect(() => {
@@ -282,7 +450,11 @@ export default function AgendaPage() {
 
       setTenantSlug(slug);
 
-      const { data, error } = await supabase.from("tenants").select("id, slug").eq("slug", slug).maybeSingle();
+      const { data, error } = await supabase
+        .from("tenants")
+        .select("id, slug")
+        .eq("slug", slug)
+        .maybeSingle();
 
       if (error) {
         setTenantError(`Error buscando cliente (${slug}): ${error.message}`);
@@ -323,7 +495,10 @@ export default function AgendaPage() {
     run();
   }, [router, loadingTenant, tenantError, tenantId]);
 
-  // Helpers de carga (no hooks)
+  /* =====================================================
+     LOADERS (no hooks)
+  ===================================================== */
+
   const loadCustomers = async () => {
     const { data, error } = await supabase
       .from("customers")
@@ -362,6 +537,7 @@ export default function AgendaPage() {
     const list = (data as Professional[] | null) ?? [];
     setProfessionals(list);
 
+    // Si no hay seleccionado, elige el primero
     setSelectedProfessionalId((prev) => prev || (list[0]?.id ?? ""));
   };
 
@@ -395,20 +571,20 @@ export default function AgendaPage() {
       .from("appointments")
       .select(
         `
-        id,
-        tenant_id,
-        professional_id,
-        customer_id,
-        customer_name,
-        customer_phone,
-        start_at,
-        end_at,
-        status,
-        customers (
-          full_name,
-          phone
-        )
-      `
+          id,
+          tenant_id,
+          professional_id,
+          customer_id,
+          customer_name,
+          customer_phone,
+          start_at,
+          end_at,
+          status,
+          customers (
+            full_name,
+            phone
+          )
+        `
       )
       .eq("tenant_id", tenantId)
       .order("start_at", { ascending: true });
@@ -479,8 +655,8 @@ export default function AgendaPage() {
       rangeStartISO: visibleRange.start,
       rangeEndISO: visibleRange.end,
       blocks: blocksForPro,
-      slotMinTime: "07:00:00",
-      slotMaxTime: "21:00:00",
+      slotMinTime: UI_CONFIG.SLOT_MIN_TIME,
+      slotMaxTime: UI_CONFIG.SLOT_MAX_TIME,
     });
 
     setBgEvents(bg);
@@ -497,9 +673,9 @@ export default function AgendaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, tenantId, selectedProfessionalId, visibleRange?.start, visibleRange?.end]);
 
-  // -----------------------------
-  // Handlers
-  // -----------------------------
+  /* =====================================================
+     HANDLERS
+  ===================================================== */
 
   const onLogout = async () => {
     await supabase.auth.signOut();
@@ -669,7 +845,7 @@ export default function AgendaPage() {
     const id = clickInfo.event.id;
     const title = clickInfo.event.title;
 
-    const props = (clickInfo.event.extendedProps ?? {}) as AppointmentExtendedProps;
+    const props = (clickInfo.event.extendedProps ?? {}) as { customer_phone?: string | null; customer_id?: string | null };
 
     const customerPhone = props.customer_phone ?? null;
     const customerId = props.customer_id ?? null;
@@ -698,293 +874,466 @@ export default function AgendaPage() {
     if (!selectedProfessionalId) return;
     await loadAppointments(start, end, selectedProfessionalId);
   };
+  /* =====================================================
+     RENDER (un solo return al final)
+  ===================================================== */
 
-  // -----------------------------
-  // Render (un solo return)
-  // -----------------------------
-
-  // Pantallas de estado
+  // Pantallas de estado (UI pro, pero simples)
   if (tenantError) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 760, margin: "0 auto" }}>
-        <h1>⚠️ Acceso inválido</h1>
-        <p style={{ color: "crimson", fontWeight: 600 }}>{tenantError}</p>
+      <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+          <div style={{ paddingTop: 18 }}>
+            <h1 style={{ margin: 0, fontSize: 20 }}>⚠️ Acceso inválido</h1>
+            <div style={{ marginTop: 10 }}>
+              <EmptyState
+                title="No se puede abrir este panel"
+                desc={tenantError}
+                action={
+                  <Link
+                    href="https://app.citaya.online"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #e5e7eb",
+                      background: "white",
+                      textDecoration: "none",
+                      color: "#111",
+                      fontSize: 14,
+                      fontWeight: 650,
+                    }}
+                  >
+                    Ir al dominio principal
+                  </Link>
+                }
+              />
+            </div>
+          </div>
+        </div>
       </main>
     );
   }
 
   if (loadingTenant) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 760, margin: "0 auto" }}>
-        <h1>Cargando panel…</h1>
-        <p style={{ opacity: 0.75 }}>Resolviendo cliente…</p>
+      <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+          <Card>
+            <CardBody>
+              <div style={{ fontWeight: 850, fontSize: 16 }}>Cargando panel…</div>
+              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75, lineHeight: 1.5 }}>
+                Resolviendo cliente (subdominio)…
+              </div>
+              <div style={{ marginTop: 12, height: 8, borderRadius: 999, background: "#eef0f5" }} />
+            </CardBody>
+          </Card>
+        </div>
       </main>
     );
   }
 
   if (!tenantId) {
     return (
-      <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 760, margin: "0 auto" }}>
-        <h1>Cargando panel…</h1>
-        <p style={{ opacity: 0.75 }}>Resolviendo cliente: {tenantSlug || "—"}</p>
+      <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+          <Card>
+            <CardBody>
+              <div style={{ fontWeight: 850, fontSize: 16 }}>Cargando panel…</div>
+              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
+                Resolviendo cliente: <b>{tenantSlug || "—"}</b>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
       </main>
     );
   }
 
   if (!authChecked) {
     return (
-      <main style={{ padding: 20, fontFamily: "system-ui" }}>
-        <p>Validando sesión...</p>
+      <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
+        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+          <Card>
+            <CardBody>
+              <div style={{ fontWeight: 850, fontSize: 16 }}>Validando sesión…</div>
+              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
+                Si no estás autenticado, te redirigiremos a Login.
+              </div>
+            </CardBody>
+          </Card>
+        </div>
       </main>
     );
   }
 
-  return (
-    <main style={{ padding: 20, fontFamily: "system-ui" }}>
-      <h1>Agenda (Admin)</h1>
+  // Empty state: sin profesionales
+  if (noProfessionals) {
+    return (
+      <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
+        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>Citaya Agendas</div>
+              <div style={{ fontSize: 20, fontWeight: 900, marginTop: 2 }}>Admin • Agenda</div>
+              <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Badge>Cliente: {tenantSlug}</Badge>
+                <Badge>Vista: Semana</Badge>
+              </div>
+            </div>
 
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link
+                href="/admin/customers"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  background: "white",
+                  textDecoration: "none",
+                  color: "#111",
+                  fontSize: 14,
+                  fontWeight: 650,
+                }}
+              >
+                Clientes
+              </Link>
+              <SecondaryButton onClick={onLogout}>Cerrar sesión</SecondaryButton>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <EmptyState
+              title="Aún no hay profesionales"
+              desc="Para usar la agenda, primero debes crear al menos 1 profesional para este cliente. Luego podrás agendar, mover y gestionar citas."
+              action={
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <Link
+                    href="/admin/customers"
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #e5e7eb",
+                      background: "white",
+                      textDecoration: "none",
+                      color: "#111",
+                      fontSize: 14,
+                      fontWeight: 650,
+                    }}
+                  >
+                    Ir a Clientes
+                  </Link>
+                  <SecondaryButton onClick={() => location.reload()}>Actualizar</SecondaryButton>
+                </div>
+              }
+            />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Si hay eventos pero el calendario está cargando, mostramos un hint arriba
+  const showLoadingHint = loading;
+
+  return (
+    <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
       <style>{`
-        .fc-bg-unavailable { background: rgba(0,0,0,0.08); }
+        /* ZONA DE MANTENCIÓN (estética fullcalendar) */
+        .fc {
+          font-family: system-ui;
+        }
+        .fc .fc-toolbar-title {
+          font-size: 16px;
+          font-weight: 800;
+        }
+        .fc-bg-unavailable { background: rgba(17, 24, 39, 0.07); }
+        .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
+        .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
+        .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; color: #111827; }
+        .fc .fc-event {
+          border-radius: 10px;
+          border: 1px solid rgba(0,0,0,0.08);
+          padding: 2px;
+        }
       `}</style>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
-        <button
-          onClick={onLogout}
-          style={{
-            padding: 8,
-            cursor: "pointer",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "white",
-          }}
-        >
-          Cerrar sesión
-        </button>
-
-        <Link
-          href="/admin/customers"
-          style={{
-            display: "inline-block",
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-            fontSize: 14,
-          }}
-        >
-          Clientes
-        </Link>
-      </div>
-
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Profesional</div>
-          <select
-            value={selectedProfessionalId}
-            onChange={(e) => setSelectedProfessionalId(e.target.value)}
-            style={{ padding: "8px 10px", minWidth: 240 }}
-          >
-            {professionals.length === 0 ? (
-              <option value="">Cargando profesionales...</option>
-            ) : (
-              professionals.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name ?? "(sin nombre)"}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
-
-        <div style={{ fontSize: 13, opacity: 0.85 }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div>
-            Cliente: <b>{tenantSlug}</b>
+            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>Citaya Agendas</div>
+            <div style={{ fontSize: 22, fontWeight: 950, marginTop: 2 }}>Admin • Agenda</div>
+
+            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Badge>Cliente: {tenantSlug}</Badge>
+              <Badge>Profesional: {proName}</Badge>
+              <Badge>
+                Ventana: {UI_CONFIG.SLOT_MIN_TIME.slice(0, 5)}–{UI_CONFIG.SLOT_MAX_TIME.slice(0, 5)}
+              </Badge>
+              <Badge>Vista: Semana</Badge>
+            </div>
+
+            {showLoadingHint ? (
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                Cargando citas…
+              </div>
+            ) : null}
           </div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Tenant ID: {tenantId} {loading ? "• cargando..." : ""}
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link
+              href="/admin/customers"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                textDecoration: "none",
+                color: "#111",
+                fontSize: 14,
+                fontWeight: 650,
+              }}
+            >
+              Clientes
+            </Link>
+            <SecondaryButton onClick={onLogout}>Cerrar sesión</SecondaryButton>
           </div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Mostrando: {selectedProfessional?.name ?? "-"}</div>
         </div>
-      </div>
 
-      <div style={{ marginTop: 16 }}>
-        <FullCalendar
-          plugins={[timeGridPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
-          timeZone="local"
-          locale={esLocale}
-          selectable
-          editable
-          select={handleSelect}
-          eventDrop={handleEventDrop}
-          eventClick={handleEventClick}
-          datesSet={handleDatesSet}
-          events={[...bgEvents, ...events]}
-          height="auto"
-          allDaySlot={false}
-          slotMinTime="07:00:00"
-          slotMaxTime="21:00:00"
-        />
-      </div>
+        {/* Controls */}
+        <div style={{ marginTop: 14 }}>
+          <Card>
+            <CardBody>
+              <div style={{ display: "flex", gap: 14, alignItems: "end", flexWrap: "wrap" }}>
+                <div style={{ minWidth: 280 }}>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6, fontWeight: 750 }}>
+                    Profesional
+                  </div>
 
-      <p style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-        Tip: seleccionar un rango = crear cita • arrastrar = reprogramar • click = acciones
-      </p>
+                  <select
+                    value={selectedProfessionalId}
+                    onChange={(e) => setSelectedProfessionalId(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #e5e7eb",
+                      background: "white",
+                      fontSize: 14,
+                      fontWeight: 650,
+                    }}
+                  >
+                    {professionals.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name ?? "(sin nombre)"}
+                      </option>
+                    ))}
+                  </select>
 
-      <AppointmentCreateModal
-        open={createOpen}
-        onClose={() => {
-          setCreateOpen(false);
-          setSlot(null);
-        }}
-        startISO={slot?.startISO ?? ""}
-        endISO={slot?.endISO ?? ""}
-        customers={customers}
-        tenantId={tenantId}
-        onCreatedCustomer={(c) => {
-          setCustomers((prev) => {
-            if (prev.some((x) => x.id === c.id)) return prev;
-            return [c, ...prev];
-          });
-        }}
-        onConfirm={async ({ customerId }) => {
-          await createAppointmentWithCustomer(customerId);
-        }}
-      />
+                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7, lineHeight: 1.35 }}>
+                    Tip: Selecciona un rango para crear • arrastra para reprogramar • click para acciones
+                  </div>
+                </div>
 
-      {actionOpen && selectedEvent && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.25)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 60,
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <Badge>Tenant ID: {tenantId}</Badge>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        {/* Calendar */}
+        <div style={{ marginTop: 14 }}>
+          <Card>
+            <CardBody>
+              <FullCalendar
+                plugins={[timeGridPlugin, interactionPlugin]}
+                initialView={UI_CONFIG.CALENDAR_VIEW as any}
+                timeZone="local"
+                locale={esLocale}
+                selectable
+                editable
+                select={handleSelect}
+                eventDrop={handleEventDrop}
+                eventClick={handleEventClick}
+                datesSet={handleDatesSet}
+                events={[...bgEvents, ...events]}
+                height="auto"
+                allDaySlot={false}
+                slotMinTime={UI_CONFIG.SLOT_MIN_TIME}
+                slotMaxTime={UI_CONFIG.SLOT_MAX_TIME}
+              />
+
+              {/* Empty state citas (solo visual) */}
+              {!loading && events.length === 0 ? (
+                <div style={{ marginTop: 12 }}>
+                  <EmptyState
+                    title="No hay citas en este rango"
+                    desc="Prueba seleccionando un rango en el calendario para crear una cita. También puedes cambiar el profesional."
+                    action={<SecondaryButton onClick={() => location.reload()}>Actualizar</SecondaryButton>}
+                  />
+                </div>
+              ) : null}
+            </CardBody>
+          </Card>
+        </div>
+
+        {/* Create Modal */}
+        <AppointmentCreateModal
+          open={createOpen}
+          onClose={() => {
+            setCreateOpen(false);
+            setSlot(null);
           }}
-        >
+          startISO={slot?.startISO ?? ""}
+          endISO={slot?.endISO ?? ""}
+          customers={customers}
+          tenantId={tenantId}
+          onCreatedCustomer={(c) => {
+            setCustomers((prev) => {
+              if (prev.some((x) => x.id === c.id)) return prev;
+              return [c, ...prev];
+            });
+          }}
+          onConfirm={async ({ customerId }) => {
+            await createAppointmentWithCustomer(customerId);
+          }}
+        />
+
+        {/* Actions Modal */}
+        {actionOpen && selectedEvent && (
           <div
             style={{
-              width: "min(540px, 100%)",
-              background: "white",
-              borderRadius: 12,
-              border: "1px solid #e5e5e5",
+              position: "fixed",
+              inset: 0,
+              background: "rgba(17,24,39,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               padding: 16,
+              zIndex: 60,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-              <div>
-                <div style={{ fontWeight: 800 }}>Cita</div>
-                {(() => {
-                  const { date, startTime, endTime } = formatDateTimeRange(selectedEvent.startISO, selectedEvent.endISO);
-                  return (
-                    <>
-                      <div style={{ fontSize: 13, opacity: 0.9, fontWeight: 700 }}>{selectedEvent.title}</div>
-                      <div style={{ fontSize: 12, opacity: 0.75 }}>
-                        📅 {date} • 🕒 {startTime} – {endTime}
+            <div
+              style={{
+                width: "min(560px, 100%)",
+                background: "white",
+                borderRadius: 18,
+                border: "1px solid #e5e7eb",
+                padding: 16,
+                boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ fontWeight: 950, fontSize: 16 }}>Acciones de la cita</div>
+
+                  {(() => {
+                    const { date, startTime, endTime } = formatDateTimeRange(
+                      selectedEvent.startISO,
+                      selectedEvent.endISO
+                    );
+
+                    const phoneLabel = selectedEvent.customerPhone ?? "(sin teléfono)";
+
+                    return (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 14, fontWeight: 850 }}>{selectedEvent.title}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+                          📅 {date} • 🕒 {startTime} – {endTime}
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>{phoneLabel}</div>
                       </div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>{selectedEvent.customerPhone ?? "(sin teléfono)"}</div>
-                    </>
-                  );
-                })()}
+                    );
+                  })()}
+                </div>
+
+                <SecondaryButton
+                  onClick={() => {
+                    setActionOpen(false);
+                    setSelectedEvent(null);
+                  }}
+                >
+                  Cerrar
+                </SecondaryButton>
               </div>
 
-              <button
-                onClick={() => {
-                  setActionOpen(false);
-                  setSelectedEvent(null);
-                }}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  background: "white",
-                  cursor: "pointer",
-                }}
-              >
-                Cerrar
-              </button>
-            </div>
+              <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+                <PrimaryButton
+                  onClick={() => {
+                    if (!selectedEvent.customerPhone) {
+                      alert("Esta cita no tiene teléfono.");
+                      return;
+                    }
+                    const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
+                    window.open(`https://wa.me/${p}`, "_blank");
+                  }}
+                  disabled={!selectedEvent.customerPhone}
+                >
+                  Abrir WhatsApp
+                </PrimaryButton>
 
-            <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-              <button
-                onClick={() => {
-                  if (!selectedEvent.customerPhone) {
-                    alert("Esta cita no tiene teléfono.");
-                    return;
-                  }
-                  const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
-                  window.open(`https://wa.me/${p}`, "_blank");
-                }}
-                disabled={!selectedEvent.customerPhone}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  cursor: selectedEvent.customerPhone ? "pointer" : "not-allowed",
-                  opacity: selectedEvent.customerPhone ? 1 : 0.5,
-                }}
-              >
-                Abrir WhatsApp
-              </button>
+                <SecondaryButton
+                  onClick={() => {
+                    const { date, startTime, endTime } = formatDateTimeRange(
+                      selectedEvent.startISO,
+                      selectedEvent.endISO
+                    );
 
-              <button
-                onClick={() => {
-                  const { date, startTime, endTime } = formatDateTimeRange(selectedEvent.startISO, selectedEvent.endISO);
-                  const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
+                    const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
 
-                  const msg = buildConfirmationMessage({
-                    customerName,
-                    dateLabel: date,
-                    startTime,
-                    endTime,
-                    businessName: "Citaya",
-                  });
+                    const msg = buildConfirmationMessage({
+                      customerName,
+                      dateLabel: date,
+                      startTime,
+                      endTime,
+                      businessName: UI_CONFIG.BUSINESS_NAME, // 👈 mantener en config
+                    });
 
-                  navigator.clipboard.writeText(msg);
-                  alert("✅ Mensaje copiado al portapapeles");
-                }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  background: "white",
-                  cursor: "pointer",
-                }}
-              >
-                Copiar mensaje confirmación
-              </button>
+                    navigator.clipboard.writeText(msg);
+                    alert("✅ Mensaje copiado al portapapeles");
+                  }}
+                >
+                  Copiar mensaje confirmación
+                </SecondaryButton>
 
-              <button
-                onClick={async () => {
-                  const ok = confirm("¿Cancelar esta cita?");
-                  if (!ok) return;
+                <SecondaryButton
+                  onClick={async () => {
+                    const ok = confirm("¿Cancelar esta cita?");
+                    if (!ok) return;
 
-                  await cancelAppointment(selectedEvent.id);
+                    await cancelAppointment(selectedEvent.id);
 
-                  setActionOpen(false);
-                  setSelectedEvent(null);
-                }}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  background: "white",
-                  cursor: "pointer",
-                }}
-              >
-                Cancelar cita
-              </button>
+                    setActionOpen(false);
+                    setSelectedEvent(null);
+                  }}
+                >
+                  Cancelar cita
+                </SecondaryButton>
+              </div>
+
+              <div style={{ marginTop: 12, fontSize: 12, opacity: 0.65, lineHeight: 1.4 }}>
+                {/* ZONA DE MANTENCIÓN: aquí puedes cambiar textos/acciones sin tocar lógica */}
+                Tip: WhatsApp abre en una pestaña nueva. El mensaje de confirmación usa el nombre del negocio desde{" "}
+                <b>UI_CONFIG.BUSINESS_NAME</b>.
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }
