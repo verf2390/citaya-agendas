@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 /**
@@ -27,13 +27,26 @@ function LoginFallback() {
 }
 
 function LoginInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+
+  // ✅ Solo path (mantiene host/subdominio)
   const redirectTo = searchParams.get("redirectTo") || "/admin/agenda";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // ✅ Si ya hay sesión, vuelve directo al redirectTo en el MISMO host
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        router.replace(redirectTo);
+      }
+    })();
+  }, [router, redirectTo]);
 
   const onLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,8 +65,8 @@ function LoginInner() {
       return;
     }
 
-    // Navegación fuerte (evita temas de refresh)
-    window.location.href = redirectTo;
+    // ✅ Mantiene el subdominio actual (fajaspaola.citaya.online)
+    router.replace(redirectTo);
   };
 
   return (
@@ -69,6 +82,7 @@ function LoginInner() {
             type="email"
             required
             style={{ padding: 10 }}
+            autoComplete="email"
           />
         </label>
 
@@ -80,6 +94,7 @@ function LoginInner() {
             type="password"
             required
             style={{ padding: 10 }}
+            autoComplete="current-password"
           />
         </label>
 
@@ -103,4 +118,3 @@ function LoginInner() {
     </main>
   );
 }
-

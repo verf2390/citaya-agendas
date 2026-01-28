@@ -3,18 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
-
 import type { DateSelectArg, EventClickArg, EventDropArg, DatesSetArg } from "@fullcalendar/core";
 
 import { supabase } from "@/lib/supabaseClient";
 
 // ✅ Modal de creación (Día 6)
 import AppointmentCreateModal, { CustomerLite } from "./components/AppointmentCreateModal";
+
+// ✅ Helpers WhatsApp / Mensaje (PRO)
+import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
 
 type AppointmentStatus = "confirmed" | "completed" | "canceled" | "no_show";
 
@@ -23,18 +26,15 @@ type Appointment = {
   tenant_id: string;
   professional_id: string;
 
-  // Legacy (MVP anterior)
   customer_name: string | null;
   customer_phone: string | null;
 
-  // Nuevo (relación)
   customer_id?: string | null;
 
   start_at: string;
   end_at: string;
   status?: AppointmentStatus | null;
 
-  // ✅ Join: PostgREST a veces lo entrega como array
   customers?: { full_name: string | null; phone: string | null }[] | null;
 };
 
@@ -54,7 +54,6 @@ type AvailabilityRow = {
 
 type AvailabilityMap = Record<string, Record<number, AvailabilityRow[]>>;
 
-// ✅ Tipo para los eventos background de FullCalendar
 type BgEvent = {
   id: string;
   start: string;
@@ -63,7 +62,6 @@ type BgEvent = {
   classNames: string[];
 };
 
-// ✅ Tipo para los eventos normales del calendario
 type CalendarEvent = {
   id: string;
   title: string;
@@ -77,21 +75,16 @@ type CalendarEvent = {
   };
 };
 
-// ✅ Tipo mínimo para customers desde Supabase
 type CustomerRow = {
   id: string;
   full_name: string;
   phone: string | null;
 };
 
-// ✅ Tipo mínimo para extendedProps (evita any)
 type AppointmentExtendedProps = {
   customer_phone?: string | null;
   customer_id?: string | null;
 };
-
-// ⚠️ MVP: tenant hardcodeado. Luego lo sacamos desde profiles/slug.
-const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
 
 /** "HH:MM:SS" o "HH:MM" -> minutos desde 00:00 */
 function timeToMinutes(time: string) {
@@ -193,9 +186,6 @@ function buildUnavailableBgEvents(params: {
   return results;
 }
 
-// ✅ Helpers WhatsApp / Mensaje (PRO)
-import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
-
 function formatDateTimeRange(startISO: string, endISO: string) {
   const start = new Date(startISO);
   const end = new Date(endISO);
@@ -220,7 +210,6 @@ function buildConfirmationMessage(args: {
   businessName?: string;
 }) {
   const { customerName, dateLabel, startTime, endTime, businessName } = args;
-
   const header = businessName ? `Hola ${customerName} 👋\nSoy ${businessName}.` : `Hola ${customerName} 👋`;
   return `${header}\n\n✅ Tu cita quedó agendada para:\n📅 ${dateLabel}\n🕒 ${startTime} – ${endTime}\n\nSi necesitas reprogramar, responde este mensaje.`;
 }
@@ -228,9 +217,17 @@ function buildConfirmationMessage(args: {
 export default function AgendaPage() {
   const router = useRouter();
 
-  const [bgEvents, setBgEvents] = useState<BgEvent[]>([]);
+  // Tenant
+  const [tenantId, setTenantId] = useState<string>("");
+  const [tenantSlug, setTenantSlug] = useState<string>("");
+  const [tenantError, setTenantError] = useState<string>("");
+  const [loadingTenant, setLoadingTenant] = useState(true);
+
+  // Auth
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Calendar data
+  const [bgEvents, setBgEvents] = useState<BgEvent[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -240,14 +237,12 @@ export default function AgendaPage() {
   const [availabilityMap, setAvailabilityMap] = useState<AvailabilityMap>({});
   const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
 
-  // ✅ Clientes para el modal
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
 
-  // ✅ Estado del modal de creación
+  // Modals
   const [createOpen, setCreateOpen] = useState(false);
   const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(null);
 
-  // ✅ Modal de acciones al click en cita (PRO)
   const [actionOpen, setActionOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<{
     id: string;
@@ -262,27 +257,78 @@ export default function AgendaPage() {
     return professionals.find((p) => p.id === selectedProfessionalId) ?? null;
   }, [professionals, selectedProfessionalId]);
 
-  // ✅ Guard de sesión
+  // -----------------------------
+  // HOOKS (todos arriba, sin returns antes)
+  // -----------------------------
+
+  // 1) Resolver tenant
   useEffect(() => {
     const run = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        router.push("/login?redirectTo=/admin/agenda");
+      setLoadingTenant(true);
+      setTenantError("");
+      setTenantSlug("");
+      setTenantId("");
+
+      const hostname = window.location.hostname;
+      const slug = getTenantSlugFromHostname(hostname);
+
+      if (!slug) {
+        setTenantError(
+          "Este panel debe abrirse desde el subdominio del cliente (ej: https://fajaspaola.citaya.online/admin/agenda)."
+        );
+        setLoadingTenant(false);
         return;
       }
+
+      setTenantSlug(slug);
+
+      const { data, error } = await supabase.from("tenants").select("id, slug").eq("slug", slug).maybeSingle();
+
+      if (error) {
+        setTenantError(`Error buscando cliente (${slug}): ${error.message}`);
+        setLoadingTenant(false);
+        return;
+      }
+
+      if (!data?.id) {
+        setTenantError(`No existe un cliente configurado para: ${slug}`);
+        setLoadingTenant(false);
+        return;
+      }
+
+      setTenantId(data.id);
+      setLoadingTenant(false);
+    };
+
+    run();
+  }, []);
+
+  // 2) Validar sesión (cuando tenant esté resuelto y sea válido)
+  useEffect(() => {
+    const run = async () => {
+      if (loadingTenant) return;
+      if (tenantError) return;
+      if (!tenantId) return;
+
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        const redirectTo = `${window.location.pathname}${window.location.search || ""}`;
+        router.push(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
+        return;
+      }
+
       setAuthChecked(true);
     };
-    run();
-  }, [router]);
 
-  /**
-   * ✅ Carga clientes del tenant para el autocomplete del modal.
-   */
+    run();
+  }, [router, loadingTenant, tenantError, tenantId]);
+
+  // Helpers de carga (no hooks)
   const loadCustomers = async () => {
     const { data, error } = await supabase
       .from("customers")
       .select("id, full_name, phone")
-      .eq("tenant_id", TENANT_ID)
+      .eq("tenant_id", tenantId)
       .order("full_name", { ascending: true })
       .limit(500);
 
@@ -292,7 +338,6 @@ export default function AgendaPage() {
     }
 
     const rows = (data as CustomerRow[] | null) ?? [];
-
     const list: CustomerLite[] = rows.map((c) => ({
       id: c.id,
       name: c.full_name,
@@ -302,7 +347,122 @@ export default function AgendaPage() {
     setCustomers(list);
   };
 
-  // ✅ Background de NO disponible según availability + rango visible
+  const loadProfessionals = async () => {
+    const { data, error } = await supabase
+      .from("professionals")
+      .select("id, name, tenant_id")
+      .eq("tenant_id", tenantId)
+      .order("name", { ascending: true });
+
+    if (error) {
+      console.error("Error loading professionals:", error);
+      return;
+    }
+
+    const list = (data as Professional[] | null) ?? [];
+    setProfessionals(list);
+
+    setSelectedProfessionalId((prev) => prev || (list[0]?.id ?? ""));
+  };
+
+  const loadAvailability = async () => {
+    const { data, error } = await supabase
+      .from("availability")
+      .select("professional_id, day_of_week, start_time, end_time, is_active")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true);
+
+    if (error) {
+      console.error("Error cargando availability:", error);
+      setAvailabilityMap({});
+      return;
+    }
+
+    const map: AvailabilityMap = {};
+    ((data as AvailabilityRow[] | null) ?? []).forEach((a) => {
+      if (!map[a.professional_id]) map[a.professional_id] = {};
+      if (!map[a.professional_id][a.day_of_week]) map[a.professional_id][a.day_of_week] = [];
+      map[a.professional_id][a.day_of_week].push(a);
+    });
+
+    setAvailabilityMap(map);
+  };
+
+  const loadAppointments = async (start?: string, end?: string, professionalId?: string) => {
+    setLoading(true);
+
+    let q = supabase
+      .from("appointments")
+      .select(
+        `
+        id,
+        tenant_id,
+        professional_id,
+        customer_id,
+        customer_name,
+        customer_phone,
+        start_at,
+        end_at,
+        status,
+        customers (
+          full_name,
+          phone
+        )
+      `
+      )
+      .eq("tenant_id", tenantId)
+      .order("start_at", { ascending: true });
+
+    if (professionalId) q = q.eq("professional_id", professionalId);
+    if (start && end) q = q.gte("start_at", start).lt("start_at", end);
+
+    const { data, error } = await q;
+
+    if (error) {
+      console.error("Error loading appointments:", error);
+      setLoading(false);
+      return;
+    }
+
+    const mapped: CalendarEvent[] = ((data as Appointment[] | null) ?? []).map((a) => {
+      const isCanceled = a.status === "canceled";
+
+      const joinedCustomer = a.customers?.[0] ?? null;
+      const customerFullName = joinedCustomer?.full_name ?? null;
+      const customerPhone = joinedCustomer?.phone ?? null;
+
+      const titleBase = customerFullName ?? a.customer_name ?? "Cita";
+
+      return {
+        id: a.id,
+        title: isCanceled ? `❌ ${titleBase}` : titleBase,
+        start: a.start_at,
+        end: a.end_at,
+        extendedProps: {
+          professional_id: a.professional_id,
+          customer_phone: customerPhone ?? a.customer_phone,
+          status: (a.status ?? "confirmed") as AppointmentStatus,
+          customer_id: a.customer_id ?? null,
+        },
+      };
+    });
+
+    setEvents(mapped);
+    setLoading(false);
+  };
+
+  // 3) Cargar base data cuando auth OK
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!tenantId) return;
+
+    loadProfessionals();
+    loadAvailability();
+    loadCustomers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, tenantId]);
+
+  // 4) Background de NO disponible
   useEffect(() => {
     if (!authChecked) return;
     if (!selectedProfessionalId) return;
@@ -326,17 +486,31 @@ export default function AgendaPage() {
     setBgEvents(bg);
   }, [authChecked, selectedProfessionalId, visibleRange, availabilityMap]);
 
+  // 5) Recargar citas cuando cambie profesional o rango
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!tenantId) return;
+    if (!selectedProfessionalId) return;
+
+    if (visibleRange) loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    else loadAppointments(undefined, undefined, selectedProfessionalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, tenantId, selectedProfessionalId, visibleRange?.start, visibleRange?.end]);
+
+  // -----------------------------
+  // Handlers
+  // -----------------------------
+
   const onLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
 
-  // ✅ NO TRASLAPES (check rápido front; el backend vuelve a validar)
   const hasOverlap = async (startISO: string, endISO: string, professionalId: string, excludeId?: string) => {
     let q = supabase
       .from("appointments")
       .select("id")
-      .eq("tenant_id", TENANT_ID)
+      .eq("tenant_id", tenantId)
       .eq("professional_id", professionalId)
       .neq("status", "canceled")
       .lt("start_at", endISO)
@@ -354,142 +528,6 @@ export default function AgendaPage() {
     return (data?.length ?? 0) > 0;
   };
 
-  const loadProfessionals = async () => {
-    const { data, error } = await supabase
-      .from("professionals")
-      .select("id, name, tenant_id")
-      .eq("tenant_id", TENANT_ID)
-      .order("name", { ascending: true });
-
-    if (error) {
-      console.error("Error loading professionals:", error);
-      return;
-    }
-
-    const list = (data as Professional[] | null) ?? [];
-    setProfessionals(list);
-
-    if (!selectedProfessionalId && list.length > 0) {
-      setSelectedProfessionalId(list[0].id);
-    }
-  };
-
-  const loadAvailability = async () => {
-    const { data, error } = await supabase
-      .from("availability")
-      .select("professional_id, day_of_week, start_time, end_time, is_active")
-      .eq("tenant_id", TENANT_ID)
-      .eq("is_active", true);
-
-    if (error) {
-      console.error("Error cargando availability:", error);
-      setAvailabilityMap({});
-      return;
-    }
-
-    const map: AvailabilityMap = {};
-    ((data as AvailabilityRow[] | null) ?? []).forEach((a) => {
-      if (!map[a.professional_id]) map[a.professional_id] = {};
-      if (!map[a.professional_id][a.day_of_week]) map[a.professional_id][a.day_of_week] = [];
-      map[a.professional_id][a.day_of_week].push(a);
-    });
-
-    setAvailabilityMap(map);
-  };
-
-  /**
-   * ✅ Cargar citas con JOIN a customers
-   */
-  const loadAppointments = async (start?: string, end?: string, professionalId?: string) => {
-    setLoading(true);
-
-    let q = supabase
-      .from("appointments")
-      .select(
-        `
-        id,
-        tenant_id,
-        professional_id,
-        customer_id,
-        customer_name,
-        customer_phone,
-        start_at,
-        end_at,
-        status,
-        customers (
-          full_name,
-          phone
-        )
-      `
-      )
-      .eq("tenant_id", TENANT_ID)
-      .order("start_at", { ascending: true });
-
-    if (professionalId) q = q.eq("professional_id", professionalId);
-    if (start && end) q = q.gte("start_at", start).lt("start_at", end);
-
-    const { data, error } = await q;
-
-    if (error) {
-      console.error("Error loading appointments:", error);
-      setLoading(false);
-      return;
-    }
-
-    const mapped: CalendarEvent[] =
-      ((data as Appointment[] | null) ?? []).map((a) => {
-        const isCanceled = a.status === "canceled";
-
-        const joinedCustomer = a.customers?.[0] ?? null;
-        const customerFullName = joinedCustomer?.full_name ?? null;
-        const customerPhone = joinedCustomer?.phone ?? null;
-
-        const titleBase = customerFullName ?? a.customer_name ?? "Cita";
-
-        return {
-          id: a.id,
-          title: isCanceled ? `❌ ${titleBase}` : titleBase,
-          start: a.start_at,
-          end: a.end_at,
-          extendedProps: {
-            professional_id: a.professional_id,
-            customer_phone: customerPhone ?? a.customer_phone,
-            status: (a.status ?? "confirmed") as AppointmentStatus,
-            customer_id: a.customer_id ?? null,
-          },
-        };
-      }) ?? [];
-
-    setEvents(mapped);
-    setLoading(false);
-  };
-
-  // ✅ Cargar data cuando auth OK
-  useEffect(() => {
-    if (!authChecked) return;
-
-    loadProfessionals();
-    loadAvailability();
-    loadCustomers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked]);
-
-  // ✅ Recargar citas cuando cambie profesional o rango
-  useEffect(() => {
-    if (!authChecked) return;
-    if (!selectedProfessionalId) return;
-
-    if (visibleRange) {
-      loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
-    } else {
-      loadAppointments(undefined, undefined, selectedProfessionalId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked, selectedProfessionalId, visibleRange?.start, visibleRange?.end]);
-
-  /**
-   * ✅ Crear cita: validaciones + abre modal
-   */
   const handleSelect = async (selectInfo: DateSelectArg) => {
     if (!selectedProfessionalId) {
       alert("Selecciona un profesional primero");
@@ -522,9 +560,6 @@ export default function AgendaPage() {
     setCreateOpen(true);
   };
 
-  /**
-   * ✅ NUEVO: crea cita llamando a tu API (usa SERVICE_ROLE en el backend)
-   */
   async function createAppointmentViaApi(payload: {
     tenant_id: string;
     professional_id: string;
@@ -540,17 +575,10 @@ export default function AgendaPage() {
     });
 
     const json = await res.json();
-    if (!res.ok) {
-      throw new Error(json?.error ?? "Error creando cita");
-    }
+    if (!res.ok) throw new Error(json?.error ?? "Error creando cita");
     return json;
   }
 
-  /**
-   * ✅ Inserta cita usando customer_id + legacy fields
-   * - Ahora inserta por API (backend)
-   * - customer_id lo dejamos para el siguiente endpoint (Día 9). Hoy guardamos name/phone como MVP.
-   */
   async function createAppointmentWithCustomer(customerId: string) {
     if (!slot) return;
 
@@ -558,7 +586,7 @@ export default function AgendaPage() {
 
     try {
       await createAppointmentViaApi({
-        tenant_id: TENANT_ID,
+        tenant_id: tenantId,
         professional_id: selectedProfessionalId,
         customer_name: customer?.name ?? "Cliente",
         customer_phone: customer?.phone ?? null,
@@ -578,7 +606,6 @@ export default function AgendaPage() {
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   }
 
-  // ✅ MOVER (drag&drop)
   const handleEventDrop = async (dropInfo: EventDropArg) => {
     const id = dropInfo.event.id;
 
@@ -638,7 +665,6 @@ export default function AgendaPage() {
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   }
 
-  // ✅ Click en cita (PRO): abre panel con acciones
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const id = clickInfo.event.id;
     const title = clickInfo.event.title;
@@ -663,7 +689,6 @@ export default function AgendaPage() {
     setActionOpen(true);
   };
 
-  // ✅ Cuando cambie de semana
   const handleDatesSet = async (arg: DatesSetArg) => {
     const start = arg.startStr;
     const end = arg.endStr;
@@ -673,6 +698,38 @@ export default function AgendaPage() {
     if (!selectedProfessionalId) return;
     await loadAppointments(start, end, selectedProfessionalId);
   };
+
+  // -----------------------------
+  // Render (un solo return)
+  // -----------------------------
+
+  // Pantallas de estado
+  if (tenantError) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 760, margin: "0 auto" }}>
+        <h1>⚠️ Acceso inválido</h1>
+        <p style={{ color: "crimson", fontWeight: 600 }}>{tenantError}</p>
+      </main>
+    );
+  }
+
+  if (loadingTenant) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 760, margin: "0 auto" }}>
+        <h1>Cargando panel…</h1>
+        <p style={{ opacity: 0.75 }}>Resolviendo cliente…</p>
+      </main>
+    );
+  }
+
+  if (!tenantId) {
+    return (
+      <main style={{ padding: 24, fontFamily: "system-ui", maxWidth: 760, margin: "0 auto" }}>
+        <h1>Cargando panel…</h1>
+        <p style={{ opacity: 0.75 }}>Resolviendo cliente: {tenantSlug || "—"}</p>
+      </main>
+    );
+  }
 
   if (!authChecked) {
     return (
@@ -687,43 +744,41 @@ export default function AgendaPage() {
       <h1>Agenda (Admin)</h1>
 
       <style>{`
-        .fc-bg-unavailable {
-          background: rgba(0,0,0,0.08);
-        }
+        .fc-bg-unavailable { background: rgba(0,0,0,0.08); }
       `}</style>
 
-      <button
-        onClick={onLogout}
-        style={{
-          padding: 8,
-          marginTop: 8,
-          cursor: "pointer",
-          borderRadius: 8,
-          border: "1px solid #ddd",
-          background: "white",
-        }}
-      >
-        Cerrar sesión
-      </button>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+        <button
+          onClick={onLogout}
+          style={{
+            padding: 8,
+            cursor: "pointer",
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            background: "white",
+          }}
+        >
+          Cerrar sesión
+        </button>
 
-      <Link
-        href="/admin/customers"
-        style={{
-          display: "inline-block",
-          padding: "8px 12px",
-          marginLeft: 10,
-          borderRadius: 8,
-          border: "1px solid #ddd",
-          background: "white",
-          textDecoration: "none",
-          color: "inherit",
-          fontSize: 14,
-        }}
-      >
-        Clientes
-      </Link>
+        <Link
+          href="/admin/customers"
+          style={{
+            display: "inline-block",
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+            fontSize: 14,
+          }}
+        >
+          Clientes
+        </Link>
+      </div>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>Profesional</div>
           <select
@@ -743,8 +798,13 @@ export default function AgendaPage() {
           </select>
         </div>
 
-        <div style={{ fontSize: 13, opacity: 0.8 }}>
-          Tenant: {TENANT_ID} {loading ? "• cargando..." : ""}
+        <div style={{ fontSize: 13, opacity: 0.85 }}>
+          <div>
+            Cliente: <b>{tenantSlug}</b>
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            Tenant ID: {tenantId} {loading ? "• cargando..." : ""}
+          </div>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Mostrando: {selectedProfessional?.name ?? "-"}</div>
         </div>
       </div>
@@ -773,7 +833,6 @@ export default function AgendaPage() {
         Tip: seleccionar un rango = crear cita • arrastrar = reprogramar • click = acciones
       </p>
 
-      {/* ✅ Modal Día 6 */}
       <AppointmentCreateModal
         open={createOpen}
         onClose={() => {
@@ -783,7 +842,7 @@ export default function AgendaPage() {
         startISO={slot?.startISO ?? ""}
         endISO={slot?.endISO ?? ""}
         customers={customers}
-        tenantId={TENANT_ID}
+        tenantId={tenantId}
         onCreatedCustomer={(c) => {
           setCustomers((prev) => {
             if (prev.some((x) => x.id === c.id)) return prev;
@@ -795,7 +854,6 @@ export default function AgendaPage() {
         }}
       />
 
-      {/* ✅ Modal acciones al click en cita (PRO) */}
       {actionOpen && selectedEvent && (
         <div
           style={{
@@ -901,42 +959,6 @@ export default function AgendaPage() {
                 }}
               >
                 Copiar mensaje confirmación
-              </button>
-
-              <button
-                onClick={() => {
-                  if (!selectedEvent.customerPhone) {
-                    alert("Esta cita no tiene teléfono.");
-                    return;
-                  }
-
-                  const { date, startTime, endTime } = formatDateTimeRange(selectedEvent.startISO, selectedEvent.endISO);
-                  const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
-
-                  const msg = buildConfirmationMessage({
-                    customerName,
-                    dateLabel: date,
-                    startTime,
-                    endTime,
-                    businessName: "Citaya",
-                  });
-
-                  const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
-                  const url = `https://wa.me/${p}?text=${encodeURIComponent(msg)}`;
-                  window.open(url, "_blank");
-                }}
-                disabled={!selectedEvent.customerPhone}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  cursor: selectedEvent.customerPhone ? "pointer" : "not-allowed",
-                  opacity: selectedEvent.customerPhone ? 1 : 0.5,
-                }}
-              >
-                WhatsApp con mensaje listo
               </button>
 
               <button
