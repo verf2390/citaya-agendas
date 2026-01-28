@@ -139,10 +139,13 @@ function ConfirmacionInner() {
 
   return (
     <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
-      <h1 style={{ marginBottom: 6 }}>✅ Reserva confirmada</h1>
-      <p style={{ marginTop: 0, opacity: 0.75 }}>
-        Tu solicitud fue registrada. En el MVP, la confirmación será por correo.
-      </p>
+    <>
+      <h1>✅ Reserva registrada</h1>
+      <p style={{ marginTop: 4, opacity: 0.8 }}>
+      Te enviamos un correo con los detalles de tu cita.
+      Desde ahí podrás cancelarla o reagendarla si lo necesitas.
+    </p>
+    </>
 
       {loading && <p style={{ marginTop: 10, opacity: 0.75 }}>Cargando detalles de tu cita…</p>}
 
