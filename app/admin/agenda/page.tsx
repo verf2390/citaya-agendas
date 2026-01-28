@@ -791,53 +791,75 @@ export default function AgendaPage() {
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   }
 
-  const handleEventDrop = async (dropInfo: EventDropArg) => {
-    const id = dropInfo.event.id;
+const handleEventDrop = async (dropInfo: EventDropArg) => {
+  const id = dropInfo.event.id;
+  const startDate = dropInfo.event.start;
+  const endDate = dropInfo.event.end;
 
-    const startDate = dropInfo.event.start;
-    const endDate = dropInfo.event.end;
+  if (!startDate || !endDate) {
+    alert("Rango inválido");
+    dropInfo.revert();
+    return;
+  }
 
-    if (!startDate || !endDate) {
-      alert("Rango inválido");
+  const start_at = startDate.toISOString();
+  const end_at = endDate.toISOString();
+
+  // ✅ Validación de disponibilidad
+  const dayOfWeek = startDate.getDay();
+  const startMin = dateToMinutes(startDate);
+  const endMin = dateToMinutes(endDate);
+
+  const blocks = availabilityMap[selectedProfessionalId]?.[dayOfWeek] ?? [];
+  if (!isWithinAvailability({ startMin, endMin, blocks })) {
+    alert("❌ No se puede mover: fuera de disponibilidad");
+    dropInfo.revert();
+    return;
+  }
+
+  // ✅ Validación de traslape
+  const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId, id);
+  if (overlap) {
+    alert("❌ Ese horario ya está ocupado (no se permiten traslapes).");
+    dropInfo.revert();
+    return;
+  }
+
+  // ✅ Backend: actualiza + llama n8n (correo + log)
+  try {
+    const res = await fetch("/api/appointments/reschedule-by-id", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        appointment_id: id,
+        new_start_at: start_at,
+        new_end_at: end_at,
+      }),
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.ok) {
+      console.error("reschedule-by-id failed", { status: res.status, data });
+      alert("No se pudo reagendar (backend). Se revertirá.");
       dropInfo.revert();
       return;
     }
 
-    const start_at = startDate.toISOString();
-    const end_at = endDate.toISOString();
-
-    const dayOfWeek = startDate.getDay();
-    const startMin = dateToMinutes(startDate);
-    const endMin = dateToMinutes(endDate);
-
-    const blocks = availabilityMap[selectedProfessionalId]?.[dayOfWeek] ?? [];
-    if (!isWithinAvailability({ startMin, endMin, blocks })) {
-      alert("❌ No se puede mover: fuera de disponibilidad");
-      dropInfo.revert();
-      return;
+    if (data?.n8n?.called === false) {
+      console.warn("Reagendado OK, pero n8n NO fue llamado:", data?.n8n);
     }
+  } catch (err) {
+    console.error("reschedule-by-id error", err);
+    alert("Error de red al reagendar. Se revertirá.");
+    dropInfo.revert();
+    return;
+  }
 
-    const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId, id);
-    if (overlap) {
-      alert("❌ Ese horario ya está ocupado (no se permiten traslapes).");
-      dropInfo.revert();
-      return;
-    }
-
-    const { error } = await supabase.from("appointments").update({ start_at, end_at }).eq("id", id);
-
-    if (error) {
-      console.error("Error updating appointment:", error);
-      alert("Error moviendo cita");
-      dropInfo.revert();
-      return;
-    }
-
-    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
-    else await loadAppointments(undefined, undefined, selectedProfessionalId);
-  };
-
-
+  // refrescar
+  if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+  else await loadAppointments(undefined, undefined, selectedProfessionalId);
+};
 
   async function cancelAppointment(appointmentId: string) {
     try {
