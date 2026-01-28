@@ -837,18 +837,31 @@ export default function AgendaPage() {
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   };
 
+
+
   async function cancelAppointment(appointmentId: string) {
-    const { error } = await supabase.from("appointments").update({ status: "canceled" }).eq("id", appointmentId);
+    try {
+      const res = await fetch("/api/appointments/cancel-by-id", {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify({ appointment_id: appointmentId }),
+       });
 
-    if (error) {
-      console.error("Error canceling appointment:", error);
-      alert("Error cancelando cita");
-      return;
-    }
+       const json = await res.json().catch(() => ({}));
 
-    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
-    else await loadAppointments(undefined, undefined, selectedProfessionalId);
-  }
+       if (!res.ok || !json?.ok) {
+         console.error("Cancel API error:", json);
+         alert(json?.error ?? "Error cancelando cita");
+         return;
+       }
+
+       if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+       else await loadAppointments(undefined, undefined, selectedProfessionalId);
+     } catch (e: any) {
+       console.error(e);
+       alert(e?.message ?? "Error cancelando cita");
+     }
+   }
 
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const id = clickInfo.event.id;
