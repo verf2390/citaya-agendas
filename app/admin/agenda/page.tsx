@@ -424,6 +424,11 @@ export default function AgendaPage() {
   const noProfessionals = professionals.length === 0;
   const proName = selectedProfessional?.name ?? "(sin nombre)";
 
+  // ✅ Demo/Soporte: mostrar cosas "debug" solo con ?debug=1
+  const isDebug =
+     typeof window !== "undefined" &&
+     new URLSearchParams(window.location.search).get("debug") === "1";
+
   /* =====================================================
      HOOKS (todos arriba, sin returns antes)
      ⚠️ No moverlos de orden para evitar error React (#310)
@@ -569,8 +574,7 @@ export default function AgendaPage() {
 
     let q = supabase
       .from("appointments")
-      .select(
-        `
+      .select(`
           id,
           tenant_id,
           professional_id,
@@ -579,13 +583,9 @@ export default function AgendaPage() {
           customer_phone,
           start_at,
           end_at,
-          status,
-          customers (
-            full_name,
-            phone
-          )
-        `
-      )
+          status
+       `)
+
       .eq("tenant_id", tenantId)
       .order("start_at", { ascending: true });
 
@@ -601,28 +601,37 @@ export default function AgendaPage() {
     }
 
     const mapped: CalendarEvent[] = ((data as Appointment[] | null) ?? []).map((a) => {
-      const isCanceled = a.status === "canceled";
+      
+      const customerFullName = null;
+      const customerPhone = null;
+   
+      
+      const titleBase = a.customer_name ?? "Cita";
+      
 
-      const joinedCustomer = a.customers?.[0] ?? null;
-      const customerFullName = joinedCustomer?.full_name ?? null;
-      const customerPhone = joinedCustomer?.phone ?? null;
+      const status = ((a.status ?? "confirmed") as AppointmentStatus);
 
-      const titleBase = customerFullName ?? a.customer_name ?? "Cita";
+      const classNames = [
+        "citaya-event",
+        `citaya-status-${status}`, // confirmed | canceled | completed | no_show
+       ];
 
       return {
-        id: a.id,
-        title: isCanceled ? `❌ ${titleBase}` : titleBase,
-        start: a.start_at,
-        end: a.end_at,
-        extendedProps: {
-          professional_id: a.professional_id,
-          customer_phone: customerPhone ?? a.customer_phone,
-          status: (a.status ?? "confirmed") as AppointmentStatus,
-          customer_id: a.customer_id ?? null,
-        },
-      };
-    });
+	id: a.id,
+	title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
+	start: a.start_at,
+	end: a.end_at,
+	classNames,
+	extendedProps: {
+		professional_id: a.professional_id,
+		customer_phone: a.customer_phone,
+		status,
+		customer_id: a.customer_id ?? null,
+	      },
+            };
+         });
 
+      
     setEvents(mapped);
     setLoading(false);
   };
@@ -1064,6 +1073,42 @@ export default function AgendaPage() {
           border: 1px solid rgba(0,0,0,0.08);
           padding: 2px;
         }
+
+        /* =========================
+ 	  Colores por estado cita
+	========================= */
+
+	.citaya-event .fc-event-main {
+  		font-weight: 650;
+	}
+
+	/* Confirmada (azul) */
+	.citaya-status-confirmed {
+  	border-color: #2563eb !important;
+  	background: #3b82f6 !important;
+	}
+
+	/* Cancelada (gris) */
+	.citaya-status-canceled {
+  	border-color: #9ca3af !important;
+  	background: #9ca3af !important;
+  	opacity: 0.85;
+	}
+
+	/* Completada (verde) */
+	.citaya-status-completed {
+  	border-color: #16a34a !important;
+  	background: #22c55e !important;
+	}
+
+	/* No show (rojo suave) */
+	.citaya-status-no_show {
+  	border-color: #ef4444 !important;
+  	background: #f87171 !important;
+	}
+        
+
+
       `}</style>
 
       <div style={{ maxWidth: 1280, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
@@ -1148,7 +1193,7 @@ export default function AgendaPage() {
                 </div>
 
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <Badge>Tenant ID: {tenantId}</Badge>
+                  {isDebug ? <Badge>Tenant ID: {tenantId}</Badge> : null}
                 </div>
               </div>
             </CardBody>
