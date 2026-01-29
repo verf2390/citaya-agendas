@@ -51,27 +51,52 @@ export async function POST(req: Request) {
       );
     }
 
+    // 2.5) Traer admin_email del tenant (MULTI-TENANT)
+    const tenant_id = updated.tenant_id ?? oldAppt.tenant_id ?? null;
+
+    let admin_email: string | null = null;
+
+    if (tenant_id) {
+      const { data: tenant, error: tenantErr } = await supabaseAdmin
+        .from("tenants")
+        .select("admin_email")
+        .eq("id", tenant_id)
+        .single();
+
+      if (!tenantErr) {
+        admin_email = tenant?.admin_email ?? null;
+      }
+    }
+
     // 3) Llamar a n8n (si hay envs)
     const secret = process.env.CITAYA_SECRET;
     const webhookUrl = process.env.N8N_RESCHEDULE_WEBHOOK_URL;
 
-    let n8n = { called: false, ok: false as boolean, status: 0 as number, result: null as any };
+    let n8n = {
+      called: false,
+      ok: false as boolean,
+      status: 0 as number,
+      result: null as any,
+    };
 
     if (!secret || !webhookUrl) {
-      // Igual devolvemos ok:true porque la reagenda ya se hizo.
-      // Pero marcamos que NO se llamó a n8n (para que lo veas en respuesta/logs).
       return NextResponse.json({
         ok: true,
         appointment: updated,
         old: { start_at: oldAppt.start_at, end_at: oldAppt.end_at },
-        n8n: { ...n8n, called: false, ok: false, status: 0, result: "Missing env CITAYA_SECRET or N8N_RESCHEDULE_WEBHOOK_URL" },
+        n8n: {
+          ...n8n,
+          called: false,
+          result: "Missing env CITAYA_SECRET or N8N_RESCHEDULE_WEBHOOK_URL",
+        },
       });
     }
 
     const payload = {
       kind: "reschedule",
       appointment_id,
-      tenant_id: updated.tenant_id ?? oldAppt.tenant_id ?? null,
+      tenant_id,
+      admin_email, // 👈 MULTI-TENANT
       old: {
         start_at: oldAppt.start_at,
         end_at: oldAppt.end_at,
@@ -96,16 +121,14 @@ export async function POST(req: Request) {
     n8n.called = true;
     n8n.status = resp.status;
 
-    let result: any = null;
     const text = await resp.text().catch(() => "");
     try {
-      result = text ? JSON.parse(text) : null;
+      n8n.result = text ? JSON.parse(text) : null;
     } catch {
-      result = text || null;
+      n8n.result = text || null;
     }
 
     n8n.ok = resp.ok;
-    n8n.result = result;
 
     return NextResponse.json({
       ok: true,

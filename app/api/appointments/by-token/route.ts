@@ -13,36 +13,74 @@ function normalizeIso(v: any) {
 }
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const token = searchParams.get("token");
+  try {
+    const { searchParams } = new URL(req.url);
+    const token = String(searchParams.get("token") ?? "").trim();
 
-  if (!token) {
-    return NextResponse.json({ ok: false, error: "Missing token" }, { status: 400 });
+    if (!token) {
+      return NextResponse.json({ ok: false, error: "Missing token" }, { status: 400 });
+    }
+
+    // Traemos la cita + join a professionals para obtener el nombre
+    // OJO: asume FK appointments.professional_id -> professionals.id
+    // y que en professionals existe columna "name".
+    const { data, error } = await supabaseAdmin
+      .from("appointments")
+      .select(
+        `
+        id,
+        tenant_id,
+        professional_id,
+        customer_name,
+        customer_phone,
+        customer_email,
+        start_at,
+        end_at,
+        status,
+        professional:professionals (
+          id,
+          name
+        )
+      `
+      )
+      .eq("manage_token", token)
+      .maybeSingle();
+
+    if (error) {
+      console.error("by-token DB error:", error);
+      return NextResponse.json({ ok: false, error: "DB error" }, { status: 500 });
+    }
+
+    if (!data) {
+      return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 404 });
+    }
+
+    // ✅ Normalizar timestamps para asegurar ISO estable hacia el frontend
+    const appointment = {
+      id: data.id,
+      tenant_id: data.tenant_id,
+      professional_id: data.professional_id,
+      customer_name: data.customer_name,
+      customer_phone: data.customer_phone,
+      customer_email: data.customer_email,
+      status: data.status,
+      start_at: normalizeIso((data as any).start_at),
+      end_at: normalizeIso((data as any).end_at),
+
+      // ✅ Nuevo: nombre del profesional (si existe)
+      professional_name: (data as any)?.professional?.name ?? null,
+
+      // TODO (servicio): no existe service_id/service_name en appointments todavía
+      service_name: null,
+
+      // TODO (branding): cuando tengas tenants.logo_url, aquí lo incluimos también.
+    };
+
+    return NextResponse.json({ ok: true, appointment });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "Unhandled error", details: String(e?.message ?? e) },
+      { status: 500 }
+    );
   }
-
-  const { data, error } = await supabaseAdmin
-    .from("appointments")
-    .select(
-      "id, tenant_id, professional_id, customer_name, customer_phone, customer_email, start_at, end_at, status"
-    )
-    .eq("manage_token", token)
-    .maybeSingle();
-
-  if (error) {
-    console.error(error);
-    return NextResponse.json({ ok: false, error: "DB error" }, { status: 500 });
-  }
-
-  if (!data) {
-    return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 404 });
-  }
-
-  // ✅ Normalizar timestamps para asegurar ISO estable hacia el frontend
-  const appointment = {
-    ...data,
-    start_at: normalizeIso(data.start_at),
-    end_at: normalizeIso(data.end_at),
-  };
-
-  return NextResponse.json({ ok: true, appointment });
 }
