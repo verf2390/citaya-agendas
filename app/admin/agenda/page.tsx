@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { toast } from "@/components/ui/use-toast";
 
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -116,6 +117,7 @@ type CustomerRow = {
   id: string;
   full_name: string;
   phone: string | null;
+  email: string | null;
 };
 
 /* =====================================================
@@ -542,7 +544,7 @@ export default function AgendaPage() {
   const loadCustomers = async () => {
     const { data, error } = await supabase
       .from("customers")
-      .select("id, full_name, phone")
+      .select("id, full_name, phone, email")
       .eq("tenant_id", tenantId)
       .order("full_name", { ascending: true })
       .limit(500);
@@ -557,6 +559,7 @@ export default function AgendaPage() {
       id: c.id,
       name: c.full_name,
       phone: c.phone ?? null,
+      email: c.email ?? null,
     }));
 
     setCustomers(list);
@@ -798,6 +801,7 @@ export default function AgendaPage() {
     professional_id: string;
     customer_name: string;
     customer_phone: string | null;
+    customer_email: string;
     start_at: string;
     end_at: string;
   }) {
@@ -818,17 +822,41 @@ export default function AgendaPage() {
     const customer = customers.find((c) => c.id === customerId) ?? null;
 
     try {
+      const customer_email = String(customer?.email ?? "")
+        .trim()
+        .toLowerCase();
+      if (
+        !customer_email ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)
+      ) {
+        toast({
+          title: "Email inválido",
+          description: "Este cliente no tiene un email válido guardado.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       await createAppointmentViaApi({
         tenant_id: tenantId,
         professional_id: selectedProfessionalId,
         customer_name: customer?.name ?? "Cliente",
         customer_phone: customer?.phone ?? null,
+        customer_email,
         start_at: slot.startISO,
         end_at: slot.endISO,
       });
+      toast({
+        title: "Cita creada",
+        description: "Se guardó correctamente.",
+      });
     } catch (e: any) {
       console.error(e);
-      alert(e?.message ?? "Error creando cita");
+      toast({
+        title: "No se pudo crear la cita",
+        description: e?.message ?? "Error creando cita",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -850,7 +878,11 @@ export default function AgendaPage() {
     const endDate = dropInfo.event.end;
 
     if (!startDate || !endDate) {
-      alert("Rango inválido");
+      toast({
+        title: "Rango inválido",
+        description: "La cita no tiene un rango horario válido.",
+        variant: "destructive",
+      });
       dropInfo.revert();
       return;
     }
@@ -865,7 +897,11 @@ export default function AgendaPage() {
 
     const blocks = availabilityMap[selectedProfessionalId]?.[dayOfWeek] ?? [];
     if (!isWithinAvailability({ startMin, endMin, blocks })) {
-      alert("❌ No se puede mover: fuera de disponibilidad");
+      toast({
+        title: "Movimiento no permitido",
+        description: "Fuera de disponibilidad del profesional.",
+        variant: "destructive",
+      });
       dropInfo.revert();
       return;
     }
@@ -878,12 +914,16 @@ export default function AgendaPage() {
       id,
     );
     if (overlap) {
-      alert("❌ Ese horario ya está ocupado (no se permiten traslapes).");
+      toast({
+        title: "Horario ocupado",
+        description: "Ese horario ya está reservado.",
+        variant: "destructive",
+      });
       dropInfo.revert();
       return;
     }
 
-    // ✅ Backend: actualiza + llama n8n (correo + log)
+    // ✅ Backend: actualiza + llama n8n
     try {
       const res = await fetch("/api/appointments/reschedule-by-id", {
         method: "POST",
@@ -898,18 +938,21 @@ export default function AgendaPage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.ok) {
-        console.error("reschedule-by-id failed", { status: res.status, data });
-        alert("No se pudo reagendar (backend). Se revertirá.");
+        toast({
+          title: "No se pudo reagendar",
+          description: "El servidor rechazó el cambio. Se revirtió.",
+          variant: "destructive",
+        });
         dropInfo.revert();
         return;
       }
-
-      if (data?.n8n?.called === false) {
-        console.warn("Reagendado OK, pero n8n NO fue llamado:", data?.n8n);
-      }
     } catch (err) {
       console.error("reschedule-by-id error", err);
-      alert("Error de red al reagendar. Se revertirá.");
+      toast({
+        title: "Error de conexión",
+        description: "No se pudo contactar al servidor. Se revirtió.",
+        variant: "destructive",
+      });
       dropInfo.revert();
       return;
     }
@@ -936,10 +979,18 @@ export default function AgendaPage() {
 
       if (!res.ok || !json?.ok) {
         console.error("Cancel API error:", json);
-        alert(json?.error ?? "Error cancelando cita");
+        toast({
+          title: "No se pudo cancelar",
+          description: json?.error ?? "Error cancelando cita",
+          variant: "destructive",
+        });
         return;
       }
-
+      // ✅ TOAST DE ÉXITO (AQUÍ)
+      toast({
+        title: "Cita cancelada",
+        description: "La cita fue cancelada correctamente.",
+      });
       if (visibleRange)
         await loadAppointments(
           visibleRange.start,
@@ -949,7 +1000,11 @@ export default function AgendaPage() {
       else await loadAppointments(undefined, undefined, selectedProfessionalId);
     } catch (e: any) {
       console.error(e);
-      alert(e?.message ?? "Error cancelando cita");
+      toast({
+        title: "Error de conexión",
+        description: e?.message ?? "Error cancelando cita",
+        variant: "destructive",
+      });
     }
   }
 
@@ -1192,50 +1247,54 @@ export default function AgendaPage() {
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
       <style>{`
-        /* ZONA DE MANTENCIÓN (estética fullcalendar) */
-        .fc { font-family: system-ui; }
-        .fc .fc-toolbar-title { font-size: 16px; font-weight: 800; }
-        .fc-bg-unavailable { background: rgba(17, 24, 39, 0.07); }
-        .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
-        .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
-        .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; color: #111827; }
-        .fc .fc-event {
-          border-radius: 10px;
-          border: 1px solid rgba(0,0,0,0.08);
-          padding: 2px;
-        }
+      /* ZONA DE MANTENCIÓN (estética fullcalendar) */
+      .fc { font-family: system-ui; }
+      .fc .fc-toolbar-title { font-size: 16px; font-weight: 800; }
+      .fc-bg-unavailable { background: rgba(17, 24, 39, 0.07); }
+      .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
+      .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
+      .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; color: #111827; }
+      .fc .fc-event {
+        border-radius: 10px;
+        border: 1px solid rgba(0,0,0,0.08);
+        padding: 2px;
+      }
 
-        /* =========================
-            Colores por estado cita
-        ========================= */
+      /* =========================
+          Colores por estado cita
+      ========================= */
 
-        .citaya-event .fc-event-main { font-weight: 650; }
+      .citaya-event .fc-event-main { font-weight: 650; }
 
-        /* Confirmada (azul) */
-        .citaya-status-confirmed {
-          border-color: #2563eb !important;
-          background: #3b82f6 !important;
-        }
+      /* Confirmada (azul) */
+      .citaya-status-confirmed {
+        border-color: #2563eb !important;
+        background: #3b82f6 !important;
+      }
 
-        /* Cancelada (gris) */
-        .citaya-status-canceled {
-          border-color: #9ca3af !important;
-          background: #9ca3af !important;
-          opacity: 0.85;
-        }
+      /* Cancelada (gris) */
+      .citaya-status-canceled {
+        border-color: #9ca3af !important;
+        background: #9ca3af !important;
+        opacity: 0.85;
+      }
 
-        /* Completada (verde) */
-        .citaya-status-completed {
-          border-color: #16a34a !important;
-          background: #22c55e !important;
-        }
+      /* Completada (verde) */
+      .citaya-status-completed {
+        border-color: #16a34a !important;
+        background: #22c55e !important;
+      }
 
-        /* No show (rojo suave) */
-        .citaya-status-no_show {
-          border-color: #ef4444 !important;
-          background: #f87171 !important;
-        }
-      `}</style>
+      /* No show (rojo suave) */
+      .citaya-status-no_show {
+        border-color: #ef4444 !important;
+        background: #f87171 !important;
+      }
+    `}</style>
+
+      {/* TODO: aquí sigue TODO tu contenido actual tal cual:
+        <AdminAgendaHeader ... />
+        <div ...> ... */}
 
       <AdminAgendaHeader
         tenantName={tenantSlug}

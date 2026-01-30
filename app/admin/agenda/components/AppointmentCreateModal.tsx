@@ -7,6 +7,7 @@ export type CustomerLite = {
   id: string;
   name: string;
   phone: string | null;
+   email: string | null;
 };
 
 type Props = {
@@ -146,6 +147,7 @@ export default function AppointmentCreateModal({
       id: data.id,
       name: data.full_name,
       phone: data.phone ?? null,
+      email: null
     };
 
     return existing;
@@ -211,6 +213,7 @@ export default function AppointmentCreateModal({
         id: data.id,
         name: data.full_name,
         phone: data.phone ?? null,
+        email: null
       };
 
       // seleccionar automáticamente
