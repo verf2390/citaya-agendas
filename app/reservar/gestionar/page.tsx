@@ -3,6 +3,7 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ShimmerButton from "@/components/magicui/ShimmerButton";
+import { CalendarClock, XCircle, Lock } from "lucide-react";
 
 /* =========================
    Tipos
@@ -109,7 +110,7 @@ function slotBucketLabel(iso: string) {
       timeZone: tz,
       hour: "2-digit",
       hour12: false,
-    }).format(parseTimestamptz(iso))
+    }).format(parseTimestamptz(iso)),
   );
   if (hour < 12) return "Mañana";
   if (hour < 18) return "Tarde";
@@ -139,19 +140,19 @@ function StatusBadge({ status }: { status: string }) {
     s === "canceled"
       ? { label: "Cancelada", cls: "bg-red-50 text-red-700 border-red-200" }
       : s === "rescheduled"
-      ? {
-          label: "Reagendada",
-          cls: "bg-amber-50 text-amber-800 border-amber-200",
-        }
-      : s === "confirmed"
-      ? {
-          label: "Confirmada",
-          cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
-        }
-      : {
-          label: status || "Estado",
-          cls: "bg-slate-50 text-slate-700 border-slate-200",
-        };
+        ? {
+            label: "Reagendada",
+            cls: "bg-amber-50 text-amber-800 border-amber-200",
+          }
+        : s === "confirmed"
+          ? {
+              label: "Confirmada",
+              cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+            }
+          : {
+              label: status || "Estado",
+              cls: "bg-slate-50 text-slate-700 border-slate-200",
+            };
 
   return (
     <span
@@ -208,7 +209,9 @@ function GestionarCitaInner() {
       setNotice(null);
 
       if (!token) {
-        setError("Falta el token. Abre este enlace desde tu correo de confirmación.");
+        setError(
+          "Falta el token. Abre este enlace desde tu correo de confirmación.",
+        );
         setLoading(false);
         return;
       }
@@ -216,7 +219,7 @@ function GestionarCitaInner() {
       try {
         const res = await fetch(
           `/api/appointments/by-token?token=${encodeURIComponent(token)}`,
-          { method: "GET", headers: { "Content-Type": "application/json" } }
+          { method: "GET", headers: { "Content-Type": "application/json" } },
         );
 
         const data = await res.json().catch(() => null);
@@ -269,7 +272,9 @@ function GestionarCitaInner() {
 
     const msLeft = startMs - Date.now();
     if (msLeft <= 0 || msLeft < THREE_HOURS_MS) {
-      setError("No puedes modificar esta cita con menos de 3 horas de anticipación.");
+      setError(
+        "No puedes modificar esta cita con menos de 3 horas de anticipación.",
+      );
       return true;
     }
 
@@ -305,7 +310,7 @@ function GestionarCitaInner() {
 
         const apptDay = appt?.start_at ? dayKeyCL(appt.start_at) : "";
         const dayKeys = Array.from(
-          new Set(arr.map((s) => dayKeyCL(s.start_at)).filter(Boolean))
+          new Set(arr.map((s) => dayKeyCL(s.start_at)).filter(Boolean)),
         );
         const initialDay = dayKeys.includes(apptDay) ? apptDay : dayKeys[0] ?? "";
 
@@ -337,12 +342,12 @@ function GestionarCitaInner() {
         dayKey,
         label: dayLabelCL(dayKey),
         slots: daySlots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1)),
-      }));
+      })) as SlotsByDay[];
   }, [slots]);
 
   const daySlots = useMemo(
     () => grouped.find((g) => g.dayKey === selectedDay)?.slots ?? [],
-    [grouped, selectedDay]
+    [grouped, selectedDay],
   );
 
   const buckets = useMemo(() => {
@@ -375,7 +380,9 @@ function GestionarCitaInner() {
 
       if (!res.ok) {
         const msg =
-          data?.message || data?.error || `No se pudo cancelar (HTTP ${res.status})`;
+          data?.message ||
+          data?.error ||
+          `No se pudo cancelar (HTTP ${res.status})`;
         throw new Error(String(msg));
       }
 
@@ -430,14 +437,16 @@ function GestionarCitaInner() {
           return;
         }
         const msg =
-          data?.message || data?.error || `No se pudo reagendar (HTTP ${res.status})`;
+          data?.message ||
+          data?.error ||
+          `No se pudo reagendar (HTTP ${res.status})`;
         throw new Error(String(msg));
       }
 
       goResult(
         `?status=rescheduled&start=${encodeURIComponent(
-          chosen.start_at
-        )}&end=${encodeURIComponent(chosen.end_at)}`
+          chosen.start_at,
+        )}&end=${encodeURIComponent(chosen.end_at)}`,
       );
     } catch (e: any) {
       setError(e?.message || "Error al reagendar");
@@ -446,21 +455,22 @@ function GestionarCitaInner() {
     }
   };
 
+  const actionsDisabled = busy !== null || isCanceled || isLocked3h;
+
   return (
     <main className="min-h-screen bg-slate-50 overflow-x-hidden">
-      {/* Fondo suave: CLAVE overflow-hidden para que NO rompa mobile */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-20 left-1/2 h-56 w-[28rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl sm:h-72 sm:w-[42rem]" />
         <div className="absolute -bottom-24 left-1/2 h-64 w-[28rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/40 via-slate-100/20 to-emerald-100/30 blur-3xl sm:h-72 sm:w-[42rem]" />
       </div>
 
-      <div className="mx-auto max-w-3xl px-3 py-6 sm:px-4 sm:py-8">
+      <div className="mx-auto w-full max-w-[430px] px-2 pb-24 pt-3 font-[system-ui] text-[12px] leading-tight sm:max-w-2xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
         <div className="rounded-2xl border border-slate-200 bg-white/85 backdrop-blur shadow-sm">
           <div className="p-4 sm:p-6">
-            {/* Header mobile-first */}
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
+            {/* Header */}
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
                   Gestionar cita
                 </h1>
                 <p className="mt-1 text-sm text-slate-600">
@@ -468,7 +478,7 @@ function GestionarCitaInner() {
                 </p>
               </div>
 
-              <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end">
+              <div className="flex min-w-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
                 <StatusBadge status={appt?.status || "loading"} />
                 <div className="text-[11px] text-slate-500">🔒 Enlace privado</div>
               </div>
@@ -498,13 +508,15 @@ function GestionarCitaInner() {
                 {/* Resumen cita */}
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-5">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
                       <div className="text-xs font-semibold text-slate-500">Cliente</div>
                       <div className="mt-1 text-sm font-bold text-slate-900">
                         {appt.customer_name || "—"}
                       </div>
 
-                      <div className="mt-3 text-xs font-semibold text-slate-500">Contacto</div>
+                      <div className="mt-3 text-xs font-semibold text-slate-500">
+                        Contacto
+                      </div>
                       <div className="mt-1 text-sm text-slate-800">
                         {appt.customer_phone ? `📞 ${appt.customer_phone}` : "📞 —"}
                       </div>
@@ -513,7 +525,7 @@ function GestionarCitaInner() {
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
                       <div className="text-xs font-semibold text-slate-500">Tu cita</div>
                       <div className="mt-1 text-sm font-bold text-slate-900">
                         {fmtLongDate(appt.start_at)}
@@ -529,7 +541,9 @@ function GestionarCitaInner() {
                         {appt.professional_name ? `👤 ${appt.professional_name}` : "👤 —"}
                       </div>
 
-                      <div className="mt-3 text-xs font-semibold text-slate-500">Servicio</div>
+                      <div className="mt-3 text-xs font-semibold text-slate-500">
+                        Servicio
+                      </div>
                       <div className="mt-1 text-sm text-slate-800">
                         {appt.service_name ? `💈 ${appt.service_name}` : "💈 —"}
                       </div>
@@ -550,10 +564,10 @@ function GestionarCitaInner() {
                   </div>
                 ) : null}
 
-                {/* Acciones */}
+                {/* ✅ Acciones (compacto mobile) */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
+                    <div className="min-w-0">
                       <h2 className="text-lg font-semibold text-slate-900">Acciones</h2>
                       <p className="text-sm text-slate-500">
                         Reagenda o cancela tu cita en segundos.
@@ -565,36 +579,52 @@ function GestionarCitaInner() {
                     </span>
                   </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <ShimmerButton
+                  <div className="mt-4 grid w-full min-w-0 gap-3 sm:grid-cols-2">
+                    <button
                       type="button"
-                      variant="brand"
                       onClick={scrollToReschedule}
-                      disabled={busy !== null || isCanceled || isLocked3h}
-                      className="w-full h-11 text-sm sm:h-12 sm:text-base"
+                      disabled={actionsDisabled}
+                      className={[
+                        "w-full min-w-0 rounded-xl px-3 h-10 text-[12px] font-bold transition",
+                        "border border-slate-200 bg-white shadow-sm",
+                        "hover:bg-slate-50 active:scale-[0.99]",
+                        "disabled:cursor-not-allowed disabled:opacity-60",
+                        "inline-flex items-center justify-center gap-2",
+                        "sm:h-12 sm:rounded-2xl sm:text-sm sm:font-extrabold",
+                      ].join(" ")}
                     >
+                      {isLocked3h || isCanceled ? <Lock className="h-4 w-4" /> : null}
+                      <CalendarClock className="h-4 w-4" />
                       {isCanceled
                         ? "Reagendar (no disponible)"
                         : isLocked3h
-                        ? "Reagendar (bloqueado)"
-                        : "Reagendar cita"}
-                    </ShimmerButton>
+                          ? "Reagendar (bloqueado)"
+                          : "Reagendar cita"}
+                    </button>
 
-                    <ShimmerButton
+                    <button
                       type="button"
-                      variant="danger"
                       onClick={onCancel}
-                      disabled={busy !== null || isCanceled || isLocked3h}
-                      className="w-full h-11 text-sm sm:h-12 sm:text-base"
+                      disabled={actionsDisabled}
+                      className={[
+                        "w-full min-w-0 rounded-xl px-3 h-10 text-[12px] font-bold transition",
+                        "border border-red-200 bg-red-50 text-red-700 shadow-sm",
+                        "hover:bg-red-100 active:scale-[0.99]",
+                        "disabled:cursor-not-allowed disabled:opacity-60",
+                        "inline-flex items-center justify-center gap-2",
+                        "sm:h-12 sm:rounded-2xl sm:text-sm sm:font-extrabold",
+                      ].join(" ")}
                     >
+                      {isLocked3h || isCanceled ? <Lock className="h-4 w-4" /> : null}
+                      <XCircle className="h-4 w-4" />
                       {busy === "cancel"
                         ? "Cancelando..."
                         : isCanceled
-                        ? "Cita cancelada"
-                        : isLocked3h
-                        ? "Cancelar (bloqueado)"
-                        : "Cancelar cita"}
-                    </ShimmerButton>
+                          ? "Cita cancelada"
+                          : isLocked3h
+                            ? "Cancelar (bloqueado)"
+                            : "Cancelar cita"}
+                    </button>
                   </div>
                 </div>
 
@@ -632,8 +662,7 @@ function GestionarCitaInner() {
                     </div>
                   ) : (
                     <>
-                      {/* Selector de días: contenedor controlado (no se “sale”) */}
-                      <div className="mt-4 -mx-3 overflow-x-auto px-3 pb-2">
+                      <div className="mt-4 -mx-2 overflow-x-auto px-2 pb-2">
                         <div className="flex gap-2 snap-x snap-mandatory">
                           {grouped.slice(0, 14).map((d) => (
                             <button
@@ -655,7 +684,6 @@ function GestionarCitaInner() {
                         </div>
                       </div>
 
-                      {/* Horas por bloque: grid mobile (compacto) */}
                       <div className="mt-4 grid gap-4">
                         {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
                           const list = buckets[label] ?? [];
@@ -665,7 +693,7 @@ function GestionarCitaInner() {
                             <div key={label}>
                               <div className="text-xs font-bold text-slate-600">{label}</div>
 
-                              <div className="mt-2 grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:gap-2">
+                              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                                 {list.map((s) => (
                                   <button
                                     key={s.start_at}
@@ -689,67 +717,78 @@ function GestionarCitaInner() {
                       <div className="mt-4 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600">
                         ⚠️ Las horas disponibles podrían agotarse. Agenda lo antes posible.
                       </div>
+
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-700">
+                        {selectedSlotStartISO ? (
+                          <>
+                            Nuevo horario:{" "}
+                            <b>
+                              {fmtLongDate(selectedSlotStartISO)} ·{" "}
+                              {fmtTime(selectedSlotStartISO)}
+                            </b>
+                          </>
+                        ) : (
+                          "Elige un horario para continuar."
+                        )}
+                      </div>
                     </>
                   )}
 
-                  {/* CTA sticky en mobile + safe-area */}
-                  <div className="mt-4">
-                    <div className="sticky bottom-0 -mx-3 border-t border-slate-200 bg-slate-50/95 px-3 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="text-sm text-slate-700">
-                          {selectedSlotStartISO ? (
-                            <>
-                              Nuevo horario:{" "}
-                              <b>
-                                {fmtLongDate(selectedSlotStartISO)} ·{" "}
-                                {fmtTime(selectedSlotStartISO)}
-                              </b>
-                            </>
-                          ) : (
-                            "Elige un horario para continuar."
-                          )}
-                        </div>
-
-                        <ShimmerButton
-                          type="button"
-                          variant="brand"
-                          onClick={onReschedulePickSlot}
-                          disabled={
-                            busy !== null || isCanceled || isLocked3h || !selectedSlotStartISO
-                          }
-                          className="w-full h-11 text-sm sm:w-auto sm:h-12 sm:text-base"
-                        >
-                          {busy === "reschedule"
-                            ? "Guardando..."
-                            : isCanceled
-                            ? "No disponible"
-                            : isLocked3h
-                            ? "Bloqueado"
-                            : "Guardar reagendamiento"}
-                        </ShimmerButton>
-                      </div>
+                  {plan === "pro" ? (
+                    <div className="mt-3 text-xs text-emerald-700">
+                      ✅ Plan Pro: luego podemos activar confirmación por WhatsApp automáticamente.
                     </div>
+                  ) : null}
 
-                    {plan === "pro" ? (
-                      <div className="mt-3 text-xs text-emerald-700">
-                        ✅ Plan Pro: luego podemos activar confirmación por WhatsApp automáticamente.
-                      </div>
-                    ) : null}
-
-                    {isCanceled ? (
-                      <div className="mt-3 text-xs text-slate-500">
-                        Esta cita está cancelada; no se puede reagendar.
-                      </div>
-                    ) : null}
-
-                    <div className="mt-4 text-xs text-slate-500">
-                      💡 Si este enlace fue compartido por error, crea una nueva reserva y usa el
-                      nuevo correo.
+                  {isCanceled ? (
+                    <div className="mt-3 text-xs text-slate-500">
+                      Esta cita está cancelada; no se puede reagendar.
                     </div>
+                  ) : null}
+
+                  <div className="mt-4 text-xs text-slate-500">
+                    💡 Si este enlace fue compartido por error, crea una nueva reserva y usa el
+                    nuevo correo.
                   </div>
                 </div>
               </div>
             ) : null}
+          </div>
+        </div>
+
+        {/* CTA fija mobile (ShimmerButton se mantiene ✅) */}
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 p-2 backdrop-blur sm:hidden">
+          <div className="mx-auto w-full max-w-[430px] px-2">
+            <div className="mb-2 text-[11px] text-slate-700">
+              {selectedSlotStartISO ? (
+                <>
+                  Nuevo horario:{" "}
+                  <b>
+                    {fmtLongDate(selectedSlotStartISO)} · {fmtTime(selectedSlotStartISO)}
+                  </b>
+                </>
+              ) : (
+                "Elige un horario para continuar."
+              )}
+            </div>
+
+            <ShimmerButton
+              type="button"
+              variant="brand"
+              onClick={onReschedulePickSlot}
+              disabled={busy !== null || isCanceled || isLocked3h || !selectedSlotStartISO}
+              className="w-full min-w-0 h-10 text-[12px]"
+            >
+              {busy === "reschedule"
+                ? "Guardando..."
+                : isCanceled
+                  ? "No disponible"
+                  : isLocked3h
+                    ? "Bloqueado"
+                    : "Guardar reagendamiento"}
+            </ShimmerButton>
+
+            <div className="h-[calc(env(safe-area-inset-bottom,0px)+4px)]" />
           </div>
         </div>
       </div>
@@ -760,7 +799,7 @@ function GestionarCitaInner() {
 function PageSkeleton() {
   return (
     <main className="min-h-screen bg-slate-50 overflow-x-hidden">
-      <div className="mx-auto max-w-3xl px-3 py-6 sm:px-4 sm:py-8">
+      <div className="mx-auto w-full max-w-[430px] px-2 py-10 font-[system-ui] text-[12px] sm:max-w-2xl sm:px-4 sm:text-[14px] lg:max-w-6xl lg:px-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="h-6 w-40 rounded bg-slate-100 animate-pulse" />
           <div className="mt-3 h-4 w-64 rounded bg-slate-100 animate-pulse" />
