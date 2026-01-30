@@ -1,5 +1,6 @@
 "use client";
 
+import { getTenantSlugFromHostname } from "@/lib/tenant";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,9 +9,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { digitsOnly } from "@/app/lib/phone";
 
 import CustomerUpsertModal from "./components/CustomerUpsertModal";
-
-// ⚠️ MVP hardcode
-const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
 
 type CustomerRow = {
   id: string;
@@ -23,36 +21,113 @@ type CustomerRow = {
 
 export default function CustomersPage() {
   const router = useRouter();
+
+  // ✅ Tenant (multi-tenant real, NO hardcode)
+  const [tenantId, setTenantId] = useState<string>("");
+  const [tenantSlug, setTenantSlug] = useState<string>("");
+  const [tenantError, setTenantError] = useState<string>("");
+  const [loadingTenant, setLoadingTenant] = useState(true);
+
+  // Auth
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Data
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [query, setQuery] = useState("");
 
-  // ✅ Modal states (IMPORTANTE: van dentro del componente)
+  // Modal states
   const [upsertOpen, setUpsertOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerRow | null>(null);
 
-  // ✅ Guard sesión
+  // ✅ Debug opcional: ?debug=1
+  const isDebug =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("debug") === "1";
+
+  /* =====================================================
+     1) Resolver tenant por subdominio
+  ===================================================== */
   useEffect(() => {
     const run = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        router.push("/login?redirectTo=/admin/customers");
+      setLoadingTenant(true);
+      setTenantError("");
+      setTenantSlug("");
+      setTenantId("");
+
+      const hostname = window.location.hostname;
+      const slug = getTenantSlugFromHostname(hostname);
+
+      if (!slug) {
+        setTenantError(
+          "Este panel debe abrirse desde el subdominio del cliente (ej: https://fajaspaola.citaya.online/admin/customers).",
+        );
+        setLoadingTenant(false);
         return;
       }
+
+      setTenantSlug(slug);
+
+      const { data, error } = await supabase
+        .from("tenants")
+        .select("id, slug")
+        .eq("slug", slug)
+        .maybeSingle();
+
+      if (error) {
+        setTenantError(`Error buscando cliente (${slug}): ${error.message}`);
+        setLoadingTenant(false);
+        return;
+      }
+
+      if (!data?.id) {
+        setTenantError(`No existe un cliente configurado para: ${slug}`);
+        setLoadingTenant(false);
+        return;
+      }
+
+      setTenantId(data.id);
+      setLoadingTenant(false);
+    };
+
+    run();
+  }, []);
+
+  /* =====================================================
+     2) Guard sesión (cuando tenant esté OK)
+  ===================================================== */
+  useEffect(() => {
+    const run = async () => {
+      if (loadingTenant) return;
+      if (tenantError) return;
+      if (!tenantId) return;
+
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        // ✅ redirect dinámico (mantiene pathname + query del subdominio)
+        const redirectTo = `${window.location.pathname}${window.location.search || ""}`;
+        router.push(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
+        return;
+      }
+
       setAuthChecked(true);
     };
-    run();
-  }, [router]);
 
+    run();
+  }, [router, loadingTenant, tenantError, tenantId]);
+
+  /* =====================================================
+     Loaders
+  ===================================================== */
   const loadCustomers = async () => {
+    if (!tenantId) return;
+
     setLoading(true);
 
     const { data, error } = await supabase
       .from("customers")
       .select("id, tenant_id, full_name, phone, email, created_at")
-      .eq("tenant_id", TENANT_ID)
+      .eq("tenant_id", tenantId)
       .order("full_name", { ascending: true })
       .limit(1000);
 
@@ -68,9 +143,10 @@ export default function CustomersPage() {
 
   useEffect(() => {
     if (!authChecked) return;
+    if (!tenantId) return;
     loadCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked]);
+  }, [authChecked, tenantId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,14 +161,55 @@ export default function CustomersPage() {
     });
   }, [customers, query]);
 
-  if (!authChecked) {
+  /* =====================================================
+     UI States
+  ===================================================== */
+  if (tenantError) {
     return (
       <main style={{ padding: 20, fontFamily: "system-ui" }}>
-        <p>Validando sesión...</p>
+        <h2 style={{ marginTop: 0 }}>⚠️ Acceso inválido</h2>
+        <p style={{ opacity: 0.8 }}>{tenantError}</p>
+        <Link
+          href="https://app.citaya.online"
+          style={{
+            display: "inline-block",
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+            fontSize: 14,
+          }}
+        >
+          Ir al dominio principal
+        </Link>
       </main>
     );
   }
 
+  if (loadingTenant || !tenantId) {
+    return (
+      <main style={{ padding: 20, fontFamily: "system-ui" }}>
+        <p>Cargando cliente…</p>
+        <p style={{ fontSize: 12, opacity: 0.7 }}>
+          Subdominio: <b>{tenantSlug || "—"}</b>
+        </p>
+      </main>
+    );
+  }
+
+  if (!authChecked) {
+    return (
+      <main style={{ padding: 20, fontFamily: "system-ui" }}>
+        <p>Validando sesión…</p>
+      </main>
+    );
+  }
+
+  /* =====================================================
+     Render
+  ===================================================== */
   return (
     <main style={{ padding: 20, fontFamily: "system-ui" }}>
       <div
@@ -106,7 +223,14 @@ export default function CustomersPage() {
       >
         <div>
           <h1 style={{ margin: 0 }}>Clientes</h1>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>Tenant: {TENANT_ID}</div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            Tenant: <b>{tenantSlug}</b>
+            {isDebug ? (
+              <span style={{ marginLeft: 8, opacity: 0.8 }}>
+                (id: {tenantId})
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -146,7 +270,15 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+      <div
+        style={{
+          marginTop: 16,
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -177,7 +309,14 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      <div style={{ marginTop: 16, border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+      <div
+        style={{
+          marginTop: 16,
+          border: "1px solid #eee",
+          borderRadius: 12,
+          overflow: "hidden",
+        }}
+      >
         <div
           style={{
             display: "grid",
@@ -230,7 +369,9 @@ export default function CustomersPage() {
         ))}
 
         {!loading && filtered.length === 0 && (
-          <div style={{ padding: 14, fontSize: 13, opacity: 0.7 }}>No hay resultados.</div>
+          <div style={{ padding: 14, fontSize: 13, opacity: 0.7 }}>
+            No hay resultados.
+          </div>
         )}
       </div>
 
@@ -238,14 +379,16 @@ export default function CustomersPage() {
       <CustomerUpsertModal
         open={upsertOpen}
         onClose={() => setUpsertOpen(false)}
-        tenantId={TENANT_ID}
+        tenantId={tenantId}
         initial={editing}
         onSaved={(saved) => {
           setCustomers((prev) => {
             const exists = prev.some((x) => x.id === saved.id);
-            if (!exists) return [{ ...saved } as any, ...prev];
+            if (!exists) return [{ ...(saved as any) }, ...prev];
 
-            return prev.map((x) => (x.id === saved.id ? ({ ...x, ...saved } as any) : x));
+            return prev.map((x) =>
+              x.id === saved.id ? ({ ...x, ...(saved as any) } as any) : x,
+            );
           });
         }}
       />

@@ -17,10 +17,10 @@
  * - Queries Supabase
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import type { Metadata } from "next";
 
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -34,11 +34,14 @@ import type {
 } from "@fullcalendar/core";
 
 import { supabase } from "@/lib/supabaseClient";
+import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
+
+import AdminAgendaHeader from "@/components/admin/AdminAgendaHeader";
+
 import AppointmentCreateModal, {
   CustomerLite,
 } from "./components/AppointmentCreateModal";
-
-import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
 
 /* =====================================================
    CONFIGURACIÓN RÁPIDA (MANTENCIÓN / SERVICIO)
@@ -100,6 +103,7 @@ type CalendarEvent = {
   title: string;
   start: string;
   end: string;
+  classNames?: string[];
   extendedProps: {
     professional_id: string;
     customer_phone: string | null;
@@ -117,6 +121,8 @@ type CustomerRow = {
 /* =====================================================
    HELPERS (NO TOCAR)
 ===================================================== */
+
+// ✅ OJO: useState NO puede ir aquí. Se moverá dentro del componente AgendaPage.
 
 const timeToMinutes = (time: string) => {
   const [hh, mm] = time.split(":").map(Number);
@@ -157,7 +163,8 @@ function buildUnavailableBgEvents(params: {
   slotMinTime: string;
   slotMaxTime: string;
 }) {
-  const { rangeStartISO, rangeEndISO, blocks, slotMinTime, slotMaxTime } = params;
+  const { rangeStartISO, rangeEndISO, blocks, slotMinTime, slotMaxTime } =
+    params;
 
   const rangeStart = new Date(rangeStartISO);
   const rangeEnd = new Date(rangeEndISO);
@@ -229,8 +236,15 @@ function formatDateTimeRange(startISO: string, endISO: string) {
     month: "short",
   });
 
-  const startTime = start.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
-  const endTime = end.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  const startTime = start.toLocaleTimeString("es-CL", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const endTime = end.toLocaleTimeString("es-CL", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return { date, startTime, endTime };
 }
@@ -243,7 +257,11 @@ function buildConfirmationMessage(args: {
   businessName?: string;
 }) {
   const { customerName, dateLabel, startTime, endTime, businessName } = args;
-  const header = businessName ? `Hola ${customerName} 👋\nSoy ${businessName}.` : `Hola ${customerName} 👋`;
+
+  const header = businessName
+    ? `Hola ${customerName} 👋\nSoy ${businessName}.`
+    : `Hola ${customerName} 👋`;
+
   return `${header}\n\n✅ Tu cita quedó agendada para:\n📅 ${dateLabel}\n🕒 ${startTime} – ${endTime}\n\nSi necesitas reprogramar, responde este mensaje.`;
 }
 
@@ -367,13 +385,16 @@ function EmptyState({
     <Card>
       <CardBody>
         <div style={{ fontWeight: 850, fontSize: 16 }}>{title}</div>
-        <div style={{ marginTop: 6, fontSize: 13, opacity: 0.78, lineHeight: 1.5 }}>{desc}</div>
+        <div
+          style={{ marginTop: 6, fontSize: 13, opacity: 0.78, lineHeight: 1.5 }}
+        >
+          {desc}
+        </div>
         {action ? <div style={{ marginTop: 12 }}>{action}</div> : null}
       </CardBody>
     </Card>
   );
 }
-
 /* =====================================================
    PAGE
 ===================================================== */
@@ -381,11 +402,15 @@ function EmptyState({
 export default function AgendaPage() {
   const router = useRouter();
 
+  // ✅ FIX: hooks SIEMPRE dentro del componente
+  const [viewDate, setViewDate] = useState<Date>(new Date());
+
   // Tenant
   const [tenantId, setTenantId] = useState<string>("");
   const [tenantSlug, setTenantSlug] = useState<string>("");
   const [tenantError, setTenantError] = useState<string>("");
   const [loadingTenant, setLoadingTenant] = useState(true);
+  const [tenantLogoUrl, setTenantLogoUrl] = useState<string>("");
 
   // Auth
   const [authChecked, setAuthChecked] = useState(false);
@@ -394,18 +419,25 @@ export default function AgendaPage() {
   const [bgEvents, setBgEvents] = useState<BgEvent[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const calendarRef = useRef<FullCalendar | null>(null);
 
   const [professionals, setProfessionals] = useState<Professional[]>([]);
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState<string>("");
+  const [selectedProfessionalId, setSelectedProfessionalId] =
+    useState<string>("");
 
   const [availabilityMap, setAvailabilityMap] = useState<AvailabilityMap>({});
-  const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
+  const [visibleRange, setVisibleRange] = useState<{
+    start: string;
+    end: string;
+  } | null>(null);
 
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
 
   // Modals
   const [createOpen, setCreateOpen] = useState(false);
-  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(null);
+  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(
+    null,
+  );
 
   const [actionOpen, setActionOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -426,8 +458,8 @@ export default function AgendaPage() {
 
   // ✅ Demo/Soporte: mostrar cosas "debug" solo con ?debug=1
   const isDebug =
-     typeof window !== "undefined" &&
-     new URLSearchParams(window.location.search).get("debug") === "1";
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("debug") === "1";
 
   /* =====================================================
      HOOKS (todos arriba, sin returns antes)
@@ -447,7 +479,7 @@ export default function AgendaPage() {
 
       if (!slug) {
         setTenantError(
-          "Este panel debe abrirse desde el subdominio del cliente (ej: https://fajaspaola.citaya.online/admin/agenda)."
+          "Este panel debe abrirse desde el subdominio del cliente (ej: https://fajaspaola.citaya.online/admin/agenda).",
         );
         setLoadingTenant(false);
         return;
@@ -457,7 +489,7 @@ export default function AgendaPage() {
 
       const { data, error } = await supabase
         .from("tenants")
-        .select("id, slug")
+        .select("id, slug, logo_url")
         .eq("slug", slug)
         .maybeSingle();
 
@@ -474,6 +506,7 @@ export default function AgendaPage() {
       }
 
       setTenantId(data.id);
+      setTenantLogoUrl(data.logo_url ?? "");
       setLoadingTenant(false);
     };
 
@@ -489,7 +522,9 @@ export default function AgendaPage() {
 
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
-        const redirectTo = `${window.location.pathname}${window.location.search || ""}`;
+        const redirectTo = `${window.location.pathname}${
+          window.location.search || ""
+        }`;
         router.push(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
         return;
       }
@@ -562,19 +597,25 @@ export default function AgendaPage() {
     const map: AvailabilityMap = {};
     ((data as AvailabilityRow[] | null) ?? []).forEach((a) => {
       if (!map[a.professional_id]) map[a.professional_id] = {};
-      if (!map[a.professional_id][a.day_of_week]) map[a.professional_id][a.day_of_week] = [];
+      if (!map[a.professional_id][a.day_of_week])
+        map[a.professional_id][a.day_of_week] = [];
       map[a.professional_id][a.day_of_week].push(a);
     });
 
     setAvailabilityMap(map);
   };
 
-  const loadAppointments = async (start?: string, end?: string, professionalId?: string) => {
+  const loadAppointments = async (
+    start?: string,
+    end?: string,
+    professionalId?: string,
+  ) => {
     setLoading(true);
 
     let q = supabase
       .from("appointments")
-      .select(`
+      .select(
+        `
           id,
           tenant_id,
           professional_id,
@@ -584,8 +625,8 @@ export default function AgendaPage() {
           start_at,
           end_at,
           status
-       `)
-
+       `,
+      )
       .eq("tenant_id", tenantId)
       .order("start_at", { ascending: true });
 
@@ -600,38 +641,29 @@ export default function AgendaPage() {
       return;
     }
 
-    const mapped: CalendarEvent[] = ((data as Appointment[] | null) ?? []).map((a) => {
-      
-      const customerFullName = null;
-      const customerPhone = null;
-   
-      
-      const titleBase = a.customer_name ?? "Cita";
-      
+    const mapped: CalendarEvent[] = ((data as Appointment[] | null) ?? []).map(
+      (a) => {
+        const titleBase = a.customer_name ?? "Cita";
+        const status = (a.status ?? "confirmed") as AppointmentStatus;
 
-      const status = ((a.status ?? "confirmed") as AppointmentStatus);
+        const classNames = ["citaya-event", `citaya-status-${status}`];
 
-      const classNames = [
-        "citaya-event",
-        `citaya-status-${status}`, // confirmed | canceled | completed | no_show
-       ];
+        return {
+          id: a.id,
+          title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
+          start: a.start_at,
+          end: a.end_at,
+          classNames,
+          extendedProps: {
+            professional_id: a.professional_id,
+            customer_phone: a.customer_phone,
+            status,
+            customer_id: a.customer_id ?? null,
+          },
+        };
+      },
+    );
 
-      return {
-	id: a.id,
-	title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
-	start: a.start_at,
-	end: a.end_at,
-	classNames,
-	extendedProps: {
-		professional_id: a.professional_id,
-		customer_phone: a.customer_phone,
-		status,
-		customer_id: a.customer_id ?? null,
-	      },
-            };
-         });
-
-      
     setEvents(mapped);
     setLoading(false);
   };
@@ -677,10 +709,21 @@ export default function AgendaPage() {
     if (!tenantId) return;
     if (!selectedProfessionalId) return;
 
-    if (visibleRange) loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (visibleRange)
+      loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else loadAppointments(undefined, undefined, selectedProfessionalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked, tenantId, selectedProfessionalId, visibleRange?.start, visibleRange?.end]);
+  }, [
+    authChecked,
+    tenantId,
+    selectedProfessionalId,
+    visibleRange?.start,
+    visibleRange?.end,
+  ]);
 
   /* =====================================================
      HANDLERS
@@ -691,7 +734,12 @@ export default function AgendaPage() {
     router.push("/login");
   };
 
-  const hasOverlap = async (startISO: string, endISO: string, professionalId: string, excludeId?: string) => {
+  const hasOverlap = async (
+    startISO: string,
+    endISO: string,
+    professionalId: string,
+    excludeId?: string,
+  ) => {
     let q = supabase
       .from("appointments")
       .select("id")
@@ -787,109 +835,132 @@ export default function AgendaPage() {
     setCreateOpen(false);
     setSlot(null);
 
-    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (visibleRange)
+      await loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   }
 
-const handleEventDrop = async (dropInfo: EventDropArg) => {
-  const id = dropInfo.event.id;
-  const startDate = dropInfo.event.start;
-  const endDate = dropInfo.event.end;
+  const handleEventDrop = async (dropInfo: EventDropArg) => {
+    const id = dropInfo.event.id;
+    const startDate = dropInfo.event.start;
+    const endDate = dropInfo.event.end;
 
-  if (!startDate || !endDate) {
-    alert("Rango inválido");
-    dropInfo.revert();
-    return;
-  }
-
-  const start_at = startDate.toISOString();
-  const end_at = endDate.toISOString();
-
-  // ✅ Validación de disponibilidad
-  const dayOfWeek = startDate.getDay();
-  const startMin = dateToMinutes(startDate);
-  const endMin = dateToMinutes(endDate);
-
-  const blocks = availabilityMap[selectedProfessionalId]?.[dayOfWeek] ?? [];
-  if (!isWithinAvailability({ startMin, endMin, blocks })) {
-    alert("❌ No se puede mover: fuera de disponibilidad");
-    dropInfo.revert();
-    return;
-  }
-
-  // ✅ Validación de traslape
-  const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId, id);
-  if (overlap) {
-    alert("❌ Ese horario ya está ocupado (no se permiten traslapes).");
-    dropInfo.revert();
-    return;
-  }
-
-  // ✅ Backend: actualiza + llama n8n (correo + log)
-  try {
-    const res = await fetch("/api/appointments/reschedule-by-id", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        appointment_id: id,
-        new_start_at: start_at,
-        new_end_at: end_at,
-      }),
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok || !data?.ok) {
-      console.error("reschedule-by-id failed", { status: res.status, data });
-      alert("No se pudo reagendar (backend). Se revertirá.");
+    if (!startDate || !endDate) {
+      alert("Rango inválido");
       dropInfo.revert();
       return;
     }
 
-    if (data?.n8n?.called === false) {
-      console.warn("Reagendado OK, pero n8n NO fue llamado:", data?.n8n);
-    }
-  } catch (err) {
-    console.error("reschedule-by-id error", err);
-    alert("Error de red al reagendar. Se revertirá.");
-    dropInfo.revert();
-    return;
-  }
+    const start_at = startDate.toISOString();
+    const end_at = endDate.toISOString();
 
-  // refrescar
-  if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
-  else await loadAppointments(undefined, undefined, selectedProfessionalId);
-};
+    // ✅ Validación de disponibilidad
+    const dayOfWeek = startDate.getDay();
+    const startMin = dateToMinutes(startDate);
+    const endMin = dateToMinutes(endDate);
+
+    const blocks = availabilityMap[selectedProfessionalId]?.[dayOfWeek] ?? [];
+    if (!isWithinAvailability({ startMin, endMin, blocks })) {
+      alert("❌ No se puede mover: fuera de disponibilidad");
+      dropInfo.revert();
+      return;
+    }
+
+    // ✅ Validación de traslape
+    const overlap = await hasOverlap(
+      start_at,
+      end_at,
+      selectedProfessionalId,
+      id,
+    );
+    if (overlap) {
+      alert("❌ Ese horario ya está ocupado (no se permiten traslapes).");
+      dropInfo.revert();
+      return;
+    }
+
+    // ✅ Backend: actualiza + llama n8n (correo + log)
+    try {
+      const res = await fetch("/api/appointments/reschedule-by-id", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appointment_id: id,
+          new_start_at: start_at,
+          new_end_at: end_at,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        console.error("reschedule-by-id failed", { status: res.status, data });
+        alert("No se pudo reagendar (backend). Se revertirá.");
+        dropInfo.revert();
+        return;
+      }
+
+      if (data?.n8n?.called === false) {
+        console.warn("Reagendado OK, pero n8n NO fue llamado:", data?.n8n);
+      }
+    } catch (err) {
+      console.error("reschedule-by-id error", err);
+      alert("Error de red al reagendar. Se revertirá.");
+      dropInfo.revert();
+      return;
+    }
+
+    // refrescar
+    if (visibleRange)
+      await loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
+    else await loadAppointments(undefined, undefined, selectedProfessionalId);
+  };
 
   async function cancelAppointment(appointmentId: string) {
     try {
       const res = await fetch("/api/appointments/cancel-by-id", {
-         method: "POST",
-         headers: { "Content-Type": "application/json" },
-         body: JSON.stringify({ appointment_id: appointmentId }),
-       });
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointment_id: appointmentId }),
+      });
 
-       const json = await res.json().catch(() => ({}));
+      const json = await res.json().catch(() => ({}));
 
-       if (!res.ok || !json?.ok) {
-         console.error("Cancel API error:", json);
-         alert(json?.error ?? "Error cancelando cita");
-         return;
-       }
+      if (!res.ok || !json?.ok) {
+        console.error("Cancel API error:", json);
+        alert(json?.error ?? "Error cancelando cita");
+        return;
+      }
 
-       if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
-       else await loadAppointments(undefined, undefined, selectedProfessionalId);
-     } catch (e: any) {
-       console.error(e);
-       alert(e?.message ?? "Error cancelando cita");
-     }
-   }
+      if (visibleRange)
+        await loadAppointments(
+          visibleRange.start,
+          visibleRange.end,
+          selectedProfessionalId,
+        );
+      else await loadAppointments(undefined, undefined, selectedProfessionalId);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Error cancelando cita");
+    }
+  }
 
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const id = clickInfo.event.id;
     const title = clickInfo.event.title;
 
-    const props = (clickInfo.event.extendedProps ?? {}) as { customer_phone?: string | null; customer_id?: string | null };
+    const props = (clickInfo.event.extendedProps ?? {}) as {
+      customer_phone?: string | null;
+      customer_id?: string | null;
+    };
 
     const customerPhone = props.customer_phone ?? null;
     const customerId = props.customer_id ?? null;
@@ -913,11 +984,15 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
     const start = arg.startStr;
     const end = arg.endStr;
 
+    // ✅ además mantenemos el estado "viewDate" para el header
+    setViewDate(arg.start);
+
     setVisibleRange({ start, end });
 
     if (!selectedProfessionalId) return;
     await loadAppointments(start, end, selectedProfessionalId);
   };
+
   /* =====================================================
      RENDER (un solo return al final)
   ===================================================== */
@@ -926,7 +1001,14 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
   if (tenantError) {
     return (
       <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+        <div
+          style={{
+            maxWidth: 880,
+            margin: "0 auto",
+            padding: 22,
+            fontFamily: "system-ui",
+          }}
+        >
           <div style={{ paddingTop: 18 }}>
             <h1 style={{ margin: 0, fontSize: 20 }}>⚠️ Acceso inválido</h1>
             <div style={{ marginTop: 10 }}>
@@ -964,14 +1046,37 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
   if (loadingTenant) {
     return (
       <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+        <div
+          style={{
+            maxWidth: 880,
+            margin: "0 auto",
+            padding: 22,
+            fontFamily: "system-ui",
+          }}
+        >
           <Card>
             <CardBody>
-              <div style={{ fontWeight: 850, fontSize: 16 }}>Cargando panel…</div>
-              <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75, lineHeight: 1.5 }}>
+              <div style={{ fontWeight: 850, fontSize: 16 }}>
+                Cargando panel…
+              </div>
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 13,
+                  opacity: 0.75,
+                  lineHeight: 1.5,
+                }}
+              >
                 Resolviendo cliente (subdominio)…
               </div>
-              <div style={{ marginTop: 12, height: 8, borderRadius: 999, background: "#eef0f5" }} />
+              <div
+                style={{
+                  marginTop: 12,
+                  height: 8,
+                  borderRadius: 999,
+                  background: "#eef0f5",
+                }}
+              />
             </CardBody>
           </Card>
         </div>
@@ -982,10 +1087,19 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
   if (!tenantId) {
     return (
       <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+        <div
+          style={{
+            maxWidth: 880,
+            margin: "0 auto",
+            padding: 22,
+            fontFamily: "system-ui",
+          }}
+        >
           <Card>
             <CardBody>
-              <div style={{ fontWeight: 850, fontSize: 16 }}>Cargando panel…</div>
+              <div style={{ fontWeight: 850, fontSize: 16 }}>
+                Cargando panel…
+              </div>
               <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
                 Resolviendo cliente: <b>{tenantSlug || "—"}</b>
               </div>
@@ -999,10 +1113,19 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
   if (!authChecked) {
     return (
       <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
-        <div style={{ maxWidth: 880, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
+        <div
+          style={{
+            maxWidth: 880,
+            margin: "0 auto",
+            padding: 22,
+            fontFamily: "system-ui",
+          }}
+        >
           <Card>
             <CardBody>
-              <div style={{ fontWeight: 850, fontSize: 16 }}>Validando sesión…</div>
+              <div style={{ fontWeight: 850, fontSize: 16 }}>
+                Validando sesión…
+              </div>
               <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
                 Si no estás autenticado, te redirigiremos a Login.
               </div>
@@ -1017,69 +1140,46 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
   if (noProfessionals) {
     return (
       <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
-        <div style={{ maxWidth: 1080, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>Citaya Agendas</div>
-              <div style={{ fontSize: 20, fontWeight: 900, marginTop: 2 }}>Admin • Agenda</div>
-              <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Badge>Cliente: {tenantSlug}</Badge>
-                <Badge>Vista: Semana</Badge>
+        <div
+          style={{
+            maxWidth: 1080,
+            margin: "0 auto",
+            padding: 22,
+            fontFamily: "system-ui",
+          }}
+        >
+          <EmptyState
+            title="Aún no hay profesionales"
+            desc="Para usar la agenda, primero debes crear al menos 1 profesional para este cliente. Luego podrás agendar, mover y gestionar citas."
+            action={
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <Link
+                  href="/admin/customers"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #e5e7eb",
+                    background: "white",
+                    textDecoration: "none",
+                    color: "#111",
+                    fontSize: 14,
+                    fontWeight: 650,
+                  }}
+                >
+                  Ir a Clientes
+                </Link>
+                <SecondaryButton onClick={onLogout}>
+                  Cerrar sesión
+                </SecondaryButton>
+                <SecondaryButton onClick={() => location.reload()}>
+                  Actualizar
+                </SecondaryButton>
               </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link
-                href="/admin/customers"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #e5e7eb",
-                  background: "white",
-                  textDecoration: "none",
-                  color: "#111",
-                  fontSize: 14,
-                  fontWeight: 650,
-                }}
-              >
-                Clientes
-              </Link>
-              <SecondaryButton onClick={onLogout}>Cerrar sesión</SecondaryButton>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 14 }}>
-            <EmptyState
-              title="Aún no hay profesionales"
-              desc="Para usar la agenda, primero debes crear al menos 1 profesional para este cliente. Luego podrás agendar, mover y gestionar citas."
-              action={
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <Link
-                    href="/admin/customers"
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid #e5e7eb",
-                      background: "white",
-                      textDecoration: "none",
-                      color: "#111",
-                      fontSize: 14,
-                      fontWeight: 650,
-                    }}
-                  >
-                    Ir a Clientes
-                  </Link>
-                  <SecondaryButton onClick={() => location.reload()}>Actualizar</SecondaryButton>
-                </div>
-              }
-            />
-          </div>
+            }
+          />
         </div>
       </main>
     );
@@ -1088,17 +1188,13 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
   // Si hay eventos pero el calendario está cargando, mostramos un hint arriba
   const showLoadingHint = loading;
 
+  // 👇 PARTE 4 continúa desde aquí (return principal)
   return (
     <main style={{ minHeight: "100vh", background: "#f6f7fb" }}>
       <style>{`
         /* ZONA DE MANTENCIÓN (estética fullcalendar) */
-        .fc {
-          font-family: system-ui;
-        }
-        .fc .fc-toolbar-title {
-          font-size: 16px;
-          font-weight: 800;
-        }
+        .fc { font-family: system-ui; }
+        .fc .fc-toolbar-title { font-size: 16px; font-weight: 800; }
         .fc-bg-unavailable { background: rgba(17, 24, 39, 0.07); }
         .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
         .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
@@ -1110,95 +1206,110 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
         }
 
         /* =========================
- 	  Colores por estado cita
-	========================= */
+            Colores por estado cita
+        ========================= */
 
-	.citaya-event .fc-event-main {
-  		font-weight: 650;
-	}
+        .citaya-event .fc-event-main { font-weight: 650; }
 
-	/* Confirmada (azul) */
-	.citaya-status-confirmed {
-  	border-color: #2563eb !important;
-  	background: #3b82f6 !important;
-	}
+        /* Confirmada (azul) */
+        .citaya-status-confirmed {
+          border-color: #2563eb !important;
+          background: #3b82f6 !important;
+        }
 
-	/* Cancelada (gris) */
-	.citaya-status-canceled {
-  	border-color: #9ca3af !important;
-  	background: #9ca3af !important;
-  	opacity: 0.85;
-	}
+        /* Cancelada (gris) */
+        .citaya-status-canceled {
+          border-color: #9ca3af !important;
+          background: #9ca3af !important;
+          opacity: 0.85;
+        }
 
-	/* Completada (verde) */
-	.citaya-status-completed {
-  	border-color: #16a34a !important;
-  	background: #22c55e !important;
-	}
+        /* Completada (verde) */
+        .citaya-status-completed {
+          border-color: #16a34a !important;
+          background: #22c55e !important;
+        }
 
-	/* No show (rojo suave) */
-	.citaya-status-no_show {
-  	border-color: #ef4444 !important;
-  	background: #f87171 !important;
-	}
-        
-
-
+        /* No show (rojo suave) */
+        .citaya-status-no_show {
+          border-color: #ef4444 !important;
+          background: #f87171 !important;
+        }
       `}</style>
 
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: 22, fontFamily: "system-ui" }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>Citaya Agendas</div>
-            <div style={{ fontSize: 22, fontWeight: 950, marginTop: 2 }}>Admin • Agenda</div>
-
-            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Badge>Cliente: {tenantSlug}</Badge>
-              <Badge>Profesional: {proName}</Badge>
-              <Badge>
-                Ventana: {UI_CONFIG.SLOT_MIN_TIME.slice(0, 5)}–{UI_CONFIG.SLOT_MAX_TIME.slice(0, 5)}
-              </Badge>
-              <Badge>Vista: Semana</Badge>
-            </div>
-
-            {showLoadingHint ? (
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
-                Cargando citas…
-              </div>
-            ) : null}
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <AdminAgendaHeader
+        tenantName={tenantSlug}
+        tenantLogoUrl={tenantLogoUrl}
+        date={viewDate}
+        onToday={() => calendarRef.current?.getApi()?.today()}
+        onPrevDay={() => calendarRef.current?.getApi()?.prev()}
+        onNextDay={() => calendarRef.current?.getApi()?.next()}
+        onNewAppointment={() => {
+          // Mantengo tu ruta actual para no romper nada
+          router.push("/admin/customers/new");
+        }}
+        rightSlot={
+          <>
             <Link
               href="/admin/customers"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                background: "white",
-                textDecoration: "none",
-                color: "#111",
-                fontSize: 14,
-                fontWeight: 650,
-              }}
+              className="h-8 rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
             >
               Clientes
             </Link>
-            <SecondaryButton onClick={onLogout}>Cerrar sesión</SecondaryButton>
-          </div>
-        </div>
 
+            <button
+              type="button"
+              onClick={onLogout}
+              className="h-8 rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
+            >
+              Cerrar sesión
+            </button>
+          </>
+        }
+        subSlot={
+          <>
+            <Badge>Cliente: {tenantSlug}</Badge>
+            <Badge>Profesional: {proName}</Badge>
+            <Badge>
+              Ventana: {UI_CONFIG.SLOT_MIN_TIME.slice(0, 5)}–
+              {UI_CONFIG.SLOT_MAX_TIME.slice(0, 5)}
+            </Badge>
+            <Badge>Vista: Semana</Badge>
+            {isDebug ? <Badge>Tenant ID: {tenantId}</Badge> : null}
+            {showLoadingHint ? <Badge>Cargando citas…</Badge> : null}
+          </>
+        }
+      />
+
+      <div
+        style={{
+          maxWidth: 1280,
+          margin: "0 auto",
+          padding: 14,
+          fontFamily: "system-ui",
+        }}
+      >
         {/* Controls */}
         <div style={{ marginTop: 14 }}>
           <Card>
             <CardBody>
-              <div style={{ display: "flex", gap: 14, alignItems: "end", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 14,
+                  alignItems: "end",
+                  flexWrap: "wrap",
+                }}
+              >
                 <div style={{ minWidth: 280 }}>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6, fontWeight: 750 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      opacity: 0.7,
+                      marginBottom: 6,
+                      fontWeight: 750,
+                    }}
+                  >
                     Profesional
                   </div>
 
@@ -1222,13 +1333,17 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
                     ))}
                   </select>
 
-                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7, lineHeight: 1.35 }}>
-                    Tip: Selecciona un rango para crear • arrastra para reprogramar • click para acciones
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      opacity: 0.7,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    Tip: Selecciona un rango para crear • arrastra para
+                    reprogramar • click para acciones
                   </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {isDebug ? <Badge>Tenant ID: {tenantId}</Badge> : null}
                 </div>
               </div>
             </CardBody>
@@ -1255,6 +1370,9 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
                 allDaySlot={false}
                 slotMinTime={UI_CONFIG.SLOT_MIN_TIME}
                 slotMaxTime={UI_CONFIG.SLOT_MAX_TIME}
+                headerToolbar={false}
+                dayHeaderFormat={{ weekday: "short", day: "numeric" }}
+                ref={calendarRef}
               />
 
               {/* Empty state citas (solo visual) */}
@@ -1263,7 +1381,11 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
                   <EmptyState
                     title="No hay citas en este rango"
                     desc="Prueba seleccionando un rango en el calendario para crear una cita. También puedes cambiar el profesional."
-                    action={<SecondaryButton onClick={() => location.reload()}>Actualizar</SecondaryButton>}
+                    action={
+                      <SecondaryButton onClick={() => location.reload()}>
+                        Actualizar
+                      </SecondaryButton>
+                    }
                   />
                 </div>
               ) : null}
@@ -1317,25 +1439,43 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
                 boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "flex-start",
+                }}
+              >
                 <div>
-                  <div style={{ fontWeight: 950, fontSize: 16 }}>Acciones de la cita</div>
+                  <div style={{ fontWeight: 950, fontSize: 16 }}>
+                    Acciones de la cita
+                  </div>
 
                   {(() => {
                     const { date, startTime, endTime } = formatDateTimeRange(
                       selectedEvent.startISO,
-                      selectedEvent.endISO
+                      selectedEvent.endISO,
                     );
 
-                    const phoneLabel = selectedEvent.customerPhone ?? "(sin teléfono)";
+                    const phoneLabel =
+                      selectedEvent.customerPhone ?? "(sin teléfono)";
 
                     return (
                       <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 14, fontWeight: 850 }}>{selectedEvent.title}</div>
-                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+                        <div style={{ fontSize: 14, fontWeight: 850 }}>
+                          {selectedEvent.title}
+                        </div>
+                        <div
+                          style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}
+                        >
                           📅 {date} • 🕒 {startTime} – {endTime}
                         </div>
-                        <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>{phoneLabel}</div>
+                        <div
+                          style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}
+                        >
+                          {phoneLabel}
+                        </div>
                       </div>
                     );
                   })()}
@@ -1358,7 +1498,9 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
                       alert("Esta cita no tiene teléfono.");
                       return;
                     }
-                    const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
+                    const p = normalizePhoneToWhatsApp(
+                      selectedEvent.customerPhone,
+                    );
                     window.open(`https://wa.me/${p}`, "_blank");
                   }}
                   disabled={!selectedEvent.customerPhone}
@@ -1370,17 +1512,19 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
                   onClick={() => {
                     const { date, startTime, endTime } = formatDateTimeRange(
                       selectedEvent.startISO,
-                      selectedEvent.endISO
+                      selectedEvent.endISO,
                     );
 
-                    const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
+                    const customerName =
+                      selectedEvent.title.replace(/^❌\s*/, "").trim() ||
+                      "cliente";
 
                     const msg = buildConfirmationMessage({
                       customerName,
                       dateLabel: date,
                       startTime,
                       endTime,
-                      businessName: UI_CONFIG.BUSINESS_NAME, // 👈 mantener en config
+                      businessName: UI_CONFIG.BUSINESS_NAME,
                     });
 
                     navigator.clipboard.writeText(msg);
@@ -1405,9 +1549,16 @@ const handleEventDrop = async (dropInfo: EventDropArg) => {
                 </SecondaryButton>
               </div>
 
-              <div style={{ marginTop: 12, fontSize: 12, opacity: 0.65, lineHeight: 1.4 }}>
-                {/* ZONA DE MANTENCIÓN: aquí puedes cambiar textos/acciones sin tocar lógica */}
-                Tip: WhatsApp abre en una pestaña nueva. El mensaje de confirmación usa el nombre del negocio desde{" "}
+              <div
+                style={{
+                  marginTop: 12,
+                  fontSize: 12,
+                  opacity: 0.65,
+                  lineHeight: 1.4,
+                }}
+              >
+                Tip: WhatsApp abre en una pestaña nueva. El mensaje de
+                confirmación usa el nombre del negocio desde{" "}
                 <b>UI_CONFIG.BUSINESS_NAME</b>.
               </div>
             </div>
