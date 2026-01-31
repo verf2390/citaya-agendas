@@ -1,0 +1,82 @@
+/* Minimal FullCalendar TimeGrid CSS (enough for selection/drag/render) */
+
+.fc {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+}
+
+.fc .fc-scrollgrid {
+  border-collapse: collapse;
+  border-spacing: 0;
+  width: 100%;
+}
+
+.fc .fc-scrollgrid-section > * {
+  border: 1px solid var(--border, rgba(0,0,0,0.08));
+}
+
+.fc .fc-col-header-cell-cushion {
+  display: inline-block;
+  padding: 6px 8px;
+  font-weight: 700;
+}
+
+.fc .fc-timegrid-body {
+  position: relative;
+}
+
+.fc .fc-timegrid-axis {
+  width: 56px;
+}
+
+.fc .fc-timegrid-slot {
+  height: 2.4em;
+  border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+.fc .fc-timegrid-slot-label {
+  padding: 0 8px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.fc .fc-timegrid-col-frame {
+  position: relative;
+}
+
+.fc .fc-timegrid-event-harness {
+  position: absolute;
+  z-index: 2;
+  left: 2px;
+  right: 2px;
+}
+
+.fc .fc-event {
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.12);
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.fc .fc-highlight {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.fc .fc-timegrid-now-indicator-line {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  border-top: 2px solid rgba(239, 68, 68, 0.75);
+}
+
+.fc .fc-timegrid-now-indicator-arrow {
+  position: absolute;
+  z-index: 4;
+  margin-top: -5px;
+  border-style: solid;
+  border-width: 5px 6px 5px 0;
+  border-color: transparent rgba(239, 68, 68, 0.75) transparent transparent;
+}

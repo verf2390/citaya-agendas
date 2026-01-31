@@ -1,6 +1,12 @@
+/* ✅ Todos los imports al inicio (OBLIGATORIO en Tailwind v4 + Turbopack) */
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@import "./fullcalendar.css";
+
+
+
+/* ✅ luego recién variantes / theme */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -116,10 +122,29 @@
 }
 
 @layer base {
-  * {
+  /* ✅ Asegura base consistente (especialmente mobile) */
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0; /* ✅ evita márgenes raros */
+    -webkit-text-size-adjust: 100%; /* ✅ evita “zoom” de texto en algunos móviles */
+    text-rendering: optimizeLegibility;
+    @apply bg-background text-foreground;
+  }
+
+  /* ✅ Mantén box-sizing consistente */
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  /* ✅ evita que botones “se inflen” por line-height heredado */
+  button {
+    line-height: 1;
   }
 }

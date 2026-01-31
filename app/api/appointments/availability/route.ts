@@ -8,26 +8,20 @@ type AppointmentRangeRow = {
   status: string | null;
 };
 
+type AvailabilityRow = {
+  day_of_week: number; // 0=domingo ... 6=sábado (guardado así en DB)
+  start_time: string;  // "HH:MM:SS"
+  end_time: string;    // "HH:MM:SS"
+  is_active: boolean;
+};
+
 type BookedRange = { start: Date; end: Date };
 type Slot = { start_at: string; end_at: string };
 
 const TZ = "America/Santiago";
 
 /**
- * MVP: Horario laboral fijo (hora Chile)
- * Lunes a Viernes: 09:00 - 18:00
- * Sábado: 10:00 - 14:00
- * Domingo: cerrado
- */
-function getWorkingHoursLocal(dayOfWeek: number) {
-  // 0=Dom, 1=Lun, ... 6=Sab
-  if (dayOfWeek === 0) return null;
-  if (dayOfWeek === 6) return { startHour: 10, endHour: 14 };
-  return { startHour: 9, endHour: 18 };
-}
-
-/**
- * Devuelve parts (año/mes/día/hora/min) de una fecha en una timezone.
+ * Devuelve parts (año/mes/día/hora/min/seg) de una fecha en una timezone.
  */
 function getPartsInTZ(date: Date, timeZone: string) {
   const dtf = new Intl.DateTimeFormat("en-US", {
@@ -42,7 +36,8 @@ function getPartsInTZ(date: Date, timeZone: string) {
   });
 
   const parts = dtf.formatToParts(date);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  const get = (type: string) =>
+    parts.find((p) => p.type === type)?.value ?? "00";
 
   return {
     year: Number(get("year")),
@@ -56,7 +51,6 @@ function getPartsInTZ(date: Date, timeZone: string) {
 
 /**
  * Calcula offset (minutos) entre UTC y la timezone para un instante.
- * Truco estándar: compara "fecha UTC" vs "misma fecha interpretada como UTC a partir de parts en TZ".
  */
 function getTimeZoneOffsetMinutes(date: Date, timeZone: string) {
   const p = getPartsInTZ(date, timeZone);
@@ -74,19 +68,50 @@ function localToUTC(
   day: number,
   hour: number,
   minute: number,
-  timeZone: string
+  timeZone: string,
 ) {
-  // 1) primer guess: tratar el wall time como si fuera UTC
-  let guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
+  // 1) primer guess: tratar wall time como si fuera UTC
+  const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0));
+
   // 2) calcular offset en esa TZ y corregir
   let offset = getTimeZoneOffsetMinutes(guess, timeZone);
   let utc = new Date(guess.getTime() + offset * 60000);
 
-  // 3) segunda pasada (mejor en cambios DST)
+  // 3) segunda pasada (mejor con DST)
   offset = getTimeZoneOffsetMinutes(utc, timeZone);
   utc = new Date(guess.getTime() + offset * 60000);
 
   return utc;
+}
+
+/**
+ * Devuelve day_of_week 0..6 calculado en TZ (Chile).
+ */
+function dayOfWeekCL(date: Date) {
+  const wd = new Intl.DateTimeFormat("en-US", {
+    timeZone: TZ,
+    weekday: "short",
+  }).format(date);
+
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  return map[wd] ?? date.getDay();
+}
+
+/**
+ * HH:MM:SS -> {hh, mm}
+ */
+function parseTimeHHMM(time: string) {
+  const [hh, mm] = time.split(":");
+  return { hh: Number(hh || 0), mm: Number(mm || 0) };
 }
 
 /**
@@ -110,10 +135,14 @@ export async function GET(req: Request) {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
 
+    // opcionales
+    const durationMinParam = url.searchParams.get("durationMin"); // ej: 30, 45, 60
+    const stepMinParam = url.searchParams.get("stepMin"); // ej: 15, 30
+
     if (!tenantId || !professionalId || !from || !to) {
       return NextResponse.json(
         { error: "Faltan parámetros: tenantId, professionalId, from, to" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -126,12 +155,52 @@ export async function GET(req: Request) {
     if (rangeStart >= rangeEnd) {
       return NextResponse.json(
         { error: "Rango inválido: from debe ser menor que to" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
+    const durationMinutes = Math.max(
+      5,
+      Math.min(240, Number(durationMinParam ?? 30) || 30),
+    );
+    const stepMinutes = Math.max(
+      5,
+      Math.min(120, Number(stepMinParam ?? 30) || 30),
+    );
+
+    // 0) traer availability (bloques activos) del profesional
+    const { data: avRows, error: avErr } = await supabaseServer
+      .from("availability")
+      .select("day_of_week,start_time,end_time,is_active")
+      .eq("tenant_id", tenantId)
+      .eq("professional_id", professionalId)
+      .eq("is_active", true);
+
+    if (avErr) {
+      console.error(avErr);
+      return NextResponse.json(
+        { error: "Error consultando disponibilidad" },
+        { status: 500 },
+      );
+    }
+
+    const availability = (avRows ?? []) as AvailabilityRow[];
+
+    // Map por day_of_week
+    const blocksByDow: Record<number, AvailabilityRow[]> = {};
+    for (const r of availability) {
+      if (!blocksByDow[r.day_of_week]) blocksByDow[r.day_of_week] = [];
+      blocksByDow[r.day_of_week].push(r);
+    }
+    // ordenar bloques por hora
+    Object.keys(blocksByDow).forEach((k) => {
+      blocksByDow[Number(k)].sort((a, b) =>
+        a.start_time > b.start_time ? 1 : -1,
+      );
+    });
+
     // 1) traer citas existentes (bloquean slots) - filtramos por tenant+profesional
-    const { data: appts, error } = await supabaseServer
+    const { data: appts, error: apptErr } = await supabaseServer
       .from("appointments")
       .select("start_at,end_at,status")
       .eq("tenant_id", tenantId)
@@ -140,49 +209,60 @@ export async function GET(req: Request) {
       .lt("start_at", rangeEnd.toISOString())
       .gt("end_at", rangeStart.toISOString());
 
-    if (error) {
-      console.error(error);
-      return NextResponse.json({ error: "Error consultando citas" }, { status: 500 });
+    if (apptErr) {
+      console.error(apptErr);
+      return NextResponse.json(
+        { error: "Error consultando citas" },
+        { status: 500 },
+      );
     }
 
-    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map((a) => ({
-      start: new Date(a.start_at),
-      end: new Date(a.end_at),
-    }));
+    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map(
+      (a) => ({
+        start: new Date(a.start_at),
+        end: new Date(a.end_at),
+      }),
+    );
 
-    // 2) generar slots (hora Chile) -> convertir a UTC real
-    const stepMinutes = 30;
-    const durationMinutes = 30;
+    // 2) generar slots usando availability (hora Chile) -> convertir a UTC real
     const nowUTC = new Date();
-
     const slots: Slot[] = [];
 
-    // Vamos día a día según calendario Chile:
-    // Tomamos el "día local" de rangeStart y avanzamos de a 1 día.
+    // Cursor día a día (usamos mediodía en Chile para evitar DST)
     let cursor = rangeStart;
-
-    // Para evitar loops infinitos, limitamos a 31 días (MVP seguro)
     let guard = 0;
 
-    while (cursor < rangeEnd && guard < 31) {
+    while (cursor < rangeEnd && guard < 62) {
       guard++;
 
+      // día local (Chile)
       const parts = getPartsInTZ(cursor, TZ);
-      const dayOfWeek = new Date(
-        localToUTC(parts.year, parts.month, parts.day, 12, 0, TZ) // mediodía local
-      ).getUTCDay(); // UTCDay del instante, pero ojo: usamos mediodía local para que caiga en el día correcto
-      // Mejor: calcular día de semana local desde "cursor" en TZ:
-      // (lo hacemos simple: usamos parts y una fecha UTC del mediodía local)
-      const hours = getWorkingHoursLocal(dayOfWeek);
+      const noonUTC = localToUTC(parts.year, parts.month, parts.day, 12, 0, TZ);
+      const dow = dayOfWeekCL(noonUTC);
 
-      if (hours) {
-        // inicio/fin del día laboral en hora Chile -> UTC
-        const dayStartUTC = localToUTC(parts.year, parts.month, parts.day, hours.startHour, 0, TZ);
-        const dayEndUTC = localToUTC(parts.year, parts.month, parts.day, hours.endHour, 0, TZ);
+      const dayBlocks = blocksByDow[dow] ?? [];
 
-        // limitar a rango
-        const effectiveStart = dayStartUTC < rangeStart ? rangeStart : dayStartUTC;
-        const effectiveEnd = dayEndUTC > rangeEnd ? rangeEnd : dayEndUTC;
+      // ✅ FIX CLAVE: si no hay bloques para ese día → no hay slots
+      if (dayBlocks.length === 0) {
+        // avanzar al siguiente día (mediodía Chile)
+        cursor = localToUTC(parts.year, parts.month, parts.day + 1, 12, 0, TZ);
+        continue;
+      }
+
+      // Para cada bloque del día, generar slots
+      for (const b of dayBlocks) {
+        const { hh: sh, mm: sm } = parseTimeHHMM(b.start_time);
+        const { hh: eh, mm: em } = parseTimeHHMM(b.end_time);
+
+        const blockStartUTC = localToUTC(parts.year, parts.month, parts.day, sh, sm, TZ);
+        const blockEndUTC = localToUTC(parts.year, parts.month, parts.day, eh, em, TZ);
+
+        // si bloque inválido, lo saltamos
+        if (!(blockStartUTC < blockEndUTC)) continue;
+
+        // limitar bloque al rango solicitado
+        const effectiveStart = blockStartUTC < rangeStart ? rangeStart : blockStartUTC;
+        const effectiveEnd = blockEndUTC > rangeEnd ? rangeEnd : blockEndUTC;
 
         let slotCursor = ceilToStepUTC(effectiveStart, stepMinutes);
 
@@ -190,20 +270,17 @@ export async function GET(req: Request) {
           const slotStart = slotCursor;
           const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
 
+          // el slot debe caber completo dentro del bloque efectivo
+          if (slotEnd > effectiveEnd) break;
+
           // no mostrar en pasado
           if (slotEnd <= nowUTC) {
             slotCursor = new Date(slotCursor.getTime() + stepMinutes * 60 * 1000);
             continue;
           }
 
-          // validar rango
-          if (slotStart >= rangeEnd || slotEnd <= rangeStart) {
-            slotCursor = new Date(slotCursor.getTime() + stepMinutes * 60 * 1000);
-            continue;
-          }
-
           // validar traslape contra citas ya tomadas
-          const isBusy = booked.some((b) => overlaps(slotStart, slotEnd, b.start, b.end));
+          const isBusy = booked.some((br) => overlaps(slotStart, slotEnd, br.start, br.end));
 
           if (!isBusy) {
             slots.push({ start_at: slotStart.toISOString(), end_at: slotEnd.toISOString() });
@@ -213,10 +290,12 @@ export async function GET(req: Request) {
         }
       }
 
-      // avanzar 1 día: tomamos "mañana" en hora Chile a las 12:00 para evitar problemas DST
-      const tomorrowNoonUTC = localToUTC(parts.year, parts.month, parts.day + 1, 12, 0, TZ);
-      cursor = tomorrowNoonUTC;
+      // avanzar 1 día (mediodía Chile para evitar DST)
+      cursor = localToUTC(parts.year, parts.month, parts.day + 1, 12, 0, TZ);
     }
+
+    // Orden final por start_at
+    slots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
 
     return NextResponse.json({ tenantId, professionalId, from, to, slots });
   } catch (e) {
