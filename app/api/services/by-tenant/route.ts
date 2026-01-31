@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     // servicios activos
     const { data, error } = await supabaseAdmin
       .from("services")
-      .select("id, tenant_id, name, duration_min, price, currency, is_active, icon, image_url")
+      .select("id, tenant_id, name, duration_min, price, currency, is_active")
       .eq("tenant_id", t.id)
       .eq("is_active", true)
       .order("created_at", { ascending: true });

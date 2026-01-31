@@ -11,7 +11,7 @@ export async function GET(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("tenants")
-    .select("id, slug, name")
+    .select("id, slug, name, phone_display, logo_url, description")
     .eq("slug", slug)
     .single();
 

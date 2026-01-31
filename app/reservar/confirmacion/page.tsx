@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { BadgeCheck } from "lucide-react";
 
 type Appt = {
   id: string;
@@ -12,7 +13,60 @@ type Appt = {
   customer_email: string;
   professional_id: string;
   tenant_id: string;
+  service_id?: string | null;
 };
+
+type Tenant = {
+  id: string;
+  slug: string;
+  name: string;
+  phone_display: string | null;
+};
+
+type Professional = {
+  id: string;
+  name: string;
+  title?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
+};
+
+function cn(...v: Array<string | false | null | undefined>) {
+  return v.filter(Boolean).join(" ");
+}
+
+function normalizeCLPhoneToE164(phone: string) {
+  const raw = String(phone ?? "").trim();
+  if (!raw) return "";
+
+  // si ya viene +56...
+  if (raw.startsWith("+")) {
+    const digits = raw.replace(/\D/g, "");
+    return digits ? `+${digits}` : "";
+  }
+
+  const digits = raw.replace(/\D/g, "");
+
+  // casos típicos Chile
+  if (digits.startsWith("569") && digits.length >= 11) return `+${digits}`;
+  if (digits.startsWith("56") && digits.length >= 11) return `+${digits}`;
+  if (digits.startsWith("9") && digits.length >= 9) return `+56${digits}`;
+
+  // fallback: si es largo, lo intento igual
+  return digits.length >= 10 ? `+${digits}` : "";
+}
+
+function formatStartCL(startISO: string) {
+  if (!startISO) return "—";
+  return new Intl.DateTimeFormat("es-CL", {
+    timeZone: "America/Santiago",
+    weekday: "long",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(startISO));
+}
 
 export default function ConfirmacionPage() {
   return (
@@ -24,33 +78,62 @@ export default function ConfirmacionPage() {
 
 function ConfirmacionFallback() {
   return (
-    <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
-      <h1 style={{ marginBottom: 6 }}>Cargando…</h1>
-      <p style={{ marginTop: 0, opacity: 0.75 }}>Estamos preparando los detalles de tu cita.</p>
+    <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
+      <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
+        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
+          <div className="text-lg font-extrabold">Cargando…</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Estamos preparando los detalles de tu cita.
+          </div>
+          <div className="mt-4 h-10 rounded-xl bg-muted/50 animate-pulse" />
+          <div className="mt-2 h-24 rounded-xl bg-muted/50 animate-pulse" />
+        </div>
+      </div>
     </main>
   );
 }
 
 function ConfirmacionInner() {
   const sp = useSearchParams();
-
-  // Confirmación definitiva: SOLO por ?id=UUID
   const id = sp.get("id") ?? "";
 
-  // 🚫 Sin id = link inválido (no renderizar confirmación)
+  // tenant por query o subdominio *.citaya.online
+  const tenantFromQuery = sp.get("tenant") ?? "";
+  const host =
+    typeof window !== "undefined"
+      ? window.location.hostname.split(":")[0].toLowerCase()
+      : "";
+  const tenantFromSubdomain = host.endsWith(".citaya.online")
+    ? host.replace(".citaya.online", "").split(".")[0]
+    : "";
+  const tenantSlug = tenantFromQuery || tenantFromSubdomain;
+
+  // 🚫 Sin id = link inválido
   if (!id) {
     return (
-      <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
-        <h1 style={{ marginBottom: 6 }}>⚠️ Link inválido</h1>
-        <p style={{ color: "crimson", fontWeight: 700 }}>Falta el id de la cita.</p>
+      <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
+        <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
+          <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
+            <div className="text-lg font-extrabold">⚠️ Link inválido</div>
+            <div className="mt-2 text-sm font-semibold text-red-600">
+              Falta el id de la cita.
+            </div>
+          </div>
+        </div>
       </main>
     );
   }
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
-  const [appt, setAppt] = useState<Appt | null>(null);
 
+  const [appt, setAppt] = useState<Appt | null>(null);
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [loadingTenant, setLoadingTenant] = useState(false);
+  const [loadingPros, setLoadingPros] = useState(false);
+
+  // 1) Cargar cita por id
   useEffect(() => {
     let cancelled = false;
 
@@ -59,9 +142,10 @@ function ConfirmacionInner() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`/api/appointments/by-id?id=${encodeURIComponent(id)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/appointments/by-id?id=${encodeURIComponent(id)}`,
+          { cache: "no-store" },
+        );
 
         const json = await res.json().catch(() => null);
 
@@ -82,126 +166,193 @@ function ConfirmacionInner() {
     };
   }, [id]);
 
-  // 🚫 Si hubo error cargando la cita, no mostrar confirmación
+  // 2) Cargar tenant por slug (para nombre y teléfono del negocio)
+  useEffect(() => {
+    if (!tenantSlug) return;
+
+    let cancelled = false;
+    setLoadingTenant(true);
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/tenants/by-slug?slug=${encodeURIComponent(tenantSlug)}`,
+          { cache: "no-store" },
+        );
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) throw new Error(json?.error ?? "No se pudo cargar tenant");
+
+        if (!cancelled) setTenant(json?.tenant ?? null);
+      } catch (e) {
+        // si falla, no bloqueamos la confirmación; solo no mostramos nombre/WA del negocio
+        if (!cancelled) setTenant(null);
+      } finally {
+        if (!cancelled) setLoadingTenant(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantSlug]);
+
+  // 3) Cargar profesionales por tenant (para resolver appt.professional_id -> nombre)
+  useEffect(() => {
+    if (!tenantSlug) return;
+
+    let cancelled = false;
+    setLoadingPros(true);
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/professionals/by-tenant?tenant=${encodeURIComponent(tenantSlug)}`,
+          { cache: "no-store" },
+        );
+        const json = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(json?.error ?? "No se pudieron cargar profesionales");
+
+        const list = (Array.isArray(json) ? json : []) as Professional[];
+        if (!cancelled) setProfessionals(list);
+      } catch (e) {
+        if (!cancelled) setProfessionals([]);
+      } finally {
+        if (!cancelled) setLoadingPros(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantSlug]);
+
+  // 🚫 Error cargando cita
   if (error) {
     return (
-      <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
-        <h1 style={{ marginBottom: 6 }}>⚠️ No se pudo cargar la cita</h1>
-        <p style={{ marginTop: 0, color: "crimson", fontWeight: 700 }}>{error}</p>
+      <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
+        <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
+          <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
+            <div className="text-lg font-extrabold">⚠️ No se pudo cargar la cita</div>
+            <div className="mt-2 text-sm font-semibold text-red-600">{error}</div>
+          </div>
+        </div>
       </main>
     );
   }
 
-  // Datos a mostrar (solo desde la cita real)
-  const start = appt?.start_at ?? "";
-  const email = appt?.customer_email ?? "";
-  const phone = appt?.customer_phone ?? "";
-  const prof = "Profesional";
+  const startLabel = useMemo(() => formatStartCL(appt?.start_at ?? ""), [appt?.start_at]);
 
-  // Normaliza teléfono a formato internacional CHILE: 56 + 9 + XXXXXXXX
-  const phoneE164 = useMemo(() => {
-    const raw = String(phone ?? "").trim();
-    if (!raw) return "";
+  // ✅ profesional real desde professionals[] + appt.professional_id
+  const professionalName = useMemo(() => {
+    const proId = appt?.professional_id;
+    if (!proId) return "—";
+    return professionals.find((p) => p.id === proId)?.name ?? "Profesional";
+  }, [appt?.professional_id, professionals]);
 
-    const digits = raw.replace(/\D/g, "");
+  // ✅ WhatsApp al negocio (tenant.phone_display)
+  const waUrl = useMemo(() => {
+    const businessPhone = tenant?.phone_display ?? "";
+    const e164 = normalizeCLPhoneToE164(businessPhone);
+    if (!e164) return "";
 
-    if (digits.startsWith("569") && digits.length >= 11) return digits;
-    if (digits.startsWith("56") && digits.length >= 11) return digits;
-    if (digits.startsWith("9") && digits.length >= 9) return `56${digits}`;
+    const msg = encodeURIComponent(
+      "Hola, acabo de reservar una cita. ¿Me confirmas por favor?",
+    );
 
-    return "";
-  }, [phone]);
-
-  const wa = useMemo(() => {
-    if (!phoneE164) return "";
-    const msg = encodeURIComponent("Hola, acabo de reservar una cita. ¿Me confirmas por favor?");
     const isMobile =
       typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+    // WhatsApp espera sin "+" normalmente, pero funciona con ambos; usamos sin "+"
+    const phoneNoPlus = e164.replace("+", "");
+
     return isMobile
-      ? `https://api.whatsapp.com/send?phone=${phoneE164}&text=${msg}`
-      : `https://web.whatsapp.com/send?phone=${phoneE164}&text=${msg}`;
-  }, [phoneE164]);
+      ? `https://api.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`
+      : `https://web.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`;
+  }, [tenant?.phone_display]);
 
-  const canOpenWA = !!wa;
-
-  const startLabel = useMemo(() => {
-    if (!start) return "—";
-    return new Intl.DateTimeFormat("es-CL", {
-      timeZone: "America/Santiago",
-      weekday: "long",
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(start));
-  }, [start]);
+  const canOpenWA = !!waUrl;
 
   return (
-    <main style={{ maxWidth: 760, margin: "0 auto", padding: 24, fontFamily: "system-ui" }}>
-    <>
-      <h1>✅ Reserva registrada</h1>
-      <p style={{ marginTop: 4, opacity: 0.8 }}>
-      Te enviamos un correo con los detalles de tu cita.
-      Desde ahí podrás cancelarla o reagendarla si lo necesitas.
-    </p>
-    </>
+    <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
+      <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
+        {/* Header */}
+        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
+          <div className="flex items-center gap-2">
+            <BadgeCheck className="h-5 w-5" />
+            <div className="text-lg font-extrabold">Reserva registrada</div>
+          </div>
 
-      {loading && <p style={{ marginTop: 10, opacity: 0.75 }}>Cargando detalles de tu cita…</p>}
+          <div className="mt-2 text-sm text-muted-foreground">
+            Te enviamos un correo con los detalles de tu cita. Desde ahí podrás cancelarla o
+            reagendarla si lo necesitas.
+          </div>
 
-      <section
-        style={{
-          marginTop: 14,
-          padding: 16,
-          border: "1px solid #c7f0d8",
-          background: "#f0fff6",
-          borderRadius: 12,
-        }}
-      >
-        <p style={{ margin: 0 }}>
-          <b>Profesional:</b> {prof}
-        </p>
-        <p style={{ margin: "8px 0 0 0" }}>
-          <b>Fecha/Hora:</b> {startLabel}
-        </p>
-        <p style={{ margin: "8px 0 0 0" }}>
-          <b>Correo:</b> {email || "—"}
-        </p>
-        <p style={{ margin: "8px 0 0 0" }}>
-          <b>Celular:</b> {phone || "—"}
-        </p>
-
-        <div style={{ marginTop: 14 }}>
-          <a
-            href={canOpenWA ? wa : undefined}
-            target="_blank"
-            rel="noreferrer"
-            aria-disabled={!canOpenWA}
-            onClick={(e) => {
-              if (!canOpenWA) e.preventDefault();
-            }}
-            style={{
-              display: "inline-block",
-              padding: "10px 12px",
-              borderRadius: 12,
-              background: canOpenWA ? "#111" : "#999",
-              color: "#fff",
-              textDecoration: "none",
-              fontWeight: 800,
-              cursor: canOpenWA ? "pointer" : "not-allowed",
-              userSelect: "none",
-            }}
-          >
-            Abrir WhatsApp (opcional)
-          </a>
+          {loading ? (
+            <div className="mt-3 text-sm text-muted-foreground">
+              Cargando detalles de tu cita…
+            </div>
+          ) : null}
         </div>
 
-        {!canOpenWA && (
-          <p style={{ marginTop: 10, opacity: 0.75, fontSize: 13 }}>
-            No se pudo generar el link de WhatsApp (faltó un celular válido).
-          </p>
-        )}
-      </section>
+        {/* Card detalles */}
+        <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
+          <div className="space-y-2 text-sm">
+            <div>
+              <span className="font-extrabold">Negocio:</span>{" "}
+              <span className="font-medium">{tenant?.name ?? (loadingTenant ? "Cargando…" : "—")}</span>
+            </div>
+
+            <div>
+              <span className="font-extrabold">Profesional:</span>{" "}
+              <span className="font-medium">
+                {loadingPros ? "Cargando…" : professionalName}
+              </span>
+            </div>
+
+            <div>
+              <span className="font-extrabold">Fecha/Hora:</span>{" "}
+              <span className="font-medium">{startLabel}</span>
+            </div>
+
+            <div>
+              <span className="font-extrabold">Correo:</span>{" "}
+              <span className="font-medium">{appt?.customer_email ?? "—"}</span>
+            </div>
+
+            <div>
+              <span className="font-extrabold">Celular:</span>{" "}
+              <span className="font-medium">{appt?.customer_phone ?? "—"}</span>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <a
+              href={canOpenWA ? waUrl : undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!canOpenWA}
+              onClick={(e) => {
+                if (!canOpenWA) e.preventDefault();
+              }}
+              className={cn(
+                "inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-extrabold transition",
+                canOpenWA
+                  ? "bg-foreground text-background hover:opacity-95"
+                  : "cursor-not-allowed bg-muted text-muted-foreground",
+              )}
+            >
+              Abrir WhatsApp (opcional)
+            </a>
+
+            {!canOpenWA ? (
+              <div className="mt-2 text-xs text-muted-foreground">
+                No se pudo generar el link de WhatsApp (falta teléfono válido del negocio).
+              </div>
+            ) : null}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
