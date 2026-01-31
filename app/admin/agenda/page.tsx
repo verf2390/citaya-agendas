@@ -6,7 +6,7 @@
  * =====================================================
  * - Calendario de CITAS (FullCalendar)
  * - Editor de HORARIOS semanal (WeeklyAvailabilityCalendar)
- * - Professionals via API server-side
+ * - Professionals via API server-side (filtrado por tenant)
  * - Availability via API server-side
  */
 
@@ -18,7 +18,12 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
-import type { DateSelectArg, EventClickArg, EventDropArg, DatesSetArg } from "@fullcalendar/core";
+import type {
+  DateSelectArg,
+  EventClickArg,
+  EventDropArg,
+  DatesSetArg,
+} from "@fullcalendar/core";
 
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
@@ -28,7 +33,9 @@ import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
 import AdminAgendaHeader from "@/components/admin/AdminAgendaHeader";
 import WeeklyAvailabilityCalendar from "@/components/admin/availability/WeeklyAvailabilityCalendar";
 
-import AppointmentCreateModal, { CustomerLite } from "./components/AppointmentCreateModal";
+import AppointmentCreateModal, {
+  CustomerLite,
+} from "./components/AppointmentCreateModal";
 
 /* =====================================================
    CONFIG
@@ -87,11 +94,11 @@ type CustomerRow = {
 };
 
 type AvailabilityBlock = {
-  id?: string;         // si viene de DB
-  tempId?: string;     // si es nuevo (calendar editor)
+  id?: string; // si viene de DB
+  tempId?: string; // si es nuevo (calendar editor)
   day_of_week: number; // 0-6
-  start_time: string;  // "HH:MM" o "HH:MM:SS"
-  end_time: string;    // "HH:MM" o "HH:MM:SS"
+  start_time: string; // "HH:MM" o "HH:MM:SS"
+  end_time: string; // "HH:MM" o "HH:MM:SS"
   is_active: boolean;
 };
 
@@ -173,9 +180,7 @@ function Badge({ children }: { children: React.ReactNode }) {
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border bg-white shadow-sm">
-      {children}
-    </div>
+    <div className="rounded-2xl border bg-white shadow-sm">{children}</div>
   );
 }
 
@@ -257,18 +262,25 @@ export default function AgendaPage() {
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
 
   // availability (editor)
-  const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<
+    AvailabilityBlock[]
+  >([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
 
   // appointments
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
+  const [visibleRange, setVisibleRange] = useState<{
+    start: string;
+    end: string;
+  } | null>(null);
 
   // modals
   const [createOpen, setCreateOpen] = useState(false);
-  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(null);
+  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(
+    null,
+  );
 
   const [actionOpen, setActionOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -364,24 +376,36 @@ export default function AgendaPage() {
 
   const loadProfessionals = async () => {
     try {
-      const res = await fetch("/api/admin/professionals/list", { cache: "no-store" });
+      // ✅ IMPORTANTE: pasar tenantId para que el endpoint devuelva SOLO los pros del tenant actual
+      const res = await fetch(
+        `/api/admin/professionals/list?tenantId=${encodeURIComponent(tenantId)}`,
+        { cache: "no-store" },
+      );
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
         console.error("Error loading professionals (API):", json);
+        setProfessionals([]);
+        setSelectedProfessionalId("");
         return;
       }
 
       const list = (json?.professionals ?? []) as Professional[];
-      setProfessionals(list);
+
+      // ✅ doble seguridad: filtramos local por tenant
+      const tenantPros = list.filter((p) => p.tenant_id === tenantId);
+
+      setProfessionals(tenantPros);
 
       setSelectedProfessionalId((prev) => {
-        const exists = list.some((p) => p.id === prev);
+        const exists = tenantPros.some((p) => p.id === prev);
         if (exists) return prev;
-        return list[0]?.id ?? "";
+        return tenantPros[0]?.id ?? "";
       });
     } catch (e) {
       console.error("Error loading professionals:", e);
+      setProfessionals([]);
+      setSelectedProfessionalId("");
     }
   };
 
@@ -411,8 +435,11 @@ export default function AgendaPage() {
 
   const loadAvailability = async (professionalId: string) => {
     try {
+      // ✅ Pasamos tenantId como “context” (si tu endpoint lo usa). Si no lo usa, no rompe.
       const res = await fetch(
-        `/api/admin/availability/list?professionalId=${encodeURIComponent(professionalId)}`,
+        `/api/admin/availability/list?tenantId=${encodeURIComponent(tenantId)}&professionalId=${encodeURIComponent(
+          professionalId,
+        )}`,
         { cache: "no-store" },
       );
 
@@ -453,9 +480,9 @@ export default function AgendaPage() {
     setSavingAvailability(true);
     try {
       const payload = {
+        tenantId, // ✅ para backends que validan tenant
         professionalId: selectedProfessionalId,
         items: availabilityBlocks.map((b) => ({
-          // si no hay id, dejamos null y backend inserta
           id: b.id ?? null,
           day_of_week: b.day_of_week,
           start_time: (b.start_time || "").slice(0, 5),
@@ -475,9 +502,11 @@ export default function AgendaPage() {
         throw new Error(json?.error ?? "No se pudo guardar disponibilidad");
       }
 
-      toast({ title: "Horarios guardados", description: "Disponibilidad actualizada." });
+      toast({
+        title: "Horarios guardados",
+        description: "Disponibilidad actualizada.",
+      });
 
-      // recargar desde DB para que tome ids reales
       await loadAvailability(selectedProfessionalId);
     } catch (e: any) {
       console.error(e);
@@ -491,60 +520,59 @@ export default function AgendaPage() {
     }
   };
 
-  const loadAppointments = async (start?: string, end?: string, professionalId?: string) => {
+  const loadAppointments = async (
+    start?: string,
+    end?: string,
+    professionalId?: string,
+  ) => {
     setLoading(true);
 
-    let q = supabase
-      .from("appointments")
-      .select(
-        `
-        id,
-        tenant_id,
-        professional_id,
-        customer_id,
-        customer_name,
-        customer_phone,
-        start_at,
-        end_at,
-        status
-      `,
-      )
-      .eq("tenant_id", tenantId)
-      .order("start_at", { ascending: true });
+    try {
+      const qs = new URLSearchParams();
 
-    if (professionalId) q = q.eq("professional_id", professionalId);
-    if (start && end) q = q.gte("start_at", start).lt("start_at", end);
+      qs.set("tenantId", tenantId);
+      if (professionalId) qs.set("professionalId", professionalId);
+      if (start) qs.set("start", start);
+      if (end) qs.set("end", end);
 
-    const { data, error } = await q;
-
-    if (error) {
-      console.error("Error loading appointments:", error);
-      setLoading(false);
-      return;
-    }
-
-    const mapped: CalendarEvent[] = ((data as Appointment[] | null) ?? []).map((a) => {
-      const titleBase = a.customer_name ?? "Cita";
-      const status = (a.status ?? "confirmed") as AppointmentStatus;
-      const classNames = ["citaya-event", `citaya-status-${status}`];
-
-      return {
-        id: a.id,
-        title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
-        start: a.start_at,
-        end: a.end_at,
-        classNames,
-        extendedProps: {
-          professional_id: a.professional_id,
-          customer_phone: a.customer_phone,
-          status,
-          customer_id: a.customer_id ?? null,
+      const res = await fetch(
+        `/api/admin/appointments/range?${qs.toString()}`,
+        {
+          cache: "no-store",
         },
-      };
-    });
+      );
 
-    setEvents(mapped);
-    setLoading(false);
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        console.error("Error loading appointments (API):", json);
+        setEvents([]);
+        return;
+      }
+
+      const mapped: CalendarEvent[] = (json?.items ?? []).map((a: any) => {
+        const titleBase = a.customer_name ?? "Cita";
+        const status = (a.status ?? "confirmed") as AppointmentStatus;
+
+        return {
+          id: a.id,
+          title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
+          start: a.start_at,
+          end: a.end_at,
+          classNames: ["citaya-event", `citaya-status-${status}`],
+          extendedProps: {
+            professional_id: a.professional_id,
+            customer_phone: a.customer_phone ?? null,
+            status,
+            customer_id: a.customer_id ?? null,
+          },
+        };
+      });
+
+      setEvents(mapped);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -570,10 +598,21 @@ export default function AgendaPage() {
     if (!tenantId) return;
     if (!selectedProfessionalId) return;
 
-    if (visibleRange) loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (visibleRange)
+      loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else loadAppointments(undefined, undefined, selectedProfessionalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked, tenantId, selectedProfessionalId, visibleRange?.start, visibleRange?.end]);
+  }, [
+    authChecked,
+    tenantId,
+    selectedProfessionalId,
+    visibleRange?.start,
+    visibleRange?.end,
+  ]);
 
   /* =====================================================
      ACTIONS
@@ -622,7 +661,6 @@ export default function AgendaPage() {
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
-    // validar contra availability blocks (solo del día)
     const dayOfWeek = startDate.getDay();
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
@@ -672,8 +710,13 @@ export default function AgendaPage() {
     const customer = customers.find((c) => c.id === customerId) ?? null;
 
     try {
-      const customer_email = String(customer?.email ?? "").trim().toLowerCase();
-      if (!customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)) {
+      const customer_email = String(customer?.email ?? "")
+        .trim()
+        .toLowerCase();
+      if (
+        !customer_email ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)
+      ) {
         toast({
           title: "Email inválido",
           description: "Este cliente no tiene un email válido guardado.",
@@ -706,7 +749,12 @@ export default function AgendaPage() {
     setCreateOpen(false);
     setSlot(null);
 
-    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (visibleRange)
+      await loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   }
 
@@ -732,7 +780,9 @@ export default function AgendaPage() {
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
-    const blocks = availabilityBlocks.filter((b) => b.is_active && b.day_of_week === dayOfWeek);
+    const blocks = availabilityBlocks.filter(
+      (b) => b.is_active && b.day_of_week === dayOfWeek,
+    );
     if (!isWithinAvailability({ startMin, endMin, blocks })) {
       toast({
         title: "Movimiento no permitido",
@@ -743,7 +793,12 @@ export default function AgendaPage() {
       return;
     }
 
-    const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId, id);
+    const overlap = await hasOverlap(
+      start_at,
+      end_at,
+      selectedProfessionalId,
+      id,
+    );
     if (overlap) {
       toast({
         title: "Horario ocupado",
@@ -788,7 +843,12 @@ export default function AgendaPage() {
       return;
     }
 
-    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (visibleRange)
+      await loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   };
 
@@ -815,9 +875,17 @@ export default function AgendaPage() {
         return;
       }
 
-      toast({ title: "Cita cancelada", description: "La cita fue cancelada correctamente." });
+      toast({
+        title: "Cita cancelada",
+        description: "La cita fue cancelada correctamente.",
+      });
 
-      if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+      if (visibleRange)
+        await loadAppointments(
+          visibleRange.start,
+          visibleRange.end,
+          selectedProfessionalId,
+        );
       else await loadAppointments(undefined, undefined, selectedProfessionalId);
     } catch (e: any) {
       console.error(e);
@@ -844,7 +912,14 @@ export default function AgendaPage() {
     const startISO = clickInfo.event.start?.toISOString() ?? "";
     const endISO = clickInfo.event.end?.toISOString() ?? "";
 
-    setSelectedEvent({ id, title, customerPhone, customerId, startISO, endISO });
+    setSelectedEvent({
+      id,
+      title,
+      customerPhone,
+      customerId,
+      startISO,
+      endISO,
+    });
     setActionOpen(true);
   };
 
@@ -864,9 +939,14 @@ export default function AgendaPage() {
           <Card>
             <CardBody>
               <div className="text-lg font-extrabold">⚠️ Acceso inválido</div>
-              <div className="mt-2 text-sm text-muted-foreground">{tenantError}</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                {tenantError}
+              </div>
               <div className="mt-4">
-                <Link href="https://app.citaya.online" className="inline-flex h-9 items-center rounded-xl border bg-white px-3 text-sm font-semibold hover:bg-muted">
+                <Link
+                  href="https://app.citaya.online"
+                  className="inline-flex h-9 items-center rounded-xl border bg-white px-3 text-sm font-semibold hover:bg-muted"
+                >
                   Ir al dominio principal
                 </Link>
               </div>
@@ -884,7 +964,9 @@ export default function AgendaPage() {
           <Card>
             <CardBody>
               <div className="text-lg font-extrabold">Cargando panel…</div>
-              <div className="mt-2 text-sm text-muted-foreground">Resolviendo cliente (subdominio)…</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                Resolviendo cliente (subdominio)…
+              </div>
               <div className="mt-4 h-2 rounded-full bg-muted" />
             </CardBody>
           </Card>
@@ -978,7 +1060,11 @@ export default function AgendaPage() {
             <Badge>Profesional: {proName}</Badge>
             <Badge>Vista: Semana</Badge>
             {isDebug ? <Badge>Tenant ID: {tenantId}</Badge> : null}
+            {isDebug ? (
+              <Badge>Pro ID: {selectedProfessionalId || "—"}</Badge>
+            ) : null}
             {loading ? <Badge>Cargando citas…</Badge> : null}
+            {isDebug ? <Badge>Eventos: {events.length}</Badge> : null}
           </>
         }
       />
@@ -1004,16 +1090,27 @@ export default function AgendaPage() {
                       </option>
                     ))}
                   </select>
+                  {professionals.length === 0 ? (
+                    <div className="mt-2 text-xs text-red-600">
+                      No hay profesionales para este tenant ({tenantSlug}).
+                      Revisa /api/admin/professionals/list.
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex-1" />
 
-                <PrimaryButton onClick={saveAvailability} disabled={savingAvailability || !selectedProfessionalId}>
+                <PrimaryButton
+                  onClick={saveAvailability}
+                  disabled={savingAvailability || !selectedProfessionalId}
+                >
                   {savingAvailability ? "Guardando…" : "Guardar horarios"}
                 </PrimaryButton>
               </div>
 
-              <div className="mt-3 text-sm font-extrabold">Horarios (vista semanal)</div>
+              <div className="mt-3 text-sm font-extrabold">
+                Horarios (vista semanal)
+              </div>
               <div className="mt-1 text-xs text-muted-foreground">
                 Crea bloques arrastrando. Mueve y ajusta con drag/resize.
               </div>
@@ -1039,7 +1136,7 @@ export default function AgendaPage() {
               <FullCalendar
                 plugins={[timeGridPlugin, interactionPlugin]}
                 initialView={UI_CONFIG.CALENDAR_VIEW as any}
-                timeZone="local"
+                timeZone="America/Santiago"
                 locale={esLocale}
                 selectable
                 editable
@@ -1088,23 +1185,29 @@ export default function AgendaPage() {
             <div className="w-full max-w-[560px] rounded-2xl border bg-white p-4 shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-base font-black">Acciones de la cita</div>
+                  <div className="text-base font-black">
+                    Acciones de la cita
+                  </div>
 
                   {(() => {
                     const { date, startTime, endTime } = formatDateTimeRange(
                       selectedEvent.startISO,
                       selectedEvent.endISO,
                     );
-
-                    const phoneLabel = selectedEvent.customerPhone ?? "(sin teléfono)";
+                    const phoneLabel =
+                      selectedEvent.customerPhone ?? "(sin teléfono)";
 
                     return (
                       <div className="mt-2">
-                        <div className="text-sm font-extrabold">{selectedEvent.title}</div>
+                        <div className="text-sm font-extrabold">
+                          {selectedEvent.title}
+                        </div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           📅 {date} • 🕒 {startTime} – {endTime}
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">{phoneLabel}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {phoneLabel}
+                        </div>
                       </div>
                     );
                   })()}
@@ -1127,7 +1230,9 @@ export default function AgendaPage() {
                       alert("Esta cita no tiene teléfono.");
                       return;
                     }
-                    const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
+                    const p = normalizePhoneToWhatsApp(
+                      selectedEvent.customerPhone,
+                    );
                     window.open(`https://wa.me/${p}`, "_blank");
                   }}
                   disabled={!selectedEvent.customerPhone}
@@ -1143,7 +1248,8 @@ export default function AgendaPage() {
                     );
 
                     const customerName =
-                      selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
+                      selectedEvent.title.replace(/^❌\s*/, "").trim() ||
+                      "cliente";
 
                     const msg = buildConfirmationMessage({
                       customerName,
@@ -1176,8 +1282,8 @@ export default function AgendaPage() {
               </div>
 
               <div className="mt-3 text-xs text-muted-foreground">
-                Tip: WhatsApp abre en una pestaña nueva. El mensaje usa el nombre desde{" "}
-                <b>UI_CONFIG.BUSINESS_NAME</b>.
+                Tip: WhatsApp abre en una pestaña nueva. El mensaje usa el
+                nombre desde <b>UI_CONFIG.BUSINESS_NAME</b>.
               </div>
             </div>
           </div>
