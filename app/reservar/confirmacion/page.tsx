@@ -2,7 +2,13 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { BadgeCheck } from "lucide-react";
+import {
+  BadgeCheck,
+  CalendarPlus,
+  Copy,
+  MessageCircle,
+  ShieldCheck,
+} from "lucide-react";
 
 type Appt = {
   id: string;
@@ -21,6 +27,9 @@ type Tenant = {
   slug: string;
   name: string;
   phone_display: string | null;
+  // opcionales si ya los tienes en tu API:
+  logo_url?: string | null;
+  address_display?: string | null;
 };
 
 type Professional = {
@@ -29,6 +38,12 @@ type Professional = {
   title?: string | null;
   bio?: string | null;
   avatar_url?: string | null;
+};
+
+type Service = {
+  id: string;
+  name: string;
+  duration_minutes?: number | null;
 };
 
 function cn(...v: Array<string | false | null | undefined>) {
@@ -68,6 +83,63 @@ function formatStartCL(startISO: string) {
   }).format(new Date(startISO));
 }
 
+function formatDateYMD(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+function toICSDateUTC(date: Date) {
+  // formato: YYYYMMDDTHHMMSSZ
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const mm = String(date.getUTCMinutes()).padStart(2, "0");
+  const ss = String(date.getUTCSeconds()).padStart(2, "0");
+  return `${y}${m}${d}T${hh}${mm}${ss}Z`;
+}
+
+function safeText(v?: string | null) {
+  return (v ?? "").toString().trim();
+}
+
+function buildICS(params: {
+  title: string;
+  description?: string;
+  location?: string;
+  startISO: string;
+  endISO: string;
+  uid: string;
+}) {
+  const start = new Date(params.startISO);
+  const end = new Date(params.endISO);
+
+  const dtStart = toICSDateUTC(start);
+  const dtEnd = toICSDateUTC(end);
+
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Citaya//Reservas//ES",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    `UID:${params.uid}`,
+    `DTSTAMP:${toICSDateUTC(new Date())}`,
+    `DTSTART:${dtStart}`,
+    `DTEND:${dtEnd}`,
+    `SUMMARY:${params.title.replace(/\n/g, " ")}`,
+    params.location ? `LOCATION:${params.location.replace(/\n/g, " ")}` : "",
+    params.description ? `DESCRIPTION:${params.description.replace(/\n/g, " ")}` : "",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].filter(Boolean);
+
+  return lines.join("\r\n");
+}
+
 export default function ConfirmacionPage() {
   return (
     <Suspense fallback={<ConfirmacionFallback />}>
@@ -79,14 +151,21 @@ export default function ConfirmacionPage() {
 function ConfirmacionFallback() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-      <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
-        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
-          <div className="text-lg font-extrabold">Cargando…</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Estamos preparando los detalles de tu cita.
+      <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
+        <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
+          <div className="flex items-center gap-2">
+            <div className="h-9 w-9 rounded-2xl bg-muted/60 animate-pulse" />
+            <div>
+              <div className="h-5 w-40 rounded bg-muted/60 animate-pulse" />
+              <div className="mt-2 h-4 w-64 rounded bg-muted/50 animate-pulse" />
+            </div>
           </div>
-          <div className="mt-4 h-10 rounded-xl bg-muted/50 animate-pulse" />
-          <div className="mt-2 h-24 rounded-xl bg-muted/50 animate-pulse" />
+
+          <div className="mt-6 space-y-3">
+            <div className="h-10 rounded-2xl bg-muted/50 animate-pulse" />
+            <div className="h-28 rounded-2xl bg-muted/50 animate-pulse" />
+            <div className="h-12 rounded-2xl bg-muted/50 animate-pulse" />
+          </div>
         </div>
       </div>
     </main>
@@ -106,14 +185,14 @@ function ConfirmacionInner() {
   const tenantFromSubdomain = host.endsWith(".citaya.online")
     ? host.replace(".citaya.online", "").split(".")[0]
     : "";
-  const tenantSlug = tenantFromQuery || tenantFromSubdomain;
+  const tenantSlugInitial = tenantFromQuery || tenantFromSubdomain;
 
   // 🚫 Sin id = link inválido
   if (!id) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-        <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
-          <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
+        <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
+          <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
             <div className="text-lg font-extrabold">⚠️ Link inválido</div>
             <div className="mt-2 text-sm font-semibold text-red-600">
               Falta el id de la cita.
@@ -128,12 +207,18 @@ function ConfirmacionInner() {
   const [error, setError] = useState<string>("");
 
   const [appt, setAppt] = useState<Appt | null>(null);
+
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [service, setService] = useState<Service | null>(null);
+
   const [loadingTenant, setLoadingTenant] = useState(false);
   const [loadingPros, setLoadingPros] = useState(false);
+  const [loadingService, setLoadingService] = useState(false);
 
-  // 1) Cargar cita por id
+  const [copied, setCopied] = useState(false);
+
+  // 1) Cargar cita por id (source of truth)
   useEffect(() => {
     let cancelled = false;
 
@@ -166,26 +251,53 @@ function ConfirmacionInner() {
     };
   }, [id]);
 
-  // 2) Cargar tenant por slug (para nombre y teléfono del negocio)
+  // 2) Resolver tenant: preferimos slug (si existe), si no, intentamos por appt.tenant_id (si tienes endpoint)
   useEffect(() => {
-    if (!tenantSlug) return;
-
     let cancelled = false;
-    setLoadingTenant(true);
+
+    async function loadTenantBySlug(slug: string) {
+      const res = await fetch(
+        `/api/tenants/by-slug?slug=${encodeURIComponent(slug)}`,
+        { cache: "no-store" },
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error ?? "No se pudo cargar tenant");
+      return json?.tenant ?? null;
+    }
+
+    async function loadTenantById(tenantId: string) {
+      // opcional: si no existe este endpoint, fallará y lo ignoramos
+      const res = await fetch(
+        `/api/tenants/by-id?id=${encodeURIComponent(tenantId)}`,
+        { cache: "no-store" },
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error ?? "No se pudo cargar tenant");
+      return json?.tenant ?? null;
+    }
 
     (async () => {
       try {
-        const res = await fetch(
-          `/api/tenants/by-slug?slug=${encodeURIComponent(tenantSlug)}`,
-          { cache: "no-store" },
-        );
-        const json = await res.json().catch(() => null);
+        setLoadingTenant(true);
 
-        if (!res.ok) throw new Error(json?.error ?? "No se pudo cargar tenant");
+        // 1) si hay slug, úsalo
+        if (tenantSlugInitial) {
+          const t = await loadTenantBySlug(tenantSlugInitial);
+          if (!cancelled) setTenant(t);
+          return;
+        }
 
-        if (!cancelled) setTenant(json?.tenant ?? null);
-      } catch (e) {
-        // si falla, no bloqueamos la confirmación; solo no mostramos nombre/WA del negocio
+        // 2) si no hay slug, intenta por tenant_id de la cita (cuando ya está)
+        const tid = appt?.tenant_id;
+        if (tid) {
+          try {
+            const t = await loadTenantById(tid);
+            if (!cancelled) setTenant(t);
+          } catch {
+            if (!cancelled) setTenant(null);
+          }
+        }
+      } catch {
         if (!cancelled) setTenant(null);
       } finally {
         if (!cancelled) setLoadingTenant(false);
@@ -195,10 +307,11 @@ function ConfirmacionInner() {
     return () => {
       cancelled = true;
     };
-  }, [tenantSlug]);
+  }, [tenantSlugInitial, appt?.tenant_id]);
 
-  // 3) Cargar profesionales por tenant (para resolver appt.professional_id -> nombre)
+  // 3) Cargar profesionales por tenantSlug (si existe). Si no hay slug, no es crítico: mostramos fallback.
   useEffect(() => {
+    const tenantSlug = tenantSlugInitial || tenant?.slug || "";
     if (!tenantSlug) return;
 
     let cancelled = false;
@@ -215,7 +328,7 @@ function ConfirmacionInner() {
 
         const list = (Array.isArray(json) ? json : []) as Professional[];
         if (!cancelled) setProfessionals(list);
-      } catch (e) {
+      } catch {
         if (!cancelled) setProfessionals([]);
       } finally {
         if (!cancelled) setLoadingPros(false);
@@ -225,14 +338,70 @@ function ConfirmacionInner() {
     return () => {
       cancelled = true;
     };
-  }, [tenantSlug]);
+  }, [tenantSlugInitial, tenant?.slug]);
+
+  // 4) Cargar servicio (by-id preferido; fallback by-tenant si existe tu endpoint)
+  useEffect(() => {
+    const serviceId = appt?.service_id ?? "";
+    if (!serviceId) {
+      setService(null);
+      return;
+    }
+
+    const tenantSlug = tenantSlugInitial || tenant?.slug || "";
+
+    let cancelled = false;
+    setLoadingService(true);
+
+    (async () => {
+      try {
+        // intentamos by-id
+        try {
+          const res = await fetch(
+            `/api/services/by-id?id=${encodeURIComponent(serviceId)}`,
+            { cache: "no-store" },
+          );
+          const json = await res.json().catch(() => null);
+          if (res.ok && json?.ok && json?.service) {
+            if (!cancelled) setService(json.service as Service);
+            return;
+          }
+        } catch {
+          // ignore y fallback
+        }
+
+        // fallback: by-tenant devuelve lista y buscamos por id
+        if (tenantSlug) {
+          const res2 = await fetch(
+            `/api/services/by-tenant?tenant=${encodeURIComponent(tenantSlug)}`,
+            { cache: "no-store" },
+          );
+          const json2 = await res2.json().catch(() => null);
+          if (!res2.ok) throw new Error(json2?.error ?? "No se pudo cargar servicios");
+
+          const list = (Array.isArray(json2) ? json2 : []) as Service[];
+          const s = list.find((x) => x.id === serviceId) ?? null;
+          if (!cancelled) setService(s);
+          return;
+        }
+
+        if (!cancelled) setService(null);
+      } finally {
+        if (!cancelled) setLoadingService(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appt?.service_id, tenantSlugInitial, tenant?.slug]);
 
   // 🚫 Error cargando cita
   if (error) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-        <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
-          <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
+        <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
+          <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
             <div className="text-lg font-extrabold">⚠️ No se pudo cargar la cita</div>
             <div className="mt-2 text-sm font-semibold text-red-600">{error}</div>
           </div>
@@ -250,83 +419,289 @@ function ConfirmacionInner() {
     return professionals.find((p) => p.id === proId)?.name ?? "Profesional";
   }, [appt?.professional_id, professionals]);
 
+  const serviceLabel = useMemo(() => {
+    if (loadingService) return "Cargando…";
+    if (!appt?.service_id) return "—";
+    return service?.name ?? "Servicio";
+  }, [loadingService, appt?.service_id, service?.name]);
+
+  const durationLabel = useMemo(() => {
+    // si viene duration por servicio, úsala; si no, calcula por start/end
+    const fromService = service?.duration_minutes ?? null;
+    if (fromService && fromService > 0) return `${fromService} min`;
+
+    const a = appt?.start_at ? new Date(appt.start_at).getTime() : 0;
+    const b = appt?.end_at ? new Date(appt.end_at).getTime() : 0;
+    if (a && b && b > a) {
+      const mins = Math.round((b - a) / 60000);
+      if (mins > 0) return `${mins} min`;
+    }
+    return "—";
+  }, [service?.duration_minutes, appt?.start_at, appt?.end_at]);
+
+  const businessName = tenant?.name ?? (loadingTenant ? "Cargando…" : "—");
+  const businessPhone = tenant?.phone_display ?? "";
+  const businessPhoneE164 = normalizeCLPhoneToE164(businessPhone);
+
   // ✅ WhatsApp al negocio (tenant.phone_display)
   const waUrl = useMemo(() => {
-    const businessPhone = tenant?.phone_display ?? "";
-    const e164 = normalizeCLPhoneToE164(businessPhone);
-    if (!e164) return "";
+    if (!businessPhoneE164) return "";
 
     const msg = encodeURIComponent(
-      "Hola, acabo de reservar una cita. ¿Me confirmas por favor?",
+      [
+        "Hola 👋, acabo de reservar una cita:",
+        "",
+        `• Servicio: ${service?.name ?? "—"}`,
+        `• Fecha/Hora: ${startLabel}`,
+        `• Profesional: ${professionalName}`,
+        `• Nombre: ${appt?.customer_name ?? "—"}`,
+        "",
+        "¿Me confirmas por favor? 🙏",
+      ].join("\n"),
     );
 
     const isMobile =
-      typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      typeof navigator !== "undefined" &&
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-    // WhatsApp espera sin "+" normalmente, pero funciona con ambos; usamos sin "+"
-    const phoneNoPlus = e164.replace("+", "");
+    const phoneNoPlus = businessPhoneE164.replace("+", "");
 
     return isMobile
       ? `https://api.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`
       : `https://web.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`;
-  }, [tenant?.phone_display]);
+  }, [
+    businessPhoneE164,
+    appt?.customer_name,
+    professionalName,
+    service?.name,
+    startLabel,
+  ]);
 
   const canOpenWA = !!waUrl;
 
+  // ✅ Calendario
+  const calendarLinks = useMemo(() => {
+    const title = `${businessName} - ${service?.name ?? "Cita"}`;
+    const start = appt?.start_at ? new Date(appt.start_at) : null;
+    const end = appt?.end_at ? new Date(appt.end_at) : null;
+    if (!start || !end) return { gcal: "", icsUrl: "" };
+
+    // Google Calendar expects: YYYYMMDDTHHMMSSZ / UTC
+    const startUTC = toICSDateUTC(new Date(start.toISOString()));
+    const endUTC = toICSDateUTC(new Date(end.toISOString()));
+    const dates = `${startUTC}/${endUTC}`;
+
+    const details = [
+      `Servicio: ${service?.name ?? "—"}`,
+      `Profesional: ${professionalName}`,
+      `Cliente: ${appt?.customer_name ?? "—"}`,
+      appt?.customer_email ? `Correo: ${appt.customer_email}` : "",
+      appt?.customer_phone ? `Tel: ${appt.customer_phone}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const location = safeText(tenant?.address_display);
+
+    const gcal = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
+      title,
+    )}&dates=${encodeURIComponent(dates)}&details=${encodeURIComponent(
+      details,
+    )}&location=${encodeURIComponent(location)}`;
+
+    // ICS “download” via data URL (simple y funciona sin backend)
+    const ics = buildICS({
+      title,
+      description: details,
+      location: location || undefined,
+      startISO: start.toISOString(),
+      endISO: end.toISOString(),
+      uid: `citaya-${appt?.id ?? id}@citaya.online`,
+    });
+
+    const icsUrl = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
+
+    return { gcal, icsUrl };
+  }, [
+    appt?.id,
+    appt?.start_at,
+    appt?.end_at,
+    appt?.customer_name,
+    appt?.customer_email,
+    appt?.customer_phone,
+    businessName,
+    id,
+    professionalName,
+    service?.name,
+    tenant?.address_display,
+  ]);
+
+  const canCalendar = !!calendarLinks.gcal && !!calendarLinks.icsUrl;
+
+  // ✅ Copiar detalles
+  const detailsToCopy = useMemo(() => {
+    return [
+      "📌 Detalles de tu reserva",
+      `Negocio: ${businessName}`,
+      `Servicio: ${service?.name ?? "—"} (${durationLabel})`,
+      `Profesional: ${professionalName}`,
+      `Fecha/Hora: ${startLabel}`,
+      appt?.customer_name ? `Cliente: ${appt.customer_name}` : "",
+      appt?.customer_email ? `Correo: ${appt.customer_email}` : "",
+      appt?.customer_phone ? `Celular: ${appt.customer_phone}` : "",
+      tenant?.address_display ? `Dirección: ${tenant.address_display}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }, [
+    appt?.customer_email,
+    appt?.customer_name,
+    appt?.customer_phone,
+    businessName,
+    durationLabel,
+    professionalName,
+    service?.name,
+    startLabel,
+    tenant?.address_display,
+  ]);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(detailsToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // fallback old school
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = detailsToCopy;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1400);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-      <div className="mx-auto w-full max-w-[520px] px-4 py-10 font-[system-ui]">
-        {/* Header */}
-        <div className="rounded-2xl border bg-white/80 p-5 shadow-sm backdrop-blur">
-          <div className="flex items-center gap-2">
-            <BadgeCheck className="h-5 w-5" />
-            <div className="text-lg font-extrabold">Reserva registrada</div>
-          </div>
+      <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
+        {/* Header premium */}
+        <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-600 text-white shadow-sm">
+                <BadgeCheck className="h-5 w-5" />
+              </div>
 
-          <div className="mt-2 text-sm text-muted-foreground">
-            Te enviamos un correo con los detalles de tu cita. Desde ahí podrás cancelarla o
-            reagendarla si lo necesitas.
+              <div>
+                <div className="text-xl font-extrabold leading-tight">
+                  ¡Reserva confirmada!
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Guarda estos detalles. Si necesitas cambios, podrás gestionarlo desde el correo.
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-2 rounded-2xl border bg-white/60 px-3 py-2 text-xs text-muted-foreground">
+              <ShieldCheck className="h-4 w-4" />
+              <span>Confirmación segura</span>
+            </div>
           </div>
 
           {loading ? (
-            <div className="mt-3 text-sm text-muted-foreground">
+            <div className="mt-4 text-sm text-muted-foreground">
               Cargando detalles de tu cita…
             </div>
           ) : null}
         </div>
 
-        {/* Card detalles */}
-        <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5 shadow-sm">
-          <div className="space-y-2 text-sm">
+        {/* Ticket / resumen */}
+        <section className="mt-4 rounded-3xl border border-emerald-200 bg-emerald-50/60 p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <span className="font-extrabold">Negocio:</span>{" "}
-              <span className="font-medium">{tenant?.name ?? (loadingTenant ? "Cargando…" : "—")}</span>
+              <div className="text-sm text-emerald-900/80">Resumen</div>
+              <div className="mt-1 text-lg font-extrabold text-emerald-950">
+                {serviceLabel}
+              </div>
+              <div className="mt-1 text-sm text-emerald-950/70">
+                {startLabel} · {durationLabel}
+              </div>
             </div>
 
-            <div>
-              <span className="font-extrabold">Profesional:</span>{" "}
-              <span className="font-medium">
-                {loadingPros ? "Cargando…" : professionalName}
-              </span>
-            </div>
-
-            <div>
-              <span className="font-extrabold">Fecha/Hora:</span>{" "}
-              <span className="font-medium">{startLabel}</span>
-            </div>
-
-            <div>
-              <span className="font-extrabold">Correo:</span>{" "}
-              <span className="font-medium">{appt?.customer_email ?? "—"}</span>
-            </div>
-
-            <div>
-              <span className="font-extrabold">Celular:</span>{" "}
-              <span className="font-medium">{appt?.customer_phone ?? "—"}</span>
-            </div>
+            <button
+              type="button"
+              onClick={onCopy}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-2xl border bg-white/70 px-3 py-2 text-xs font-extrabold transition hover:bg-white",
+                copied && "border-emerald-400",
+              )}
+            >
+              <Copy className="h-4 w-4" />
+              {copied ? "Copiado" : "Copiar"}
+            </button>
           </div>
 
-          <div className="mt-4">
+          <div className="mt-5 grid gap-3 text-sm">
+            <Row label="Negocio" value={businessName} />
+            <Row
+              label="Profesional"
+              value={loadingPros ? "Cargando…" : professionalName}
+            />
+            <Row
+              label="Servicio"
+              value={`${serviceLabel}${durationLabel !== "—" ? ` · ${durationLabel}` : ""}`}
+            />
+            <Row label="Cliente" value={appt?.customer_name ?? "—"} />
+            <Row label="Correo" value={appt?.customer_email ?? "—"} />
+            <Row label="Celular" value={appt?.customer_phone ?? "—"} />
+            {tenant?.address_display ? (
+              <Row label="Dirección" value={tenant.address_display} />
+            ) : null}
+          </div>
+
+          {/* Acciones */}
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <a
+              href={canCalendar ? calendarLinks.gcal : undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!canCalendar}
+              onClick={(e) => {
+                if (!canCalendar) e.preventDefault();
+              }}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold transition",
+                canCalendar
+                  ? "bg-foreground text-background hover:opacity-95"
+                  : "cursor-not-allowed bg-muted text-muted-foreground",
+              )}
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Agregar a Google Calendar
+            </a>
+
+            <a
+              href={canCalendar ? calendarLinks.icsUrl : undefined}
+              download={`cita-${formatDateYMD(new Date(appt?.start_at ?? Date.now()))}.ics`}
+              aria-disabled={!canCalendar}
+              onClick={(e) => {
+                if (!canCalendar) e.preventDefault();
+              }}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-2xl border bg-white/70 px-4 py-3 text-sm font-extrabold transition hover:bg-white",
+                !canCalendar && "cursor-not-allowed opacity-60 hover:bg-white/70",
+              )}
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Descargar .ics
+            </a>
+
             <a
               href={canOpenWA ? waUrl : undefined}
               target="_blank"
@@ -336,23 +711,37 @@ function ConfirmacionInner() {
                 if (!canOpenWA) e.preventDefault();
               }}
               className={cn(
-                "inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-extrabold transition",
+                "sm:col-span-2 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold transition",
                 canOpenWA
-                  ? "bg-foreground text-background hover:opacity-95"
+                  ? "bg-emerald-700 text-white hover:opacity-95"
                   : "cursor-not-allowed bg-muted text-muted-foreground",
               )}
             >
+              <MessageCircle className="h-4 w-4" />
               Abrir WhatsApp (opcional)
             </a>
 
             {!canOpenWA ? (
-              <div className="mt-2 text-xs text-muted-foreground">
+              <div className="sm:col-span-2 text-xs text-emerald-950/70">
                 No se pudo generar el link de WhatsApp (falta teléfono válido del negocio).
+              </div>
+            ) : !businessPhoneE164 ? (
+              <div className="sm:col-span-2 text-xs text-emerald-950/70">
+                WhatsApp requiere un teléfono del negocio válido.
               </div>
             ) : null}
           </div>
         </section>
       </div>
     </main>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-2xl bg-white/60 px-4 py-3">
+      <div className="text-xs font-extrabold text-emerald-950/70">{label}</div>
+      <div className="text-right text-sm font-semibold text-emerald-950">{value}</div>
+    </div>
   );
 }
