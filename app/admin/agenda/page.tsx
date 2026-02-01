@@ -4,13 +4,20 @@
  * =====================================================
  * ADMIN AGENDA — MULTI-TENANT (subdominio)
  * =====================================================
- * - Calendario de CITAS (FullCalendar)
- * - Editor de HORARIOS semanal (WeeklyAvailabilityCalendar)
- * - Professionals via API server-side (filtrado por tenant)
+ * - FullCalendar (citas)
+ * - WeeklyAvailabilityCalendar (horarios)
+ * - Professionals via API server-side
  * - Availability via API server-side
+ * - Appointments via API server-side (/api/admin/appointments/range)
+ *
+ * Fixes:
+ * ✅ Semana alineada sin desfase (parse local seguro)
+ * ✅ Validación de disponibilidad tolerante (0-6 JS / 1-7 DB / lun=0)
+ * ✅ Guardado de disponibilidad normalizado a 0-6 (JS)
+ * ✅ Carga de citas rápida con AbortController
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -46,6 +53,7 @@ const UI_CONFIG = {
   SLOT_MAX_TIME: "21:00:00",
   CALENDAR_VIEW: "timeGridWeek",
   BUSINESS_NAME: "Citaya",
+  ADMIN_TIMEZONE: "America/Santiago",
 };
 
 /* =====================================================
@@ -54,22 +62,10 @@ const UI_CONFIG = {
 
 type AppointmentStatus = "confirmed" | "completed" | "canceled" | "no_show";
 
-type Appointment = {
-  id: string;
-  tenant_id: string;
-  professional_id: string;
-  customer_id: string | null;
-  customer_name: string | null;
-  customer_phone: string | null;
-  start_at: string;
-  end_at: string;
-  status: AppointmentStatus | null;
-};
-
 type Professional = {
   id: string;
   name: string | null;
-  tenant_id: string;
+  tenant_id?: string;
 };
 
 type CalendarEvent = {
@@ -94,17 +90,34 @@ type CustomerRow = {
 };
 
 type AvailabilityBlock = {
-  id?: string; // si viene de DB
-  tempId?: string; // si es nuevo (calendar editor)
-  day_of_week: number; // 0-6
-  start_time: string; // "HH:MM" o "HH:MM:SS"
-  end_time: string; // "HH:MM" o "HH:MM:SS"
+  id?: string; // DB
+  tempId?: string; // editor
+  day_of_week: number; // puede venir 0-6 o 1-7 o lun=0
+  start_time: string; // "HH:MM"
+  end_time: string; // "HH:MM"
   is_active: boolean;
 };
 
 /* =====================================================
    HELPERS
 ===================================================== */
+
+function getMondayStart(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const day = x.getDay(); // 0 dom, 1 lun...
+  const diffToMonday = (day + 6) % 7; // lunes => 0
+  x.setDate(x.getDate() - diffToMonday);
+  return x;
+}
+
+function weekKey(d: Date) {
+  const m = getMondayStart(d);
+  const yyyy = m.getFullYear();
+  const mm = String(m.getMonth() + 1).padStart(2, "0");
+  const dd = String(m.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 const dateToMinutes = (d: Date) => d.getHours() * 60 + d.getMinutes();
 
@@ -113,6 +126,31 @@ const timeToMinutes = (time: string) => {
   const [hh, mm] = t.split(":").map(Number);
   return hh * 60 + mm;
 };
+
+/**
+ * day_of_week puede venir:
+ * - JS: 0-6 (Dom=0)
+ * - DB: 1-7 (Lun=1 ... Dom=7)
+ * - lun=0: 0-6 donde 0=Lun ... 6=Dom
+ *
+ * Esta función permite todos.
+ */
+function blockMatchesDateDay(blockDow: number, date: Date) {
+  const jsDow = date.getDay(); // 0 dom..6 sab
+
+  // formato JS 0-6
+  if (blockDow === jsDow) return true;
+
+  // formato 1-7 (Lun=1..Dom=7)
+  const dbDow_1_7 = jsDow === 0 ? 7 : jsDow; // Dom->7, Lun->1...
+  if (blockDow === dbDow_1_7) return true;
+
+  // formato lun=0 (Lun=0..Dom=6)
+  const mon0 = (jsDow + 6) % 7; // Lun(1)->0, ... Dom(0)->6
+  if (blockDow === mon0) return true;
+
+  return false;
+}
 
 const isWithinAvailability = (params: {
   startMin: number;
@@ -166,6 +204,21 @@ function buildConfirmationMessage(args: {
   return `${header}\n\n✅ Tu cita quedó agendada para:\n📅 ${dateLabel}\n🕒 ${startTime} – ${endTime}\n\nSi necesitas reprogramar, responde este mensaje.`;
 }
 
+/** Normaliza cualquier dow raro a JS 0..6 (Dom=0) SOLO PARA GUARDAR */
+function normalizeDowToJs0_6(dow: number) {
+  const n = Number(dow);
+  if (!Number.isFinite(n)) return 0;
+
+  // si viene 1..7 (Lun..Dom)
+  if (n >= 1 && n <= 7) return n === 7 ? 0 : n;
+
+  // si viene JS 0..6
+  if (n >= 0 && n <= 6) return n;
+
+  // fallback
+  return ((n % 7) + 7) % 7;
+}
+
 /* =====================================================
    UI mini
 ===================================================== */
@@ -179,9 +232,7 @@ function Badge({ children }: { children: React.ReactNode }) {
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border bg-white shadow-sm">{children}</div>
-  );
+  return <div className="rounded-2xl border bg-white shadow-sm">{children}</div>;
 }
 
 function CardBody({ children }: { children: React.ReactNode }) {
@@ -235,7 +286,8 @@ export default function AgendaPage() {
   const router = useRouter();
   const calendarRef = useRef<FullCalendar | null>(null);
 
-  const [viewDate, setViewDate] = useState<Date>(new Date());
+  // Fuente de verdad: semana visible (lunes) que viene desde FullCalendar
+  const [viewDate, setViewDate] = useState<Date>(() => getMondayStart(new Date()));
 
   // tenant
   const [tenantId, setTenantId] = useState("");
@@ -255,32 +307,23 @@ export default function AgendaPage() {
     () => professionals.find((p) => p.id === selectedProfessionalId) ?? null,
     [professionals, selectedProfessionalId],
   );
-
   const proName = selectedProfessional?.name ?? "(sin nombre)";
 
-  // customers (para modal)
+  // customers
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
 
-  // availability (editor)
-  const [availabilityBlocks, setAvailabilityBlocks] = useState<
-    AvailabilityBlock[]
-  >([]);
+  // availability
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
 
   // appointments
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const [visibleRange, setVisibleRange] = useState<{
-    start: string;
-    end: string;
-  } | null>(null);
+  const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
 
   // modals
   const [createOpen, setCreateOpen] = useState(false);
-  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(
-    null,
-  );
+  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(null);
 
   const [actionOpen, setActionOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -295,6 +338,9 @@ export default function AgendaPage() {
   const isDebug =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("debug") === "1";
+
+  // abort para carga rápida
+  const apptAbortRef = useRef<AbortController | null>(null);
 
   /* =====================================================
      TENANT
@@ -374,42 +420,31 @@ export default function AgendaPage() {
      LOADERS
   ===================================================== */
 
-  const loadProfessionals = async () => {
+  const loadProfessionals = useCallback(async () => {
     try {
-      // ✅ IMPORTANTE: pasar tenantId para que el endpoint devuelva SOLO los pros del tenant actual
-      const res = await fetch(
-        `/api/admin/professionals/list?tenantId=${encodeURIComponent(tenantId)}`,
-        { cache: "no-store" },
-      );
+      const res = await fetch(`/api/admin/professionals/list`, { cache: "no-store" });
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
         console.error("Error loading professionals (API):", json);
-        setProfessionals([]);
-        setSelectedProfessionalId("");
         return;
       }
 
       const list = (json?.professionals ?? []) as Professional[];
+      const filtered = list.filter((p) => !p.tenant_id || p.tenant_id === tenantId);
 
-      // ✅ doble seguridad: filtramos local por tenant
-      const tenantPros = list.filter((p) => p.tenant_id === tenantId);
-
-      setProfessionals(tenantPros);
-
+      setProfessionals(filtered);
       setSelectedProfessionalId((prev) => {
-        const exists = tenantPros.some((p) => p.id === prev);
+        const exists = filtered.some((p) => p.id === prev);
         if (exists) return prev;
-        return tenantPros[0]?.id ?? "";
+        return filtered[0]?.id ?? "";
       });
     } catch (e) {
       console.error("Error loading professionals:", e);
-      setProfessionals([]);
-      setSelectedProfessionalId("");
     }
-  };
+  }, [tenantId]);
 
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     const { data, error } = await supabase
       .from("customers")
       .select("id, full_name, phone, email")
@@ -431,48 +466,50 @@ export default function AgendaPage() {
     }));
 
     setCustomers(list);
-  };
+  }, [tenantId]);
 
-  const loadAvailability = async (professionalId: string) => {
-    try {
-      // ✅ Pasamos tenantId como “context” (si tu endpoint lo usa). Si no lo usa, no rompe.
-      const res = await fetch(
-        `/api/admin/availability/list?tenantId=${encodeURIComponent(tenantId)}&professionalId=${encodeURIComponent(
-          professionalId,
-        )}`,
-        { cache: "no-store" },
-      );
+  const loadAvailability = useCallback(
+    async (professionalId: string) => {
+      try {
+        const qs = new URLSearchParams();
+        qs.set("professionalId", professionalId);
+        qs.set("tenantId", tenantId);
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        console.error("Error loading availability:", json);
+        const res = await fetch(`/api/admin/availability/list?${qs.toString()}`, {
+          cache: "no-store",
+        });
+
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          console.error("Error loading availability:", json);
+          setAvailabilityBlocks([]);
+          return;
+        }
+
+        const items = (json?.items ?? []) as Array<{
+          id?: string;
+          day_of_week: number;
+          start_time: string;
+          end_time: string;
+          is_active: boolean;
+        }>;
+
+        const blocks: AvailabilityBlock[] = items.map((x) => ({
+          id: x.id,
+          day_of_week: Number(x.day_of_week), // NO convertimos; validamos tolerante
+          start_time: String(x.start_time).slice(0, 5),
+          end_time: String(x.end_time).slice(0, 5),
+          is_active: !!x.is_active,
+        }));
+
+        setAvailabilityBlocks(blocks);
+      } catch (e) {
+        console.error("Error loadAvailability:", e);
         setAvailabilityBlocks([]);
-        return;
       }
-
-      const items = (json?.items ?? []) as Array<{
-        id?: string;
-        day_of_week: number;
-        start_time: string;
-        end_time: string;
-        is_active: boolean;
-      }>;
-
-      // normalizamos a HH:MM
-      const blocks: AvailabilityBlock[] = items.map((x) => ({
-        id: x.id,
-        day_of_week: Number(x.day_of_week),
-        start_time: String(x.start_time).slice(0, 5),
-        end_time: String(x.end_time).slice(0, 5),
-        is_active: !!x.is_active,
-      }));
-
-      setAvailabilityBlocks(blocks);
-    } catch (e) {
-      console.error("Error loadAvailability:", e);
-      setAvailabilityBlocks([]);
-    }
-  };
+    },
+    [tenantId],
+  );
 
   const saveAvailability = async () => {
     if (!selectedProfessionalId) return;
@@ -480,11 +517,12 @@ export default function AgendaPage() {
     setSavingAvailability(true);
     try {
       const payload = {
-        tenantId, // ✅ para backends que validan tenant
         professionalId: selectedProfessionalId,
+        tenantId,
+        // ✅ Guardamos SIEMPRE 0..6 JS (Dom=0) para coherencia
         items: availabilityBlocks.map((b) => ({
           id: b.id ?? null,
-          day_of_week: b.day_of_week,
+          day_of_week: normalizeDowToJs0_6(b.day_of_week),
           start_time: (b.start_time || "").slice(0, 5),
           end_time: (b.end_time || "").slice(0, 5),
           is_active: !!b.is_active,
@@ -498,15 +536,12 @@ export default function AgendaPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(json?.error ?? "No se pudo guardar disponibilidad");
-      }
+      if (!res.ok) throw new Error(json?.error ?? "No se pudo guardar disponibilidad");
 
       toast({
         title: "Horarios guardados",
         description: "Disponibilidad actualizada.",
       });
-
       await loadAvailability(selectedProfessionalId);
     } catch (e: any) {
       console.error(e);
@@ -520,98 +555,95 @@ export default function AgendaPage() {
     }
   };
 
-  const loadAppointments = async (
-    start?: string,
-    end?: string,
-    professionalId?: string,
-  ) => {
-    setLoading(true);
+  const loadAppointments = useCallback(
+    async (start?: string, end?: string, professionalId?: string) => {
+      if (!tenantId) return;
 
-    try {
-      const qs = new URLSearchParams();
+      if (apptAbortRef.current) apptAbortRef.current.abort();
+      const ac = new AbortController();
+      apptAbortRef.current = ac;
 
-      qs.set("tenantId", tenantId);
-      if (professionalId) qs.set("professionalId", professionalId);
-      if (start) qs.set("start", start);
-      if (end) qs.set("end", end);
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams();
+        qs.set("tenantId", tenantId);
+        if (professionalId) qs.set("professionalId", professionalId);
+        if (start) qs.set("start", start);
+        if (end) qs.set("end", end);
 
-      const res = await fetch(
-        `/api/admin/appointments/range?${qs.toString()}`,
-        {
+        const res = await fetch(`/api/admin/appointments/range?${qs.toString()}`, {
           cache: "no-store",
-        },
-      );
+          signal: ac.signal,
+        });
 
-      const json = await res.json().catch(() => null);
+        const json = await res.json().catch(() => null);
 
-      if (!res.ok) {
-        console.error("Error loading appointments (API):", json);
-        setEvents([]);
-        return;
+        if (!res.ok) {
+          console.error("Error loading appointments (API):", json);
+          setEvents([]);
+          return;
+        }
+
+        const mapped: CalendarEvent[] = (json?.items ?? []).map((a: any) => {
+          const titleBase = a.customer_name ?? "Cita";
+          const status = (a.status ?? "confirmed") as AppointmentStatus;
+
+          return {
+            id: a.id,
+            title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
+            start: a.start_at,
+            end: a.end_at,
+            classNames: ["citaya-event", `citaya-status-${status}`],
+            extendedProps: {
+              professional_id: a.professional_id,
+              customer_phone: a.customer_phone ?? null,
+              status,
+              customer_id: a.customer_id ?? null,
+            },
+          };
+        });
+
+        setEvents(mapped);
+      } catch (e: any) {
+        if (e?.name !== "AbortError") {
+          console.error("loadAppointments error:", e);
+          setEvents([]);
+        }
+      } finally {
+        setLoading(false);
       }
-
-      const mapped: CalendarEvent[] = (json?.items ?? []).map((a: any) => {
-        const titleBase = a.customer_name ?? "Cita";
-        const status = (a.status ?? "confirmed") as AppointmentStatus;
-
-        return {
-          id: a.id,
-          title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
-          start: a.start_at,
-          end: a.end_at,
-          classNames: ["citaya-event", `citaya-status-${status}`],
-          extendedProps: {
-            professional_id: a.professional_id,
-            customer_phone: a.customer_phone ?? null,
-            status,
-            customer_id: a.customer_id ?? null,
-          },
-        };
-      });
-
-      setEvents(mapped);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [tenantId],
+  );
 
   useEffect(() => {
     if (!authChecked) return;
     if (!tenantId) return;
-
     loadProfessionals();
     loadCustomers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked, tenantId]);
+  }, [authChecked, tenantId, loadProfessionals, loadCustomers]);
 
   useEffect(() => {
     if (!authChecked) return;
     if (!tenantId) return;
     if (!selectedProfessionalId) return;
-
     loadAvailability(selectedProfessionalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authChecked, tenantId, selectedProfessionalId]);
+  }, [authChecked, tenantId, selectedProfessionalId, loadAvailability]);
 
   useEffect(() => {
     if (!authChecked) return;
     if (!tenantId) return;
     if (!selectedProfessionalId) return;
 
-    if (visibleRange)
-      loadAppointments(
-        visibleRange.start,
-        visibleRange.end,
-        selectedProfessionalId,
-      );
+    if (visibleRange) loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
     else loadAppointments(undefined, undefined, selectedProfessionalId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     authChecked,
     tenantId,
     selectedProfessionalId,
     visibleRange?.start,
     visibleRange?.end,
+    loadAppointments,
   ]);
 
   /* =====================================================
@@ -661,12 +693,12 @@ export default function AgendaPage() {
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
-    const dayOfWeek = startDate.getDay();
+    // ✅ Validar disponibilidad (TOLERANTE)
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
     const blocks = availabilityBlocks.filter(
-      (b) => b.is_active && b.day_of_week === dayOfWeek,
+      (b) => b.is_active && blockMatchesDateDay(b.day_of_week, startDate),
     );
 
     if (!isWithinAvailability({ startMin, endMin, blocks })) {
@@ -699,7 +731,7 @@ export default function AgendaPage() {
       body: JSON.stringify(payload),
     });
 
-    const json = await res.json();
+    const json = await res.json().catch(() => null);
     if (!res.ok) throw new Error(json?.error ?? "Error creando cita");
     return json;
   }
@@ -710,13 +742,8 @@ export default function AgendaPage() {
     const customer = customers.find((c) => c.id === customerId) ?? null;
 
     try {
-      const customer_email = String(customer?.email ?? "")
-        .trim()
-        .toLowerCase();
-      if (
-        !customer_email ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)
-      ) {
+      const customer_email = String(customer?.email ?? "").trim().toLowerCase();
+      if (!customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)) {
         toast({
           title: "Email inválido",
           description: "Este cliente no tiene un email válido guardado.",
@@ -749,12 +776,7 @@ export default function AgendaPage() {
     setCreateOpen(false);
     setSlot(null);
 
-    if (visibleRange)
-      await loadAppointments(
-        visibleRange.start,
-        visibleRange.end,
-        selectedProfessionalId,
-      );
+    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   }
 
@@ -776,13 +798,14 @@ export default function AgendaPage() {
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
-    const dayOfWeek = startDate.getDay();
+    // ✅ Validar disponibilidad (TOLERANTE)
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
     const blocks = availabilityBlocks.filter(
-      (b) => b.is_active && b.day_of_week === dayOfWeek,
+      (b) => b.is_active && blockMatchesDateDay(b.day_of_week, startDate),
     );
+
     if (!isWithinAvailability({ startMin, endMin, blocks })) {
       toast({
         title: "Movimiento no permitido",
@@ -793,12 +816,7 @@ export default function AgendaPage() {
       return;
     }
 
-    const overlap = await hasOverlap(
-      start_at,
-      end_at,
-      selectedProfessionalId,
-      id,
-    );
+    const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId, id);
     if (overlap) {
       toast({
         title: "Horario ocupado",
@@ -826,7 +844,7 @@ export default function AgendaPage() {
       if (!res.ok || !data?.ok) {
         toast({
           title: "No se pudo reagendar",
-          description: "El servidor rechazó el cambio. Se revirtió.",
+          description: data?.error ?? "El servidor rechazó el cambio. Se revirtió.",
           variant: "destructive",
         });
         dropInfo.revert();
@@ -843,12 +861,7 @@ export default function AgendaPage() {
       return;
     }
 
-    if (visibleRange)
-      await loadAppointments(
-        visibleRange.start,
-        visibleRange.end,
-        selectedProfessionalId,
-      );
+    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   };
 
@@ -880,12 +893,7 @@ export default function AgendaPage() {
         description: "La cita fue cancelada correctamente.",
       });
 
-      if (visibleRange)
-        await loadAppointments(
-          visibleRange.start,
-          visibleRange.end,
-          selectedProfessionalId,
-        );
+      if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
       else await loadAppointments(undefined, undefined, selectedProfessionalId);
     } catch (e: any) {
       console.error(e);
@@ -923,8 +931,19 @@ export default function AgendaPage() {
     setActionOpen(true);
   };
 
-  const handleDatesSet = async (arg: DatesSetArg) => {
-    setViewDate(arg.start);
+  /**
+   * ✅ FullCalendar = source of truth de semana.
+   */
+  const handleDatesSet = (arg: DatesSetArg) => {
+    const startStr = arg.startStr; // e.g. "2026-01-26T00:00:00"
+    const datePart = startStr.slice(0, 10);
+    const [y, m, d] = datePart.split("-").map(Number);
+
+    // local safe a mediodía
+    const safeLocal = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0, 0);
+    const monday = getMondayStart(safeLocal);
+
+    setViewDate((prev) => (weekKey(prev) === weekKey(monday) ? prev : monday));
     setVisibleRange({ start: arg.startStr, end: arg.endStr });
   };
 
@@ -939,9 +958,7 @@ export default function AgendaPage() {
           <Card>
             <CardBody>
               <div className="text-lg font-extrabold">⚠️ Acceso inválido</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                {tenantError}
-              </div>
+              <div className="mt-2 text-sm text-muted-foreground">{tenantError}</div>
               <div className="mt-4">
                 <Link
                   href="https://app.citaya.online"
@@ -964,9 +981,7 @@ export default function AgendaPage() {
           <Card>
             <CardBody>
               <div className="text-lg font-extrabold">Cargando panel…</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                Resolviendo cliente (subdominio)…
-              </div>
+              <div className="mt-2 text-sm text-muted-foreground">Resolviendo cliente (subdominio)…</div>
               <div className="mt-4 h-2 rounded-full bg-muted" />
             </CardBody>
           </Card>
@@ -1060,11 +1075,7 @@ export default function AgendaPage() {
             <Badge>Profesional: {proName}</Badge>
             <Badge>Vista: Semana</Badge>
             {isDebug ? <Badge>Tenant ID: {tenantId}</Badge> : null}
-            {isDebug ? (
-              <Badge>Pro ID: {selectedProfessionalId || "—"}</Badge>
-            ) : null}
-            {loading ? <Badge>Cargando citas…</Badge> : null}
-            {isDebug ? <Badge>Eventos: {events.length}</Badge> : null}
+            {loading ? <Badge>Cargando…</Badge> : null}
           </>
         }
       />
@@ -1076,9 +1087,7 @@ export default function AgendaPage() {
             <CardBody>
               <div className="flex flex-wrap items-end gap-4">
                 <div className="min-w-[280px]">
-                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">
-                    Profesional
-                  </div>
+                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">Profesional</div>
                   <select
                     value={selectedProfessionalId}
                     onChange={(e) => setSelectedProfessionalId(e.target.value)}
@@ -1090,36 +1099,26 @@ export default function AgendaPage() {
                       </option>
                     ))}
                   </select>
-                  {professionals.length === 0 ? (
-                    <div className="mt-2 text-xs text-red-600">
-                      No hay profesionales para este tenant ({tenantSlug}).
-                      Revisa /api/admin/professionals/list.
-                    </div>
-                  ) : null}
                 </div>
 
                 <div className="flex-1" />
 
-                <PrimaryButton
-                  onClick={saveAvailability}
-                  disabled={savingAvailability || !selectedProfessionalId}
-                >
+                <PrimaryButton onClick={saveAvailability} disabled={savingAvailability || !selectedProfessionalId}>
                   {savingAvailability ? "Guardando…" : "Guardar horarios"}
                 </PrimaryButton>
               </div>
 
-              <div className="mt-3 text-sm font-extrabold">
-                Horarios (vista semanal)
-              </div>
+              <div className="mt-3 text-sm font-extrabold">Horarios (vista semanal)</div>
               <div className="mt-1 text-xs text-muted-foreground">
                 Crea bloques arrastrando. Mueve y ajusta con drag/resize.
               </div>
 
               <div className="mt-3">
                 <WeeklyAvailabilityCalendar
+                  key={weekKey(viewDate)}
                   weekDate={viewDate}
                   blocks={availabilityBlocks}
-                  onWeekChange={(d) => setViewDate(d)}
+                  timeZone={UI_CONFIG.ADMIN_TIMEZONE}
                   onChangeBlocks={(next) => setAvailabilityBlocks(next)}
                   slotMinTime={UI_CONFIG.SLOT_MIN_TIME}
                   slotMaxTime={UI_CONFIG.SLOT_MAX_TIME}
@@ -1136,8 +1135,9 @@ export default function AgendaPage() {
               <FullCalendar
                 plugins={[timeGridPlugin, interactionPlugin]}
                 initialView={UI_CONFIG.CALENDAR_VIEW as any}
-                timeZone="America/Santiago"
+                timeZone={UI_CONFIG.ADMIN_TIMEZONE}
                 locale={esLocale}
+                firstDay={1}
                 selectable
                 editable
                 select={handleSelect}
@@ -1185,29 +1185,23 @@ export default function AgendaPage() {
             <div className="w-full max-w-[560px] rounded-2xl border bg-white p-4 shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-base font-black">
-                    Acciones de la cita
-                  </div>
+                  <div className="text-base font-black">Acciones de la cita</div>
 
                   {(() => {
                     const { date, startTime, endTime } = formatDateTimeRange(
                       selectedEvent.startISO,
                       selectedEvent.endISO,
                     );
-                    const phoneLabel =
-                      selectedEvent.customerPhone ?? "(sin teléfono)";
+
+                    const phoneLabel = selectedEvent.customerPhone ?? "(sin teléfono)";
 
                     return (
                       <div className="mt-2">
-                        <div className="text-sm font-extrabold">
-                          {selectedEvent.title}
-                        </div>
+                        <div className="text-sm font-extrabold">{selectedEvent.title}</div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           📅 {date} • 🕒 {startTime} – {endTime}
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {phoneLabel}
-                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">{phoneLabel}</div>
                       </div>
                     );
                   })()}
@@ -1230,9 +1224,7 @@ export default function AgendaPage() {
                       alert("Esta cita no tiene teléfono.");
                       return;
                     }
-                    const p = normalizePhoneToWhatsApp(
-                      selectedEvent.customerPhone,
-                    );
+                    const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
                     window.open(`https://wa.me/${p}`, "_blank");
                   }}
                   disabled={!selectedEvent.customerPhone}
@@ -1247,9 +1239,7 @@ export default function AgendaPage() {
                       selectedEvent.endISO,
                     );
 
-                    const customerName =
-                      selectedEvent.title.replace(/^❌\s*/, "").trim() ||
-                      "cliente";
+                    const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
 
                     const msg = buildConfirmationMessage({
                       customerName,
@@ -1282,8 +1272,8 @@ export default function AgendaPage() {
               </div>
 
               <div className="mt-3 text-xs text-muted-foreground">
-                Tip: WhatsApp abre en una pestaña nueva. El mensaje usa el
-                nombre desde <b>UI_CONFIG.BUSINESS_NAME</b>.
+                Tip: WhatsApp abre en una pestaña nueva. El mensaje usa el nombre desde{" "}
+                <b>UI_CONFIG.BUSINESS_NAME</b>.
               </div>
             </div>
           </div>
