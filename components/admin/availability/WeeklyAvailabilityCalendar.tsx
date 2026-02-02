@@ -10,14 +10,14 @@ import type { DateSelectArg } from "@fullcalendar/core";
 type Block = {
   id?: string;
   tempId?: string;
-  day_of_week: number; // 0-6 (JS getDay)
-  start_time: string;  // "HH:MM"
-  end_time: string;    // "HH:MM"
+  day_of_week: number; // 0-6 (0=Domingo)
+  start_time: string; // "HH:MM"
+  end_time: string; // "HH:MM"
   is_active: boolean;
 };
 
 type Props = {
-  weekDate: Date;                 // controlado desde afuera
+  weekDate: Date; // controlado desde afuera
   blocks: Block[];
   onChangeBlocks: (next: Block[]) => void;
   slotMinTime?: string;
@@ -25,13 +25,53 @@ type Props = {
   timeZone?: string;
 };
 
-/* Helpers */
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
+const TZ_DEFAULT = "America/Santiago";
+
+/**
+ * Devuelve "HH:MM" en la timezone indicada, desde un Date (que puede venir en UTC internamente).
+ * Esto elimina el desfase.
+ */
+function toHHMMInTZ(date: Date, timeZone: string) {
+  // "sv-SE" asegura formato 00-23 y "HH:MM"
+  const s = new Intl.DateTimeFormat("sv-SE", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+
+  // En sv-SE normalmente viene "HH:MM"
+  return s;
 }
-function toHHMM(d: Date) {
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+
+/**
+ * day_of_week (0..6) calculado en TZ (Chile), no con date.getDay()
+ */
+function dowInTZ(date: Date, timeZone: string) {
+  const wd = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+  }).format(date);
+
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+
+  return map[wd] ?? date.getDay();
 }
+
+/**
+ * Inicio de semana (Lunes) pero OJO:
+ * Aquí usamos la fecha en "local del navegador".
+ * Como FullCalendar maneja la vista con `timeZone={timeZone}`,
+ * esto funciona bien para navegación semanal.
+ */
 function startOfWeekMonday(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -39,6 +79,7 @@ function startOfWeekMonday(date: Date) {
   d.setDate(d.getDate() - diff);
   return d;
 }
+
 function weekKey(date: Date) {
   const m = startOfWeekMonday(date);
   const yyyy = m.getFullYear();
@@ -46,6 +87,7 @@ function weekKey(date: Date) {
   const dd = String(m.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
+
 function dateForDowInWeek(weekDate: Date, dow: number) {
   const monday = startOfWeekMonday(weekDate);
   const offset = dow === 0 ? 6 : dow - 1; // dom->6, lun->0...
@@ -53,12 +95,22 @@ function dateForDowInWeek(weekDate: Date, dow: number) {
   d.setDate(monday.getDate() + offset);
   return d;
 }
+
+/**
+ * Mezcla baseDate + "HH:MM" para crear un Date.
+ * Importante: FullCalendar aplicará la TZ que le pasas en `timeZone`.
+ */
 function mergeDateAndTime(baseDate: Date, hhmm: string) {
-  const [hh, mm] = (hhmm || "00:00").slice(0, 5).split(":").map(Number);
+  const [hh, mm] = (hhmm || "00:00")
+    .slice(0, 5)
+    .split(":")
+    .map(Number);
+
   const d = new Date(baseDate);
   d.setHours(hh || 0, mm || 0, 0, 0);
   return d;
 }
+
 function normalizeBlock(b: Block): Block {
   return {
     ...b,
@@ -75,29 +127,28 @@ export default function WeeklyAvailabilityCalendar({
   onChangeBlocks,
   slotMinTime = "07:00:00",
   slotMaxTime = "21:00:00",
-  timeZone,
+  timeZone = TZ_DEFAULT,
 }: Props) {
   const calRef = useRef<FullCalendar | null>(null);
 
-  // ✅ Solo sincronizamos hacia el calendario interno (controlado por props)
+  // ✅ Sincroniza navegación semanal (evita loop)
   useEffect(() => {
-  const api = calRef.current?.getApi();
-  if (!api) return;
+    const api = calRef.current?.getApi();
+    if (!api) return;
 
-  const targetMonday = startOfWeekMonday(weekDate);
-  const currentMonday = startOfWeekMonday(api.getDate());
+    const targetMonday = startOfWeekMonday(weekDate);
+    const currentMonday = startOfWeekMonday(api.getDate());
 
-  console.log("[AVAIL] weekDate:", weekDate.toString(), "key:", weekKey(weekDate));
-  console.log("[AVAIL] targetMonday:", targetMonday.toString(), "key:", weekKey(targetMonday));
-  console.log("[AVAIL] api.getDate():", api.getDate().toString(), "key:", weekKey(api.getDate()));
-
-  if (weekKey(targetMonday) === weekKey(currentMonday)) return;
-  api.gotoDate(targetMonday);
-}, [weekDate]);
-
+    if (weekKey(targetMonday) === weekKey(currentMonday)) return;
+    api.gotoDate(targetMonday);
+  }, [weekDate]);
 
   const normalizedBlocks = useMemo(() => blocks.map(normalizeBlock), [blocks]);
 
+  /**
+   * Render de eventos desde blocks.
+   * (Los blocks YA vienen como HH:MM correctos; acá solo los pintamos.)
+   */
   const events = useMemo(() => {
     return normalizedBlocks
       .filter((b) => b.is_active)
@@ -109,8 +160,8 @@ export default function WeeklyAvailabilityCalendar({
 
         return {
           id,
-          start, // Date (NO ISO)
-          end,   // Date (NO ISO)
+          start, // Date
+          end, // Date
           title: "",
           classNames: ["avail-block"],
           extendedProps: { blockKey: b.id ?? b.tempId ?? id },
@@ -118,12 +169,17 @@ export default function WeeklyAvailabilityCalendar({
       });
   }, [normalizedBlocks, weekDate]);
 
+  /**
+   * 🔥 ESTA es la parte crítica:
+   * Convertimos el Date que entrega FullCalendar a HH:MM pero EN timeZone (Chile).
+   * Esto elimina el desfase de 3h.
+   */
   function eventToBlock(start: Date, end: Date, existing?: Block): Block {
     return normalizeBlock({
       ...(existing ?? {}),
-      day_of_week: start.getDay(),
-      start_time: toHHMM(start),
-      end_time: toHHMM(end),
+      day_of_week: dowInTZ(start, timeZone), // ✅ DOW en TZ
+      start_time: toHHMMInTZ(start, timeZone), // ✅ HH:MM en TZ
+      end_time: toHHMMInTZ(end, timeZone), // ✅ HH:MM en TZ
       is_active: true,
       tempId: existing?.tempId ?? existing?.id ?? crypto.randomUUID(),
     });
@@ -168,7 +224,7 @@ export default function WeeklyAvailabilityCalendar({
         plugins={[timeGridPlugin, interactionPlugin]}
         initialView="timeGridWeek"
         initialDate={startOfWeekMonday(weekDate)}
-        timeZone={timeZone}
+        timeZone={timeZone}      // ✅ MUY importante: FullCalendar trabaja en esta TZ
         locale={esLocale}
         firstDay={1}
         headerToolbar={false}
