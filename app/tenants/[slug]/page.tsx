@@ -45,7 +45,9 @@ export default async function TenantHome({
 
   const { data: tenant, error: tenantErr } = await supabase
     .from("tenants")
-    .select("id, slug, name, address, city, phone_display, description")
+    .select(
+      "id, slug, name, address, city, phone_display, description, show_address, show_phone",
+    )
     .eq("slug", slug)
     .single();
 
@@ -63,6 +65,9 @@ export default async function TenantHome({
       </main>
     );
   }
+
+  const showAddress = tenant.show_address ?? true;
+  const showPhone = tenant.show_phone ?? true;
 
   const { data: services } = await supabase
     .from("services")
@@ -82,9 +87,9 @@ export default async function TenantHome({
   const firstServiceId = services?.[0]?.id ?? null;
 
   const ctaHref = firstServiceId
-    ? `/reservar?tenant=${encodeURIComponent(tenant.slug)}&service=${encodeURIComponent(
-        firstServiceId,
-      )}`
+    ? `/reservar?tenant=${encodeURIComponent(
+        tenant.slug,
+      )}&service=${encodeURIComponent(firstServiceId)}`
     : `/reservar?tenant=${encodeURIComponent(tenant.slug)}`;
 
   return (
@@ -117,22 +122,26 @@ export default async function TenantHome({
                   "Elige un servicio y un horario disponible. Confirmación inmediata por correo y enlace privado para gestionar tu cita."}
               </p>
 
-              <div className="mt-4 space-y-1 text-sm text-slate-700">
-                {(tenant.address || tenant.city) && (
-                  <p>
-                    {tenant.address ?? ""}
-                    {tenant.city ? ` · ${tenant.city}` : ""}
-                  </p>
-                )}
-                {tenant.phone_display && <p>📞 {tenant.phone_display}</p>}
-              </div>
+              {/* ✅ Mostrar u ocultar datos según configuración del tenant */}
+              {(showAddress || showPhone) && (
+                <div className="mt-4 space-y-1 text-sm text-slate-700">
+                  {showAddress && (tenant.address || tenant.city) && (
+                    <p>
+                      {tenant.address ?? ""}
+                      {tenant.city ? ` · ${tenant.city}` : ""}
+                    </p>
+                  )}
+                  {showPhone && tenant.phone_display && (
+                    <p>📞 {tenant.phone_display}</p>
+                  )}
+                </div>
+              )}
 
-              {/* ✅ CTA grande arriba */}
+              {/* ✅ CTA grande arriba (único CTA fuerte) */}
               <div className="mt-6">
                 <Link
                   href={ctaHref}
-                  className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-4 text-base font-extrabold text-white shadow-sm
-                             hover:opacity-90 active:scale-[0.99] sm:w-auto"
+                  className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-4 text-base font-extrabold text-white shadow-sm hover:opacity-90 active:scale-[0.99] sm:w-auto"
                 >
                   Reserva ahora
                 </Link>
@@ -161,17 +170,17 @@ export default async function TenantHome({
                     <div className="mt-1 flex items-center gap-2">
                       <div className="flex items-center">
                         {Array.from({ length: 5 }).map((_, i) => (
-                          <span
-                            key={i}
-                            className="text-slate-900"
-                            aria-hidden="true"
-                          >
+                          <span key={i} className="text-slate-900" aria-hidden="true">
                             ★
                           </span>
                         ))}
                       </div>
-                      <div className="text-xs font-semibold text-slate-700">5.0</div>
-                      <div className="text-xs text-slate-500">(Clientes felices)</div>
+                      <div className="text-xs font-semibold text-slate-700">
+                        5.0
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        (Clientes felices)
+                      </div>
                     </div>
                     <div className="mt-2 text-[11px] text-slate-500">
                       * Demo (luego lo conectamos a reseñas reales si quieres)
@@ -224,13 +233,7 @@ export default async function TenantHome({
               </p>
             </div>
 
-            {/* CTA secundario, por si el usuario scrollea */}
-            <Link
-              href={ctaHref}
-              className="hidden sm:inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:opacity-90"
-            >
-              Reservar
-            </Link>
+            {/* ❌ Quitamos el botón duplicado del header */}
           </div>
 
           {!services?.length ? (
@@ -244,30 +247,43 @@ export default async function TenantHome({
             </div>
           ) : (
             <ul className="mt-6 grid gap-3">
-              {services.map((s) => (
-                <li
-                  key={s.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0">
-                    <p className="font-extrabold text-slate-900">{s.name}</p>
+              {services.map((s) => {
+                const durationText =
+                  typeof s.duration_min === "number" ? `${s.duration_min} min` : null;
 
-                    <p className="mt-1 text-sm text-slate-600">
-                      {s.duration_min} min
-                      {s.price ? ` · $${s.price} ${s.currency ?? ""}` : ""}
-                    </p>
-                  </div>
+                const priceText =
+                  typeof s.price === "number"
+                    ? `$${s.price} ${s.currency ?? ""}`.trim()
+                    : null;
 
-                  <Link
-                    href={`/reservar?tenant=${encodeURIComponent(
-                      tenant.slug,
-                    )}&service=${encodeURIComponent(s.id)}`}
-                    className="inline-flex w-full items-center justify-center rounded-2xl bg-black px-4 py-3 text-sm font-extrabold text-white hover:opacity-90 sm:w-auto"
+                return (
+                  <li
+                    key={s.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    Reservar
-                  </Link>
-                </li>
-              ))}
+                    <div className="min-w-0">
+                      <p className="font-extrabold text-slate-900">{s.name}</p>
+
+                      {(durationText || priceText) && (
+                        <p className="mt-1 text-sm text-slate-600">
+                          {durationText}
+                          {durationText && priceText ? " · " : ""}
+                          {priceText}
+                        </p>
+                      )}
+                    </div>
+
+                    <Link
+                      href={`/reservar?tenant=${encodeURIComponent(
+                        tenant.slug,
+                      )}&service=${encodeURIComponent(s.id)}`}
+                      className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-extrabold text-white hover:opacity-90 sm:w-auto"
+                    >
+                      Ver horas
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
 

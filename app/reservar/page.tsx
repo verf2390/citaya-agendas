@@ -37,6 +37,7 @@ type Service = {
 
 const tz = "America/Santiago";
 const PAGE_SIZE = 7;
+const MAX_DAYS_AHEAD = 60;
 
 function formatCL(dateISO: string) {
   return new Intl.DateTimeFormat("es-CL", {
@@ -58,6 +59,7 @@ function onlyTimeCL(dateISO: string) {
 }
 
 function dayLabelCL(dayKey: string) {
+  // midday local-safe
   const d = new Date(`${dayKey}T12:00:00`);
   return new Intl.DateTimeFormat("es-CL", {
     timeZone: tz,
@@ -121,11 +123,25 @@ function moneyCLP(price: number, currency?: string | null) {
   return `${price} ${cur}`;
 }
 
+// 7 días desde hoy (en TZ) + offset
+function buildPageDays(pageStart: number) {
+  const base = new Date();
+  // ancla al mediodía local para evitar saltos por TZ/DST
+  base.setHours(12, 0, 0, 0);
+
+  return Array.from({ length: PAGE_SIZE }, (_, i) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + pageStart + i);
+    const key = dayKeyCL(d.toISOString());
+    return { dayKey: key, label: dayLabelCL(key) };
+  });
+}
+
 function ReservarInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // ✅ Resolver tenantSlug/serviceId SOLO en cliente (evita problemas por window en render)
+  // ✅ Resolver tenantSlug/serviceId SOLO en cliente
   const [tenantSlug, setTenantSlug] = useState<string>("");
   const [serviceId, setServiceId] = useState<string>("");
   const [tenantFromQuery, setTenantFromQuery] = useState<string>("");
@@ -152,7 +168,8 @@ function ReservarInner() {
   const [tenantId, setTenantId] = useState<string>("");
   const [tenantName, setTenantName] = useState<string>("");
 
-  const [daysAhead] = useState<number>(31);
+  // ✅ rango: suficiente para navegar hasta MAX_DAYS_AHEAD
+  const [daysAhead] = useState<number>(Math.max(31, MAX_DAYS_AHEAD + PAGE_SIZE));
   const [pageStart, setPageStart] = useState<number>(0);
 
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -226,7 +243,7 @@ function ReservarInner() {
     };
   }, [tenantSlug]);
 
-  // 2) Cargar profesionales por tenant (API server)
+  // 2) Cargar profesionales por tenant
   useEffect(() => {
     if (!tenantSlug) return;
 
@@ -249,7 +266,6 @@ function ReservarInner() {
 
         setProfessionals(list);
 
-        // ✅ FIX sin loop y sin “stale professionalId”
         setProfessionalId((prev) => {
           const exists = !!prev && list.some((p) => p.id === prev);
           return exists ? prev : (list[0]?.id ?? "");
@@ -260,8 +276,7 @@ function ReservarInner() {
           setProfessionals([]);
           setProfessionalId("");
           setLoadError(
-            (prev) =>
-              prev ?? "No se pudieron cargar profesionales del negocio.",
+            (prev) => prev ?? "No se pudieron cargar profesionales del negocio.",
           );
         }
       } finally {
@@ -302,12 +317,11 @@ function ReservarInner() {
 
         setServices(list);
 
-        // si viene serviceId, lo seleccionamos si existe; si no, fallback al primero
         if (serviceId) {
           const found = list.find((s) => s.id === serviceId) ?? null;
           setService(found ?? list[0] ?? null);
         } else {
-          setService(null); // mantiene tu UI: si no hay serviceId se muestra el picker
+          setService(null);
         }
       } catch (e: any) {
         console.error(e);
@@ -378,27 +392,20 @@ function ReservarInner() {
       const list = Array.isArray(json?.slots) ? (json.slots as Slot[]) : [];
       setSlots(list);
 
-      const first = list[0]?.start_at;
-      if (first) {
-        const key = dayKeyCL(first);
-        setSelectedDayKey(key);
-        setPageStart(0);
-      } else {
-        setSelectedDayKey("");
-        setPageStart(0);
-      }
+      // Selección inicial: primer día de la página actual (aunque no tenga slots)
+      const pageDays = buildPageDays(pageStart);
+      setSelectedDayKey(pageDays[0]?.dayKey ?? "");
     } catch (e: any) {
       console.error(e);
       setSlots([]);
       setLoadError(e?.message ?? "No se pudo cargar disponibilidad");
-      setSelectedDayKey("");
-      setPageStart(0);
+      const pageDays = buildPageDays(pageStart);
+      setSelectedDayKey(pageDays[0]?.dayKey ?? "");
     } finally {
       setLoadingSlots(false);
     }
-  }, [tenantId, professionalId, availabilityUrl]);
+  }, [tenantId, professionalId, availabilityUrl, pageStart]);
 
-  // ✅ recargar slots cuando cambie duration/service/pro/range
   useEffect(() => {
     if (!tenantId) return;
     if (!professionalId) return;
@@ -406,55 +413,42 @@ function ReservarInner() {
     loadSlots();
   }, [tenantId, professionalId, availabilityUrl, loadSlots]);
 
-  const grouped = useMemo(() => {
+  // Map dayKey -> slots
+  const slotsByDayKey = useMemo(() => {
     const map = new Map<string, Slot[]>();
-
     for (const s of slots) {
       const key = dayKeyCL(s.start_at);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(s);
     }
-
-    const keys = Array.from(map.keys()).sort((a, b) => (a < b ? -1 : 1));
-
-    return keys.map((k) => {
-      const daySlots = map.get(k)!;
-      daySlots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
-      return { dayKey: k, label: dayLabelCL(k), slots: daySlots };
-    });
+    // sort
+    for (const [k, arr] of map.entries()) {
+      arr.sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
+      map.set(k, arr);
+    }
+    return map;
   }, [slots]);
 
-  const visibleDays = useMemo(
-    () => grouped.slice(pageStart, pageStart + PAGE_SIZE),
-    [grouped, pageStart],
-  );
+  // 7 días visibles siempre
+  const visibleDays = useMemo(() => buildPageDays(pageStart), [pageStart]);
 
-  // ✅ sincroniza selectedDayKey/pageStart cuando cambia grouped real
+  // asegúrate que selectedDayKey siempre esté dentro de visibleDays
   useEffect(() => {
-    if (grouped.length === 0) return;
+    if (visibleDays.length === 0) return;
 
     if (!selectedDayKey) {
-      setSelectedDayKey(grouped[0].dayKey);
+      setSelectedDayKey(visibleDays[0].dayKey);
       return;
     }
 
-    const idx = grouped.findIndex((d) => d.dayKey === selectedDayKey);
-    if (idx === -1) {
-      setSelectedDayKey(grouped[0].dayKey);
-      setPageStart(0);
-      return;
-    }
+    const inPage = visibleDays.some((d) => d.dayKey === selectedDayKey);
+    if (!inPage) setSelectedDayKey(visibleDays[0].dayKey);
+  }, [visibleDays, selectedDayKey]);
 
-    const start = Math.floor(idx / PAGE_SIZE) * PAGE_SIZE;
-    if (start !== pageStart) setPageStart(start);
-  }, [grouped, selectedDayKey, pageStart]);
-
-  const activeDay = useMemo(
-    () => grouped.find((d) => d.dayKey === selectedDayKey) ?? null,
-    [grouped, selectedDayKey],
-  );
-
-  const activeSlots = activeDay?.slots ?? [];
+  const activeSlots = useMemo(() => {
+    if (!selectedDayKey) return [];
+    return slotsByDayKey.get(selectedDayKey) ?? [];
+  }, [slotsByDayKey, selectedDayKey]);
 
   const buckets = useMemo(() => {
     const b: Record<string, Slot[]> = { Mañana: [], Tarde: [], Noche: [] };
@@ -535,15 +529,31 @@ function ReservarInner() {
     }
   };
 
-  const goPrev7 = () => setPageStart((p) => Math.max(0, p - PAGE_SIZE));
+  const canPrev = pageStart > 0;
+  const canNext = pageStart + PAGE_SIZE < MAX_DAYS_AHEAD;
 
-  const goNext7 = () => {
-    const maxStart = Math.max(0, grouped.length - PAGE_SIZE);
-    setPageStart((p) => Math.min(maxStart, p + PAGE_SIZE));
+  const goPrev7 = () => {
+    setPageStart((p) => {
+      const next = Math.max(0, p - PAGE_SIZE);
+      return next;
+    });
+    setSelectedSlot(null);
   };
 
-  const canPrev = pageStart > 0;
-  const canNext = pageStart + PAGE_SIZE < grouped.length;
+  const goNext7 = () => {
+    setPageStart((p) => {
+      const maxStart = Math.max(0, MAX_DAYS_AHEAD - PAGE_SIZE);
+      const next = Math.min(maxStart, p + PAGE_SIZE);
+      return next;
+    });
+    setSelectedSlot(null);
+  };
+
+  // cuando cambia pageStart, selecciona el primer día visible
+  useEffect(() => {
+    const days = buildPageDays(pageStart);
+    if (days[0]?.dayKey) setSelectedDayKey(days[0].dayKey);
+  }, [pageStart]);
 
   const onClose = () => router.push("/");
 
@@ -800,9 +810,7 @@ function ReservarInner() {
                 <button
                   type="button"
                   onClick={loadSlots}
-                  disabled={
-                    saving || loadingSlots || !tenantId || !professionalId
-                  }
+                  disabled={saving || loadingSlots || !tenantId || !professionalId}
                   className="h-9 rounded-xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm"
                 >
                   {loadingSlots ? "Cargando..." : "Recargar"}
@@ -815,69 +823,70 @@ function ReservarInner() {
                 </div>
               ) : null}
 
-              {!loadingSlots && !loadError && grouped.length === 0 ? (
-                <div className="mt-3 rounded-xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
-                  No hay horarios disponibles en este rango.
-                </div>
-              ) : null}
+              <div className="mt-3">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={goPrev7}
+                    disabled={!canPrev}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
+                    title="Anterior"
+                    aria-label="Anterior"
+                  >
+                    <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </button>
 
-              {grouped.length > 0 ? (
-                <div className="mt-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={goPrev7}
-                      disabled={!canPrev}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
-                      title="Anterior"
-                      aria-label="Anterior"
-                    >
-                      <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-                    </button>
+                  <div className="-mx-1 flex-1 overflow-x-auto px-1">
+                    <div className="flex gap-2">
+                      {visibleDays.map((d) => {
+                        const active = d.dayKey === selectedDayKey;
+                        const hasSlots = (slotsByDayKey.get(d.dayKey)?.length ?? 0) > 0;
 
-                    <div className="-mx-1 flex-1 overflow-x-auto px-1">
-                      <div className="flex gap-2">
-                        {visibleDays.map((d) => {
-                          const active = d.dayKey === selectedDayKey;
-                          return (
-                            <button
-                              key={d.dayKey}
-                              type="button"
-                              onClick={() => {
-                                setSelectedDayKey(d.dayKey);
-                                setSelectedSlot(null);
-                              }}
-                              className={cn(
-                                "whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold ring-1 ring-border transition sm:px-4 sm:text-sm",
-                                active
-                                  ? "bg-foreground text-background"
-                                  : "bg-white hover:bg-muted",
-                              )}
-                            >
-                              <span className="capitalize">{d.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                        return (
+                          <button
+                            key={d.dayKey}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDayKey(d.dayKey);
+                              setSelectedSlot(null);
+                            }}
+                            className={cn(
+                              "whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold ring-1 ring-border transition sm:px-4 sm:text-sm",
+                              active
+                                ? "bg-foreground text-background"
+                                : "bg-white hover:bg-muted",
+                              !hasSlots ? "opacity-80" : "",
+                            )}
+                          >
+                            <span className="capitalize">{d.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={goNext7}
-                      disabled={!canNext}
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
-                      title="Siguiente"
-                      aria-label="Siguiente"
-                    >
-                      <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
-                    </button>
                   </div>
 
-                  <div className="mt-4">
-                    <div className="text-[11px] font-semibold sm:text-sm">
-                      Selecciona una hora
-                    </div>
+                  <button
+                    type="button"
+                    onClick={goNext7}
+                    disabled={!canNext}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
+                    title="Siguiente"
+                    aria-label="Siguiente"
+                  >
+                    <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </button>
+                </div>
 
+                <div className="mt-4">
+                  <div className="text-[11px] font-semibold sm:text-sm">
+                    Selecciona una hora
+                  </div>
+
+                  {activeSlots.length === 0 ? (
+                    <div className="mt-2 rounded-xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
+                      No hay horarios disponibles para este día.
+                    </div>
+                  ) : (
                     <div className="mt-2 grid gap-4">
                       {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
                         const list = buckets[label] ?? [];
@@ -918,21 +927,21 @@ function ReservarInner() {
                         );
                       })}
                     </div>
+                  )}
 
-                    <div className="mt-4 rounded-xl border bg-white p-3 text-[11px] sm:text-sm">
-                      <div className="text-muted-foreground">
-                        <span className="font-semibold text-foreground">
-                          Elegido:
-                        </span>{" "}
-                        {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
-                      </div>
-                      <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
-                        Las horas podrían agotarse. Agenda lo antes posible.
-                      </div>
+                  <div className="mt-4 rounded-xl border bg-white p-3 text-[11px] sm:text-sm">
+                    <div className="text-muted-foreground">
+                      <span className="font-semibold text-foreground">
+                        Elegido:
+                      </span>{" "}
+                      {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
+                    </div>
+                    <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
+                      Las horas podrían agotarse. Agenda lo antes posible.
                     </div>
                   </div>
                 </div>
-              ) : null}
+              </div>
             </section>
 
             {/* Datos */}

@@ -5,7 +5,7 @@ import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
-import type { DateSelectArg } from "@fullcalendar/core";
+import type { DateSelectArg, EventClickArg } from "@fullcalendar/core";
 
 type Block = {
   id?: string;
@@ -28,53 +28,25 @@ type Props = {
 const TZ_DEFAULT = "America/Santiago";
 
 /**
- * Devuelve "HH:MM" en la timezone indicada, desde un Date (que puede venir en UTC internamente).
- * Esto elimina el desfase.
+ * Helpers robustos: NO depender de Date/TZ para guardar.
+ * Tomamos startStr/endStr que FullCalendar genera según su vista/timeZone.
  */
-function toHHMMInTZ(date: Date, timeZone: string) {
-  // "sv-SE" asegura formato 00-23 y "HH:MM"
-  const s = new Intl.DateTimeFormat("sv-SE", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-
-  // En sv-SE normalmente viene "HH:MM"
-  return s;
+function hhmmFromStartStr(s: string) {
+  const t = s.split("T")[1] ?? "";
+  return t.slice(0, 5); // "HH:MM"
 }
 
-/**
- * day_of_week (0..6) calculado en TZ (Chile), no con date.getDay()
- */
-function dowInTZ(date: Date, timeZone: string) {
-  const wd = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    weekday: "short",
-  }).format(date);
-
-  const map: Record<string, number> = {
-    Sun: 0,
-    Mon: 1,
-    Tue: 2,
-    Wed: 3,
-    Thu: 4,
-    Fri: 5,
-    Sat: 6,
-  };
-
-  return map[wd] ?? date.getDay();
+function dowFromStartStr(s: string) {
+  const d = (s.split("T")[0] ?? "").trim(); // "YYYY-MM-DD"
+  const [y, m, day] = d.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, day || 1));
+  return dt.getUTCDay(); // 0..6
 }
 
-/**
- * Inicio de semana (Lunes) pero OJO:
- * Aquí usamos la fecha en "local del navegador".
- * Como FullCalendar maneja la vista con `timeZone={timeZone}`,
- * esto funciona bien para navegación semanal.
- */
+/** Ancla de semana a mediodía para evitar edgecases DST */
 function startOfWeekMonday(date: Date) {
   const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
+  d.setHours(12, 0, 0, 0);
   const diff = (d.getDay() + 6) % 7; // lunes => 0
   d.setDate(d.getDate() - diff);
   return d;
@@ -96,16 +68,8 @@ function dateForDowInWeek(weekDate: Date, dow: number) {
   return d;
 }
 
-/**
- * Mezcla baseDate + "HH:MM" para crear un Date.
- * Importante: FullCalendar aplicará la TZ que le pasas en `timeZone`.
- */
 function mergeDateAndTime(baseDate: Date, hhmm: string) {
-  const [hh, mm] = (hhmm || "00:00")
-    .slice(0, 5)
-    .split(":")
-    .map(Number);
-
+  const [hh, mm] = (hhmm || "00:00").slice(0, 5).split(":").map(Number);
   const d = new Date(baseDate);
   d.setHours(hh || 0, mm || 0, 0, 0);
   return d;
@@ -121,13 +85,75 @@ function normalizeBlock(b: Block): Block {
   };
 }
 
+/** Key estable para mapear eventos <-> blocks */
+function blockKey(b: Block) {
+  // preferimos id > tempId > fallback determinístico
+  return b.id ?? b.tempId ?? `${b.day_of_week}|${String(b.start_time).slice(0, 5)}|${String(b.end_time).slice(0, 5)}`;
+}
+
+// ISO local sin "Z" (para render consistente en FullCalendar)
+function toLocalIsoNoZ(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
+// Overlap (para bloquear solapes en UI y evitar 400)
+function hhmmToMin(hhmm: string) {
+  const [h, m] = (hhmm || "00:00").slice(0, 5).split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function overlaps(a: Block, b: Block) {
+  if (a.day_of_week !== b.day_of_week) return false;
+  const a0 = hhmmToMin(a.start_time);
+  const a1 = hhmmToMin(a.end_time);
+  const b0 = hhmmToMin(b.start_time);
+  const b1 = hhmmToMin(b.end_time);
+  return Math.max(a0, b0) < Math.min(a1, b1);
+}
+
+/**
+ * Dedupe SOLO de activos, pero sin perder inactivos.
+ * Esto es CLAVE para poder “borrar” horarios ya guardados:
+ * - si marcamos is_active=false, lo mantenemos en el estado
+ *   para que el botón Guardar pueda enviar esa info y el backend borre.
+ */
+function dedupePreservingInactive(list: Block[]) {
+  const inactive: Block[] = [];
+  const activeMap = new Map<string, Block>();
+
+  for (const b0 of list) {
+    const b = normalizeBlock(b0);
+
+    if (!b.is_active) {
+      inactive.push(b);
+      continue;
+    }
+
+    // Dedupe por “mismo slot exacto” (solo en activos)
+    const k = `${b.day_of_week}|${b.start_time}|${b.end_time}`;
+    const prev = activeMap.get(k);
+
+    if (!prev) activeMap.set(k, b);
+    else {
+      // Preferimos el que tiene id (persistido)
+      if (!prev.id && b.id) activeMap.set(k, b);
+    }
+  }
+
+  return [...inactive, ...Array.from(activeMap.values())];
+}
+
 export default function WeeklyAvailabilityCalendar({
   weekDate,
   blocks,
   onChangeBlocks,
   slotMinTime = "07:00:00",
   slotMaxTime = "21:00:00",
-  timeZone = TZ_DEFAULT,
+  timeZone = TZ_DEFAULT, // guardamos por startStr/endStr
 }: Props) {
   const calRef = useRef<FullCalendar | null>(null);
 
@@ -145,10 +171,7 @@ export default function WeeklyAvailabilityCalendar({
 
   const normalizedBlocks = useMemo(() => blocks.map(normalizeBlock), [blocks]);
 
-  /**
-   * Render de eventos desde blocks.
-   * (Los blocks YA vienen como HH:MM correctos; acá solo los pintamos.)
-   */
+  // Render: pintamos desde blocks (HH:MM) -> fechas de la semana
   const events = useMemo(() => {
     return normalizedBlocks
       .filter((b) => b.is_active)
@@ -156,57 +179,103 @@ export default function WeeklyAvailabilityCalendar({
         const base = dateForDowInWeek(weekDate, b.day_of_week);
         const start = mergeDateAndTime(base, b.start_time);
         const end = mergeDateAndTime(base, b.end_time);
-        const id = b.id ?? b.tempId ?? crypto.randomUUID();
+
+        const key = blockKey(b);
 
         return {
-          id,
-          start, // Date
-          end, // Date
+          id: key,
+          start: toLocalIsoNoZ(start),
+          end: toLocalIsoNoZ(end),
           title: "",
           classNames: ["avail-block"],
-          extendedProps: { blockKey: b.id ?? b.tempId ?? id },
+          extendedProps: { blockKey: key },
         };
       });
   }, [normalizedBlocks, weekDate]);
 
-  /**
-   * 🔥 ESTA es la parte crítica:
-   * Convertimos el Date que entrega FullCalendar a HH:MM pero EN timeZone (Chile).
-   * Esto elimina el desfase de 3h.
-   */
-  function eventToBlock(start: Date, end: Date, existing?: Block): Block {
+  // Guardado robusto: FullCalendar -> startStr/endStr -> Block (HH:MM + DOW)
+  function eventToBlockFromStr(startStr: string, endStr: string, existing?: Block): Block {
+    // Si es un bloque nuevo, asegurar tempId para que sea estable
+    const ensuredTempId = existing?.tempId ?? existing?.id ?? crypto.randomUUID();
+
     return normalizeBlock({
       ...(existing ?? {}),
-      day_of_week: dowInTZ(start, timeZone), // ✅ DOW en TZ
-      start_time: toHHMMInTZ(start, timeZone), // ✅ HH:MM en TZ
-      end_time: toHHMMInTZ(end, timeZone), // ✅ HH:MM en TZ
+      day_of_week: dowFromStartStr(startStr),
+      start_time: hhmmFromStartStr(startStr),
+      end_time: hhmmFromStartStr(endStr),
       is_active: true,
-      tempId: existing?.tempId ?? existing?.id ?? crypto.randomUUID(),
+      tempId: ensuredTempId,
     });
   }
 
+  function wouldOverlap(candidate: Block, ignoreKey?: string) {
+    return normalizedBlocks
+      .filter((b) => b.is_active)
+      .filter((b) => blockKey(b) !== ignoreKey)
+      .some((b) => overlaps(b, candidate));
+  }
+
   const onSelect = (arg: DateSelectArg) => {
-    const start = arg.start;
-    const end = arg.end;
-    if (!start || !end) return;
+    if (!arg.startStr || !arg.endStr) return;
 
-    if (end.getTime() - start.getTime() < 15 * 60 * 1000) return;
+    const candidate = eventToBlockFromStr(arg.startStr, arg.endStr);
 
-    onChangeBlocks([...normalizedBlocks, eventToBlock(start, end)]);
+    // Evita bloques demasiado pequeños
+    if (hhmmToMin(candidate.end_time) - hhmmToMin(candidate.start_time) < 15) return;
+
+    // 🚫 No permitir solapes (evita 400)
+    if (wouldOverlap(candidate)) {
+      alert("Ese bloque se cruza con otro horario. Ajusta la selección.");
+      return;
+    }
+
+    const next = dedupePreservingInactive([...normalizedBlocks, candidate]);
+    onChangeBlocks(next);
   };
 
   const updateFromEvent = (arg: any) => {
-    const start = arg.event.start as Date | null;
-    const end = arg.event.end as Date | null;
-    if (!start || !end) return;
+    const startStr = arg.event.startStr as string | undefined;
+    const endStr = arg.event.endStr as string | undefined;
+    if (!startStr || !endStr) return;
 
     const key = arg.event.extendedProps?.blockKey as string | undefined;
-    const idx = normalizedBlocks.findIndex((b) => (b.id ?? b.tempId) === key);
+    if (!key) return;
+
+    const idx = normalizedBlocks.findIndex((b) => blockKey(b) === key);
     if (idx === -1) return;
 
+    const updated = eventToBlockFromStr(startStr, endStr, normalizedBlocks[idx]);
+
+    if (wouldOverlap(updated, key)) {
+      alert("Ese cambio cruza con otro horario. Ajusta el bloque.");
+      arg.revert?.();
+      return;
+    }
+
     const next = normalizedBlocks.slice();
-    next[idx] = eventToBlock(start, end, normalizedBlocks[idx]);
-    onChangeBlocks(next);
+    next[idx] = updated;
+    onChangeBlocks(dedupePreservingInactive(next));
+  };
+
+  /**
+   * ✅ NUEVO: click para quitar/borrar bloque.
+   * - No lo eliminamos del array: lo marcamos is_active=false
+   * - Así el guardado puede “borrar en DB” (o desactivar).
+   */
+  const onEventClick = (arg: EventClickArg) => {
+    const key = (arg.event.extendedProps as any)?.blockKey as string | undefined;
+    if (!key) return;
+
+    const idx = normalizedBlocks.findIndex((b) => blockKey(b) === key);
+    if (idx === -1) return;
+
+    const ok = confirm("¿Quitar este horario?");
+    if (!ok) return;
+
+    const next = normalizedBlocks.slice();
+    next[idx] = { ...next[idx], is_active: false };
+
+    onChangeBlocks(dedupePreservingInactive(next));
   };
 
   return (
@@ -216,6 +285,7 @@ export default function WeeklyAvailabilityCalendar({
           background: rgba(34, 197, 94, 0.25) !important;
           border: 1px solid rgba(34, 197, 94, 0.55) !important;
           border-radius: 12px !important;
+          cursor: pointer !important;
         }
       `}</style>
 
@@ -224,7 +294,7 @@ export default function WeeklyAvailabilityCalendar({
         plugins={[timeGridPlugin, interactionPlugin]}
         initialView="timeGridWeek"
         initialDate={startOfWeekMonday(weekDate)}
-        timeZone={timeZone}      // ✅ MUY importante: FullCalendar trabaja en esta TZ
+        timeZone={timeZone}
         locale={esLocale}
         firstDay={1}
         headerToolbar={false}
@@ -235,6 +305,7 @@ export default function WeeklyAvailabilityCalendar({
         select={onSelect}
         eventDrop={updateFromEvent}
         eventResize={updateFromEvent}
+        eventClick={onEventClick} // ✅ NUEVO: borrar/desactivar con click
         slotMinTime={slotMinTime}
         slotMaxTime={slotMaxTime}
         height="auto"

@@ -17,6 +17,12 @@ function toIsoOrEmpty(v: string) {
   }
 }
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+} as const;
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -27,26 +33,41 @@ export async function GET(req: Request) {
     const endRaw = String(searchParams.get("end") || "").trim();
 
     if (!tenantId || !startRaw || !endRaw) {
-      return NextResponse.json({ error: "tenantId/start/end required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "tenantId/start/end required" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
     }
 
     if (!isUuid(tenantId)) {
-      return NextResponse.json({ error: "invalid tenantId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "invalid tenantId" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
     }
 
     if (professionalId && !isUuid(professionalId)) {
-      return NextResponse.json({ error: "invalid professionalId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "invalid professionalId" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
     }
 
     const start = toIsoOrEmpty(startRaw);
     const end = toIsoOrEmpty(endRaw);
 
     if (!start || !end) {
-      return NextResponse.json({ error: "invalid start/end date" }, { status: 400 });
+      return NextResponse.json(
+        { error: "invalid start/end date" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
     }
 
     if (!(new Date(end).getTime() > new Date(start).getTime())) {
-      return NextResponse.json({ error: "end must be > start" }, { status: 400 });
+      return NextResponse.json(
+        { error: "end must be > start" },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
     }
 
     let q = supabaseAdmin
@@ -79,15 +100,24 @@ export async function GET(req: Request) {
 
     if (error) {
       console.error("[admin/appointments/range] db error:", error);
-      return NextResponse.json({ error: "db error" }, { status: 500 });
+      return NextResponse.json(
+        { error: "db error" },
+        { status: 500, headers: NO_STORE_HEADERS },
+      );
     }
 
-    return NextResponse.json({
-      count: data?.length ?? 0,
-      items: data ?? [],
-    });
+    return NextResponse.json(
+      {
+        count: data?.length ?? 0,
+        items: data ?? [],
+      },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (e: any) {
     console.error("[admin/appointments/range] unexpected:", e?.message || e);
-    return NextResponse.json({ error: e?.message ?? "unexpected" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message ?? "unexpected" },
+      { status: 500, headers: NO_STORE_HEADERS },
+    );
   }
 }

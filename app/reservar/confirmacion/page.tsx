@@ -27,9 +27,14 @@ type Tenant = {
   slug: string;
   name: string;
   phone_display: string | null;
+
   // opcionales si ya los tienes en tu API:
   logo_url?: string | null;
   address_display?: string | null;
+
+  // ✅ Flags multi-tenant (si no existen, default true)
+  show_address_after_booking?: boolean | null;
+  show_phone_after_booking?: boolean | null;
 };
 
 type Professional = {
@@ -324,7 +329,10 @@ function ConfirmacionInner() {
           { cache: "no-store" },
         );
         const json = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(json?.error ?? "No se pudieron cargar profesionales");
+        if (!res.ok)
+          throw new Error(
+            json?.error ?? "No se pudieron cargar profesionales",
+          );
 
         const list = (Array.isArray(json) ? json : []) as Professional[];
         if (!cancelled) setProfessionals(list);
@@ -377,7 +385,8 @@ function ConfirmacionInner() {
             { cache: "no-store" },
           );
           const json2 = await res2.json().catch(() => null);
-          if (!res2.ok) throw new Error(json2?.error ?? "No se pudo cargar servicios");
+          if (!res2.ok)
+            throw new Error(json2?.error ?? "No se pudo cargar servicios");
 
           const list = (Array.isArray(json2) ? json2 : []) as Service[];
           const s = list.find((x) => x.id === serviceId) ?? null;
@@ -402,15 +411,22 @@ function ConfirmacionInner() {
       <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
         <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
           <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
-            <div className="text-lg font-extrabold">⚠️ No se pudo cargar la cita</div>
-            <div className="mt-2 text-sm font-semibold text-red-600">{error}</div>
+            <div className="text-lg font-extrabold">
+              ⚠️ No se pudo cargar la cita
+            </div>
+            <div className="mt-2 text-sm font-semibold text-red-600">
+              {error}
+            </div>
           </div>
         </div>
       </main>
     );
   }
 
-  const startLabel = useMemo(() => formatStartCL(appt?.start_at ?? ""), [appt?.start_at]);
+  const startLabel = useMemo(
+    () => formatStartCL(appt?.start_at ?? ""),
+    [appt?.start_at],
+  );
 
   // ✅ profesional real desde professionals[] + appt.professional_id
   const professionalName = useMemo(() => {
@@ -440,10 +456,16 @@ function ConfirmacionInner() {
   }, [service?.duration_minutes, appt?.start_at, appt?.end_at]);
 
   const businessName = tenant?.name ?? (loadingTenant ? "Cargando…" : "—");
-  const businessPhone = tenant?.phone_display ?? "";
+
+  // ✅ control multi-tenant (si no existen flags, default true)
+  const showAddrAfter = tenant?.show_address_after_booking ?? true;
+  const showPhoneAfter = tenant?.show_phone_after_booking ?? true;
+
+  const businessAddress = showAddrAfter ? safeText(tenant?.address_display) : "";
+  const businessPhone = showPhoneAfter ? (tenant?.phone_display ?? "") : "";
   const businessPhoneE164 = normalizeCLPhoneToE164(businessPhone);
 
-  // ✅ WhatsApp al negocio (tenant.phone_display)
+  // ✅ WhatsApp al negocio (tenant.phone_display) - solo si el tenant permite mostrar teléfono
   const waUrl = useMemo(() => {
     if (!businessPhoneE164) return "";
 
@@ -501,7 +523,8 @@ function ConfirmacionInner() {
       .filter(Boolean)
       .join("\n");
 
-    const location = safeText(tenant?.address_display);
+    // ✅ solo si el tenant permite mostrar dirección post-reserva
+    const location = businessAddress;
 
     const gcal = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
       title,
@@ -530,10 +553,10 @@ function ConfirmacionInner() {
     appt?.customer_email,
     appt?.customer_phone,
     businessName,
+    businessAddress,
     id,
     professionalName,
     service?.name,
-    tenant?.address_display,
   ]);
 
   const canCalendar = !!calendarLinks.gcal && !!calendarLinks.icsUrl;
@@ -549,7 +572,7 @@ function ConfirmacionInner() {
       appt?.customer_name ? `Cliente: ${appt.customer_name}` : "",
       appt?.customer_email ? `Correo: ${appt.customer_email}` : "",
       appt?.customer_phone ? `Celular: ${appt.customer_phone}` : "",
-      tenant?.address_display ? `Dirección: ${tenant.address_display}` : "",
+      businessAddress ? `Dirección: ${businessAddress}` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -558,11 +581,11 @@ function ConfirmacionInner() {
     appt?.customer_name,
     appt?.customer_phone,
     businessName,
+    businessAddress,
     durationLabel,
     professionalName,
     service?.name,
     startLabel,
-    tenant?.address_display,
   ]);
 
   async function onCopy() {
@@ -603,7 +626,8 @@ function ConfirmacionInner() {
                   ¡Reserva confirmada!
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  Guarda estos detalles. Si necesitas cambios, podrás gestionarlo desde el correo.
+                  Guarda estos detalles. Si necesitas cambios, podrás gestionarlo
+                  desde el correo.
                 </div>
               </div>
             </div>
@@ -660,9 +684,7 @@ function ConfirmacionInner() {
             <Row label="Cliente" value={appt?.customer_name ?? "—"} />
             <Row label="Correo" value={appt?.customer_email ?? "—"} />
             <Row label="Celular" value={appt?.customer_phone ?? "—"} />
-            {tenant?.address_display ? (
-              <Row label="Dirección" value={tenant.address_display} />
-            ) : null}
+            {businessAddress ? <Row label="Dirección" value={businessAddress} /> : null}
           </div>
 
           {/* Acciones */}
@@ -723,7 +745,8 @@ function ConfirmacionInner() {
 
             {!canOpenWA ? (
               <div className="sm:col-span-2 text-xs text-emerald-950/70">
-                No se pudo generar el link de WhatsApp (falta teléfono válido del negocio).
+                No se pudo generar el link de WhatsApp (falta teléfono válido del
+                negocio o el negocio ocultó su teléfono).
               </div>
             ) : !businessPhoneE164 ? (
               <div className="sm:col-span-2 text-xs text-emerald-950/70">
@@ -741,7 +764,9 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-3 rounded-2xl bg-white/60 px-4 py-3">
       <div className="text-xs font-extrabold text-emerald-950/70">{label}</div>
-      <div className="text-right text-sm font-semibold text-emerald-950">{value}</div>
+      <div className="text-right text-sm font-semibold text-emerald-950">
+        {value}
+      </div>
     </div>
   );
 }

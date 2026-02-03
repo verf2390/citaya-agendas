@@ -529,6 +529,9 @@ export default function AgendaPage() {
         })),
       };
 
+      console.log("[ADMIN upsert availability] payload =>", JSON.stringify(payload, null, 2));
+
+
       const res = await fetch("/api/admin/availability/upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
