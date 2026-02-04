@@ -14,6 +14,16 @@ function getSubdomainSlugFromHost(host: string) {
   return sub;
 }
 
+function initialsFromName(name?: string | null) {
+  const base = (name ?? "").trim();
+  if (!base) return "T";
+  return base
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join("");
+}
+
 export default async function TenantHome({
   params,
 }: {
@@ -46,7 +56,7 @@ export default async function TenantHome({
   const { data: tenant, error: tenantErr } = await supabase
     .from("tenants")
     .select(
-      "id, slug, name, address, city, phone_display, description, show_address, show_phone",
+      "id, slug, name, logo_url, address, city, phone_display, description, show_address, show_phone",
     )
     .eq("slug", slug)
     .single();
@@ -79,7 +89,7 @@ export default async function TenantHome({
   // ✅ Multi-professional por empresa (para credibilidad en la home)
   const { data: professionals } = await supabase
     .from("professionals")
-    .select("id, name, active")
+    .select("id, name, active, avatar_url")
     .eq("tenant_id", tenant.id)
     .eq("active", true)
     .order("created_at", { ascending: true });
@@ -109,9 +119,26 @@ export default async function TenantHome({
                 Reserva online
               </div>
 
-              <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-                {tenant.name}
-              </h1>
+              {/* ✅ Logo + Nombre */}
+              <div className="mt-4 flex items-center gap-3">
+                {tenant.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={tenant.logo_url}
+                    alt={`${tenant.name} logo`}
+                    className="h-12 w-12 rounded-2xl object-contain border border-slate-200 bg-white p-1"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-2xl grid place-items-center border border-slate-200 bg-slate-50 text-slate-800 font-extrabold">
+                    {initialsFromName(tenant.name)}
+                  </div>
+                )}
+
+                <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+                  {tenant.name}
+                </h1>
+              </div>
 
               <p className="mt-2 text-base font-semibold text-slate-700">
                 Reserva tu hora en segundos
@@ -170,7 +197,11 @@ export default async function TenantHome({
                     <div className="mt-1 flex items-center gap-2">
                       <div className="flex items-center">
                         {Array.from({ length: 5 }).map((_, i) => (
-                          <span key={i} className="text-slate-900" aria-hidden="true">
+                          <span
+                            key={i}
+                            className="text-slate-900"
+                            aria-hidden="true"
+                          >
                             ★
                           </span>
                         ))}
@@ -183,7 +214,7 @@ export default async function TenantHome({
                       </div>
                     </div>
                     <div className="mt-2 text-[11px] text-slate-500">
-                      * Demo (luego lo conectamos a reseñas reales si quieres)
+                      
                     </div>
                   </div>
 
@@ -198,9 +229,22 @@ export default async function TenantHome({
                         {professionals.slice(0, 6).map((p) => (
                           <span
                             key={p.id}
-                            className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700"
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700"
                           >
-                            {p.name}
+                            {p.avatar_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={p.avatar_url}
+                                alt={p.name}
+                                className="h-5 w-5 rounded-full object-cover border border-slate-200 bg-white"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span className="h-5 w-5 rounded-full bg-white border border-slate-200 grid place-items-center text-[10px] font-extrabold text-slate-700">
+                                {initialsFromName(p.name).slice(0, 1)}
+                              </span>
+                            )}
+                            <span>{p.name}</span>
                           </span>
                         ))}
                         {professionals.length > 6 ? (
@@ -227,7 +271,9 @@ export default async function TenantHome({
         <div className="rounded-3xl bg-white shadow-sm border border-slate-200 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-extrabold text-slate-900">Servicios</h2>
+              <h2 className="text-xl font-extrabold text-slate-900">
+                Servicios
+              </h2>
               <p className="text-sm text-slate-600 mt-1">
                 Elige un servicio para ver disponibilidad.
               </p>
@@ -242,14 +288,17 @@ export default async function TenantHome({
                 No hay servicios configurados aún.
               </p>
               <p className="text-sm text-slate-600 mt-1">
-                Crea al menos 1 registro en la tabla <b>services</b> para este tenant.
+                Crea al menos 1 registro en la tabla <b>services</b> para este
+                tenant.
               </p>
             </div>
           ) : (
             <ul className="mt-6 grid gap-3">
               {services.map((s) => {
                 const durationText =
-                  typeof s.duration_min === "number" ? `${s.duration_min} min` : null;
+                  typeof s.duration_min === "number"
+                    ? `${s.duration_min} min`
+                    : null;
 
                 const priceText =
                   typeof s.price === "number"
@@ -289,8 +338,9 @@ export default async function TenantHome({
 
           {/* Nota política (simple) */}
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-            <b>Política:</b> puedes reagendar o cancelar con al menos <b>3 horas</b> de anticipación
-            desde el enlace privado que llega al correo.
+            <b>Política:</b> puedes reagendar o cancelar con al menos{" "}
+            <b>3 horas</b> de anticipación desde el enlace privado que llega al
+            correo.
           </div>
         </div>
       </section>

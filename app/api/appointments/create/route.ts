@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import crypto from "crypto";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 /**
  * Token URL-safe para gestionar la cita desde link público
@@ -11,10 +10,7 @@ function makeManageToken() {
 }
 
 function getHostnameFromReq(req: Request) {
-  const host =
-    req.headers.get("x-forwarded-host") ||
-    req.headers.get("host") ||
-    "";
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
   return host.split(",")[0].trim().split(":")[0];
 }
 
@@ -24,22 +20,10 @@ function getHostnameFromReq(req: Request) {
  */
 function getPublicBaseUrl(req: Request) {
   const hostname = getHostnameFromReq(req);
-
-  // Si viene subdominio tipo fajaspaola.citaya.online => usamos ese host
-  if (hostname && hostname.includes(".")) {
-    return `https://${hostname}`;
-  }
-
-  // Fallback configurable
+  if (hostname && hostname.includes(".")) return `https://${hostname}`;
   return process.env.PUBLIC_BASE_URL || "https://app.citaya.online";
 }
 
-/**
- * Dispara n8n server-side para enviar correo de confirmación.
- * - No debe romper la reserva si n8n falla.
- * - Se protege con header secreto.
- * - Enviamos manage_token + public_base_url para link real.
- */
 async function triggerN8nConfirmation(payload: {
   appointment_id: string;
   manage_token: string;
@@ -91,6 +75,9 @@ export async function POST(req: Request) {
       customer_email,
       start_at,
       end_at,
+
+      // ✅ lo recibimos aunque NO exista en la tabla appointments
+      service_id,
     } = body ?? {};
 
     if (!tenant_id || !professional_id || !customer_name || !start_at || !end_at) {
@@ -98,11 +85,7 @@ export async function POST(req: Request) {
     }
 
     // Email mínimo
-    if (
-      !customer_email ||
-      typeof customer_email !== "string" ||
-      !customer_email.includes("@")
-    ) {
+    if (!customer_email || typeof customer_email !== "string" || !customer_email.includes("@")) {
       return NextResponse.json({ error: "Email inválido" }, { status: 400 });
     }
 
@@ -114,7 +97,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Rango horario inválido" }, { status: 400 });
     }
 
-    // ✅ Multi-tenant: validar que el profesional pertenece al tenant (anti-inyección)
+    // ✅ Validar que el profesional pertenece al tenant
     {
       const { data: prof, error: profErr } = await supabaseServer
         .from("professionals")
@@ -123,16 +106,36 @@ export async function POST(req: Request) {
         .eq("tenant_id", tenant_id)
         .maybeSingle();
 
-      if (profErr) {
-        return NextResponse.json({ error: profErr.message }, { status: 500 });
-      }
+      if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 });
       if (!prof?.id) {
         return NextResponse.json({ error: "Profesional inválido para este tenant" }, { status: 403 });
       }
     }
 
-    // ✅ Evitar choque horario (overlap) SOLO contra citas no canceladas
-    // Se cruza si: start < existing_end AND end > existing_start
+    // ✅ Resolver nombre del servicio (y opcional precio/moneda) desde services
+    let service_name: string | null = null;
+    let price: number | null = null;
+    let currency: string | null = null;
+
+    if (service_id) {
+      const { data: svc, error: svcErr } = await supabaseServer
+        .from("services")
+        .select("id, name, price, currency")
+        .eq("id", service_id)
+        .eq("tenant_id", tenant_id)
+        .maybeSingle();
+
+      if (svcErr) return NextResponse.json({ error: svcErr.message }, { status: 500 });
+      if (!svc?.id) {
+        return NextResponse.json({ error: "Servicio inválido para este tenant" }, { status: 403 });
+      }
+
+      service_name = svc.name ?? null;
+      price = typeof svc.price === "number" ? svc.price : null;
+      currency = (svc.currency ?? null) as any;
+    }
+
+    // ✅ Evitar choque horario SOLO contra citas no canceladas
     const { data: conflicts, error: conflictError } = await supabaseServer
       .from("appointments")
       .select("id")
@@ -143,9 +146,7 @@ export async function POST(req: Request) {
       .gt("end_at", startISO)
       .limit(1);
 
-    if (conflictError) {
-      return NextResponse.json({ error: conflictError.message }, { status: 500 });
-    }
+    if (conflictError) return NextResponse.json({ error: conflictError.message }, { status: 500 });
 
     if (conflicts && conflicts.length > 0) {
       return NextResponse.json(
@@ -154,10 +155,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Generar token de gestión
+    // ✅ Token de gestión
     const manage_token = makeManageToken();
 
-    // ✅ Insert de la cita (incluye manage_token)
+    // ✅ Insert de la cita (GUARDAMOS service_name)
     const { data, error } = await supabaseServer
       .from("appointments")
       .insert([
@@ -171,6 +172,13 @@ export async function POST(req: Request) {
           end_at: endISO,
           status: "confirmed",
 
+          // ✅ ahora sí queda guardado:
+          service_name,
+
+          // opcional (ya tienes columnas):
+          price,
+          currency,
+
           // anti-duplicado: por defecto aún NO enviada
           confirmation_sent_at: null,
 
@@ -181,11 +189,9 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // ✅ Disparar n8n SIN bloquear al usuario (máx 5s)
+    // ✅ Disparar n8n sin bloquear
     const public_base_url = getPublicBaseUrl(req);
 
     await triggerN8nConfirmation({

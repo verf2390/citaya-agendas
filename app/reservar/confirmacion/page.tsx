@@ -19,7 +19,7 @@ type Appt = {
   customer_email: string;
   professional_id: string;
   tenant_id: string;
-  service_id?: string | null;
+  service_name?: string | null; // ✅ viene desde DB
 };
 
 type Tenant = {
@@ -45,12 +45,6 @@ type Professional = {
   avatar_url?: string | null;
 };
 
-type Service = {
-  id: string;
-  name: string;
-  duration_minutes?: number | null;
-};
-
 function cn(...v: Array<string | false | null | undefined>) {
   return v.filter(Boolean).join(" ");
 }
@@ -59,20 +53,15 @@ function normalizeCLPhoneToE164(phone: string) {
   const raw = String(phone ?? "").trim();
   if (!raw) return "";
 
-  // si ya viene +56...
   if (raw.startsWith("+")) {
     const digits = raw.replace(/\D/g, "");
     return digits ? `+${digits}` : "";
   }
 
   const digits = raw.replace(/\D/g, "");
-
-  // casos típicos Chile
   if (digits.startsWith("569") && digits.length >= 11) return `+${digits}`;
   if (digits.startsWith("56") && digits.length >= 11) return `+${digits}`;
   if (digits.startsWith("9") && digits.length >= 9) return `+56${digits}`;
-
-  // fallback: si es largo, lo intento igual
   return digits.length >= 10 ? `+${digits}` : "";
 }
 
@@ -96,7 +85,6 @@ function formatDateYMD(date: Date) {
 }
 
 function toICSDateUTC(date: Date) {
-  // formato: YYYYMMDDTHHMMSSZ
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   const d = String(date.getUTCDate()).padStart(2, "0");
@@ -181,7 +169,6 @@ function ConfirmacionInner() {
   const sp = useSearchParams();
   const id = sp.get("id") ?? "";
 
-  // tenant por query o subdominio *.citaya.online
   const tenantFromQuery = sp.get("tenant") ?? "";
   const host =
     typeof window !== "undefined"
@@ -192,7 +179,6 @@ function ConfirmacionInner() {
     : "";
   const tenantSlugInitial = tenantFromQuery || tenantFromSubdomain;
 
-  // 🚫 Sin id = link inválido
   if (!id) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
@@ -215,11 +201,9 @@ function ConfirmacionInner() {
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
-  const [service, setService] = useState<Service | null>(null);
 
   const [loadingTenant, setLoadingTenant] = useState(false);
   const [loadingPros, setLoadingPros] = useState(false);
-  const [loadingService, setLoadingService] = useState(false);
 
   const [copied, setCopied] = useState(false);
 
@@ -256,7 +240,7 @@ function ConfirmacionInner() {
     };
   }, [id]);
 
-  // 2) Resolver tenant: preferimos slug (si existe), si no, intentamos por appt.tenant_id (si tienes endpoint)
+  // 2) Resolver tenant: preferimos slug (si existe), si no, intentamos por appt.tenant_id
   useEffect(() => {
     let cancelled = false;
 
@@ -271,7 +255,6 @@ function ConfirmacionInner() {
     }
 
     async function loadTenantById(tenantId: string) {
-      // opcional: si no existe este endpoint, fallará y lo ignoramos
       const res = await fetch(
         `/api/tenants/by-id?id=${encodeURIComponent(tenantId)}`,
         { cache: "no-store" },
@@ -285,14 +268,12 @@ function ConfirmacionInner() {
       try {
         setLoadingTenant(true);
 
-        // 1) si hay slug, úsalo
         if (tenantSlugInitial) {
           const t = await loadTenantBySlug(tenantSlugInitial);
           if (!cancelled) setTenant(t);
           return;
         }
 
-        // 2) si no hay slug, intenta por tenant_id de la cita (cuando ya está)
         const tid = appt?.tenant_id;
         if (tid) {
           try {
@@ -314,7 +295,7 @@ function ConfirmacionInner() {
     };
   }, [tenantSlugInitial, appt?.tenant_id]);
 
-  // 3) Cargar profesionales por tenantSlug (si existe). Si no hay slug, no es crítico: mostramos fallback.
+  // 3) Cargar profesionales por tenantSlug (si existe)
   useEffect(() => {
     const tenantSlug = tenantSlugInitial || tenant?.slug || "";
     if (!tenantSlug) return;
@@ -330,9 +311,7 @@ function ConfirmacionInner() {
         );
         const json = await res.json().catch(() => null);
         if (!res.ok)
-          throw new Error(
-            json?.error ?? "No se pudieron cargar profesionales",
-          );
+          throw new Error(json?.error ?? "No se pudieron cargar profesionales");
 
         const list = (Array.isArray(json) ? json : []) as Professional[];
         if (!cancelled) setProfessionals(list);
@@ -348,64 +327,6 @@ function ConfirmacionInner() {
     };
   }, [tenantSlugInitial, tenant?.slug]);
 
-  // 4) Cargar servicio (by-id preferido; fallback by-tenant si existe tu endpoint)
-  useEffect(() => {
-    const serviceId = appt?.service_id ?? "";
-    if (!serviceId) {
-      setService(null);
-      return;
-    }
-
-    const tenantSlug = tenantSlugInitial || tenant?.slug || "";
-
-    let cancelled = false;
-    setLoadingService(true);
-
-    (async () => {
-      try {
-        // intentamos by-id
-        try {
-          const res = await fetch(
-            `/api/services/by-id?id=${encodeURIComponent(serviceId)}`,
-            { cache: "no-store" },
-          );
-          const json = await res.json().catch(() => null);
-          if (res.ok && json?.ok && json?.service) {
-            if (!cancelled) setService(json.service as Service);
-            return;
-          }
-        } catch {
-          // ignore y fallback
-        }
-
-        // fallback: by-tenant devuelve lista y buscamos por id
-        if (tenantSlug) {
-          const res2 = await fetch(
-            `/api/services/by-tenant?tenant=${encodeURIComponent(tenantSlug)}`,
-            { cache: "no-store" },
-          );
-          const json2 = await res2.json().catch(() => null);
-          if (!res2.ok)
-            throw new Error(json2?.error ?? "No se pudo cargar servicios");
-
-          const list = (Array.isArray(json2) ? json2 : []) as Service[];
-          const s = list.find((x) => x.id === serviceId) ?? null;
-          if (!cancelled) setService(s);
-          return;
-        }
-
-        if (!cancelled) setService(null);
-      } finally {
-        if (!cancelled) setLoadingService(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [appt?.service_id, tenantSlugInitial, tenant?.slug]);
-
-  // 🚫 Error cargando cita
   if (error) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
@@ -428,24 +349,18 @@ function ConfirmacionInner() {
     [appt?.start_at],
   );
 
-  // ✅ profesional real desde professionals[] + appt.professional_id
   const professionalName = useMemo(() => {
     const proId = appt?.professional_id;
     if (!proId) return "—";
     return professionals.find((p) => p.id === proId)?.name ?? "Profesional";
   }, [appt?.professional_id, professionals]);
 
+  // ✅ Servicio desde la cita (DB): appointments.service_name
   const serviceLabel = useMemo(() => {
-    if (loadingService) return "Cargando…";
-    if (!appt?.service_id) return "—";
-    return service?.name ?? "Servicio";
-  }, [loadingService, appt?.service_id, service?.name]);
+    return (appt?.service_name ?? "").trim() || "—";
+  }, [appt?.service_name]);
 
   const durationLabel = useMemo(() => {
-    // si viene duration por servicio, úsala; si no, calcula por start/end
-    const fromService = service?.duration_minutes ?? null;
-    if (fromService && fromService > 0) return `${fromService} min`;
-
     const a = appt?.start_at ? new Date(appt.start_at).getTime() : 0;
     const b = appt?.end_at ? new Date(appt.end_at).getTime() : 0;
     if (a && b && b > a) {
@@ -453,11 +368,10 @@ function ConfirmacionInner() {
       if (mins > 0) return `${mins} min`;
     }
     return "—";
-  }, [service?.duration_minutes, appt?.start_at, appt?.end_at]);
+  }, [appt?.start_at, appt?.end_at]);
 
   const businessName = tenant?.name ?? (loadingTenant ? "Cargando…" : "—");
 
-  // ✅ control multi-tenant (si no existen flags, default true)
   const showAddrAfter = tenant?.show_address_after_booking ?? true;
   const showPhoneAfter = tenant?.show_phone_after_booking ?? true;
 
@@ -465,7 +379,6 @@ function ConfirmacionInner() {
   const businessPhone = showPhoneAfter ? (tenant?.phone_display ?? "") : "";
   const businessPhoneE164 = normalizeCLPhoneToE164(businessPhone);
 
-  // ✅ WhatsApp al negocio (tenant.phone_display) - solo si el tenant permite mostrar teléfono
   const waUrl = useMemo(() => {
     if (!businessPhoneE164) return "";
 
@@ -473,7 +386,7 @@ function ConfirmacionInner() {
       [
         "Hola 👋, acabo de reservar una cita:",
         "",
-        `• Servicio: ${service?.name ?? "—"}`,
+        `• Servicio: ${serviceLabel}`,
         `• Fecha/Hora: ${startLabel}`,
         `• Profesional: ${professionalName}`,
         `• Nombre: ${appt?.customer_name ?? "—"}`,
@@ -491,30 +404,22 @@ function ConfirmacionInner() {
     return isMobile
       ? `https://api.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`
       : `https://web.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`;
-  }, [
-    businessPhoneE164,
-    appt?.customer_name,
-    professionalName,
-    service?.name,
-    startLabel,
-  ]);
+  }, [businessPhoneE164, appt?.customer_name, professionalName, serviceLabel, startLabel]);
 
   const canOpenWA = !!waUrl;
 
-  // ✅ Calendario
   const calendarLinks = useMemo(() => {
-    const title = `${businessName} - ${service?.name ?? "Cita"}`;
+    const title = `${businessName} - ${serviceLabel || "Cita"}`;
     const start = appt?.start_at ? new Date(appt.start_at) : null;
     const end = appt?.end_at ? new Date(appt.end_at) : null;
     if (!start || !end) return { gcal: "", icsUrl: "" };
 
-    // Google Calendar expects: YYYYMMDDTHHMMSSZ / UTC
     const startUTC = toICSDateUTC(new Date(start.toISOString()));
     const endUTC = toICSDateUTC(new Date(end.toISOString()));
     const dates = `${startUTC}/${endUTC}`;
 
     const details = [
-      `Servicio: ${service?.name ?? "—"}`,
+      `Servicio: ${serviceLabel}`,
       `Profesional: ${professionalName}`,
       `Cliente: ${appt?.customer_name ?? "—"}`,
       appt?.customer_email ? `Correo: ${appt.customer_email}` : "",
@@ -523,7 +428,6 @@ function ConfirmacionInner() {
       .filter(Boolean)
       .join("\n");
 
-    // ✅ solo si el tenant permite mostrar dirección post-reserva
     const location = businessAddress;
 
     const gcal = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
@@ -532,7 +436,6 @@ function ConfirmacionInner() {
       details,
     )}&location=${encodeURIComponent(location)}`;
 
-    // ICS “download” via data URL (simple y funciona sin backend)
     const ics = buildICS({
       title,
       description: details,
@@ -556,17 +459,16 @@ function ConfirmacionInner() {
     businessAddress,
     id,
     professionalName,
-    service?.name,
+    serviceLabel,
   ]);
 
   const canCalendar = !!calendarLinks.gcal && !!calendarLinks.icsUrl;
 
-  // ✅ Copiar detalles
   const detailsToCopy = useMemo(() => {
     return [
       "📌 Detalles de tu reserva",
       `Negocio: ${businessName}`,
-      `Servicio: ${service?.name ?? "—"} (${durationLabel})`,
+      `Servicio: ${serviceLabel} (${durationLabel})`,
       `Profesional: ${professionalName}`,
       `Fecha/Hora: ${startLabel}`,
       appt?.customer_name ? `Cliente: ${appt.customer_name}` : "",
@@ -584,7 +486,7 @@ function ConfirmacionInner() {
     businessAddress,
     durationLabel,
     professionalName,
-    service?.name,
+    serviceLabel,
     startLabel,
   ]);
 
@@ -594,7 +496,6 @@ function ConfirmacionInner() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
     } catch {
-      // fallback old school
       try {
         const ta = document.createElement("textarea");
         ta.value = detailsToCopy;
@@ -604,16 +505,13 @@ function ConfirmacionInner() {
         ta.remove();
         setCopied(true);
         setTimeout(() => setCopied(false), 1400);
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
       <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
-        {/* Header premium */}
         <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -645,7 +543,6 @@ function ConfirmacionInner() {
           ) : null}
         </div>
 
-        {/* Ticket / resumen */}
         <section className="mt-4 rounded-3xl border border-emerald-200 bg-emerald-50/60 p-6 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -687,7 +584,6 @@ function ConfirmacionInner() {
             {businessAddress ? <Row label="Dirección" value={businessAddress} /> : null}
           </div>
 
-          {/* Acciones */}
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <a
               href={canCalendar ? calendarLinks.gcal : undefined}

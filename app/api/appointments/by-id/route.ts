@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabaseServer
     .from("appointments")
     .select(
-      "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id"
+      "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id, service_name"
     )
     .eq("id", id)
     .single();
