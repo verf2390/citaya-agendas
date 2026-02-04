@@ -5,6 +5,10 @@ type TenantRow = {
   id: string;
   slug: string;
   name: string;
+
+  // ✅ NUEVO (por-tenant)
+  min_lead_time_min: number | null;
+
   phone_display: string | null;
   logo_url: string | null;
   description: string | null;
@@ -24,12 +28,12 @@ function isObject(v: unknown): v is Record<string, unknown> {
 function looksLikeTenantRow(v: unknown): v is TenantRow {
   if (!isObject(v)) return false;
 
-  // mínimos para considerarlo tenant válido
   return (
     typeof v.id === "string" &&
     typeof v.slug === "string" &&
     typeof v.name === "string" &&
-    (v.phone_display === null || typeof v.phone_display === "string")
+    (v.phone_display === null || typeof v.phone_display === "string") &&
+    (v.min_lead_time_min === null || typeof v.min_lead_time_min === "number")
   );
 }
 
@@ -48,6 +52,7 @@ export async function GET(req: Request) {
         "id",
         "slug",
         "name",
+        "min_lead_time_min",
         "phone_display",
         "logo_url",
         "description",
@@ -79,11 +84,14 @@ export async function GET(req: Request) {
   const address_display =
     [data.address, data.city].filter(Boolean).join(" · ").trim() || null;
 
-  // ✅ No usamos spread (evita el error TS)
   const tenant = {
     id: data.id,
     slug: data.slug,
     name: data.name,
+
+    // ✅ NUEVO
+    min_lead_time_min: data.min_lead_time_min,
+
     phone_display: data.phone_display,
     logo_url: data.logo_url,
     description: data.description,

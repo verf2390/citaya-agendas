@@ -39,6 +39,11 @@ const tz = "America/Santiago";
 const PAGE_SIZE = 7;
 const MAX_DAYS_AHEAD = 60;
 
+// ✅ default lead time (fallback)
+const DEFAULT_MIN_LEAD_TIME_MIN = 120; // 2 horas
+// ❌ ya NO usar leadTimeMin global (ahora es por-tenant)
+// const leadTimeMin = DEFAULT_MIN_LEAD_TIME_MIN;
+
 function formatCL(dateISO: string) {
   return new Intl.DateTimeFormat("es-CL", {
     timeZone: tz,
@@ -59,7 +64,6 @@ function onlyTimeCL(dateISO: string) {
 }
 
 function dayLabelCL(dayKey: string) {
-  // midday local-safe
   const d = new Date(`${dayKey}T12:00:00`);
   return new Intl.DateTimeFormat("es-CL", {
     timeZone: tz,
@@ -84,7 +88,7 @@ function dayKeyCL(iso: string) {
   return `${y}-${m}-${da}`;
 }
 
-function slotBucketLabel(iso: string) {
+function slotBucketLabel(iso: string): "Mañana" | "Tarde" | "Noche" {
   const hour = Number(
     new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
@@ -123,10 +127,8 @@ function moneyCLP(price: number, currency?: string | null) {
   return `${price} ${cur}`;
 }
 
-// 7 días desde hoy (en TZ) + offset
 function buildPageDays(pageStart: number) {
   const base = new Date();
-  // ancla al mediodía local para evitar saltos por TZ/DST
   base.setHours(12, 0, 0, 0);
 
   return Array.from({ length: PAGE_SIZE }, (_, i) => {
@@ -141,7 +143,6 @@ function ReservarInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // ✅ Resolver tenantSlug/serviceId SOLO en cliente
   const [tenantSlug, setTenantSlug] = useState<string>("");
   const [serviceId, setServiceId] = useState<string>("");
   const [tenantFromQuery, setTenantFromQuery] = useState<string>("");
@@ -168,7 +169,11 @@ function ReservarInner() {
   const [tenantId, setTenantId] = useState<string>("");
   const [tenantName, setTenantName] = useState<string>("");
 
-  // ✅ rango: suficiente para navegar hasta MAX_DAYS_AHEAD
+  // ✅ NUEVO: lead time por-tenant (fallback 120)
+  const [minLeadTimeMin, setMinLeadTimeMin] = useState<number>(
+    DEFAULT_MIN_LEAD_TIME_MIN,
+  );
+
   const [daysAhead] = useState<number>(Math.max(31, MAX_DAYS_AHEAD + PAGE_SIZE));
   const [pageStart, setPageStart] = useState<number>(0);
 
@@ -186,7 +191,6 @@ function ReservarInner() {
   const [selectedDayKey, setSelectedDayKey] = useState<string>("");
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
 
-  // form
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -197,11 +201,11 @@ function ReservarInner() {
   const phoneNorm = useMemo(() => normalizeCLPhone(phone), [phone]);
   const isProd = process.env.NODE_ENV === "production";
 
-  // 0) Validación rápida de tenantSlug
   useEffect(() => {
     if (!tenantSlug) {
       setTenantId("");
       setTenantName("");
+      setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
       setLoadError("Falta tenant en la URL (subdominio o ?tenant=).");
     }
   }, [tenantSlug]);
@@ -227,12 +231,20 @@ function ReservarInner() {
         if (!cancelled) {
           setTenantId(json?.tenant?.id ?? "");
           setTenantName(json?.tenant?.name ?? "");
+
+          // ✅ NUEVO: setear lead time por-tenant
+          setMinLeadTimeMin(
+            typeof json?.tenant?.min_lead_time_min === "number"
+              ? json.tenant.min_lead_time_min
+              : DEFAULT_MIN_LEAD_TIME_MIN,
+          );
         }
       } catch (e: any) {
         console.error(e);
         if (!cancelled) {
           setTenantId("");
           setTenantName("");
+          setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
           setLoadError(e?.message ?? "No se pudo cargar tenant");
         }
       }
@@ -392,7 +404,6 @@ function ReservarInner() {
       const list = Array.isArray(json?.slots) ? (json.slots as Slot[]) : [];
       setSlots(list);
 
-      // Selección inicial: primer día de la página actual (aunque no tenga slots)
       const pageDays = buildPageDays(pageStart);
       setSelectedDayKey(pageDays[0]?.dayKey ?? "");
     } catch (e: any) {
@@ -421,7 +432,6 @@ function ReservarInner() {
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(s);
     }
-    // sort
     for (const [k, arr] of map.entries()) {
       arr.sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
       map.set(k, arr);
@@ -429,10 +439,8 @@ function ReservarInner() {
     return map;
   }, [slots]);
 
-  // 7 días visibles siempre
   const visibleDays = useMemo(() => buildPageDays(pageStart), [pageStart]);
 
-  // asegúrate que selectedDayKey siempre esté dentro de visibleDays
   useEffect(() => {
     if (visibleDays.length === 0) return;
 
@@ -445,17 +453,29 @@ function ReservarInner() {
     if (!inPage) setSelectedDayKey(visibleDays[0].dayKey);
   }, [visibleDays, selectedDayKey]);
 
-  const activeSlots = useMemo(() => {
+  // ✅ slots del día seleccionado filtrados por lead time por-tenant
+  const activeSlots: Slot[] = useMemo(() => {
     if (!selectedDayKey) return [];
-    return slotsByDayKey.get(selectedDayKey) ?? [];
-  }, [slotsByDayKey, selectedDayKey]);
 
+    const list = slotsByDayKey.get(selectedDayKey) ?? [];
+    const minTs = Date.now() + (minLeadTimeMin || 0) * 60_000;
+
+    return list.filter((slot) => new Date(slot.start_at).getTime() >= minTs);
+  }, [slotsByDayKey, selectedDayKey, minLeadTimeMin]);
+
+  // ✅ buckets (necesario para el render)
   const buckets = useMemo(() => {
-    const b: Record<string, Slot[]> = { Mañana: [], Tarde: [], Noche: [] };
-    for (const s of activeSlots) {
-      const key = slotBucketLabel(s.start_at);
-      (b[key] ?? (b[key] = [])).push(s);
+    const b: Record<"Mañana" | "Tarde" | "Noche", Slot[]> = {
+      Mañana: [],
+      Tarde: [],
+      Noche: [],
+    };
+
+    for (const slot of activeSlots) {
+      const key = slotBucketLabel(slot.start_at);
+      b[key].push(slot);
     }
+
     return b;
   }, [activeSlots]);
 
@@ -492,6 +512,7 @@ function ReservarInner() {
         end_at: selectedSlot.end_at,
         status: "confirmed",
         service_id: serviceId || null,
+        currency: (service?.currency || "CLP").toUpperCase(),
       };
 
       const res = await fetch("/api/appointments/create", {
@@ -533,23 +554,18 @@ function ReservarInner() {
   const canNext = pageStart + PAGE_SIZE < MAX_DAYS_AHEAD;
 
   const goPrev7 = () => {
-    setPageStart((p) => {
-      const next = Math.max(0, p - PAGE_SIZE);
-      return next;
-    });
+    setPageStart((p) => Math.max(0, p - PAGE_SIZE));
     setSelectedSlot(null);
   };
 
   const goNext7 = () => {
     setPageStart((p) => {
       const maxStart = Math.max(0, MAX_DAYS_AHEAD - PAGE_SIZE);
-      const next = Math.min(maxStart, p + PAGE_SIZE);
-      return next;
+      return Math.min(maxStart, p + PAGE_SIZE);
     });
     setSelectedSlot(null);
   };
 
-  // cuando cambia pageStart, selecciona el primer día visible
   useEffect(() => {
     const days = buildPageDays(pageStart);
     if (days[0]?.dayKey) setSelectedDayKey(days[0].dayKey);
@@ -613,6 +629,9 @@ function ReservarInner() {
             </div>
             <div>
               <b>professional</b>: {professionalId || "—"}
+            </div>
+            <div>
+              <b>leadTime</b>: {minLeadTimeMin} min
             </div>
           </div>
         ) : null}
@@ -760,7 +779,6 @@ function ReservarInner() {
                         <div className="flex items-center gap-3">
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-muted/40 ring-1 ring-border sm:h-12 sm:w-12">
                             {pro.avatar_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={pro.avatar_url}
                                 alt={pro.name}
@@ -810,7 +828,9 @@ function ReservarInner() {
                 <button
                   type="button"
                   onClick={loadSlots}
-                  disabled={saving || loadingSlots || !tenantId || !professionalId}
+                  disabled={
+                    saving || loadingSlots || !tenantId || !professionalId
+                  }
                   className="h-9 rounded-xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm"
                 >
                   {loadingSlots ? "Cargando..." : "Recargar"}
@@ -840,7 +860,12 @@ function ReservarInner() {
                     <div className="flex gap-2">
                       {visibleDays.map((d) => {
                         const active = d.dayKey === selectedDayKey;
-                        const hasSlots = (slotsByDayKey.get(d.dayKey)?.length ?? 0) > 0;
+
+                        // ✅ NUEVO: hasSlots considera el lead time por-tenant
+                        const minTs = Date.now() + (minLeadTimeMin || 0) * 60_000;
+                        const hasSlots = (slotsByDayKey.get(d.dayKey) ?? []).some(
+                          (slot) => new Date(slot.start_at).getTime() >= minTs,
+                        );
 
                         return (
                           <button
@@ -899,7 +924,7 @@ function ReservarInner() {
                             </div>
 
                             <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                              {list.map((s) => {
+                              {list.map((s: Slot) => {
                                 const active =
                                   selectedSlot?.start_at === s.start_at;
                                 return (

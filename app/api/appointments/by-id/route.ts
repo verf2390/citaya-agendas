@@ -9,10 +9,37 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Falta id" }, { status: 400 });
   }
 
+  // ✅ Mismo endpoint, misma lógica, solo agregamos campos para n8n:
+  // - manage_token (para construir manage_url correcto)
+  // - datos del tenant (admin_email, address, city, logo_url, etc.)
   const { data, error } = await supabaseServer
     .from("appointments")
     .select(
-      "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id, service_name"
+      `
+      id,
+      start_at,
+      end_at,
+      customer_name,
+      customer_phone,
+      customer_email,
+      professional_id,
+      tenant_id,
+      service_name,
+      manage_token,
+      tenants (
+        id,
+        name,
+        slug,
+        base_url,
+        admin_email,
+        address,
+        city,
+        phone_display,
+        logo_url,
+        show_address_after_booking,
+        show_phone_after_booking
+      )
+    `
     )
     .eq("id", id)
     .single();
@@ -24,5 +51,13 @@ export async function GET(req: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, appointment: data });
+  // ✅ Mantiene "appointment" como antes, pero además entrega "tenant"
+  // para que el Code in JS lo tome y arme Reply-To / dirección / logo.
+  const tenant = (data as any)?.tenants ?? null;
+
+  return NextResponse.json({
+    ok: true,
+    appointment: data,
+    tenant,
+  });
 }
