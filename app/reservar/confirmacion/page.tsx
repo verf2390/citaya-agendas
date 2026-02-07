@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   BadgeCheck,
@@ -8,6 +9,9 @@ import {
   Copy,
   MessageCircle,
   ShieldCheck,
+  ArrowLeft,
+  RefreshCw,
+  FileText,
 } from "lucide-react";
 
 type Appt = {
@@ -20,6 +24,7 @@ type Appt = {
   professional_id: string;
   tenant_id: string;
   service_name?: string | null; // ✅ viene desde DB
+  description?: string | null;  // ✅ NUEVO: viene desde DB (text)
 };
 
 type Tenant = {
@@ -28,11 +33,9 @@ type Tenant = {
   name: string;
   phone_display: string | null;
 
-  // opcionales si ya los tienes en tu API:
   logo_url?: string | null;
   address_display?: string | null;
 
-  // ✅ Flags multi-tenant (si no existen, default true)
   show_address_after_booking?: boolean | null;
   show_phone_after_booking?: boolean | null;
 };
@@ -188,6 +191,24 @@ function ConfirmacionInner() {
             <div className="mt-2 text-sm font-semibold text-red-600">
               Falta el id de la cita.
             </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 rounded-2xl border bg-white/70 px-4 py-2 text-sm font-extrabold hover:bg-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Volver al inicio
+              </Link>
+
+              <Link
+                href="/reservar"
+                className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2 text-sm font-extrabold text-background hover:opacity-95"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reservar otra hora
+              </Link>
+            </div>
           </div>
         </div>
       </main>
@@ -240,7 +261,7 @@ function ConfirmacionInner() {
     };
   }, [id]);
 
-  // 2) Resolver tenant: preferimos slug (si existe), si no, intentamos por appt.tenant_id
+  // 2) Resolver tenant
   useEffect(() => {
     let cancelled = false;
 
@@ -335,8 +356,24 @@ function ConfirmacionInner() {
             <div className="text-lg font-extrabold">
               ⚠️ No se pudo cargar la cita
             </div>
-            <div className="mt-2 text-sm font-semibold text-red-600">
-              {error}
+            <div className="mt-2 text-sm font-semibold text-red-600">{error}</div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 rounded-2xl border bg-white/70 px-4 py-2 text-sm font-extrabold hover:bg-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Volver al inicio
+              </Link>
+
+              <Link
+                href="/reservar"
+                className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2 text-sm font-extrabold text-background hover:opacity-95"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reservar otra hora
+              </Link>
             </div>
           </div>
         </div>
@@ -355,10 +392,14 @@ function ConfirmacionInner() {
     return professionals.find((p) => p.id === proId)?.name ?? "Profesional";
   }, [appt?.professional_id, professionals]);
 
-  // ✅ Servicio desde la cita (DB): appointments.service_name
   const serviceLabel = useMemo(() => {
     return (appt?.service_name ?? "").trim() || "—";
   }, [appt?.service_name]);
+
+  const descriptionText = useMemo(() => {
+    const t = safeText(appt?.description);
+    return t;
+  }, [appt?.description]);
 
   const durationLabel = useMemo(() => {
     const a = appt?.start_at ? new Date(appt.start_at).getTime() : 0;
@@ -382,6 +423,12 @@ function ConfirmacionInner() {
   const waUrl = useMemo(() => {
     if (!businessPhoneE164) return "";
 
+    // ⚠️ WhatsApp se pone mañoso con mensajes muy largos.
+    // Incluimos description pero si es enorme la truncamos a ~700 chars.
+    const desc = descriptionText
+      ? `\n\n📝 Detalle:\n${descriptionText.slice(0, 700)}${descriptionText.length > 700 ? "…" : ""}`
+      : "";
+
     const msg = encodeURIComponent(
       [
         "Hola 👋, acabo de reservar una cita:",
@@ -390,6 +437,7 @@ function ConfirmacionInner() {
         `• Fecha/Hora: ${startLabel}`,
         `• Profesional: ${professionalName}`,
         `• Nombre: ${appt?.customer_name ?? "—"}`,
+        desc,
         "",
         "¿Me confirmas por favor? 🙏",
       ].join("\n"),
@@ -404,7 +452,14 @@ function ConfirmacionInner() {
     return isMobile
       ? `https://api.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`
       : `https://web.whatsapp.com/send?phone=${phoneNoPlus}&text=${msg}`;
-  }, [businessPhoneE164, appt?.customer_name, professionalName, serviceLabel, startLabel]);
+  }, [
+    businessPhoneE164,
+    appt?.customer_name,
+    professionalName,
+    serviceLabel,
+    startLabel,
+    descriptionText,
+  ]);
 
   const canOpenWA = !!waUrl;
 
@@ -424,6 +479,7 @@ function ConfirmacionInner() {
       `Cliente: ${appt?.customer_name ?? "—"}`,
       appt?.customer_email ? `Correo: ${appt.customer_email}` : "",
       appt?.customer_phone ? `Tel: ${appt.customer_phone}` : "",
+      descriptionText ? `\nDetalle:\n${descriptionText}` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -460,6 +516,7 @@ function ConfirmacionInner() {
     id,
     professionalName,
     serviceLabel,
+    descriptionText,
   ]);
 
   const canCalendar = !!calendarLinks.gcal && !!calendarLinks.icsUrl;
@@ -475,6 +532,7 @@ function ConfirmacionInner() {
       appt?.customer_email ? `Correo: ${appt.customer_email}` : "",
       appt?.customer_phone ? `Celular: ${appt.customer_phone}` : "",
       businessAddress ? `Dirección: ${businessAddress}` : "",
+      descriptionText ? `\n📝 Detalle:\n${descriptionText}` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -488,6 +546,7 @@ function ConfirmacionInner() {
     professionalName,
     serviceLabel,
     startLabel,
+    descriptionText,
   ]);
 
   async function onCopy() {
@@ -512,6 +571,25 @@ function ConfirmacionInner() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
       <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
+        {/* ✅ Links arriba */}
+        <div className="mb-4 flex flex-wrap gap-2">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-2xl border bg-white/70 px-4 py-2 text-sm font-extrabold hover:bg-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver al inicio
+          </Link>
+
+          <Link
+            href="/reservar"
+            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2 text-sm font-extrabold text-background hover:opacity-95"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Reservar otra hora
+          </Link>
+        </div>
+
         <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -583,6 +661,19 @@ function ConfirmacionInner() {
             <Row label="Celular" value={appt?.customer_phone ?? "—"} />
             {businessAddress ? <Row label="Dirección" value={businessAddress} /> : null}
           </div>
+
+          {/* ✅ NUEVO: Description completo */}
+          {descriptionText ? (
+            <div className="mt-5 rounded-2xl bg-white/60 px-4 py-3">
+              <div className="mb-2 flex items-center gap-2 text-xs font-extrabold text-emerald-950/70">
+                <FileText className="h-4 w-4" />
+                Detalle / descripción
+              </div>
+              <div className="whitespace-pre-wrap text-sm font-semibold text-emerald-950">
+                {descriptionText}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <a

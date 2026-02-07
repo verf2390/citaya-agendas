@@ -12,15 +12,31 @@ function stringOrEmpty(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+/**
+ * ✅ Para textos "1 línea" (service_name, etc)
+ */
 function cleanTextOrNull(v: unknown): string | null {
   if (typeof v !== "string") return null;
-  const t = v.trim().replace(/\s+/g, " "); // evita \n y dobles espacios
+  const t = v.trim().replace(/\s+/g, " "); // aplana espacios
   return t ? t : null;
+}
+
+/**
+ * ✅ Mantiene saltos de línea (para description)
+ * - CRLF -> LF
+ * - trim general
+ * - conserva line breaks para UI y email
+ */
+function cleanMultilineOrNull(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const raw = v.replace(/\r\n/g, "\n");
+  const lines = raw.split("\n").map((l) => l.trimEnd());
+  const joined = lines.join("\n").trim();
+  return joined ? joined : null;
 }
 
 export async function POST(req: Request) {
   try {
-    // ✅ Leemos el body UNA sola vez
     const body = await req.json();
 
     const tenant_id = stringOrEmpty(body?.tenant_id);
@@ -36,12 +52,14 @@ export async function POST(req: Request) {
     const status = stringOrEmpty(body?.status) || "confirmed";
     const currency = upperOrNull(body?.currency) ?? "CLP";
 
-    // 🔒 service_id NO se guarda en appointments (no existe la columna),
-    // pero lo usamos para obtener el nombre correcto desde services.
+    // 🔒 usamos service_id para resolver name + description del servicio
     const service_id = typeof body?.service_id === "string" ? body.service_id : "";
 
-    // fallback si quieres permitir que el front lo mande (opcional)
+    // fallback si el front manda service_name (opcional)
     const service_name_from_body = cleanTextOrNull(body?.service_name);
+
+    // ✅ description puede venir del front (nota del cliente) o se copia desde services.description
+    const description_from_body = cleanMultilineOrNull(body?.description);
 
     // Validaciones mínimas
     if (!tenant_id) {
@@ -63,23 +81,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Falta start_at / end_at" }, { status: 400 });
     }
 
-    // ✅ Resolver service_name de forma confiable (multi-tenant safe)
+    // ✅ Resolver service_name + description fijo por servicio (snapshot)
     let service_name: string | null = null;
+    let description: string | null = description_from_body;
 
     if (service_id) {
       const { data: svc, error: svcErr } = await supabaseServer
         .from("services")
-        .select("name")
+        .select("name, description")
         .eq("id", service_id)
-        .eq("tenant_id", tenant_id) // 🔒 evita mezclar tenants
+        .eq("tenant_id", tenant_id)
         .single();
 
-      if (!svcErr && svc?.name) {
-        service_name = cleanTextOrNull(svc.name);
+      if (!svcErr && svc) {
+        if (svc?.name) service_name = cleanTextOrNull(svc.name);
+
+        // si el front NO mandó description, usamos la del servicio
+        if (!description && svc?.description) {
+          description = cleanMultilineOrNull(svc.description);
+        }
       }
     }
 
-    // fallback: si no vino service_id o no se encontró, usa lo que manda el front
+    // fallback final: nombre desde body
     if (!service_name) {
       service_name = service_name_from_body;
     }
@@ -104,11 +128,11 @@ export async function POST(req: Request) {
         currency,
         manage_token,
 
-        // ✅ snapshot definitivo del servicio
         service_name,
+        description, // ✅ AQUÍ se guarda la description (fija por servicio o nota del cliente)
       })
       .select(
-        "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id, manage_token, service_name, currency"
+        "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id, manage_token, service_name, description, currency"
       )
       .single();
 
