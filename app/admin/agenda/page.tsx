@@ -5,16 +5,16 @@
  * ADMIN AGENDA — MULTI-TENANT (subdominio)
  * =====================================================
  * - FullCalendar (citas)
- * - WeeklyAvailabilityCalendar (horarios)
- * - Professionals via API server-side
- * - Availability via API server-side
- * - Appointments via API server-side (/api/admin/appointments/range)
+ * - WeeklyAvailabilityCalendar (horarios base)
+ * - ✅ Reglas de horario por SERVICIO (Opción A)
  *
- * Fixes:
- * ✅ Semana alineada sin desfase (parse local seguro)
- * ✅ Validación de disponibilidad tolerante (0-6 JS / 1-7 DB / lun=0)
- * ✅ Guardado de disponibilidad normalizado a 0-6 (JS)
- * ✅ Carga de citas rápida con AbortController
+ * Mantiene tu lógica existente intacta y agrega:
+ * ✅ Selector de Servicio + Calendar para "service_availability_rules"
+ * ✅ Guardar reglas por servicio (soft-delete con is_active=false)
+ *
+ * IMPORTANTE:
+ * - Para RLS estricta: services + service rules se cargan/guardan vía API server-side
+ * - Si aún no existe la tabla o APIs, la UI muestra error y no rompe nada
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -66,6 +66,16 @@ type Professional = {
   id: string;
   name: string | null;
   tenant_id?: string;
+};
+
+type Service = {
+  id: string;
+  tenant_id: string;
+  name: string;
+  duration_min: number | null;
+  price: number | null;
+  currency: string | null;
+  is_active: boolean | null;
 };
 
 type CalendarEvent = {
@@ -232,7 +242,9 @@ function Badge({ children }: { children: React.ReactNode }) {
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-2xl border bg-white shadow-sm">{children}</div>;
+  return (
+    <div className="rounded-2xl border bg-white shadow-sm">{children}</div>
+  );
 }
 
 function CardBody({ children }: { children: React.ReactNode }) {
@@ -287,7 +299,9 @@ export default function AgendaPage() {
   const calendarRef = useRef<FullCalendar | null>(null);
 
   // Fuente de verdad: semana visible (lunes) que viene desde FullCalendar
-  const [viewDate, setViewDate] = useState<Date>(() => getMondayStart(new Date()));
+  const [viewDate, setViewDate] = useState<Date>(() =>
+    getMondayStart(new Date()),
+  );
 
   // tenant
   const [tenantId, setTenantId] = useState("");
@@ -312,18 +326,41 @@ export default function AgendaPage() {
   // customers
   const [customers, setCustomers] = useState<CustomerLite[]>([]);
 
-  // availability
-  const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
+  // availability (base)
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<
+    AvailabilityBlock[]
+  >([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
+
+  // ✅ servicios + reglas por servicio
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+  const [serviceRulesBlocks, setServiceRulesBlocks] = useState<
+    AvailabilityBlock[]
+  >([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [loadingServiceRules, setLoadingServiceRules] = useState(false);
+  const [savingServiceRules, setSavingServiceRules] = useState(false);
+  const [serviceRulesError, setServiceRulesError] = useState<string>("");
+
+  const selectedService = useMemo(
+    () => services.find((s) => s.id === selectedServiceId) ?? null,
+    [services, selectedServiceId],
+  );
 
   // appointments
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [visibleRange, setVisibleRange] = useState<{ start: string; end: string } | null>(null);
+  const [visibleRange, setVisibleRange] = useState<{
+    start: string;
+    end: string;
+  } | null>(null);
 
   // modals
   const [createOpen, setCreateOpen] = useState(false);
-  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(null);
+  const [slot, setSlot] = useState<{ startISO: string; endISO: string } | null>(
+    null,
+  );
 
   const [actionOpen, setActionOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<{
@@ -422,7 +459,9 @@ export default function AgendaPage() {
 
   const loadProfessionals = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/professionals/list`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/professionals/list`, {
+        cache: "no-store",
+      });
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
@@ -431,7 +470,9 @@ export default function AgendaPage() {
       }
 
       const list = (json?.professionals ?? []) as Professional[];
-      const filtered = list.filter((p) => !p.tenant_id || p.tenant_id === tenantId);
+      const filtered = list.filter(
+        (p) => !p.tenant_id || p.tenant_id === tenantId,
+      );
 
       setProfessionals(filtered);
       setSelectedProfessionalId((prev) => {
@@ -475,9 +516,12 @@ export default function AgendaPage() {
         qs.set("professionalId", professionalId);
         qs.set("tenantId", tenantId);
 
-        const res = await fetch(`/api/admin/availability/list?${qs.toString()}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/admin/availability/list?${qs.toString()}`,
+          {
+            cache: "no-store",
+          },
+        );
 
         const json = await res.json().catch(() => null);
         if (!res.ok) {
@@ -496,7 +540,7 @@ export default function AgendaPage() {
 
         const blocks: AvailabilityBlock[] = items.map((x) => ({
           id: x.id,
-          day_of_week: Number(x.day_of_week), // NO convertimos; validamos tolerante
+          day_of_week: Number(x.day_of_week),
           start_time: String(x.start_time).slice(0, 5),
           end_time: String(x.end_time).slice(0, 5),
           is_active: !!x.is_active,
@@ -519,7 +563,6 @@ export default function AgendaPage() {
       const payload = {
         professionalId: selectedProfessionalId,
         tenantId,
-        // ✅ Guardamos SIEMPRE 0..6 JS (Dom=0) para coherencia
         items: availabilityBlocks.map((b) => ({
           id: b.id ?? null,
           day_of_week: normalizeDowToJs0_6(b.day_of_week),
@@ -529,9 +572,6 @@ export default function AgendaPage() {
         })),
       };
 
-      console.log("[ADMIN upsert availability] payload =>", JSON.stringify(payload, null, 2));
-
-
       const res = await fetch("/api/admin/availability/upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -539,7 +579,8 @@ export default function AgendaPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error ?? "No se pudo guardar disponibilidad");
+      if (!res.ok)
+        throw new Error(json?.error ?? "No se pudo guardar disponibilidad");
 
       toast({
         title: "Horarios guardados",
@@ -574,10 +615,13 @@ export default function AgendaPage() {
         if (start) qs.set("start", start);
         if (end) qs.set("end", end);
 
-        const res = await fetch(`/api/admin/appointments/range?${qs.toString()}`, {
-          cache: "no-store",
-          signal: ac.signal,
-        });
+        const res = await fetch(
+          `/api/admin/appointments/range?${qs.toString()}`,
+          {
+            cache: "no-store",
+            signal: ac.signal,
+          },
+        );
 
         const json = await res.json().catch(() => null);
 
@@ -619,12 +663,184 @@ export default function AgendaPage() {
     [tenantId],
   );
 
+  // ✅ cargar servicios del tenant — via API server-side
+  const loadServices = useCallback(async () => {
+    if (!tenantId) return;
+
+    setLoadingServices(true);
+    setServiceRulesError("");
+
+    try {
+      const qs = new URLSearchParams();
+      qs.set("tenantId", tenantId);
+
+      const res = await fetch(`/api/admin/services/list?${qs.toString()}`, {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok)
+        throw new Error(json?.error ?? "No se pudieron cargar servicios.");
+
+      const list = (json?.services ?? []) as Service[];
+      const active = list.filter((s) => (s.is_active ?? true) === true);
+
+      setServices(active);
+      setSelectedServiceId((prev) => {
+        if (prev && active.some((s) => s.id === prev)) return prev;
+        return active[0]?.id ?? "";
+      });
+    } catch (e: any) {
+      console.error("loadServices error:", e);
+      setServices([]);
+      setSelectedServiceId("");
+      setServiceRulesError(e?.message ?? "No se pudieron cargar servicios.");
+    } finally {
+      setLoadingServices(false);
+    }
+  }, [tenantId]);
+
+  // ✅ cargar reglas por servicio — via API server-side
+  const loadServiceRules = useCallback(
+    async (professionalId: string, serviceId: string) => {
+      if (!tenantId || !professionalId || !serviceId) {
+        setServiceRulesBlocks([]);
+        return;
+      }
+
+      setLoadingServiceRules(true);
+      setServiceRulesError("");
+
+      try {
+        const qs = new URLSearchParams();
+        qs.set("tenantId", tenantId);
+        qs.set("professionalId", professionalId);
+        qs.set("serviceId", serviceId);
+
+        const res = await fetch(
+          `/api/admin/service-rules/list?${qs.toString()}`,
+          {
+            cache: "no-store",
+          },
+        );
+
+        const json = await res.json().catch(() => null);
+        if (!res.ok)
+          throw new Error(
+            json?.error ?? "No se pudieron cargar reglas del servicio.",
+          );
+
+        const rows = (json?.items ?? []) as Array<{
+          id: string;
+          day_of_week: number;
+          start_time: string;
+          end_time: string;
+          is_active: boolean;
+        }>;
+
+        const blocks: AvailabilityBlock[] = rows.map((r) => ({
+          id: r.id,
+          day_of_week: Number(r.day_of_week),
+          start_time: String(r.start_time).slice(0, 5),
+          end_time: String(r.end_time).slice(0, 5),
+          is_active: !!r.is_active,
+        }));
+
+        setServiceRulesBlocks(blocks);
+      } catch (e: any) {
+        console.error("loadServiceRules error:", e);
+        setServiceRulesBlocks([]);
+        setServiceRulesError(
+          e?.message ?? "No se pudieron cargar reglas por servicio.",
+        );
+      } finally {
+        setLoadingServiceRules(false);
+      }
+    },
+    [tenantId],
+  );
+
+  // ✅ guardar reglas por servicio — via API server-side (RLS-friendly)
+  const saveServiceRules = useCallback(async () => {
+    if (!tenantId) return;
+    if (!selectedProfessionalId) return;
+
+    if (!selectedServiceId) {
+      toast({
+        title: "Selecciona un servicio",
+        description: "Elige un servicio para editar sus reglas de horario.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingServiceRules(true);
+    setServiceRulesError("");
+
+    try {
+      const payload = {
+        tenantId,
+        professionalId: selectedProfessionalId,
+        serviceId: selectedServiceId,
+        items: serviceRulesBlocks.map((b) => {
+          const row: any = {
+            day_of_week: normalizeDowToJs0_6(b.day_of_week),
+            start_time: (b.start_time || "").slice(0, 5),
+            end_time: (b.end_time || "").slice(0, 5),
+            is_active: !!b.is_active,
+          };
+
+          // ✅ CLAVE: solo incluir id si existe
+          if (b.id) row.id = b.id;
+
+          return row;
+        }),
+      };
+
+      const res = await fetch("/api/admin/service-rules/upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok)
+        throw new Error(json?.error ?? "No se pudieron guardar reglas");
+
+      toast({
+        title: "Reglas guardadas",
+        description: "Horario por servicio actualizado.",
+      });
+
+      await loadServiceRules(selectedProfessionalId, selectedServiceId);
+    } catch (e: any) {
+      console.error("saveServiceRules error:", e);
+      toast({
+        title: "Error guardando reglas",
+        description: e?.message ?? "No se pudo guardar reglas por servicio.",
+        variant: "destructive",
+      });
+      setServiceRulesError(
+        e?.message ?? "No se pudo guardar reglas por servicio.",
+      );
+    } finally {
+      setSavingServiceRules(false);
+    }
+  }, [
+    tenantId,
+    selectedProfessionalId,
+    selectedServiceId,
+    serviceRulesBlocks,
+    loadServiceRules,
+  ]);
+
   useEffect(() => {
     if (!authChecked) return;
     if (!tenantId) return;
     loadProfessionals();
     loadCustomers();
-  }, [authChecked, tenantId, loadProfessionals, loadCustomers]);
+    loadServices();
+  }, [authChecked, tenantId, loadProfessionals, loadCustomers, loadServices]);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -633,12 +849,37 @@ export default function AgendaPage() {
     loadAvailability(selectedProfessionalId);
   }, [authChecked, tenantId, selectedProfessionalId, loadAvailability]);
 
+  // ✅ cargar reglas cuando cambia profesional o servicio
   useEffect(() => {
     if (!authChecked) return;
     if (!tenantId) return;
     if (!selectedProfessionalId) return;
 
-    if (visibleRange) loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (!selectedServiceId) {
+      setServiceRulesBlocks([]);
+      return;
+    }
+
+    loadServiceRules(selectedProfessionalId, selectedServiceId);
+  }, [
+    authChecked,
+    tenantId,
+    selectedProfessionalId,
+    selectedServiceId,
+    loadServiceRules,
+  ]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!tenantId) return;
+    if (!selectedProfessionalId) return;
+
+    if (visibleRange)
+      loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else loadAppointments(undefined, undefined, selectedProfessionalId);
   }, [
     authChecked,
@@ -696,7 +937,7 @@ export default function AgendaPage() {
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
-    // ✅ Validar disponibilidad (TOLERANTE)
+    // ✅ Validar disponibilidad usando HORARIO BASE (no reglas por servicio)
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
@@ -745,8 +986,13 @@ export default function AgendaPage() {
     const customer = customers.find((c) => c.id === customerId) ?? null;
 
     try {
-      const customer_email = String(customer?.email ?? "").trim().toLowerCase();
-      if (!customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)) {
+      const customer_email = String(customer?.email ?? "")
+        .trim()
+        .toLowerCase();
+      if (
+        !customer_email ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)
+      ) {
         toast({
           title: "Email inválido",
           description: "Este cliente no tiene un email válido guardado.",
@@ -779,7 +1025,12 @@ export default function AgendaPage() {
     setCreateOpen(false);
     setSlot(null);
 
-    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (visibleRange)
+      await loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   }
 
@@ -801,7 +1052,7 @@ export default function AgendaPage() {
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
-    // ✅ Validar disponibilidad (TOLERANTE)
+    // ✅ Validar disponibilidad usando HORARIO BASE (no reglas por servicio)
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
@@ -819,7 +1070,12 @@ export default function AgendaPage() {
       return;
     }
 
-    const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId, id);
+    const overlap = await hasOverlap(
+      start_at,
+      end_at,
+      selectedProfessionalId,
+      id,
+    );
     if (overlap) {
       toast({
         title: "Horario ocupado",
@@ -847,7 +1103,8 @@ export default function AgendaPage() {
       if (!res.ok || !data?.ok) {
         toast({
           title: "No se pudo reagendar",
-          description: data?.error ?? "El servidor rechazó el cambio. Se revirtió.",
+          description:
+            data?.error ?? "El servidor rechazó el cambio. Se revirtió.",
           variant: "destructive",
         });
         dropInfo.revert();
@@ -864,7 +1121,12 @@ export default function AgendaPage() {
       return;
     }
 
-    if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+    if (visibleRange)
+      await loadAppointments(
+        visibleRange.start,
+        visibleRange.end,
+        selectedProfessionalId,
+      );
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
   };
 
@@ -896,7 +1158,12 @@ export default function AgendaPage() {
         description: "La cita fue cancelada correctamente.",
       });
 
-      if (visibleRange) await loadAppointments(visibleRange.start, visibleRange.end, selectedProfessionalId);
+      if (visibleRange)
+        await loadAppointments(
+          visibleRange.start,
+          visibleRange.end,
+          selectedProfessionalId,
+        );
       else await loadAppointments(undefined, undefined, selectedProfessionalId);
     } catch (e: any) {
       console.error(e);
@@ -961,7 +1228,9 @@ export default function AgendaPage() {
           <Card>
             <CardBody>
               <div className="text-lg font-extrabold">⚠️ Acceso inválido</div>
-              <div className="mt-2 text-sm text-muted-foreground">{tenantError}</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                {tenantError}
+              </div>
               <div className="mt-4">
                 <Link
                   href="https://app.citaya.online"
@@ -984,7 +1253,9 @@ export default function AgendaPage() {
           <Card>
             <CardBody>
               <div className="text-lg font-extrabold">Cargando panel…</div>
-              <div className="mt-2 text-sm text-muted-foreground">Resolviendo cliente (subdominio)…</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                Resolviendo cliente (subdominio)…
+              </div>
               <div className="mt-4 h-2 rounded-full bg-muted" />
             </CardBody>
           </Card>
@@ -1077,6 +1348,11 @@ export default function AgendaPage() {
             <Badge>Cliente: {tenantSlug}</Badge>
             <Badge>Profesional: {proName}</Badge>
             <Badge>Vista: Semana</Badge>
+            {selectedServiceId ? (
+              <Badge>Servicio: {selectedService?.name ?? "—"}</Badge>
+            ) : (
+              <Badge>Servicio: (sin seleccionar)</Badge>
+            )}
             {isDebug ? <Badge>Tenant ID: {tenantId}</Badge> : null}
             {loading ? <Badge>Cargando…</Badge> : null}
           </>
@@ -1084,13 +1360,15 @@ export default function AgendaPage() {
       />
 
       <div className="mx-auto max-w-[1280px] p-4">
-        {/* Selector profesional + Horarios */}
+        {/* Selector profesional + Horarios base */}
         <div className="mt-3">
           <Card>
             <CardBody>
               <div className="flex flex-wrap items-end gap-4">
                 <div className="min-w-[280px]">
-                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">Profesional</div>
+                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                    Profesional
+                  </div>
                   <select
                     value={selectedProfessionalId}
                     onChange={(e) => setSelectedProfessionalId(e.target.value)}
@@ -1106,19 +1384,26 @@ export default function AgendaPage() {
 
                 <div className="flex-1" />
 
-                <PrimaryButton onClick={saveAvailability} disabled={savingAvailability || !selectedProfessionalId}>
-                  {savingAvailability ? "Guardando…" : "Guardar horarios"}
+                <PrimaryButton
+                  onClick={saveAvailability}
+                  disabled={savingAvailability || !selectedProfessionalId}
+                >
+                  {savingAvailability
+                    ? "Guardando…"
+                    : "Guardar horarios (base)"}
                 </PrimaryButton>
               </div>
 
-              <div className="mt-3 text-sm font-extrabold">Horarios (vista semanal)</div>
+              <div className="mt-3 text-sm font-extrabold">
+                Horarios base (vista semanal)
+              </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                Crea bloques arrastrando. Mueve y ajusta con drag/resize.
+                Estos horarios definen el marco general del profesional.
               </div>
 
               <div className="mt-3">
                 <WeeklyAvailabilityCalendar
-                  key={weekKey(viewDate)}
+                  key={`base:${selectedProfessionalId}:${weekKey(viewDate)}`}
                   weekDate={viewDate}
                   blocks={availabilityBlocks}
                   timeZone={UI_CONFIG.ADMIN_TIMEZONE}
@@ -1127,6 +1412,104 @@ export default function AgendaPage() {
                   slotMaxTime={UI_CONFIG.SLOT_MAX_TIME}
                 />
               </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        {/* Reglas por servicio */}
+        <div className="mt-4">
+          <Card>
+            <CardBody>
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="min-w-[320px]">
+                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                    Reglas por Servicio (opcional)
+                  </div>
+
+                  <select
+                    value={selectedServiceId}
+                    onChange={(e) => setSelectedServiceId(e.target.value)}
+                    className="h-10 w-full rounded-xl border bg-white px-3 text-sm font-semibold"
+                    disabled={loadingServices || services.length === 0}
+                  >
+                    {services.length === 0 ? (
+                      <option value="">
+                        {loadingServices
+                          ? "Cargando servicios…"
+                          : "No hay servicios activos"}
+                      </option>
+                    ) : (
+                      services.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))
+                    )}
+                  </select>
+
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Si defines reglas aquí, <b>la disponibilidad en Reservar</b>{" "}
+                    se limitará a:
+                    <br />
+                    <b>horario base ∩ reglas del servicio</b>.
+                    <br />
+                    Si no hay reglas, se usa solo el horario base.
+                  </div>
+                </div>
+
+                <div className="flex-1" />
+
+                <PrimaryButton
+                  onClick={saveServiceRules}
+                  disabled={
+                    savingServiceRules ||
+                    loadingServiceRules ||
+                    !selectedProfessionalId ||
+                    !selectedServiceId
+                  }
+                >
+                  {savingServiceRules
+                    ? "Guardando…"
+                    : "Guardar reglas (servicio)"}
+                </PrimaryButton>
+              </div>
+
+              {serviceRulesError ? (
+                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {serviceRulesError}
+                </div>
+              ) : null}
+
+              <div className="mt-3 text-sm font-extrabold">
+                Horarios para:{" "}
+                <span className="font-black">
+                  {selectedService?.name ?? "(selecciona un servicio)"}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Crea bloques SOLO en los horarios que quieras permitir para este
+                servicio.
+                <br />
+                (Click a un bloque para quitarlo).
+              </div>
+
+              <div className="mt-3">
+                <WeeklyAvailabilityCalendar
+                  key={`svc:${selectedProfessionalId}:${selectedServiceId}:${weekKey(viewDate)}`}
+                  weekDate={viewDate}
+                  blocks={serviceRulesBlocks}
+                  timeZone={UI_CONFIG.ADMIN_TIMEZONE}
+                  onChangeBlocks={(next) => setServiceRulesBlocks(next)}
+                  slotMinTime={UI_CONFIG.SLOT_MIN_TIME}
+                  slotMaxTime={UI_CONFIG.SLOT_MAX_TIME}
+                />
+              </div>
+
+              {loadingServiceRules ? (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Cargando reglas…
+                </div>
+              ) : null}
             </CardBody>
           </Card>
         </div>
@@ -1188,7 +1571,9 @@ export default function AgendaPage() {
             <div className="w-full max-w-[560px] rounded-2xl border bg-white p-4 shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-base font-black">Acciones de la cita</div>
+                  <div className="text-base font-black">
+                    Acciones de la cita
+                  </div>
 
                   {(() => {
                     const { date, startTime, endTime } = formatDateTimeRange(
@@ -1196,15 +1581,20 @@ export default function AgendaPage() {
                       selectedEvent.endISO,
                     );
 
-                    const phoneLabel = selectedEvent.customerPhone ?? "(sin teléfono)";
+                    const phoneLabel =
+                      selectedEvent.customerPhone ?? "(sin teléfono)";
 
                     return (
                       <div className="mt-2">
-                        <div className="text-sm font-extrabold">{selectedEvent.title}</div>
+                        <div className="text-sm font-extrabold">
+                          {selectedEvent.title}
+                        </div>
                         <div className="mt-1 text-xs text-muted-foreground">
                           📅 {date} • 🕒 {startTime} – {endTime}
                         </div>
-                        <div className="mt-1 text-xs text-muted-foreground">{phoneLabel}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {phoneLabel}
+                        </div>
                       </div>
                     );
                   })()}
@@ -1227,7 +1617,9 @@ export default function AgendaPage() {
                       alert("Esta cita no tiene teléfono.");
                       return;
                     }
-                    const p = normalizePhoneToWhatsApp(selectedEvent.customerPhone);
+                    const p = normalizePhoneToWhatsApp(
+                      selectedEvent.customerPhone,
+                    );
                     window.open(`https://wa.me/${p}`, "_blank");
                   }}
                   disabled={!selectedEvent.customerPhone}
@@ -1242,7 +1634,9 @@ export default function AgendaPage() {
                       selectedEvent.endISO,
                     );
 
-                    const customerName = selectedEvent.title.replace(/^❌\s*/, "").trim() || "cliente";
+                    const customerName =
+                      selectedEvent.title.replace(/^❌\s*/, "").trim() ||
+                      "cliente";
 
                     const msg = buildConfirmationMessage({
                       customerName,
@@ -1275,8 +1669,8 @@ export default function AgendaPage() {
               </div>
 
               <div className="mt-3 text-xs text-muted-foreground">
-                Tip: WhatsApp abre en una pestaña nueva. El mensaje usa el nombre desde{" "}
-                <b>UI_CONFIG.BUSINESS_NAME</b>.
+                Tip: WhatsApp abre en una pestaña nueva. El mensaje usa el
+                nombre desde <b>UI_CONFIG.BUSINESS_NAME</b>.
               </div>
             </div>
           </div>

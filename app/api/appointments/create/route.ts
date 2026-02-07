@@ -1,3 +1,4 @@
+// app/api/appointments/create/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
@@ -7,37 +8,47 @@ function upperOrNull(v: unknown): string | null {
   return t ? t.toUpperCase() : null;
 }
 
+function stringOrEmpty(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function cleanTextOrNull(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const t = v.trim().replace(/\s+/g, " "); // evita \n y dobles espacios
+  return t ? t : null;
+}
+
 export async function POST(req: Request) {
   try {
+    // ✅ Leemos el body UNA sola vez
     const body = await req.json();
 
-    const tenant_id = typeof body?.tenant_id === "string" ? body.tenant_id : "";
-    const professional_id =
-      typeof body?.professional_id === "string" ? body.professional_id : "";
+    const tenant_id = stringOrEmpty(body?.tenant_id);
+    const professional_id = stringOrEmpty(body?.professional_id);
 
-    const customer_name =
-      typeof body?.customer_name === "string" ? body.customer_name.trim() : "";
-    const customer_phone =
-      typeof body?.customer_phone === "string" ? body.customer_phone.trim() : "";
-    const customer_email =
-      typeof body?.customer_email === "string" ? body.customer_email.trim() : "";
+    const customer_name = stringOrEmpty(body?.customer_name).trim();
+    const customer_phone = stringOrEmpty(body?.customer_phone).trim();
+    const customer_email = stringOrEmpty(body?.customer_email).trim();
 
-    const start_at = typeof body?.start_at === "string" ? body.start_at : "";
-    const end_at = typeof body?.end_at === "string" ? body.end_at : "";
+    const start_at = stringOrEmpty(body?.start_at);
+    const end_at = stringOrEmpty(body?.end_at);
 
-    const status = typeof body?.status === "string" ? body.status : "confirmed";
-
-    // ✅ currency SIEMPRE (fallback CLP). No depende del front.
+    const status = stringOrEmpty(body?.status) || "confirmed";
     const currency = upperOrNull(body?.currency) ?? "CLP";
 
+    // 🔒 service_id NO se guarda en appointments (no existe la columna),
+    // pero lo usamos para obtener el nombre correcto desde services.
+    const service_id = typeof body?.service_id === "string" ? body.service_id : "";
+
+    // fallback si quieres permitir que el front lo mande (opcional)
+    const service_name_from_body = cleanTextOrNull(body?.service_name);
+
+    // Validaciones mínimas
     if (!tenant_id) {
       return NextResponse.json({ error: "Falta tenant_id" }, { status: 400 });
     }
     if (!professional_id) {
-      return NextResponse.json(
-        { error: "Falta professional_id" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Falta professional_id" }, { status: 400 });
     }
     if (!customer_name || customer_name.length < 2) {
       return NextResponse.json({ error: "Nombre inválido" }, { status: 400 });
@@ -49,19 +60,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Correo inválido" }, { status: 400 });
     }
     if (!start_at || !end_at) {
-      return NextResponse.json(
-        { error: "Falta start_at / end_at" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Falta start_at / end_at" }, { status: 400 });
     }
 
-    // token de gestión (si tu confirmación/cancelación lo usa)
+    // ✅ Resolver service_name de forma confiable (multi-tenant safe)
+    let service_name: string | null = null;
+
+    if (service_id) {
+      const { data: svc, error: svcErr } = await supabaseServer
+        .from("services")
+        .select("name")
+        .eq("id", service_id)
+        .eq("tenant_id", tenant_id) // 🔒 evita mezclar tenants
+        .single();
+
+      if (!svcErr && svc?.name) {
+        service_name = cleanTextOrNull(svc.name);
+      }
+    }
+
+    // fallback: si no vino service_id o no se encontró, usa lo que manda el front
+    if (!service_name) {
+      service_name = service_name_from_body;
+    }
+
+    // token de gestión
     const manage_token =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-    // ✅ OJO: no insertamos service_id (porque NO existe en appointments)
     const { data, error } = await supabaseServer
       .from("appointments")
       .insert({
@@ -75,16 +103,19 @@ export async function POST(req: Request) {
         status,
         currency,
         manage_token,
+
+        // ✅ snapshot definitivo del servicio
+        service_name,
       })
       .select(
-        "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id, manage_token",
+        "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id, manage_token, service_name, currency"
       )
       .single();
 
     if (error || !data) {
       return NextResponse.json(
         { error: error?.message ?? "No se pudo crear la cita" },
-        { status: 500 },
+        { status: 500 }
       );
     }
 
@@ -97,7 +128,6 @@ export async function POST(req: Request) {
       const secret =
         process.env.N8N_WEBHOOK_SECRET || "citaya_secret_2026_9a8b7c6d";
 
-      // usamos query secret porque Cloudflare/proxy puede filtrar headers custom
       const url = `${baseUrl}?secret=${encodeURIComponent(secret)}`;
 
       await fetch(url, {
@@ -116,7 +146,7 @@ export async function POST(req: Request) {
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message ?? "Error creando cita" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

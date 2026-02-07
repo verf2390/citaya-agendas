@@ -10,8 +10,15 @@ type AppointmentRangeRow = {
 
 type AvailabilityRow = {
   day_of_week: number; // 0=domingo ... 6=sábado
-  start_time: string;  // "HH:MM:SS"
-  end_time: string;    // "HH:MM:SS"
+  start_time: string; // "HH:MM:SS"
+  end_time: string; // "HH:MM:SS"
+  is_active: boolean;
+};
+
+type ServiceRuleRow = {
+  day_of_week: number; // 0=domingo ... 6=sábado (guardado normalizado)
+  start_time: string; // "HH:MM:SS"
+  end_time: string; // "HH:MM:SS"
   is_active: boolean;
 };
 
@@ -33,7 +40,8 @@ function getPartsInTZ(date: Date, timeZone: string) {
   });
 
   const parts = dtf.formatToParts(date);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  const get = (type: string) =>
+    parts.find((p) => p.type === type)?.value ?? "00";
 
   return {
     year: Number(get("year")),
@@ -103,6 +111,19 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && aEnd > bStart;
 }
 
+function maxDate(a: Date, b: Date) {
+  return a.getTime() >= b.getTime() ? a : b;
+}
+
+function minDate(a: Date, b: Date) {
+  return a.getTime() <= b.getTime() ? a : b;
+}
+
+function diffDaysCeil(a: Date, b: Date) {
+  const ms = b.getTime() - a.getTime();
+  return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -111,6 +132,9 @@ export async function GET(req: Request) {
     const professionalId = url.searchParams.get("professionalId");
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
+
+    // ✅ serviceId opcional para reglas por servicio
+    const serviceId = url.searchParams.get("serviceId");
 
     const durationMinParam = url.searchParams.get("durationMin");
     const stepMinParam = url.searchParams.get("stepMin");
@@ -146,7 +170,7 @@ export async function GET(req: Request) {
       Math.min(120, Number(stepMinParam ?? 30) || 30),
     );
 
-    // 0) availability activos
+    // 0) availability activos (horario base profesional)
     const { data: avRows, error: avErr } = await supabaseServer
       .from("availability")
       .select("day_of_week,start_time,end_time,is_active")
@@ -170,7 +194,44 @@ export async function GET(req: Request) {
       blocksByDow[r.day_of_week].push(r);
     }
     Object.keys(blocksByDow).forEach((k) => {
-      blocksByDow[Number(k)].sort((a, b) => (a.start_time > b.start_time ? 1 : -1));
+      blocksByDow[Number(k)].sort((a, b) =>
+        a.start_time > b.start_time ? 1 : -1,
+      );
+    });
+
+    // 0.5) reglas por servicio — opcional
+    let serviceRules: ServiceRuleRow[] = [];
+    if (serviceId) {
+      const { data: ruleRows, error: ruleErr } = await supabaseServer
+        .from("service_availability_rules")
+        .select("day_of_week,start_time,end_time,is_active")
+        .eq("tenant_id", tenantId)
+        .eq("professional_id", professionalId)
+        .eq("service_id", serviceId)
+        .eq("is_active", true);
+
+      if (ruleErr) {
+        console.error(ruleErr);
+        return NextResponse.json(
+          { error: "Error consultando reglas por servicio" },
+          { status: 500 },
+        );
+      }
+
+      serviceRules = (ruleRows ?? []) as ServiceRuleRow[];
+    }
+
+    const hasServiceRules = !!serviceId && serviceRules.length > 0;
+
+    const rulesByDow: Record<number, ServiceRuleRow[]> = {};
+    for (const r of serviceRules) {
+      if (!rulesByDow[r.day_of_week]) rulesByDow[r.day_of_week] = [];
+      rulesByDow[r.day_of_week].push(r);
+    }
+    Object.keys(rulesByDow).forEach((k) => {
+      rulesByDow[Number(k)].sort((a, b) =>
+        a.start_time > b.start_time ? 1 : -1,
+      );
     });
 
     // 1) citas existentes
@@ -185,86 +246,174 @@ export async function GET(req: Request) {
 
     if (apptErr) {
       console.error(apptErr);
-      return NextResponse.json({ error: "Error consultando citas" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Error consultando citas" },
+        { status: 500 },
+      );
     }
 
-    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map((a) => ({
-      start: new Date(a.start_at),
-      end: new Date(a.end_at),
-    }));
+    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map(
+      (a) => ({
+        start: new Date(a.start_at),
+        end: new Date(a.end_at),
+      }),
+    );
 
     // 2) generar slots
     const nowUTC = new Date();
     const slots: Slot[] = [];
+    const slotSeen = new Set<string>(); // ✅ dedupe
 
-    let cursor = rangeStart;
-    let guard = 0;
+    // ✅ iteración por días CL robusta
+    const startParts = getPartsInTZ(rangeStart, TZ);
+    const startNoonUTC = localToUTC(
+      startParts.year,
+      startParts.month,
+      startParts.day,
+      12,
+      0,
+      TZ,
+    );
+
+    const daysToIterate = Math.min(400, diffDaysCeil(rangeStart, rangeEnd) + 2); // guard amplio
+    let y = startParts.year;
+    let m = startParts.month;
+    let d = startParts.day;
 
     const debugDays: Array<{
-      y: number; m: number; d: number;
+      y: number;
+      m: number;
+      d: number;
       noonUTC: string;
       dow: number;
-      blocksCount: number;
+      baseBlocksCount: number;
+      rulesCount: number;
+      usedMode: "base" | "base∩rules";
     }> = [];
 
-    while (cursor < rangeEnd && guard < 62) {
-      guard++;
+    for (let i = 0; i < daysToIterate; i++) {
+      const noonUTC = localToUTC(y, m, d, 12, 0, TZ);
 
-      const parts = getPartsInTZ(cursor, TZ);
-      const noonUTC = localToUTC(parts.year, parts.month, parts.day, 12, 0, TZ);
+      // corte real por rango
+      if (noonUTC > rangeEnd) break;
+
       const dow = dayOfWeekCL(noonUTC);
 
-      const dayBlocks = blocksByDow[dow] ?? [];
+      const dayBaseBlocks = blocksByDow[dow] ?? [];
+      const dayRuleBlocks = hasServiceRules ? rulesByDow[dow] ?? [] : [];
 
       if (debug) {
         debugDays.push({
-          y: parts.year, m: parts.month, d: parts.day,
+          y,
+          m,
+          d,
           noonUTC: noonUTC.toISOString(),
           dow,
-          blocksCount: dayBlocks.length,
+          baseBlocksCount: dayBaseBlocks.length,
+          rulesCount: dayRuleBlocks.length,
+          usedMode: hasServiceRules ? "base∩rules" : "base",
         });
       }
 
-      if (dayBlocks.length === 0) {
-        cursor = localToUTC(parts.year, parts.month, parts.day + 1, 12, 0, TZ);
+      // Si no hay horario base, no hay slots
+      if (dayBaseBlocks.length === 0) {
+        const next = localToUTC(y, m, d + 1, 12, 0, TZ);
+        const np = getPartsInTZ(next, TZ);
+        y = np.year; m = np.month; d = np.day;
         continue;
       }
 
-      for (const b of dayBlocks) {
-        const { hh: sh, mm: sm } = parseTimeHHMM(b.start_time);
-        const { hh: eh, mm: em } = parseTimeHHMM(b.end_time);
+      // Si hay reglas y este día no tiene reglas => no hay slots
+      if (hasServiceRules && dayRuleBlocks.length === 0) {
+        const next = localToUTC(y, m, d + 1, 12, 0, TZ);
+        const np = getPartsInTZ(next, TZ);
+        y = np.year; m = np.month; d = np.day;
+        continue;
+      }
 
-        const blockStartUTC = localToUTC(parts.year, parts.month, parts.day, sh, sm, TZ);
-        const blockEndUTC = localToUTC(parts.year, parts.month, parts.day, eh, em, TZ);
+      const pushSlotIfFree = (slotStart: Date, slotEnd: Date) => {
+        if (slotEnd <= nowUTC) return;
 
-        if (!(blockStartUTC < blockEndUTC)) continue;
+        const isBusy = booked.some((br) =>
+          overlaps(slotStart, slotEnd, br.start, br.end),
+        );
+        if (isBusy) return;
 
-        const effectiveStart = blockStartUTC < rangeStart ? rangeStart : blockStartUTC;
-        const effectiveEnd = blockEndUTC > rangeEnd ? rangeEnd : blockEndUTC;
+        const key = `${slotStart.toISOString()}|${slotEnd.toISOString()}`;
+        if (slotSeen.has(key)) return;
+        slotSeen.add(key);
 
-        let slotCursor = ceilToStepUTC(effectiveStart, stepMinutes);
+        slots.push({ start_at: slotStart.toISOString(), end_at: slotEnd.toISOString() });
+      };
 
-        while (slotCursor < effectiveEnd) {
-          const slotStart = slotCursor;
-          const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
+      if (!hasServiceRules) {
+        for (const b of dayBaseBlocks) {
+          const { hh: sh, mm: sm } = parseTimeHHMM(b.start_time);
+          const { hh: eh, mm: em } = parseTimeHHMM(b.end_time);
 
-          if (slotEnd > effectiveEnd) break;
+          const blockStartUTC = localToUTC(y, m, d, sh, sm, TZ);
+          const blockEndUTC = localToUTC(y, m, d, eh, em, TZ);
+          if (!(blockStartUTC < blockEndUTC)) continue;
 
-          if (slotEnd <= nowUTC) {
+          const effectiveStart = blockStartUTC < rangeStart ? rangeStart : blockStartUTC;
+          const effectiveEnd = blockEndUTC > rangeEnd ? rangeEnd : blockEndUTC;
+
+          let slotCursor = ceilToStepUTC(effectiveStart, stepMinutes);
+
+          while (slotCursor < effectiveEnd) {
+            const slotStart = slotCursor;
+            const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
+            if (slotEnd > effectiveEnd) break;
+
+            pushSlotIfFree(slotStart, slotEnd);
+
             slotCursor = new Date(slotCursor.getTime() + stepMinutes * 60 * 1000);
-            continue;
           }
+        }
+      } else {
+        // base ∩ rules
+        for (const base of dayBaseBlocks) {
+          const { hh: bsh, mm: bsm } = parseTimeHHMM(base.start_time);
+          const { hh: beh, mm: bem } = parseTimeHHMM(base.end_time);
 
-          const isBusy = booked.some((br) => overlaps(slotStart, slotEnd, br.start, br.end));
-          if (!isBusy) {
-            slots.push({ start_at: slotStart.toISOString(), end_at: slotEnd.toISOString() });
+          const baseStartUTC = localToUTC(y, m, d, bsh, bsm, TZ);
+          const baseEndUTC = localToUTC(y, m, d, beh, bem, TZ);
+          if (!(baseStartUTC < baseEndUTC)) continue;
+
+          for (const rule of dayRuleBlocks) {
+            const { hh: rsh, mm: rsm } = parseTimeHHMM(rule.start_time);
+            const { hh: reh, mm: rem } = parseTimeHHMM(rule.end_time);
+
+            const ruleStartUTC = localToUTC(y, m, d, rsh, rsm, TZ);
+            const ruleEndUTC = localToUTC(y, m, d, reh, rem, TZ);
+            if (!(ruleStartUTC < ruleEndUTC)) continue;
+
+            const interStart = maxDate(baseStartUTC, ruleStartUTC);
+            const interEnd = minDate(baseEndUTC, ruleEndUTC);
+            if (!(interStart < interEnd)) continue;
+
+            const effectiveStart = interStart < rangeStart ? rangeStart : interStart;
+            const effectiveEnd = interEnd > rangeEnd ? rangeEnd : interEnd;
+
+            let slotCursor = ceilToStepUTC(effectiveStart, stepMinutes);
+
+            while (slotCursor < effectiveEnd) {
+              const slotStart = slotCursor;
+              const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
+              if (slotEnd > effectiveEnd) break;
+
+              pushSlotIfFree(slotStart, slotEnd);
+
+              slotCursor = new Date(slotCursor.getTime() + stepMinutes * 60 * 1000);
+            }
           }
-
-          slotCursor = new Date(slotCursor.getTime() + stepMinutes * 60 * 1000);
         }
       }
 
-      cursor = localToUTC(parts.year, parts.month, parts.day + 1, 12, 0, TZ);
+      // avanzar 1 día CL (mediodía)
+      const next = localToUTC(y, m, d + 1, 12, 0, TZ);
+      const np = getPartsInTZ(next, TZ);
+      y = np.year; m = np.month; d = np.day;
     }
 
     slots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
@@ -272,6 +421,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       tenantId,
       professionalId,
+      serviceId: serviceId || null,
       from,
       to,
       slots,
@@ -283,6 +433,8 @@ export async function GET(req: Request) {
               rangeStart: rangeStart.toISOString(),
               rangeEnd: rangeEnd.toISOString(),
               availabilityRows: availability,
+              hasServiceRules,
+              serviceRulesRows: serviceRules,
               bookedCount: booked.length,
               days: debugDays,
             },

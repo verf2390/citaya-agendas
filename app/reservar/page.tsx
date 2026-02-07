@@ -41,8 +41,6 @@ const MAX_DAYS_AHEAD = 60;
 
 // ✅ default lead time (fallback)
 const DEFAULT_MIN_LEAD_TIME_MIN = 120; // 2 horas
-// ❌ ya NO usar leadTimeMin global (ahora es por-tenant)
-// const leadTimeMin = DEFAULT_MIN_LEAD_TIME_MIN;
 
 function formatCL(dateISO: string) {
   return new Intl.DateTimeFormat("es-CL", {
@@ -112,6 +110,38 @@ function normalizeCLPhone(input: string) {
   return digits ? `+${digits}` : trimmed;
 }
 
+/**
+ * ✅ Validación estricta Chile (móvil)
+ * Acepta:
+ * - 9XXXXXXXX (9 dígitos, parte con 9)
+ * - +569XXXXXXXX (o 569XXXXXXXX)
+ */
+function isValidCLMobile(input: string) {
+  const raw = input.trim();
+  if (!raw) return false;
+
+  const digits = raw.replace(/\D/g, ""); // solo números
+
+  // Caso: 9 dígitos y parte con 9 (móvil sin país)
+  if (digits.length === 9 && digits.startsWith("9")) return true;
+
+  // Caso: con país 56 + 9 dígitos (total 11) y parte "569"
+  if (digits.length === 11 && digits.startsWith("569")) return true;
+
+  return false;
+}
+
+/**
+ * ✅ Normaliza a +569XXXXXXXX cuando sea válido
+ * Si no es válido, no fuerza formato.
+ */
+function normalizeToE164CLMobile(input: string) {
+  const digits = input.trim().replace(/\D/g, "");
+  if (digits.length === 9 && digits.startsWith("9")) return `+56${digits}`;
+  if (digits.length === 11 && digits.startsWith("569")) return `+${digits}`;
+  return input.trim();
+}
+
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
@@ -147,6 +177,10 @@ function ReservarInner() {
   const [serviceId, setServiceId] = useState<string>("");
   const [tenantFromQuery, setTenantFromQuery] = useState<string>("");
 
+  // ✅ UI alerts
+  const [serviceAlert, setServiceAlert] = useState<string | null>(null);
+  const [phoneTouched, setPhoneTouched] = useState(false);
+
   useEffect(() => {
     const qTenant = searchParams.get("tenant") || "";
     const qService = searchParams.get("service") || "";
@@ -174,7 +208,9 @@ function ReservarInner() {
     DEFAULT_MIN_LEAD_TIME_MIN,
   );
 
-  const [daysAhead] = useState<number>(Math.max(31, MAX_DAYS_AHEAD + PAGE_SIZE));
+  const [daysAhead] = useState<number>(
+    Math.max(31, MAX_DAYS_AHEAD + PAGE_SIZE),
+  );
   const [pageStart, setPageStart] = useState<number>(0);
 
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -199,6 +235,8 @@ function ReservarInner() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const phoneNorm = useMemo(() => normalizeCLPhone(phone), [phone]);
+  const isPhoneValid = useMemo(() => isValidCLMobile(phone), [phone]);
+
   const isProd = process.env.NODE_ENV === "production";
 
   useEffect(() => {
@@ -288,7 +326,8 @@ function ReservarInner() {
           setProfessionals([]);
           setProfessionalId("");
           setLoadError(
-            (prev) => prev ?? "No se pudieron cargar profesionales del negocio.",
+            (prev) =>
+              prev ?? "No se pudieron cargar profesionales del negocio.",
           );
         }
       } finally {
@@ -354,6 +393,11 @@ function ReservarInner() {
     };
   }, [tenantSlug, serviceId]);
 
+  // ✅ limpiar alert si ya eligió servicio
+  useEffect(() => {
+    if (serviceId) setServiceAlert(null);
+  }, [serviceId]);
+
   const range = useMemo(() => {
     const now = new Date();
     const from = new Date(now);
@@ -375,6 +419,7 @@ function ReservarInner() {
 
   const availabilityUrl = useMemo(() => {
     if (!tenantId || !professionalId) return "";
+    if (!serviceId) return ""; // ✅ no cargar slots sin servicio
 
     const p = new URLSearchParams();
     p.set("tenantId", tenantId);
@@ -382,7 +427,7 @@ function ReservarInner() {
     p.set("from", range.from);
     p.set("to", range.to);
     p.set("durationMin", String(durationMin));
-    if (serviceId) p.set("serviceId", serviceId);
+    p.set("serviceId", serviceId);
 
     return `/api/appointments/availability?${p.toString()}`;
   }, [tenantId, professionalId, range.from, range.to, durationMin, serviceId]);
@@ -390,7 +435,15 @@ function ReservarInner() {
   const loadSlots = useCallback(async () => {
     if (!tenantId) return;
     if (!professionalId) return;
-    if (!availabilityUrl) return;
+
+    // ✅ guard: sin servicio no tiene sentido cargar disponibilidad
+    if (!availabilityUrl) {
+      setSlots([]);
+      setSelectedSlot(null);
+      const pageDays = buildPageDays(pageStart);
+      setSelectedDayKey(pageDays[0]?.dayKey ?? "");
+      return;
+    }
 
     setLoadingSlots(true);
     setLoadError(null);
@@ -479,23 +532,49 @@ function ReservarInner() {
     return b;
   }, [activeSlots]);
 
+  // ✅ condiciones de submit (ahora teléfono debe ser válido CL móvil)
   const canSubmit =
+    !!serviceId &&
+    !!service &&
     !!selectedSlot &&
     !!tenantId &&
     !!professionalId &&
     fullName.trim().length >= 2 &&
-    phoneNorm.trim().length >= 10 &&
+    isPhoneValid &&
     isValidEmail(email) &&
     !saving;
 
   const handleReserve = async () => {
-    if (!selectedSlot) return;
+    // ✅ alerta visible + scroll natural (sin meter refs)
+    if (!serviceId || !service) {
+      setServiceAlert("Debes seleccionar un servicio antes de ver horarios y agendar.");
+      alert("Debes seleccionar un servicio antes de agendar.");
+      return;
+    }
+
+    if (!selectedSlot) {
+      alert("Selecciona un horario disponible.");
+      return;
+    }
+
     if (!tenantId) {
       alert("No se pudo identificar el tenant.");
       return;
     }
+
     if (!professionalId) {
       alert("Selecciona un profesional.");
+      return;
+    }
+
+    if (!isValidCLMobile(phone)) {
+      setPhoneTouched(true);
+      alert("Celular inválido. Usa 9 dígitos (9XXXXXXXX) o +569XXXXXXXX.");
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      alert("Correo inválido.");
       return;
     }
 
@@ -506,12 +585,13 @@ function ReservarInner() {
         tenant_id: tenantId,
         professional_id: professionalId,
         customer_name: fullName.trim(),
-        customer_phone: phoneNorm.trim(),
+        customer_phone: normalizeToE164CLMobile(phoneNorm.trim()),
         customer_email: email.trim(),
         start_at: selectedSlot.start_at,
         end_at: selectedSlot.end_at,
         status: "confirmed",
         service_id: serviceId || null,
+        service_name: service?.name ?? null,
         currency: (service?.currency || "CLP").toUpperCase(),
       };
 
@@ -613,6 +693,13 @@ function ReservarInner() {
             <X className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
         </div>
+
+        {/* ✅ Alerta si no hay servicio seleccionado (UI, no solo alert()) */}
+        {serviceAlert ? (
+          <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:text-sm">
+            <b>Atención:</b> {serviceAlert}
+          </div>
+        ) : null}
 
         {!isProd ? (
           <div className="mb-2 rounded-2xl border border-dashed bg-white/70 p-2 text-[10px] text-muted-foreground sm:mb-3 sm:p-3 sm:text-xs">
@@ -827,9 +914,19 @@ function ReservarInner() {
 
                 <button
                   type="button"
-                  onClick={loadSlots}
+                  onClick={() => {
+                    if (!serviceId) {
+                      setServiceAlert("Selecciona un servicio para ver horarios.");
+                      return;
+                    }
+                    loadSlots();
+                  }}
                   disabled={
-                    saving || loadingSlots || !tenantId || !professionalId
+                    saving ||
+                    loadingSlots ||
+                    !tenantId ||
+                    !professionalId ||
+                    !serviceId
                   }
                   className="h-9 rounded-xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm"
                 >
@@ -837,136 +934,149 @@ function ReservarInner() {
                 </button>
               </div>
 
+              {/* ✅ Aviso explícito si no hay servicio */}
+              {!serviceId ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:text-sm">
+                  <b>Primero elige un servicio</b> para cargar disponibilidad.
+                </div>
+              ) : null}
+
               {loadError ? (
                 <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-[11px] text-red-700 sm:text-sm">
                   {loadError}
                 </div>
               ) : null}
 
-              <div className="mt-3">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={goPrev7}
-                    disabled={!canPrev}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
-                    title="Anterior"
-                    aria-label="Anterior"
-                  >
-                    <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </button>
+              {/* ✅ Si no hay servicio, no mostramos el selector para evitar “No hay horarios” confuso */}
+              {!serviceId ? null : (
+                <div className="mt-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={goPrev7}
+                      disabled={!canPrev}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
+                      title="Anterior"
+                      aria-label="Anterior"
+                    >
+                      <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </button>
 
-                  <div className="-mx-1 flex-1 overflow-x-auto px-1">
-                    <div className="flex gap-2">
-                      {visibleDays.map((d) => {
-                        const active = d.dayKey === selectedDayKey;
+                    <div className="-mx-1 flex-1 overflow-x-auto px-1">
+                      <div className="flex gap-2">
+                        {visibleDays.map((d) => {
+                          const active = d.dayKey === selectedDayKey;
 
-                        // ✅ NUEVO: hasSlots considera el lead time por-tenant
-                        const minTs = Date.now() + (minLeadTimeMin || 0) * 60_000;
-                        const hasSlots = (slotsByDayKey.get(d.dayKey) ?? []).some(
-                          (slot) => new Date(slot.start_at).getTime() >= minTs,
-                        );
+                          // ✅ hasSlots considera lead time
+                          const minTs =
+                            Date.now() + (minLeadTimeMin || 0) * 60_000;
+                          const hasSlots = (
+                            slotsByDayKey.get(d.dayKey) ?? []
+                          ).some(
+                            (slot) => new Date(slot.start_at).getTime() >= minTs,
+                          );
 
-                        return (
-                          <button
-                            key={d.dayKey}
-                            type="button"
-                            onClick={() => {
-                              setSelectedDayKey(d.dayKey);
-                              setSelectedSlot(null);
-                            }}
-                            className={cn(
-                              "whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold ring-1 ring-border transition sm:px-4 sm:text-sm",
-                              active
-                                ? "bg-foreground text-background"
-                                : "bg-white hover:bg-muted",
-                              !hasSlots ? "opacity-80" : "",
-                            )}
-                          >
-                            <span className="capitalize">{d.label}</span>
-                          </button>
-                        );
-                      })}
+                          return (
+                            <button
+                              key={d.dayKey}
+                              type="button"
+                              onClick={() => {
+                                setSelectedDayKey(d.dayKey);
+                                setSelectedSlot(null);
+                              }}
+                              className={cn(
+                                "whitespace-nowrap rounded-full px-3 py-2 text-[11px] font-semibold ring-1 ring-border transition sm:px-4 sm:text-sm",
+                                active
+                                  ? "bg-foreground text-background"
+                                  : "bg-white hover:bg-muted",
+                                !hasSlots ? "opacity-80" : "",
+                              )}
+                            >
+                              <span className="capitalize">{d.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={goNext7}
+                      disabled={!canNext}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
+                      title="Siguiente"
+                      aria-label="Siguiente"
+                    >
+                      <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={goNext7}
-                    disabled={!canNext}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
-                    title="Siguiente"
-                    aria-label="Siguiente"
-                  >
-                    <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </button>
-                </div>
-
-                <div className="mt-4">
-                  <div className="text-[11px] font-semibold sm:text-sm">
-                    Selecciona una hora
-                  </div>
-
-                  {activeSlots.length === 0 ? (
-                    <div className="mt-2 rounded-xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
-                      No hay horarios disponibles para este día.
+                  <div className="mt-4">
+                    <div className="text-[11px] font-semibold sm:text-sm">
+                      Selecciona una hora
                     </div>
-                  ) : (
-                    <div className="mt-2 grid gap-4">
-                      {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
-                        const list = buckets[label] ?? [];
-                        if (list.length === 0) return null;
 
-                        return (
-                          <div key={label}>
-                            <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
-                              {label}
+                    {activeSlots.length === 0 ? (
+                      <div className="mt-2 rounded-xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
+                        No hay horarios disponibles para este día.
+                      </div>
+                    ) : (
+                      <div className="mt-2 grid gap-4">
+                        {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
+                          const list = buckets[label] ?? [];
+                          if (list.length === 0) return null;
+
+                          return (
+                            <div key={label}>
+                              <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
+                                {label}
+                              </div>
+
+                              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                {list.map((s: Slot) => {
+                                  const active =
+                                    selectedSlot?.start_at === s.start_at;
+                                  return (
+                                    <button
+                                      key={s.start_at}
+                                      type="button"
+                                      disabled={saving || !tenantId}
+                                      onClick={() => setSelectedSlot(s)}
+                                      className={cn(
+                                        "h-9 rounded-xl text-[11px] font-semibold ring-1 ring-border transition sm:h-11 sm:text-sm",
+                                        active
+                                          ? "bg-foreground text-background"
+                                          : "bg-white hover:bg-muted",
+                                        saving || !tenantId
+                                          ? "cursor-not-allowed opacity-60"
+                                          : "",
+                                      )}
+                                    >
+                                      {onlyTimeCL(s.start_at)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                            <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                              {list.map((s: Slot) => {
-                                const active =
-                                  selectedSlot?.start_at === s.start_at;
-                                return (
-                                  <button
-                                    key={s.start_at}
-                                    type="button"
-                                    disabled={saving || !tenantId}
-                                    onClick={() => setSelectedSlot(s)}
-                                    className={cn(
-                                      "h-9 rounded-xl text-[11px] font-semibold ring-1 ring-border transition sm:h-11 sm:text-sm",
-                                      active
-                                        ? "bg-foreground text-background"
-                                        : "bg-white hover:bg-muted",
-                                      saving || !tenantId
-                                        ? "cursor-not-allowed opacity-60"
-                                        : "",
-                                    )}
-                                  >
-                                    {onlyTimeCL(s.start_at)}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="mt-4 rounded-xl border bg-white p-3 text-[11px] sm:text-sm">
-                    <div className="text-muted-foreground">
-                      <span className="font-semibold text-foreground">
-                        Elegido:
-                      </span>{" "}
-                      {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
-                    </div>
-                    <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
-                      Las horas podrían agotarse. Agenda lo antes posible.
+                    <div className="mt-4 rounded-xl border bg-white p-3 text-[11px] sm:text-sm">
+                      <div className="text-muted-foreground">
+                        <span className="font-semibold text-foreground">
+                          Elegido:
+                        </span>{" "}
+                        {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
+                      </div>
+                      <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
+                        Las horas podrían agotarse. Agenda lo antes posible.
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
             </section>
 
             {/* Datos */}
@@ -1005,17 +1115,49 @@ function ReservarInner() {
                     <input
                       value={phone}
                       disabled={saving || !tenantId}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (!phoneTouched) setPhoneTouched(true);
+                      }}
+                      onBlur={() => {
+                        // ✅ si es válido, lo dejamos en +56
+                        if (isValidCLMobile(phone)) {
+                          setPhone(normalizeToE164CLMobile(phone));
+                        }
+                      }}
                       placeholder="Ej: 912345678 o +56912345678"
-                      className="h-10 w-full rounded-xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
+                      className={cn(
+                        "h-10 w-full rounded-xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm",
+                        phoneTouched && phone.trim().length > 0 && !isPhoneValid
+                          ? "border-red-300 focus:ring-red-200"
+                          : "focus:ring-foreground/20",
+                      )}
                     />
                   </div>
+
+                  <div className="mt-1.5 text-[10px] text-muted-foreground sm:text-xs">
+                    Formato válido Chile móvil:{" "}
+                    <span className="font-semibold text-foreground">
+                      9XXXXXXXX
+                    </span>{" "}
+                    o{" "}
+                    <span className="font-semibold text-foreground">
+                      +569XXXXXXXX
+                    </span>
+                  </div>
+
                   <div className="mt-1.5 text-[10px] text-muted-foreground sm:text-xs">
                     Se guardará como:{" "}
                     <span className="font-semibold text-foreground">
                       {phoneNorm || "—"}
                     </span>
                   </div>
+
+                  {phoneTouched && phone.trim().length > 0 && !isPhoneValid ? (
+                    <div className="mt-1.5 text-[10px] text-red-600 sm:text-xs">
+                      Celular inválido. Debe ser móvil Chile (9 dígitos) o +56.
+                    </div>
+                  ) : null}
                 </div>
 
                 <div>
@@ -1112,6 +1254,13 @@ function ReservarInner() {
                 >
                   {saving ? "Reservando..." : "Confirmar reserva"}
                 </button>
+
+                {/* ✅ Hint extra si falta servicio */}
+                {!serviceId ? (
+                  <div className="mt-2 text-center text-[11px] text-amber-700">
+                    Selecciona un servicio para habilitar la reserva.
+                  </div>
+                ) : null}
               </div>
             </section>
           </aside>
@@ -1132,6 +1281,12 @@ function ReservarInner() {
           >
             {saving ? "Reservando..." : "Confirmar reserva"}
           </button>
+
+          {!serviceId ? (
+            <div className="mt-1 text-center text-[11px] text-amber-700">
+              Selecciona un servicio para continuar.
+            </div>
+          ) : null}
         </div>
       </div>
     </main>

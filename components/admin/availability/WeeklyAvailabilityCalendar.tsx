@@ -36,11 +36,15 @@ function hhmmFromStartStr(s: string) {
   return t.slice(0, 5); // "HH:MM"
 }
 
+/**
+ * ✅ FIX: calcular day_of_week en LOCAL (coherente con FullCalendar timeZone)
+ * Usar UTC aquí puede provocar desface 1 día en edgecases.
+ */
 function dowFromStartStr(s: string) {
   const d = (s.split("T")[0] ?? "").trim(); // "YYYY-MM-DD"
   const [y, m, day] = d.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, (m || 1) - 1, day || 1));
-  return dt.getUTCDay(); // 0..6
+  const dt = new Date(y || 1970, (m || 1) - 1, day || 1, 12, 0, 0, 0); // ancla mediodía
+  return dt.getDay(); // 0..6 (Dom=0)
 }
 
 /** Ancla de semana a mediodía para evitar edgecases DST */
@@ -88,7 +92,11 @@ function normalizeBlock(b: Block): Block {
 /** Key estable para mapear eventos <-> blocks */
 function blockKey(b: Block) {
   // preferimos id > tempId > fallback determinístico
-  return b.id ?? b.tempId ?? `${b.day_of_week}|${String(b.start_time).slice(0, 5)}|${String(b.end_time).slice(0, 5)}`;
+  return (
+    b.id ??
+    b.tempId ??
+    `${b.day_of_week}|${String(b.start_time).slice(0, 5)}|${String(b.end_time).slice(0, 5)}`
+  );
 }
 
 // ISO local sin "Z" (para render consistente en FullCalendar)
@@ -117,9 +125,7 @@ function overlaps(a: Block, b: Block) {
 
 /**
  * Dedupe SOLO de activos, pero sin perder inactivos.
- * Esto es CLAVE para poder “borrar” horarios ya guardados:
- * - si marcamos is_active=false, lo mantenemos en el estado
- *   para que el botón Guardar pueda enviar esa info y el backend borre.
+ * CLAVE para borrar (is_active=false) sin que “desaparezca” del payload a guardar.
  */
 function dedupePreservingInactive(list: Block[]) {
   const inactive: Block[] = [];
@@ -147,13 +153,30 @@ function dedupePreservingInactive(list: Block[]) {
   return [...inactive, ...Array.from(activeMap.values())];
 }
 
+function safeUUID() {
+  try {
+    // @ts-ignore
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {}
+  return `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+type AnyDropResizeArg = {
+  event: {
+    startStr?: string;
+    endStr?: string;
+    extendedProps?: any;
+  };
+  revert?: () => void;
+};
+
 export default function WeeklyAvailabilityCalendar({
   weekDate,
   blocks,
   onChangeBlocks,
   slotMinTime = "07:00:00",
   slotMaxTime = "21:00:00",
-  timeZone = TZ_DEFAULT, // guardamos por startStr/endStr
+  timeZone = TZ_DEFAULT,
 }: Props) {
   const calRef = useRef<FullCalendar | null>(null);
 
@@ -194,9 +217,12 @@ export default function WeeklyAvailabilityCalendar({
   }, [normalizedBlocks, weekDate]);
 
   // Guardado robusto: FullCalendar -> startStr/endStr -> Block (HH:MM + DOW)
-  function eventToBlockFromStr(startStr: string, endStr: string, existing?: Block): Block {
-    // Si es un bloque nuevo, asegurar tempId para que sea estable
-    const ensuredTempId = existing?.tempId ?? existing?.id ?? crypto.randomUUID();
+  function eventToBlockFromStr(
+    startStr: string,
+    endStr: string,
+    existing?: Block,
+  ): Block {
+    const ensuredTempId = existing?.tempId ?? existing?.id ?? safeUUID();
 
     return normalizeBlock({
       ...(existing ?? {}),
@@ -223,7 +249,7 @@ export default function WeeklyAvailabilityCalendar({
     // Evita bloques demasiado pequeños
     if (hhmmToMin(candidate.end_time) - hhmmToMin(candidate.start_time) < 15) return;
 
-    // 🚫 No permitir solapes (evita 400)
+    // 🚫 No permitir solapes
     if (wouldOverlap(candidate)) {
       alert("Ese bloque se cruza con otro horario. Ajusta la selección.");
       return;
@@ -233,12 +259,12 @@ export default function WeeklyAvailabilityCalendar({
     onChangeBlocks(next);
   };
 
-  const updateFromEvent = (arg: any) => {
-    const startStr = arg.event.startStr as string | undefined;
-    const endStr = arg.event.endStr as string | undefined;
+  const updateFromEvent = (arg: AnyDropResizeArg) => {
+    const startStr = arg?.event?.startStr;
+    const endStr = arg?.event?.endStr;
     if (!startStr || !endStr) return;
 
-    const key = arg.event.extendedProps?.blockKey as string | undefined;
+    const key = arg?.event?.extendedProps?.blockKey as string | undefined;
     if (!key) return;
 
     const idx = normalizedBlocks.findIndex((b) => blockKey(b) === key);
@@ -258,9 +284,9 @@ export default function WeeklyAvailabilityCalendar({
   };
 
   /**
-   * ✅ NUEVO: click para quitar/borrar bloque.
+   * ✅ Click para quitar/borrar bloque.
    * - No lo eliminamos del array: lo marcamos is_active=false
-   * - Así el guardado puede “borrar en DB” (o desactivar).
+   * - Así el guardado puede desactivar/borrar en DB.
    */
   const onEventClick = (arg: EventClickArg) => {
     const key = (arg.event.extendedProps as any)?.blockKey as string | undefined;
@@ -303,9 +329,9 @@ export default function WeeklyAvailabilityCalendar({
         editable
         events={events}
         select={onSelect}
-        eventDrop={updateFromEvent}
-        eventResize={updateFromEvent}
-        eventClick={onEventClick} // ✅ NUEVO: borrar/desactivar con click
+        eventDrop={updateFromEvent as any}
+        eventResize={updateFromEvent as any}
+        eventClick={onEventClick}
         slotMinTime={slotMinTime}
         slotMaxTime={slotMaxTime}
         height="auto"
