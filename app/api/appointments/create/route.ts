@@ -35,6 +35,48 @@ function cleanMultilineOrNull(v: unknown): string | null {
   return joined ? joined : null;
 }
 
+/**
+ * ✅ FIX TZ: normaliza cualquier fecha entrante a ISO UTC (Z)
+ * Acepta:
+ * - "2026-02-10T15:00:00.000Z"
+ * - "2026-02-10T15:00:00-03:00"
+ * - "2026-02-10 18:00:00+00" (formato Postgres)
+ * - "2026-02-10 15:00:00" (sin TZ -> se interpreta como local del server, NO ideal, pero lo normalizamos)
+ *
+ * Devuelve siempre:
+ * - "2026-02-10T18:00:00.000Z"
+ */
+function toISOZ(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const s0 = input.trim();
+  if (!s0) return null;
+
+  // 1) Postgres style: "YYYY-MM-DD HH:MM:SS+00" -> "YYYY-MM-DDTHH:MM:SS+00:00"
+  if (s0.includes(" ") && /[+-]\d{2}$/.test(s0)) {
+    const isoLike = s0.replace(" ", "T") + ":00";
+    const d = new Date(isoLike);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  // 2) Postgres style: "YYYY-MM-DD HH:MM:SS+00:00" -> "YYYY-MM-DDTHH:MM:SS+00:00"
+  if (s0.includes(" ") && /[+-]\d{2}:\d{2}$/.test(s0)) {
+    const isoLike = s0.replace(" ", "T");
+    const d = new Date(isoLike);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  // 3) Sin TZ pero con espacio: "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM:SS"
+  //    (ojo: esto lo interpreta en TZ del server; idealmente el front SIEMPRE manda TZ)
+  if (s0.includes(" ") && !s0.includes("T")) {
+    const d = new Date(s0.replace(" ", "T"));
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+
+  // 4) ISO normal
+  const d = new Date(s0);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -46,8 +88,9 @@ export async function POST(req: Request) {
     const customer_phone = stringOrEmpty(body?.customer_phone).trim();
     const customer_email = stringOrEmpty(body?.customer_email).trim();
 
-    const start_at = stringOrEmpty(body?.start_at);
-    const end_at = stringOrEmpty(body?.end_at);
+    // ✅ FIX: guardamos SIEMPRE ISO UTC (Z) para que nunca “salte +3” por parsing
+    const start_at = toISOZ(body?.start_at);
+    const end_at = toISOZ(body?.end_at);
 
     const status = stringOrEmpty(body?.status) || "confirmed";
     const currency = upperOrNull(body?.currency) ?? "CLP";
@@ -78,7 +121,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Correo inválido" }, { status: 400 });
     }
     if (!start_at || !end_at) {
-      return NextResponse.json({ error: "Falta start_at / end_at" }, { status: 400 });
+      return NextResponse.json({ error: "start_at / end_at inválidos" }, { status: 400 });
     }
 
     // ✅ Resolver service_name + description fijo por servicio (snapshot)
@@ -122,14 +165,17 @@ export async function POST(req: Request) {
         customer_name,
         customer_phone,
         customer_email,
+
+        // ✅ guardamos ISOZ
         start_at,
         end_at,
+
         status,
         currency,
         manage_token,
 
         service_name,
-        description, // ✅ AQUÍ se guarda la description (fija por servicio o nota del cliente)
+        description, // ✅ snapshot fijo
       })
       .select(
         "id, start_at, end_at, customer_name, customer_phone, customer_email, professional_id, tenant_id, manage_token, service_name, description, currency"

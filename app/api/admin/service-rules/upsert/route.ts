@@ -29,21 +29,15 @@ function normalizeDowToJs0_6(dow: any) {
 function cleanIdAndNormalize(row: RowIn) {
   const r: any = { ...row };
 
-  // ✅ CLAVE: si id viene null / "" / undefined -> NO enviarlo
-  // OJO: si viene "null" (string) también lo sacamos.
-  const id = (r.id ?? "") as string;
-  const idTrim = String(id).trim();
-  if (!idTrim || idTrim.toLowerCase() === "null" || idTrim.toLowerCase() === "undefined") {
-    delete r.id;
-  } else {
-    r.id = idTrim;
-  }
-
   // normalizaciones
   r.day_of_week = normalizeDowToJs0_6(r.day_of_week);
   r.start_time = String(r.start_time || "").slice(0, 5);
   r.end_time = String(r.end_time || "").slice(0, 5);
   r.is_active = r.is_active === false ? false : true;
+
+  // ✅ IMPORTANTÍSIMO para modo REPLACE:
+  // nunca insertamos con id (evita conflictos y deja que Postgres genere ids nuevos)
+  delete r.id;
 
   return r;
 }
@@ -68,7 +62,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "items inválido" }, { status: 400 });
     }
 
-    // ✅ armamos rows SEGURAS (nunca mandan id:null)
+    // ✅ armamos rows SEGURAS (normalizadas + sin id)
     const rows = items.map((x) =>
       cleanIdAndNormalize({
         ...x,
@@ -78,36 +72,39 @@ export async function POST(req: Request) {
       }),
     );
 
-    // ✅ EXTRA DEFENSIVO: separamos inserts/updates
-    // - inserts: SIN id => Postgres usa default gen_random_uuid()
-    // - updates: CON id => upsert por id
-    const inserts = rows.filter((r: any) => !("id" in r));
-    const updates = rows.filter((r: any) => "id" in r);
+    // ✅ MODO REPLACE:
+    // 1) borramos reglas anteriores de ESTE servicio/profesional/tenant
+    // 2) insertamos exactamente las reglas que envía el admin
+    const { error: delErr } = await supabaseServer
+      .from("service_availability_rules")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("professional_id", professionalId)
+      .eq("service_id", serviceId);
 
-    if (inserts.length > 0) {
-      const { error } = await supabaseServer
-        .from("service_availability_rules")
-        .insert(inserts);
-      if (error) {
-        console.error("service-rules insert error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+    if (delErr) {
+      console.error("service-rules delete error:", delErr);
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
     }
 
-    if (updates.length > 0) {
-      const { error } = await supabaseServer
-        .from("service_availability_rules")
-        .upsert(updates, { onConflict: "id" });
-      if (error) {
-        console.error("service-rules upsert error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+    // si no hay bloques, quedará vacío (válido)
+    if (rows.length === 0) {
+      return NextResponse.json({ ok: true, inserted: 0, replaced: true });
+    }
+
+    const { error: insErr } = await supabaseServer
+      .from("service_availability_rules")
+      .insert(rows);
+
+    if (insErr) {
+      console.error("service-rules insert error:", insErr);
+      return NextResponse.json({ error: insErr.message }, { status: 500 });
     }
 
     return NextResponse.json({
       ok: true,
-      inserted: inserts.length,
-      upserted: updates.length,
+      inserted: rows.length,
+      replaced: true,
     });
   } catch (e: any) {
     console.error(e);

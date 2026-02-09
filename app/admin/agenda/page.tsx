@@ -1,3 +1,11 @@
+// ================================
+// ✅ ADMIN AGENDA (CORREGIDO)
+// - NO rompe UI ni lógica
+// - Fix principal: normalizar start/end a ISO (T + offset completo) antes de FullCalendar
+// - Fix display: formatDateTimeRange usa timeZone America/Santiago
+// - Fix select/drop: guardamos a ISO UTC siempre (toISOString) como ya haces
+// ================================
+
 "use client";
 
 /**
@@ -8,13 +16,11 @@
  * - WeeklyAvailabilityCalendar (horarios base)
  * - ✅ Reglas de horario por SERVICIO (Opción A)
  *
- * Mantiene tu lógica existente intacta y agrega:
- * ✅ Selector de Servicio + Calendar para "service_availability_rules"
- * ✅ Guardar reglas por servicio (soft-delete con is_active=false)
- *
- * IMPORTANTE:
- * - Para RLS estricta: services + service rules se cargan/guardan vía API server-side
- * - Si aún no existe la tabla o APIs, la UI muestra error y no rompe nada
+ * FIX TZ / +3h:
+ * - El backend/DB puede devolver timestamps tipo "2026-02-10 18:00:00+00"
+ * - FullCalendar parsea mejor ISO real "2026-02-10T18:00:00+00:00" o "...Z"
+ * - ✅ Normalizamos start/end antes de pasarlos a FullCalendar.
+ * - ✅ Formateo de hora en modales usa timeZone explícita.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +30,7 @@ import Link from "next/link";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import luxonPlugin from "@fullcalendar/luxon3";
 import esLocale from "@fullcalendar/core/locales/es";
 import type {
   DateSelectArg,
@@ -102,11 +109,72 @@ type CustomerRow = {
 type AvailabilityBlock = {
   id?: string; // DB
   tempId?: string; // editor
-  day_of_week: number; // puede venir 0-6 o 1-7 o lun=0
+  day_of_week: number;
   start_time: string; // "HH:MM"
   end_time: string; // "HH:MM"
   is_active: boolean;
 };
+
+/* =====================================================
+   ✅ TZ / ISO NORMALIZATION
+===================================================== */
+
+/**
+ * FullCalendar + Date parsing:
+ * - A veces llega desde DB/API: "YYYY-MM-DD HH:MM:SS+00"
+ * - Lo convertimos a ISO real: "YYYY-MM-DDTHH:MM:SS+00:00"
+ * - Si viene sin TZ, lo convertimos vía Date() a ISOZ (mejor que dejarlo ambiguo).
+ */
+function normalizeISO(input: any) {
+  if (!input) return "";
+  const s = String(input).trim();
+
+  // "YYYY-MM-DD HH:MM:SS+00" -> "YYYY-MM-DDTHH:MM:SS+00:00"
+  if (s.includes(" ")) {
+    let withT = s.replace(" ", "T");
+
+    // +00 / -03 (2 dígitos)
+    if (/[+-]\d{2}$/.test(withT)) withT += ":00";
+
+    return withT;
+  }
+
+  return s;
+}
+function toIsoZ(input: any) {
+  const isoLike = normalizeISO(input); // deja "2026-02-12T14:00:00+00:00"
+  const d = new Date(isoLike);
+  if (isNaN(d.getTime())) return ""; // inválido
+  return d.toISOString(); // "2026-02-12T14:00:00.000Z"
+}
+
+/** forzar formateo siempre en TZ admin */
+function formatDateTimeRange(startISO: string, endISO: string) {
+  const tz = UI_CONFIG.ADMIN_TIMEZONE;
+  const start = new Date(startISO);
+  const end = new Date(endISO);
+
+  const date = start.toLocaleDateString("es-CL", {
+    timeZone: tz,
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  });
+
+  const startTime = start.toLocaleTimeString("es-CL", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const endTime = end.toLocaleTimeString("es-CL", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return { date, startTime, endTime };
+}
 
 /* =====================================================
    HELPERS
@@ -137,26 +205,15 @@ const timeToMinutes = (time: string) => {
   return hh * 60 + mm;
 };
 
-/**
- * day_of_week puede venir:
- * - JS: 0-6 (Dom=0)
- * - DB: 1-7 (Lun=1 ... Dom=7)
- * - lun=0: 0-6 donde 0=Lun ... 6=Dom
- *
- * Esta función permite todos.
- */
 function blockMatchesDateDay(blockDow: number, date: Date) {
   const jsDow = date.getDay(); // 0 dom..6 sab
 
-  // formato JS 0-6
   if (blockDow === jsDow) return true;
 
-  // formato 1-7 (Lun=1..Dom=7)
-  const dbDow_1_7 = jsDow === 0 ? 7 : jsDow; // Dom->7, Lun->1...
+  const dbDow_1_7 = jsDow === 0 ? 7 : jsDow;
   if (blockDow === dbDow_1_7) return true;
 
-  // formato lun=0 (Lun=0..Dom=6)
-  const mon0 = (jsDow + 6) % 7; // Lun(1)->0, ... Dom(0)->6
+  const mon0 = (jsDow + 6) % 7;
   if (blockDow === mon0) return true;
 
   return false;
@@ -175,29 +232,6 @@ const isWithinAvailability = (params: {
   });
 };
 
-function formatDateTimeRange(startISO: string, endISO: string) {
-  const start = new Date(startISO);
-  const end = new Date(endISO);
-
-  const date = start.toLocaleDateString("es-CL", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-  });
-
-  const startTime = start.toLocaleTimeString("es-CL", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const endTime = end.toLocaleTimeString("es-CL", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return { date, startTime, endTime };
-}
-
 function buildConfirmationMessage(args: {
   customerName: string;
   dateLabel: string;
@@ -214,18 +248,11 @@ function buildConfirmationMessage(args: {
   return `${header}\n\n✅ Tu cita quedó agendada para:\n📅 ${dateLabel}\n🕒 ${startTime} – ${endTime}\n\nSi necesitas reprogramar, responde este mensaje.`;
 }
 
-/** Normaliza cualquier dow raro a JS 0..6 (Dom=0) SOLO PARA GUARDAR */
 function normalizeDowToJs0_6(dow: number) {
   const n = Number(dow);
   if (!Number.isFinite(n)) return 0;
-
-  // si viene 1..7 (Lun..Dom)
   if (n >= 1 && n <= 7) return n === 7 ? 0 : n;
-
-  // si viene JS 0..6
   if (n >= 0 && n <= 6) return n;
-
-  // fallback
   return ((n % 7) + 7) % 7;
 }
 
@@ -298,7 +325,6 @@ export default function AgendaPage() {
   const router = useRouter();
   const calendarRef = useRef<FullCalendar | null>(null);
 
-  // Fuente de verdad: semana visible (lunes) que viene desde FullCalendar
   const [viewDate, setViewDate] = useState<Date>(() =>
     getMondayStart(new Date()),
   );
@@ -332,7 +358,7 @@ export default function AgendaPage() {
   >([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
 
-  // ✅ servicios + reglas por servicio
+  // services + rules
   const [services, setServices] = useState<Service[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
   const [serviceRulesBlocks, setServiceRulesBlocks] = useState<
@@ -376,7 +402,6 @@ export default function AgendaPage() {
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("debug") === "1";
 
-  // abort para carga rápida
   const apptAbortRef = useRef<AbortController | null>(null);
 
   /* =====================================================
@@ -599,6 +624,7 @@ export default function AgendaPage() {
     }
   };
 
+  // ✅ Cargar citas (FIX +3h: normalizeISO)
   const loadAppointments = useCallback(
     async (start?: string, end?: string, professionalId?: string) => {
       if (!tenantId) return;
@@ -638,8 +664,11 @@ export default function AgendaPage() {
           return {
             id: a.id,
             title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
-            start: a.start_at,
-            end: a.end_at,
+
+            // ✅ FIX: normalizamos formato timestamp
+            start: toIsoZ(a.start_at),
+            end: toIsoZ(a.end_at),
+
             classNames: ["citaya-event", `citaya-status-${status}`],
             extendedProps: {
               professional_id: a.professional_id,
@@ -663,7 +692,7 @@ export default function AgendaPage() {
     [tenantId],
   );
 
-  // ✅ cargar servicios del tenant — via API server-side
+  // servicios
   const loadServices = useCallback(async () => {
     if (!tenantId) return;
 
@@ -700,7 +729,6 @@ export default function AgendaPage() {
     }
   }, [tenantId]);
 
-  // ✅ cargar reglas por servicio — via API server-side
   const loadServiceRules = useCallback(
     async (professionalId: string, serviceId: string) => {
       if (!tenantId || !professionalId || !serviceId) {
@@ -760,7 +788,6 @@ export default function AgendaPage() {
     [tenantId],
   );
 
-  // ✅ guardar reglas por servicio — via API server-side (RLS-friendly)
   const saveServiceRules = useCallback(async () => {
     if (!tenantId) return;
     if (!selectedProfessionalId) return;
@@ -789,10 +816,7 @@ export default function AgendaPage() {
             end_time: (b.end_time || "").slice(0, 5),
             is_active: !!b.is_active,
           };
-
-          // ✅ CLAVE: solo incluir id si existe
           if (b.id) row.id = b.id;
-
           return row;
         }),
       };
@@ -811,7 +835,6 @@ export default function AgendaPage() {
         title: "Reglas guardadas",
         description: "Horario por servicio actualizado.",
       });
-
       await loadServiceRules(selectedProfessionalId, selectedServiceId);
     } catch (e: any) {
       console.error("saveServiceRules error:", e);
@@ -849,7 +872,6 @@ export default function AgendaPage() {
     loadAvailability(selectedProfessionalId);
   }, [authChecked, tenantId, selectedProfessionalId, loadAvailability]);
 
-  // ✅ cargar reglas cuando cambia profesional o servicio
   useEffect(() => {
     if (!authChecked) return;
     if (!tenantId) return;
@@ -934,10 +956,10 @@ export default function AgendaPage() {
     const startDate = selectInfo.start;
     const endDate = selectInfo.end;
 
+    // ✅ se guarda en UTC ISOZ siempre
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
-    // ✅ Validar disponibilidad usando HORARIO BASE (no reglas por servicio)
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
@@ -1052,7 +1074,6 @@ export default function AgendaPage() {
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
-    // ✅ Validar disponibilidad usando HORARIO BASE (no reglas por servicio)
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
@@ -1187,6 +1208,8 @@ export default function AgendaPage() {
     const customerPhone = props.customer_phone ?? null;
     const customerId = props.customer_id ?? null;
 
+    // ✅ OJO: clickInfo.event.start/end ya vienen como Date en la TZ de FullCalendar
+    // pero guardamos modal en ISO UTC
     const startISO = clickInfo.event.start?.toISOString() ?? "";
     const endISO = clickInfo.event.end?.toISOString() ?? "";
 
@@ -1201,15 +1224,11 @@ export default function AgendaPage() {
     setActionOpen(true);
   };
 
-  /**
-   * ✅ FullCalendar = source of truth de semana.
-   */
   const handleDatesSet = (arg: DatesSetArg) => {
-    const startStr = arg.startStr; // e.g. "2026-01-26T00:00:00"
+    const startStr = arg.startStr;
     const datePart = startStr.slice(0, 10);
     const [y, m, d] = datePart.split("-").map(Number);
 
-    // local safe a mediodía
     const safeLocal = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0, 0);
     const monday = getMondayStart(safeLocal);
 
@@ -1218,7 +1237,7 @@ export default function AgendaPage() {
   };
 
   /* =====================================================
-     RENDER guards
+     RENDER guards (igual que tu código)
   ===================================================== */
 
   if (tenantError) {
@@ -1519,7 +1538,7 @@ export default function AgendaPage() {
           <Card>
             <CardBody>
               <FullCalendar
-                plugins={[timeGridPlugin, interactionPlugin]}
+                plugins={[timeGridPlugin, interactionPlugin, luxonPlugin]}
                 initialView={UI_CONFIG.CALENDAR_VIEW as any}
                 timeZone={UI_CONFIG.ADMIN_TIMEZONE}
                 locale={esLocale}
