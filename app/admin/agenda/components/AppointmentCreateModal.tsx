@@ -7,7 +7,7 @@ export type CustomerLite = {
   id: string;
   name: string;
   phone: string | null;
-   email: string | null;
+  email: string | null;
 };
 
 type Props = {
@@ -127,30 +127,18 @@ export default function AppointmentCreateModal({
 
   const nothingFound = q.trim().length >= 2 && filtered.length === 0;
 
+  async function getBearerTokenOrNull(): Promise<string | null> {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
   async function findCustomerByPhone(phoneNormalized: string) {
-    // Buscar por tenant + phone (evita mezclar tenants)
-    const { data, error } = await supabase
-      .from("customers")
-      .select("id, full_name, phone")
-      .eq("tenant_id", tenantId)
-      .eq("phone", phoneNormalized)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Error finding customer by phone:", error);
-      return null;
-    }
-
-    if (!data) return null;
-
-    const existing: CustomerLite = {
-      id: data.id,
-      name: data.full_name,
-      phone: data.phone ?? null,
-      email: null
-    };
-
-    return existing;
+    // ⚠️ Antes: consultaba directamente customers (RLS). Ahora lo resolvemos con API create (reused=true)
+    // Para mantener la lógica (y no romper UX), devolvemos null acá y dejamos que el flujo de "duplicado"
+    // se resuelva por el mismo endpoint (que ya reusa por phone/email).
+    // Igual, intentamos un match local en customers[] para seleccionar si ya está en memoria.
+    const local = customers.find((c) => (c.phone ?? "") === phoneNormalized);
+    return local ?? null;
   }
 
   const handleCreateCustomer = async () => {
@@ -170,50 +158,58 @@ export default function AppointmentCreateModal({
     try {
       const email = newEmail.trim() || null;
 
-      const { data, error } = await supabase
-        .from("customers")
-        .insert([
-          {
-            tenant_id: tenantId,
-            full_name: name,
-            phone: phoneNormalized,
-            email,
-          },
-        ])
-        .select("id, full_name, phone")
-        .single();
+      const token = await getBearerTokenOrNull();
+      if (!token) {
+        alert("Sesión expirada. Vuelve a iniciar sesión.");
+        return;
+      }
 
-      if (error) {
-        const pgErr = error as unknown as PostgrestErrorLike;
+      // ✅ NUEVO: Crear/Reusar cliente vía API server-side (evita RLS 403)
+      const res = await fetch("/api/customers/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          tenantId,
+          name,
+          phone: phoneNormalized,
+          email,
+        }),
+      });
 
-        if (isDuplicateCustomerError(pgErr)) {
-          const existing = await findCustomerByPhone(phoneNormalized);
+      const json = await res.json();
 
-          if (existing) {
-            alert("Ya existe un cliente con este teléfono. Seleccionándolo para agendar.");
-            setSelected(existing);
-            setQ(existing.name);
-            setShowCreate(false);
-
-            // opcional: lo agregamos al state del parent para que aparezca en búsquedas
-            onCreatedCustomer?.(existing);
-            return;
-          }
-
-          alert("Este teléfono ya está registrado. Busca y selecciona el cliente existente.");
-          return;
-        }
-
-        console.error("Error creating customer:", error);
+      if (!res.ok || !json?.ok) {
+        console.error("Error creating customer (API):", json);
         alert("No se pudo crear el cliente (revisa consola).");
         return;
       }
 
+      // ✅ El endpoint puede:
+      // - crear (reused=false)
+      // - reusar existente por phone/email (reused=true)
+      const customerId = String(json.customerId || "");
+
+      // Intentamos seleccionar usando memoria local; si no existe, construimos lite.
+      const localExisting = customers.find((c) => c.id === customerId) || (await findCustomerByPhone(phoneNormalized));
+
+      if (json.reused && localExisting) {
+        alert("Ya existe un cliente con este teléfono. Seleccionándolo para agendar.");
+        setSelected(localExisting);
+        setQ(localExisting.name);
+        setShowCreate(false);
+        onCreatedCustomer?.(localExisting);
+        return;
+      }
+
+      // Si no estaba en memoria (o fue creado), armamos el objeto para UI
       const created: CustomerLite = {
-        id: data.id,
-        name: data.full_name,
-        phone: data.phone ?? null,
-        email: null
+        id: customerId,
+        name,
+        phone: phoneNormalized,
+        email,
       };
 
       // seleccionar automáticamente
