@@ -47,25 +47,36 @@ export default function NewCustomerPage() {
 
     setSaving(true);
 
-    const { error } = await supabase.from("customers").insert([
-      {
-        tenant_id: TENANT_ID,
-        full_name: name,
-        phone: phoneDigits || null,
-        email: email.trim() || null,
-        notes: notes.trim() || null,
-      },
-    ]);
+    try {
+      // ✅ IMPORTANTE: ya NO insertamos customers desde frontend (RLS lo bloquea)
+      // Ahora usamos API server-side
+      const res = await fetch("/api/customers/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId: TENANT_ID,
+          name, // endpoint espera "name" (después ajustas DB si quieres)
+          phone: phoneDigits || null,
+          email: email.trim() || null,
+          // notes: notes.trim() || null, // si luego lo soportas en el endpoint
+        }),
+      });
 
-    setSaving(false);
+      const json = await res.json();
 
-    if (error) {
-      console.error("Error creando cliente:", error);
+      if (!res.ok || !json?.ok) {
+        console.error("Error creando cliente (API):", json);
+        alert(json?.error ?? "Error creando cliente");
+        return;
+      }
+
+      router.push("/admin/customers");
+    } catch (err: any) {
+      console.error("Error creando cliente (fetch):", err?.message || err);
       alert("Error creando cliente");
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    router.push("/admin/customers");
   };
 
   if (!authChecked) {
@@ -78,7 +89,15 @@ export default function NewCustomerPage() {
 
   return (
     <main style={{ padding: 20, fontFamily: "system-ui", maxWidth: 720 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
         <h1 style={{ margin: 0 }}>Nuevo cliente</h1>
         <Link href="/admin/customers" style={{ textDecoration: "none" }}>
           ← Volver
@@ -92,7 +111,11 @@ export default function NewCustomerPage() {
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder="Ej: Juan Pérez"
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+            }}
           />
         </label>
 
@@ -102,7 +125,11 @@ export default function NewCustomerPage() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="Ej: 956655664 (o +56 9 5665 5664)"
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+            }}
           />
         </label>
 
@@ -112,7 +139,11 @@ export default function NewCustomerPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Ej: juan@mail.com"
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+            }}
           />
         </label>
 
@@ -122,7 +153,12 @@ export default function NewCustomerPage() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Preferencias, alergias, observaciones…"
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", minHeight: 90 }}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              minHeight: 90,
+            }}
           />
         </label>
 

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
 import { normalizeCLPhone } from "@/app/lib/phone";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function CustomerUpsertModal(props: {
   open: boolean;
@@ -39,7 +39,6 @@ export default function CustomerUpsertModal(props: {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if (e.key === "Enter") {
-        // Enter guarda (si estás escribiendo)
         e.preventDefault();
         void handleSave();
       }
@@ -63,57 +62,61 @@ export default function CustomerUpsertModal(props: {
 
     setSaving(true);
 
-    const payload = {
-      tenant_id: tenantId,
-      full_name: fullName.trim(),
-      phone: phoneNormalized,
-      email: email.trim() ? email.trim() : null,
-    };
+    try {
+      // ✅ obtener token para Authorization (Bearer)
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
 
-    if (!isEdit) {
-      const { data, error } = await supabase
-        .from("customers")
-        .insert([payload])
-        .select("id, full_name, phone, email")
-        .single();
-
-      if (error) {
-        console.error("Error creating customer:", error);
-        alert("Error creando cliente");
+      if (!token) {
+        alert("Sesión expirada. Vuelve a iniciar sesión.");
         setSaving(false);
         return;
       }
 
-      onSaved(data);
+      const res = await fetch("/api/customers/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          tenantId,
+          customerId: isEdit ? initial!.id : null, // 👈 si viene, hace UPDATE
+          name: fullName.trim(), // endpoint recibe "name" y lo guarda en full_name
+          phone: phoneNormalized,
+          email: email.trim() ? email.trim() : null,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json?.ok) {
+        console.error("Error upsert customer (API):", json);
+        alert(json?.error ?? (isEdit ? "Error editando cliente" : "Error creando cliente"));
+        setSaving(false);
+        return;
+      }
+
+      const row = {
+        id: json.customerId as string,
+        full_name: fullName.trim(),
+        phone: phoneNormalized,
+        email: email.trim() ? email.trim() : null,
+      };
+
+      onSaved(row);
       setSaving(false);
       onClose();
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("customers")
-      .update(payload)
-      .eq("id", initial!.id)
-      .eq("tenant_id", tenantId)
-      .select("id, full_name, phone, email")
-      .single();
-
-    if (error) {
-      console.error("Error updating customer:", error);
-      alert("Error editando cliente");
+    } catch (e: any) {
+      console.error("Error upsert customer (fetch):", e?.message || e);
+      alert(isEdit ? "Error editando cliente" : "Error creando cliente");
       setSaving(false);
-      return;
     }
-
-    onSaved(data);
-    setSaving(false);
-    onClose();
   };
 
   if (!open) return null;
 
   return (
-    // ✅ Click afuera cierra
     <div
       onClick={() => {
         if (!saving) onClose();
@@ -129,7 +132,6 @@ export default function CustomerUpsertModal(props: {
         zIndex: 80,
       }}
     >
-      {/* ✅ Click dentro NO cierra */}
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -211,9 +213,7 @@ export default function CustomerUpsertModal(props: {
             {saving ? "Guardando..." : isEdit ? "Guardar cambios" : "Crear cliente"}
           </button>
 
-          <div style={{ fontSize: 11, opacity: 0.6 }}>
-            Tip: ESC para cerrar • Enter para guardar
-          </div>
+          <div style={{ fontSize: 11, opacity: 0.6 }}>Tip: ESC para cerrar • Enter para guardar</div>
         </div>
       </div>
     </div>
