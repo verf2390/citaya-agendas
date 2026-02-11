@@ -511,27 +511,53 @@ export default function AgendaPage() {
   }, [tenantId]);
 
   const loadCustomers = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("customers")
-      .select("id, full_name, phone, email")
-      .eq("tenant_id", tenantId)
-      .order("full_name", { ascending: true })
-      .limit(500);
+    if (!tenantId) return;
 
-    if (error) {
-      console.error("Error loading customers:", error);
-      return;
+    try {
+      // ✅ Token Supabase (Bearer)
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+
+      if (!token) {
+        console.error("No session token (customers).");
+        setCustomers([]);
+        return;
+      }
+
+      // ✅ List server-side (service role) — evita RLS en frontend
+      const res = await fetch(`/api/customers/list?tenantId=${tenantId}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json?.ok) {
+        console.error("Error loading customers (API):", json);
+        setCustomers([]);
+        return;
+      }
+
+      const rows = (json.customers ?? []) as Array<{
+        id: string;
+        full_name: string;
+        phone: string | null;
+        email: string | null;
+      }>;
+
+      const list: CustomerLite[] = rows.map((c) => ({
+        id: c.id,
+        name: c.full_name,
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+      }));
+
+      setCustomers(list);
+    } catch (e: any) {
+      console.error("Error loading customers (fetch):", e?.message || e);
+      setCustomers([]);
     }
-
-    const rows = (data as CustomerRow[] | null) ?? [];
-    const list: CustomerLite[] = rows.map((c) => ({
-      id: c.id,
-      name: c.full_name,
-      phone: c.phone ?? null,
-      email: c.email ?? null,
-    }));
-
-    setCustomers(list);
   }, [tenantId]);
 
   const loadAvailability = useCallback(
