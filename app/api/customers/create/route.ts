@@ -49,7 +49,8 @@ export async function POST(req: Request) {
 
     const tenantId = cleanTextOrNull(body?.tenantId);
     const professionalId = cleanTextOrNull(body?.professionalId);
-    const full_name = cleanTextOrNull(body?.name); // front manda "name"
+    const full_name = 
+      body.fullName ?? body.name ?? null;
     const phone = cleanPhoneOrNull(body?.phone);
     const email = cleanEmailOrNull(body?.email);
     const notes = cleanTextOrNull(body?.notes);
@@ -141,7 +142,6 @@ export async function POST(req: Request) {
       .from("customers")
       .insert({
         tenant_id: tenantId,
-        professional_id: professionalId,
         full_name,
         phone,
         email,
