@@ -22,7 +22,7 @@ type CustomerRow = {
 export default function CustomersPage() {
   const router = useRouter();
 
-  // ✅ Tenant (multi-tenant real, NO hardcode)
+  // ✅ Tenant
   const [tenantId, setTenantId] = useState<string>("");
   const [tenantSlug, setTenantSlug] = useState<string>("");
   const [tenantError, setTenantError] = useState<string>("");
@@ -90,7 +90,7 @@ export default function CustomersPage() {
       setLoadingTenant(false);
     };
 
-    run();
+    void run();
   }, []);
 
   /* =====================================================
@@ -104,7 +104,6 @@ export default function CustomersPage() {
 
       const { data } = await supabase.auth.getSession();
       if (!data.session) {
-        // ✅ redirect dinámico (mantiene pathname + query del subdominio)
         const redirectTo = `${window.location.pathname}${window.location.search || ""}`;
         router.push(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
         return;
@@ -113,38 +112,57 @@ export default function CustomersPage() {
       setAuthChecked(true);
     };
 
-    run();
+    void run();
   }, [router, loadingTenant, tenantError, tenantId]);
 
   /* =====================================================
-     Loaders
+     Loaders (API server-side)
   ===================================================== */
   const loadCustomers = async () => {
     if (!tenantId) return;
 
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("customers")
-      .select("id, tenant_id, full_name, phone, email, created_at")
-      .eq("tenant_id", tenantId)
-      .order("full_name", { ascending: true })
-      .limit(1000);
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
 
-    if (error) {
-      console.error("Error loading customers:", error);
+    if (!token) {
+      setLoading(false);
+      setCustomers([]);
+      return;
+    }
+
+    const res = await fetch(`/api/customers/list?tenantId=${tenantId}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+
+    const json = await res.json().catch(() => null);
+
+    // ✅ Si backend responde Unauthorized, re-login
+    if (res.status === 401) {
+      const redirectTo = `${window.location.pathname}${window.location.search || ""}`;
+      router.push(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
       setLoading(false);
       return;
     }
 
-    setCustomers(((data as CustomerRow[] | null) ?? []) as CustomerRow[]);
+    if (!res.ok || !json?.ok) {
+      console.error("Error loading customers (API):", json);
+      setCustomers([]);
+      setLoading(false);
+      return;
+    }
+
+    setCustomers((json.customers ?? []) as CustomerRow[]);
     setLoading(false);
   };
 
   useEffect(() => {
     if (!authChecked) return;
     if (!tenantId) return;
-    loadCustomers();
+    void loadCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, tenantId]);
 
@@ -292,7 +310,7 @@ export default function CustomersPage() {
         />
 
         <button
-          onClick={loadCustomers}
+          onClick={() => void loadCustomers()}
           style={{
             padding: "10px 12px",
             borderRadius: 10,
@@ -378,18 +396,16 @@ export default function CustomersPage() {
       {/* ✅ Modal Create/Edit */}
       <CustomerUpsertModal
         open={upsertOpen}
-        onClose={() => setUpsertOpen(false)}
+        onClose={() => {
+          setUpsertOpen(false);
+          setEditing(null);
+        }}
         tenantId={tenantId}
         initial={editing}
-        onSaved={(saved) => {
-          setCustomers((prev) => {
-            const exists = prev.some((x) => x.id === saved.id);
-            if (!exists) return [{ ...(saved as any) }, ...prev];
-
-            return prev.map((x) =>
-              x.id === saved.id ? ({ ...x, ...(saved as any) } as any) : x,
-            );
-          });
+        onSaved={async () => {
+          await loadCustomers();
+          setUpsertOpen(false);
+          setEditing(null);
         }}
       />
     </main>
