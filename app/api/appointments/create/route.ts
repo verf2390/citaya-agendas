@@ -1,124 +1,159 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
-
-function cleanTextOrNull(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim().replace(/\s+/g, " ");
-  return t ? t : null;
-}
-
-function cleanPhoneOrNull(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim();
-  if (!t) return null;
-  const norm = t.replace(/[^\d+]/g, "");
-  return norm ? norm : null;
-}
-
-function cleanEmailOrNull(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim().toLowerCase();
-  if (!t) return null;
-  if (!t.includes("@") || !t.includes(".")) return null;
-  return t;
-}
+import { parseJson } from "@/lib/api/parse";
+import { AppointmentCreateSchema } from "@/lib/api/schemas";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const parsed = await parseJson(req, AppointmentCreateSchema);
+    if (!parsed.ok) return parsed.res;
 
-    const tenantId = cleanTextOrNull(body?.tenantId);
-    const professionalId = cleanTextOrNull(body?.professionalId); // opcional
-    const name = cleanTextOrNull(body?.name);
-    const phone = cleanPhoneOrNull(body?.phone);
-    const email = cleanEmailOrNull(body?.email);
+    const {
+      tenantId,
+      professionalId,
+      startAt,
+      endAt,
+      customerName,
+      customerPhone,
+      customerEmail,
+      customerId,
+      serviceId,
+      notes,
+      currency,
+      status,
+    } = parsed.data;
 
-    if (!tenantId) {
-      return NextResponse.json({ ok: false, error: "tenantId requerido" }, { status: 400 });
-    }
-    if (!name) {
-      return NextResponse.json({ ok: false, error: "name requerido" }, { status: 400 });
-    }
-    if (!phone && !email) {
-      return NextResponse.json(
-        { ok: false, error: "phone o email requerido" },
-        { status: 400 }
-      );
-    }
-
-    // ✅ EN TU PROYECTO: supabaseServer ES EL CLIENTE (no función)
     const sb = supabaseServer;
 
-    const tryFindByPhone = async () => {
-      if (!phone) return null;
-      const { data, error } = await sb
-        .from("customers")
-        .select("id, name, phone, email")
+    /* =====================================================
+       SNAPSHOT SERVICIO
+    ===================================================== */
+    let service_name: string | null = null;
+    let description: string | null = null;
+
+    if (serviceId) {
+      const { data: svc, error } = await sb
+        .from("services")
+        .select("name, description")
         .eq("tenant_id", tenantId)
-        .eq("phone", phone)
+        .eq("id", serviceId)
         .maybeSingle();
+
       if (error) throw error;
-      return data ?? null;
-    };
 
-    const tryFindByEmail = async () => {
-      if (!email) return null;
-      const { data, error } = await sb
-        .from("customers")
-        .select("id, name, phone, email")
-        .eq("tenant_id", tenantId)
-        .eq("email", email)
-        .maybeSingle();
-      if (error) throw error;
-      return data ?? null;
-    };
-
-    let existing = await tryFindByPhone();
-    if (!existing) existing = await tryFindByEmail();
-
-    if (existing) {
-      // (Opcional) enriquecer datos
-      const patch: Record<string, any> = {};
-      if (name && existing.name !== name) patch.name = name;
-      if (!existing.phone && phone) patch.phone = phone;
-      if (!existing.email && email) patch.email = email;
-      if (professionalId) patch.professional_id = professionalId;
-
-      if (Object.keys(patch).length) {
-        const { error: upErr } = await sb
-          .from("customers")
-          .update(patch)
-          .eq("id", existing.id)
-          .eq("tenant_id", tenantId);
-        if (upErr) throw upErr;
-      }
-
-      return NextResponse.json({ ok: true, customerId: existing.id, reused: true });
+      service_name = svc?.name ?? null;
+      description = svc?.description ?? null;
     }
 
-    // Crear nuevo
-    const insertPayload: Record<string, any> = {
+    /* =====================================================
+       INSERT DB
+    ===================================================== */
+    const payload = {
       tenant_id: tenantId,
-      name,
-      phone,
-      email,
-    };
-    if (professionalId) insertPayload.professional_id = professionalId;
+      professional_id: professionalId,
+      start_at: startAt,
+      end_at: endAt,
 
-    const { data: created, error: insErr } = await sb
-      .from("customers")
-      .insert(insertPayload)
-      .select("id")
+      customer_name: customerName,
+      customer_phone: customerPhone ?? null,
+      customer_email: customerEmail ?? null,
+      customer_id: customerId ?? null,
+
+      service_name,
+      description,
+
+      notes: notes ?? null,
+      currency: currency ?? "CLP",
+      status: status ?? "confirmed",
+      source: "admin",
+    };
+
+    const { data, error } = await sb
+      .from("appointments")
+      .insert(payload)
+      .select("id, manage_token")
       .single();
 
-    if (insErr) throw insErr;
+    if (error) throw error;
 
-    return NextResponse.json({ ok: true, customerId: created.id, reused: false });
+    /* =====================================================
+       🔥 WEBHOOK N8N (CON SECRET + LOGS)
+    ===================================================== */
+    const webhookBase = process.env.N8N_CONFIRMATION_WEBHOOK_URL;
+    const secret = process.env.CITAYA_SECRET;
+
+    if (!webhookBase) {
+      console.warn(
+        "[appointments/create] N8N_CONFIRMATION_WEBHOOK_URL no seteada",
+      );
+    } else {
+      try {
+        // 👉 agregamos ?secret=XXXX automáticamente
+        const url = new URL(webhookBase);
+        if (secret) url.searchParams.set("secret", secret);
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
+        const res = await fetch(url.toString(), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            event: "appointment.created",
+            appointmentId: data.id,
+
+            tenantId,
+            professionalId,
+            startAt,
+            endAt,
+
+            customerName,
+            customerPhone: customerPhone ?? null,
+            customerEmail: customerEmail ?? null,
+            customerId: customerId ?? null,
+
+            serviceId: serviceId ?? null,
+            service_name,
+            description,
+
+            notes: notes ?? null,
+            currency: currency ?? "CLP",
+            status: status ?? "confirmed",
+
+            source: "citaya-api",
+            createdAt: new Date().toISOString(),
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        console.log(
+          "[appointments/create] n8n webhook status:",
+          res.status,
+        );
+      } catch (err: any) {
+        console.error(
+          "[appointments/create] n8n webhook error:",
+          err?.message || err,
+        );
+      }
+    }
+
+    /* =====================================================
+       RESPONSE
+    ===================================================== */
+    return NextResponse.json({
+      ok: true,
+      appointmentId: data.id,
+      manageToken: data.manage_token,
+    });
   } catch (e: any) {
-    console.error("[customers/create] error:", e);
+    console.error("[appointments/create] error:", e?.message || e);
+
     return NextResponse.json(
       { ok: false, error: e?.message ?? "Error inesperado" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

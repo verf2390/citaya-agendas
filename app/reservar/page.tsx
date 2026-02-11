@@ -547,7 +547,9 @@ function ReservarInner() {
   const handleReserve = async () => {
     // ✅ alerta visible + scroll natural (sin meter refs)
     if (!serviceId || !service) {
-      setServiceAlert("Debes seleccionar un servicio antes de ver horarios y agendar.");
+      setServiceAlert(
+        "Debes seleccionar un servicio antes de ver horarios y agendar.",
+      );
       alert("Debes seleccionar un servicio antes de agendar.");
       return;
     }
@@ -582,17 +584,28 @@ function ReservarInner() {
 
     try {
       const payload = {
-        tenant_id: tenantId,
-        professional_id: professionalId,
-        customer_name: fullName.trim(),
-        customer_phone: normalizeToE164CLMobile(phoneNorm.trim()),
-        customer_email: email.trim(),
-        start_at: selectedSlot.start_at,
-        end_at: selectedSlot.end_at,
+        tenantId: tenantId,
+        professionalId: professionalId,
+
+        startAt: selectedSlot.start_at,
+        endAt: selectedSlot.end_at,
+
+        // snapshot cliente
+        customerName: fullName.trim(),
+        customerPhone: normalizeToE164CLMobile(phoneNorm.trim()),
+        customerEmail: email.trim(),
+
+        // relación opcional
+        customerId: null,
+
+        // snapshot servicio (lo copia el backend)
+        serviceId: serviceId || null,
+
         status: "confirmed",
-        service_id: serviceId || null,
-        service_name: service?.name ?? null,
         currency: (service?.currency || "CLP").toUpperCase(),
+
+        // notes si quieres
+        notes: null,
       };
 
       const res = await fetch("/api/appointments/create", {
@@ -604,8 +617,8 @@ function ReservarInner() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "No se pudo crear la cita");
 
-      const appointmentId = json?.appointment?.id;
-      const manageToken = json?.appointment?.manage_token;
+      const appointmentId = json?.appointmentId;
+      const manageToken = json?.manageToken;
 
       if (!appointmentId)
         throw new Error("Reserva creada pero falta id en respuesta.");
@@ -916,7 +929,9 @@ function ReservarInner() {
                   type="button"
                   onClick={() => {
                     if (!serviceId) {
-                      setServiceAlert("Selecciona un servicio para ver horarios.");
+                      setServiceAlert(
+                        "Selecciona un servicio para ver horarios.",
+                      );
                       return;
                     }
                     loadSlots();
@@ -973,7 +988,8 @@ function ReservarInner() {
                           const hasSlots = (
                             slotsByDayKey.get(d.dayKey) ?? []
                           ).some(
-                            (slot) => new Date(slot.start_at).getTime() >= minTs,
+                            (slot) =>
+                              new Date(slot.start_at).getTime() >= minTs,
                           );
 
                           return (
@@ -1022,44 +1038,46 @@ function ReservarInner() {
                       </div>
                     ) : (
                       <div className="mt-2 grid gap-4">
-                        {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
-                          const list = buckets[label] ?? [];
-                          if (list.length === 0) return null;
+                        {(["Mañana", "Tarde", "Noche"] as const).map(
+                          (label) => {
+                            const list = buckets[label] ?? [];
+                            if (list.length === 0) return null;
 
-                          return (
-                            <div key={label}>
-                              <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
-                                {label}
-                              </div>
+                            return (
+                              <div key={label}>
+                                <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
+                                  {label}
+                                </div>
 
-                              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                                {list.map((s: Slot) => {
-                                  const active =
-                                    selectedSlot?.start_at === s.start_at;
-                                  return (
-                                    <button
-                                      key={s.start_at}
-                                      type="button"
-                                      disabled={saving || !tenantId}
-                                      onClick={() => setSelectedSlot(s)}
-                                      className={cn(
-                                        "h-9 rounded-xl text-[11px] font-semibold ring-1 ring-border transition sm:h-11 sm:text-sm",
-                                        active
-                                          ? "bg-foreground text-background"
-                                          : "bg-white hover:bg-muted",
-                                        saving || !tenantId
-                                          ? "cursor-not-allowed opacity-60"
-                                          : "",
-                                      )}
-                                    >
-                                      {onlyTimeCL(s.start_at)}
-                                    </button>
-                                  );
-                                })}
+                                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                  {list.map((s: Slot) => {
+                                    const active =
+                                      selectedSlot?.start_at === s.start_at;
+                                    return (
+                                      <button
+                                        key={s.start_at}
+                                        type="button"
+                                        disabled={saving || !tenantId}
+                                        onClick={() => setSelectedSlot(s)}
+                                        className={cn(
+                                          "h-9 rounded-xl text-[11px] font-semibold ring-1 ring-border transition sm:h-11 sm:text-sm",
+                                          active
+                                            ? "bg-foreground text-background"
+                                            : "bg-white hover:bg-muted",
+                                          saving || !tenantId
+                                            ? "cursor-not-allowed opacity-60"
+                                            : "",
+                                        )}
+                                      >
+                                        {onlyTimeCL(s.start_at)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          },
+                        )}
                       </div>
                     )}
 

@@ -983,13 +983,25 @@ export default function AgendaPage() {
   };
 
   async function createAppointmentViaApi(payload: {
-    tenant_id: string;
-    professional_id: string;
-    customer_name: string;
-    customer_phone: string | null;
-    customer_email: string;
-    start_at: string;
-    end_at: string;
+    tenantId: string;
+    professionalId: string;
+
+    startAt: string;
+    endAt: string;
+
+    // snapshot cliente (lo que tu tabla appointments realmente guarda)
+    customerId?: string | null;
+    customerName: string;
+    customerPhone?: string | null;
+    customerEmail?: string | null;
+
+    // opcional: para copiar snapshot del servicio en el backend
+    serviceId?: string | null;
+
+    // opcionales (si los usas después)
+    notes?: string | null;
+    currency?: string | null;
+    status?: string | null;
   }) {
     const res = await fetch("/api/appointments/create", {
       method: "POST",
@@ -1023,15 +1035,34 @@ export default function AgendaPage() {
         return;
       }
 
-      await createAppointmentViaApi({
-        tenant_id: tenantId,
-        professional_id: selectedProfessionalId,
-        customer_name: customer?.name ?? "Cliente",
-        customer_phone: customer?.phone ?? null,
-        customer_email,
-        start_at: slot.startISO,
-        end_at: slot.endISO,
-      });
+      // ✅ contrato pro camelCase + snapshot (según tu DB real)
+      const payload = {
+        tenantId,
+        professionalId: selectedProfessionalId,
+        startAt: slot.startISO,
+        endAt: slot.endISO,
+
+        // snapshot cliente
+        customerId: customer?.id ?? null,
+        customerName: customer?.name ?? "", // ✅ CustomerLite usa name (no full_name)
+        customerPhone: customer?.phone ?? null,
+        customerEmail: customer?.email ?? null,
+
+        // servicio (opcional)
+        serviceId:
+          typeof selectedServiceId === "string" ? selectedServiceId : null,
+      };
+
+      if (!payload.customerName) {
+        toast({
+          title: "Cliente incompleto",
+          description: "Este cliente no tiene nombre guardado.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await createAppointmentViaApi(payload);
 
       toast({ title: "Cita creada", description: "Se guardó correctamente." });
     } catch (e: any) {
