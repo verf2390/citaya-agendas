@@ -120,12 +120,9 @@ function isValidCLMobile(input: string) {
   const raw = input.trim();
   if (!raw) return false;
 
-  const digits = raw.replace(/\D/g, ""); // solo números
+  const digits = raw.replace(/\D/g, "");
 
-  // Caso: 9 dígitos y parte con 9 (móvil sin país)
   if (digits.length === 9 && digits.startsWith("9")) return true;
-
-  // Caso: con país 56 + 9 dígitos (total 11) y parte "569"
   if (digits.length === 11 && digits.startsWith("569")) return true;
 
   return false;
@@ -203,7 +200,7 @@ function ReservarInner() {
   const [tenantId, setTenantId] = useState<string>("");
   const [tenantName, setTenantName] = useState<string>("");
 
-  // ✅ NUEVO: lead time por-tenant (fallback 120)
+  // ✅ lead time por-tenant (fallback 120)
   const [minLeadTimeMin, setMinLeadTimeMin] = useState<number>(
     DEFAULT_MIN_LEAD_TIME_MIN,
   );
@@ -270,7 +267,6 @@ function ReservarInner() {
           setTenantId(json?.tenant?.id ?? "");
           setTenantName(json?.tenant?.name ?? "");
 
-          // ✅ NUEVO: setear lead time por-tenant
           setMinLeadTimeMin(
             typeof json?.tenant?.min_lead_time_min === "number"
               ? json.tenant.min_lead_time_min
@@ -436,7 +432,6 @@ function ReservarInner() {
     if (!tenantId) return;
     if (!professionalId) return;
 
-    // ✅ guard: sin servicio no tiene sentido cargar disponibilidad
     if (!availabilityUrl) {
       setSlots([]);
       setSelectedSlot(null);
@@ -516,7 +511,7 @@ function ReservarInner() {
     return list.filter((slot) => new Date(slot.start_at).getTime() >= minTs);
   }, [slotsByDayKey, selectedDayKey, minLeadTimeMin]);
 
-  // ✅ buckets (necesario para el render)
+  // ✅ buckets
   const buckets = useMemo(() => {
     const b: Record<"Mañana" | "Tarde" | "Noche", Slot[]> = {
       Mañana: [],
@@ -532,7 +527,6 @@ function ReservarInner() {
     return b;
   }, [activeSlots]);
 
-  // ✅ condiciones de submit (ahora teléfono debe ser válido CL móvil)
   const canSubmit =
     !!serviceId &&
     !!service &&
@@ -545,7 +539,6 @@ function ReservarInner() {
     !saving;
 
   const handleReserve = async () => {
-    // ✅ alerta visible + scroll natural (sin meter refs)
     if (!serviceId || !service) {
       setServiceAlert(
         "Debes seleccionar un servicio antes de ver horarios y agendar.",
@@ -584,8 +577,8 @@ function ReservarInner() {
 
     try {
       const payload = {
-        tenantId: tenantId,
-        professionalId: professionalId,
+        tenantId,
+        professionalId,
 
         startAt: selectedSlot.start_at,
         endAt: selectedSlot.end_at,
@@ -593,9 +586,9 @@ function ReservarInner() {
         // snapshot cliente
         customerName: fullName.trim(),
         customerPhone: normalizeToE164CLMobile(phoneNorm.trim()),
-        customerEmail: email.trim(),
+        customerEmail: email.trim().toLowerCase(),
 
-        // relación opcional
+        // relación opcional (la resolverá el backend)
         customerId: null,
 
         // snapshot servicio (lo copia el backend)
@@ -604,7 +597,6 @@ function ReservarInner() {
         status: "confirmed",
         currency: (service?.currency || "CLP").toUpperCase(),
 
-        // notes si quieres
         notes: null,
       };
 
@@ -707,7 +699,7 @@ function ReservarInner() {
           </button>
         </div>
 
-        {/* ✅ Alerta si no hay servicio seleccionado (UI, no solo alert()) */}
+        {/* ✅ Alerta si no hay servicio seleccionado */}
         {serviceAlert ? (
           <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:text-sm">
             <b>Atención:</b> {serviceAlert}
@@ -929,9 +921,7 @@ function ReservarInner() {
                   type="button"
                   onClick={() => {
                     if (!serviceId) {
-                      setServiceAlert(
-                        "Selecciona un servicio para ver horarios.",
-                      );
+                      setServiceAlert("Selecciona un servicio para ver horarios.");
                       return;
                     }
                     loadSlots();
@@ -949,7 +939,6 @@ function ReservarInner() {
                 </button>
               </div>
 
-              {/* ✅ Aviso explícito si no hay servicio */}
               {!serviceId ? (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:text-sm">
                   <b>Primero elige un servicio</b> para cargar disponibilidad.
@@ -962,7 +951,6 @@ function ReservarInner() {
                 </div>
               ) : null}
 
-              {/* ✅ Si no hay servicio, no mostramos el selector para evitar “No hay horarios” confuso */}
               {!serviceId ? null : (
                 <div className="mt-3">
                   <div className="flex items-center gap-2">
@@ -982,15 +970,11 @@ function ReservarInner() {
                         {visibleDays.map((d) => {
                           const active = d.dayKey === selectedDayKey;
 
-                          // ✅ hasSlots considera lead time
                           const minTs =
                             Date.now() + (minLeadTimeMin || 0) * 60_000;
                           const hasSlots = (
                             slotsByDayKey.get(d.dayKey) ?? []
-                          ).some(
-                            (slot) =>
-                              new Date(slot.start_at).getTime() >= minTs,
-                          );
+                          ).some((slot) => new Date(slot.start_at).getTime() >= minTs);
 
                           return (
                             <button
@@ -1038,46 +1022,43 @@ function ReservarInner() {
                       </div>
                     ) : (
                       <div className="mt-2 grid gap-4">
-                        {(["Mañana", "Tarde", "Noche"] as const).map(
-                          (label) => {
-                            const list = buckets[label] ?? [];
-                            if (list.length === 0) return null;
+                        {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
+                          const list = buckets[label] ?? [];
+                          if (list.length === 0) return null;
 
-                            return (
-                              <div key={label}>
-                                <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
-                                  {label}
-                                </div>
-
-                                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                                  {list.map((s: Slot) => {
-                                    const active =
-                                      selectedSlot?.start_at === s.start_at;
-                                    return (
-                                      <button
-                                        key={s.start_at}
-                                        type="button"
-                                        disabled={saving || !tenantId}
-                                        onClick={() => setSelectedSlot(s)}
-                                        className={cn(
-                                          "h-9 rounded-xl text-[11px] font-semibold ring-1 ring-border transition sm:h-11 sm:text-sm",
-                                          active
-                                            ? "bg-foreground text-background"
-                                            : "bg-white hover:bg-muted",
-                                          saving || !tenantId
-                                            ? "cursor-not-allowed opacity-60"
-                                            : "",
-                                        )}
-                                      >
-                                        {onlyTimeCL(s.start_at)}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                          return (
+                            <div key={label}>
+                              <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
+                                {label}
                               </div>
-                            );
-                          },
-                        )}
+
+                              <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                                {list.map((s: Slot) => {
+                                  const active = selectedSlot?.start_at === s.start_at;
+                                  return (
+                                    <button
+                                      key={s.start_at}
+                                      type="button"
+                                      disabled={saving || !tenantId}
+                                      onClick={() => setSelectedSlot(s)}
+                                      className={cn(
+                                        "h-9 rounded-xl text-[11px] font-semibold ring-1 ring-border transition sm:h-11 sm:text-sm",
+                                        active
+                                          ? "bg-foreground text-background"
+                                          : "bg-white hover:bg-muted",
+                                        saving || !tenantId
+                                          ? "cursor-not-allowed opacity-60"
+                                          : "",
+                                      )}
+                                    >
+                                      {onlyTimeCL(s.start_at)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -1138,7 +1119,6 @@ function ReservarInner() {
                         if (!phoneTouched) setPhoneTouched(true);
                       }}
                       onBlur={() => {
-                        // ✅ si es válido, lo dejamos en +56
                         if (isValidCLMobile(phone)) {
                           setPhone(normalizeToE164CLMobile(phone));
                         }
@@ -1188,6 +1168,7 @@ function ReservarInner() {
                       value={email}
                       disabled={saving || !tenantId}
                       onChange={(e) => setEmail(e.target.value)}
+                      onBlur={() => setEmail((v) => v.trim().toLowerCase())}
                       placeholder="Ej: nombre@gmail.com"
                       className={cn(
                         "h-10 w-full rounded-xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm",
@@ -1273,7 +1254,6 @@ function ReservarInner() {
                   {saving ? "Reservando..." : "Confirmar reserva"}
                 </button>
 
-                {/* ✅ Hint extra si falta servicio */}
                 {!serviceId ? (
                   <div className="mt-2 text-center text-[11px] text-amber-700">
                     Selecciona un servicio para habilitar la reserva.

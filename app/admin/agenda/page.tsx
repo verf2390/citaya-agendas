@@ -232,6 +232,50 @@ const isWithinAvailability = (params: {
   });
 };
 
+function getBlocksForDate(blocks: AvailabilityBlock[], date: Date) {
+  return blocks.filter(
+    (b) => b.is_active && blockMatchesDateDay(b.day_of_week, date),
+  );
+}
+
+/**
+ * ✅ Intersección real:
+ * Permite si el rango [startMin,endMin] cabe dentro de
+ * algún overlap entre un bloque base y un bloque de reglas servicio.
+ */
+function isWithinBaseAndService(args: {
+  startMin: number;
+  endMin: number;
+  baseBlocks: AvailabilityBlock[];
+  serviceBlocks: AvailabilityBlock[];
+}) {
+  const { startMin, endMin, baseBlocks, serviceBlocks } = args;
+
+  // Si no hay reglas para el servicio, se usa SOLO base (comportamiento actual)
+  if (!serviceBlocks || serviceBlocks.length === 0) {
+    return isWithinAvailability({ startMin, endMin, blocks: baseBlocks });
+  }
+
+  for (const b of baseBlocks) {
+    const bs = timeToMinutes(b.start_time);
+    const be = timeToMinutes(b.end_time);
+
+    for (const s of serviceBlocks) {
+      const ss = timeToMinutes(s.start_time);
+      const se = timeToMinutes(s.end_time);
+
+      // overlap entre base y servicio
+      const os = Math.max(bs, ss);
+      const oe = Math.min(be, se);
+
+      // si existe overlap y el rango cabe dentro del overlap => válido
+      if (os < oe && startMin >= os && endMin <= oe) return true;
+    }
+  }
+
+  return false;
+}
+
 function buildConfirmationMessage(args: {
   customerName: string;
   dateLabel: string;
@@ -989,12 +1033,31 @@ export default function AgendaPage() {
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
-    const blocks = availabilityBlocks.filter(
-      (b) => b.is_active && blockMatchesDateDay(b.day_of_week, startDate),
-    );
+    const baseBlocks = getBlocksForDate(availabilityBlocks, startDate);
 
-    if (!isWithinAvailability({ startMin, endMin, blocks })) {
-      alert("❌ Fuera de disponibilidad del profesional");
+    // ✅ reglas por servicio SOLO si hay servicio seleccionado
+    const serviceBlocks = selectedServiceId
+      ? getBlocksForDate(serviceRulesBlocks, startDate)
+      : [];
+
+    // ✅ validación final = base ∩ reglas (si existen)
+    const okByRules = isWithinBaseAndService({
+      startMin,
+      endMin,
+      baseBlocks,
+      serviceBlocks,
+    });
+
+    if (!okByRules) {
+      const hasServiceRules = (serviceRulesBlocks ?? []).some(
+        (b) => b.is_active,
+      );
+
+      alert(
+        hasServiceRules && selectedServiceId
+          ? "❌ Fuera del horario permitido por este servicio (base ∩ reglas)."
+          : "❌ Fuera de disponibilidad del profesional.",
+      );
       return;
     }
 
