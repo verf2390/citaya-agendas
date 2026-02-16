@@ -19,11 +19,18 @@ type Props = {
 
   customers: CustomerLite[];
 
-  onConfirm: (args: { customerId: string }) => Promise<void> | void;
+  // ✅ ahora exige serviceId también
+  onConfirm: (args: {
+    customerId: string;
+    serviceId: string;
+  }) => Promise<void> | void;
 
   tenantId: string;
 
   onCreatedCustomer?: (c: CustomerLite) => void;
+
+  // ✅ servicios disponibles (para seleccionar)
+  services: { id: string; name: string }[];
 };
 
 type PostgrestErrorLike = {
@@ -45,8 +52,14 @@ function formatSlotLabel(startISO: string, endISO: string) {
     month: "short",
   });
 
-  const startTime = start.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
-  const endTime = end.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+  const startTime = start.toLocaleTimeString("es-CL", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const endTime = end.toLocaleTimeString("es-CL", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   return `📅 ${date} • 🕒 ${startTime} – ${endTime}`;
 }
@@ -85,10 +98,14 @@ export default function AppointmentCreateModal({
   onConfirm,
   tenantId,
   onCreatedCustomer,
+  services,
 }: Props) {
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<CustomerLite | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // ✅ NUEVO: servicio seleccionado obligatorio
+  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
 
   // UI: crear cliente inline
   const [showCreate, setShowCreate] = useState(false);
@@ -102,6 +119,9 @@ export default function AppointmentCreateModal({
     setQ("");
     setSelected(null);
     setSaving(false);
+
+    // ✅ reset servicio
+    setSelectedServiceId("");
 
     setShowCreate(false);
     setNewName("");
@@ -164,7 +184,7 @@ export default function AppointmentCreateModal({
         return;
       }
 
-      // ✅ NUEVO: Crear/Reusar cliente vía API server-side (evita RLS 403)
+      // ✅ Crear/Reusar cliente vía API server-side (evita RLS 403)
       const res = await fetch("/api/customers/create", {
         method: "POST",
         headers: {
@@ -187,16 +207,16 @@ export default function AppointmentCreateModal({
         return;
       }
 
-      // ✅ El endpoint puede:
-      // - crear (reused=false)
-      // - reusar existente por phone/email (reused=true)
       const customerId = String(json.customerId || "");
 
-      // Intentamos seleccionar usando memoria local; si no existe, construimos lite.
-      const localExisting = customers.find((c) => c.id === customerId) || (await findCustomerByPhone(phoneNormalized));
+      const localExisting =
+        customers.find((c) => c.id === customerId) ||
+        (await findCustomerByPhone(phoneNormalized));
 
       if (json.reused && localExisting) {
-        alert("Ya existe un cliente con este teléfono. Seleccionándolo para agendar.");
+        alert(
+          "Ya existe un cliente con este teléfono. Seleccionándolo para agendar.",
+        );
         setSelected(localExisting);
         setQ(localExisting.name);
         setShowCreate(false);
@@ -204,7 +224,6 @@ export default function AppointmentCreateModal({
         return;
       }
 
-      // Si no estaba en memoria (o fue creado), armamos el objeto para UI
       const created: CustomerLite = {
         id: customerId,
         name,
@@ -212,14 +231,11 @@ export default function AppointmentCreateModal({
         email,
       };
 
-      // seleccionar automáticamente
       setSelected(created);
       setQ(created.name);
 
-      // avisar al parent
       onCreatedCustomer?.(created);
 
-      // cerrar mini-form
       setShowCreate(false);
       setNewName("");
       setNewPhone("");
@@ -230,10 +246,15 @@ export default function AppointmentCreateModal({
   };
 
   const handleConfirm = async () => {
-    if (!selected) return;
+    // ✅ ahora exige servicio + cliente
+    if (!selected || !selectedServiceId) return;
+
     setSaving(true);
     try {
-      await onConfirm({ customerId: selected.id });
+      await onConfirm({
+        customerId: selected.id,
+        serviceId: selectedServiceId,
+      });
       onClose();
     } finally {
       setSaving(false);
@@ -264,10 +285,19 @@ export default function AppointmentCreateModal({
           padding: 16,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
           <div>
             <div style={{ fontWeight: 700 }}>Nueva cita</div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>{formatSlotLabel(startISO, endISO)}</div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              {formatSlotLabel(startISO, endISO)}
+            </div>
           </div>
 
           <button
@@ -285,7 +315,45 @@ export default function AppointmentCreateModal({
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Buscar cliente</div>
+          {/* ✅ (UI todavía no agregada): aquí luego metemos el selector visual de servicio */}
+          {/* Por ahora solo dejamos listo el state + props + validación */}
+
+          {/* ✅ Seleccionar servicio (obligatorio) */}
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+              Servicio
+            </div>
+
+            <select
+              value={selectedServiceId}
+              onChange={(e) => setSelectedServiceId(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                outline: "none",
+                background: "white",
+              }}
+            >
+              <option value="">Selecciona un servicio…</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+
+            {!selectedServiceId ? (
+              <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>
+                Debes seleccionar un servicio para continuar.
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+            Buscar cliente
+          </div>
 
           <input
             value={q}
@@ -303,11 +371,23 @@ export default function AppointmentCreateModal({
             }}
           />
 
-          <div style={{ marginTop: 10, maxHeight: 220, overflow: "auto", border: "1px solid #eee", borderRadius: 10 }}>
+          <div
+            style={{
+              marginTop: 10,
+              maxHeight: 220,
+              overflow: "auto",
+              border: "1px solid #eee",
+              borderRadius: 10,
+            }}
+          >
             {q.trim().length < 2 ? (
-              <div style={{ padding: 12, fontSize: 13, opacity: 0.75 }}>Escribe al menos 2 letras para buscar.</div>
+              <div style={{ padding: 12, fontSize: 13, opacity: 0.75 }}>
+                Escribe al menos 2 letras para buscar.
+              </div>
             ) : filtered.length === 0 ? (
-              <div style={{ padding: 12, fontSize: 13, opacity: 0.75 }}>No encontrado.</div>
+              <div style={{ padding: 12, fontSize: 13, opacity: 0.75 }}>
+                No encontrado.
+              </div>
             ) : (
               filtered.map((c) => {
                 const active = selected?.id === c.id;
@@ -327,7 +407,9 @@ export default function AppointmentCreateModal({
                     }}
                   >
                     <div style={{ fontWeight: 600 }}>{c.name}</div>
-                    <div style={{ fontSize: 12, opacity: 0.7 }}>{c.phone ?? ""}</div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                      {c.phone ?? ""}
+                    </div>
                   </button>
                 );
               })
@@ -356,30 +438,57 @@ export default function AppointmentCreateModal({
           )}
 
           {showCreate && (
-            <div style={{ marginTop: 12, padding: 12, border: "1px solid #eee", borderRadius: 10 }}>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>Crear cliente</div>
+            <div
+              style={{
+                marginTop: 12,
+                padding: 12,
+                border: "1px solid #eee",
+                borderRadius: 10,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                Crear cliente
+              </div>
 
               <div style={{ display: "grid", gap: 8 }}>
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Nombre completo"
-                  style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                  }}
                 />
                 <input
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
                   placeholder="Teléfono (WhatsApp obligatorio, sin duplicados)"
-                  style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                  }}
                 />
                 <input
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   placeholder="Email (opcional)"
-                  style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                  }}
                 />
 
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    justifyContent: "flex-end",
+                  }}
+                >
                   <button
                     onClick={() => setShowCreate(false)}
                     disabled={saving}
@@ -414,7 +523,14 @@ export default function AppointmentCreateModal({
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: 10,
+              marginTop: 14,
+            }}
+          >
             <button
               onClick={onClose}
               disabled={saving}
@@ -431,15 +547,17 @@ export default function AppointmentCreateModal({
 
             <button
               onClick={handleConfirm}
-              disabled={!selected || saving}
+              // ✅ exige servicio + cliente
+              disabled={!selected || !selectedServiceId || saving}
               style={{
                 padding: "10px 14px",
                 borderRadius: 10,
                 border: "1px solid #111",
                 background: "#111",
                 color: "white",
-                cursor: !selected ? "not-allowed" : "pointer",
-                opacity: !selected || saving ? 0.6 : 1,
+                cursor:
+                  !selected || !selectedServiceId ? "not-allowed" : "pointer",
+                opacity: !selected || !selectedServiceId || saving ? 0.6 : 1,
               }}
             >
               Confirmar cita

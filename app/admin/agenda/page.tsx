@@ -99,13 +99,6 @@ type CalendarEvent = {
   };
 };
 
-type CustomerRow = {
-  id: string;
-  full_name: string;
-  phone: string | null;
-  email: string | null;
-};
-
 type AvailabilityBlock = {
   id?: string; // DB
   tempId?: string; // editor
@@ -142,10 +135,10 @@ function normalizeISO(input: any) {
   return s;
 }
 function toIsoZ(input: any) {
-  const isoLike = normalizeISO(input); // deja "2026-02-12T14:00:00+00:00"
+  const isoLike = normalizeISO(input);
   const d = new Date(isoLike);
-  if (isNaN(d.getTime())) return ""; // inválido
-  return d.toISOString(); // "2026-02-12T14:00:00.000Z"
+  if (isNaN(d.getTime())) return "";
+  return d.toISOString();
 }
 
 /** forzar formateo siempre en TZ admin */
@@ -251,7 +244,7 @@ function isWithinBaseAndService(args: {
 }) {
   const { startMin, endMin, baseBlocks, serviceBlocks } = args;
 
-  // Si no hay reglas para el servicio, se usa SOLO base (comportamiento actual)
+  // Si no hay reglas para el servicio, se usa SOLO base
   if (!serviceBlocks || serviceBlocks.length === 0) {
     return isWithinAvailability({ startMin, endMin, blocks: baseBlocks });
   }
@@ -264,11 +257,9 @@ function isWithinBaseAndService(args: {
       const ss = timeToMinutes(s.start_time);
       const se = timeToMinutes(s.end_time);
 
-      // overlap entre base y servicio
       const os = Math.max(bs, ss);
       const oe = Math.min(be, se);
 
-      // si existe overlap y el rango cabe dentro del overlap => válido
       if (os < oe && startMin >= os && endMin <= oe) return true;
     }
   }
@@ -402,9 +393,9 @@ export default function AgendaPage() {
   >([]);
   const [savingAvailability, setSavingAvailability] = useState(false);
 
-  // services + rules
+  // services + rules (panel de reglas)
   const [services, setServices] = useState<Service[]>([]);
-  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+  const [selectedServiceId, setSelectedServiceId] = useState<string>(""); // servicio seleccionado SOLO para editar reglas
   const [serviceRulesBlocks, setServiceRulesBlocks] = useState<
     AvailabilityBlock[]
   >([]);
@@ -558,7 +549,6 @@ export default function AgendaPage() {
     if (!tenantId) return;
 
     try {
-      // ✅ Token Supabase (Bearer)
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
 
@@ -568,7 +558,6 @@ export default function AgendaPage() {
         return;
       }
 
-      // ✅ List server-side (service role) — evita RLS en frontend
       const res = await fetch(`/api/customers/list?tenantId=${tenantId}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -613,9 +602,7 @@ export default function AgendaPage() {
 
         const res = await fetch(
           `/api/admin/availability/list?${qs.toString()}`,
-          {
-            cache: "no-store",
-          },
+          { cache: "no-store" },
         );
 
         const json = await res.json().catch(() => null);
@@ -694,7 +681,6 @@ export default function AgendaPage() {
     }
   };
 
-  // ✅ Cargar citas (FIX +3h: normalizeISO)
   const loadAppointments = useCallback(
     async (start?: string, end?: string, professionalId?: string) => {
       if (!tenantId) return;
@@ -734,11 +720,8 @@ export default function AgendaPage() {
           return {
             id: a.id,
             title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
-
-            // ✅ FIX: normalizamos formato timestamp
             start: toIsoZ(a.start_at),
             end: toIsoZ(a.end_at),
-
             classNames: ["citaya-event", `citaya-status-${status}`],
             extendedProps: {
               professional_id: a.professional_id,
@@ -762,7 +745,6 @@ export default function AgendaPage() {
     [tenantId],
   );
 
-  // servicios
   const loadServices = useCallback(async () => {
     if (!tenantId) return;
 
@@ -817,9 +799,7 @@ export default function AgendaPage() {
 
         const res = await fetch(
           `/api/admin/service-rules/list?${qs.toString()}`,
-          {
-            cache: "no-store",
-          },
+          { cache: "no-store" },
         );
 
         const json = await res.json().catch(() => null);
@@ -1026,7 +1006,6 @@ export default function AgendaPage() {
     const startDate = selectInfo.start;
     const endDate = selectInfo.end;
 
-    // ✅ se guarda en UTC ISOZ siempre
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
@@ -1035,12 +1014,12 @@ export default function AgendaPage() {
 
     const baseBlocks = getBlocksForDate(availabilityBlocks, startDate);
 
-    // ✅ reglas por servicio SOLO si hay servicio seleccionado
+    // ✅ aquí todavía validamos con el servicio del PANEL (si existe),
+    // pero igual abrimos modal siempre (servicio real se elige en el modal).
     const serviceBlocks = selectedServiceId
       ? getBlocksForDate(serviceRulesBlocks, startDate)
       : [];
 
-    // ✅ validación final = base ∩ reglas (si existen)
     const okByRules = isWithinBaseAndService({
       startMin,
       endMin,
@@ -1049,9 +1028,7 @@ export default function AgendaPage() {
     });
 
     if (!okByRules) {
-      const hasServiceRules = (serviceRulesBlocks ?? []).some(
-        (b) => b.is_active,
-      );
+      const hasServiceRules = (serviceRulesBlocks ?? []).some((b) => b.is_active);
 
       alert(
         hasServiceRules && selectedServiceId
@@ -1078,19 +1055,12 @@ export default function AgendaPage() {
     startAt: string;
     endAt: string;
 
-    // snapshot cliente (lo que tu tabla appointments realmente guarda)
     customerId?: string | null;
     customerName: string;
     customerPhone?: string | null;
     customerEmail?: string | null;
 
-    // opcional: para copiar snapshot del servicio en el backend
     serviceId?: string | null;
-
-    // opcionales (si los usas después)
-    notes?: string | null;
-    currency?: string | null;
-    status?: string | null;
   }) {
     const res = await fetch("/api/appointments/create", {
       method: "POST",
@@ -1103,19 +1073,17 @@ export default function AgendaPage() {
     return json;
   }
 
-  async function createAppointmentWithCustomer(customerId: string) {
+  async function createAppointmentWithCustomer(args: {
+    customerId: string;
+    serviceId: string;
+  }) {
     if (!slot) return;
 
-    const customer = customers.find((c) => c.id === customerId) ?? null;
+    const customer = customers.find((c) => c.id === args.customerId) ?? null;
 
     try {
-      const customer_email = String(customer?.email ?? "")
-        .trim()
-        .toLowerCase();
-      if (
-        !customer_email ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)
-      ) {
+      const customer_email = String(customer?.email ?? "").trim().toLowerCase();
+      if (!customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)) {
         toast({
           title: "Email inválido",
           description: "Este cliente no tiene un email válido guardado.",
@@ -1124,22 +1092,19 @@ export default function AgendaPage() {
         return;
       }
 
-      // ✅ contrato pro camelCase + snapshot (según tu DB real)
       const payload = {
         tenantId,
         professionalId: selectedProfessionalId,
         startAt: slot.startISO,
         endAt: slot.endISO,
 
-        // snapshot cliente
         customerId: customer?.id ?? null,
-        customerName: customer?.name ?? "", // ✅ CustomerLite usa name (no full_name)
+        customerName: customer?.name ?? "",
         customerPhone: customer?.phone ?? null,
         customerEmail: customer?.email ?? null,
 
-        // servicio (opcional)
-        serviceId:
-          typeof selectedServiceId === "string" ? selectedServiceId : null,
+        // ✅ servicio SIEMPRE desde el modal (fuente de verdad)
+        serviceId: args.serviceId,
       };
 
       if (!payload.customerName) {
@@ -1328,8 +1293,6 @@ export default function AgendaPage() {
     const customerPhone = props.customer_phone ?? null;
     const customerId = props.customer_id ?? null;
 
-    // ✅ OJO: clickInfo.event.start/end ya vienen como Date en la TZ de FullCalendar
-    // pero guardamos modal en ISO UTC
     const startISO = clickInfo.event.start?.toISOString() ?? "";
     const endISO = clickInfo.event.end?.toISOString() ?? "";
 
@@ -1357,7 +1320,7 @@ export default function AgendaPage() {
   };
 
   /* =====================================================
-     RENDER guards (igual que tu código)
+     RENDER guards
   ===================================================== */
 
   if (tenantError) {
@@ -1488,9 +1451,9 @@ export default function AgendaPage() {
             <Badge>Profesional: {proName}</Badge>
             <Badge>Vista: Semana</Badge>
             {selectedServiceId ? (
-              <Badge>Servicio: {selectedService?.name ?? "—"}</Badge>
+              <Badge>Servicio reglas: {selectedService?.name ?? "—"}</Badge>
             ) : (
-              <Badge>Servicio: (sin seleccionar)</Badge>
+              <Badge>Servicio reglas: (sin seleccionar)</Badge>
             )}
             {isDebug ? <Badge>Tenant ID: {tenantId}</Badge> : null}
             {loading ? <Badge>Cargando…</Badge> : null}
@@ -1527,9 +1490,7 @@ export default function AgendaPage() {
                   onClick={saveAvailability}
                   disabled={savingAvailability || !selectedProfessionalId}
                 >
-                  {savingAvailability
-                    ? "Guardando…"
-                    : "Guardar horarios (base)"}
+                  {savingAvailability ? "Guardando…" : "Guardar horarios (base)"}
                 </PrimaryButton>
               </div>
 
@@ -1693,14 +1654,15 @@ export default function AgendaPage() {
           endISO={slot?.endISO ?? ""}
           customers={customers}
           tenantId={tenantId}
+          services={services.map((s) => ({ id: s.id, name: s.name }))}
           onCreatedCustomer={(c) => {
             setCustomers((prev) => {
               if (prev.some((x) => x.id === c.id)) return prev;
               return [c, ...prev];
             });
           }}
-          onConfirm={async ({ customerId }) => {
-            await createAppointmentWithCustomer(customerId);
+          onConfirm={async ({ customerId, serviceId }) => {
+            await createAppointmentWithCustomer({ customerId, serviceId });
           }}
         />
 
@@ -1710,9 +1672,7 @@ export default function AgendaPage() {
             <div className="w-full max-w-[560px] rounded-2xl border bg-white p-4 shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-base font-black">
-                    Acciones de la cita
-                  </div>
+                  <div className="text-base font-black">Acciones de la cita</div>
 
                   {(() => {
                     const { date, startTime, endTime } = formatDateTimeRange(
