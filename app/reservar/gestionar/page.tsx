@@ -14,6 +14,7 @@ type Plan = "basic" | "pro";
 type Appt = {
   id: string;
   status: string;
+  service_id: string | null;
   customer_name: string | null;
   customer_phone: string | null;
   customer_email: string | null;
@@ -82,6 +83,8 @@ const fmtTime = (iso: string) =>
 function dayKeyCL(iso: string) {
   const d = parseTimestamptz(iso);
   if (!Number.isFinite(d.getTime())) return "";
+
+  // ✅ Key estable en TZ Chile
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
     year: "numeric",
@@ -95,8 +98,17 @@ function dayKeyCL(iso: string) {
   return `${y}-${m}-${da}`;
 }
 
+function dateFromDayKeyUTCNoon(dayKey: string) {
+  // ✅ FIX: evita que el navegador (local TZ) desplace el día/mes
+  // Construimos un Date en UTC al mediodía y luego formateamos en tz.
+  const [yy, mm, dd] = String(dayKey || "").split("-").map((x) => Number(x));
+  if (!yy || !mm || !dd) return new Date(NaN);
+  return new Date(Date.UTC(yy, mm - 1, dd, 12, 0, 0));
+}
+
 function dayLabelCL(dayKey: string) {
-  const d = new Date(`${dayKey}T12:00:00`);
+  const d = dateFromDayKeyUTCNoon(dayKey);
+  if (!Number.isFinite(d.getTime())) return "";
   return new Intl.DateTimeFormat("es-CL", {
     timeZone: tz,
     weekday: "short",
@@ -191,7 +203,10 @@ function GestionarCitaInner() {
 
   const rescheduleRef = useRef<HTMLDivElement | null>(null);
   const scrollToReschedule = () =>
-    rescheduleRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    rescheduleRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
 
   const durationMins = useMemo(() => {
     if (!appt?.start_at || !appt?.end_at) return 30;
@@ -298,7 +313,10 @@ function GestionarCitaInner() {
           `?tenantId=${encodeURIComponent(appt.tenant_id)}` +
           `&professionalId=${encodeURIComponent(appt.professional_id)}` +
           `&from=${encodeURIComponent(from.toISOString())}` +
-          `&to=${encodeURIComponent(to.toISOString())}`;
+          `&to=${encodeURIComponent(to.toISOString())}` +
+          (appt.service_id
+            ? `&serviceId=${encodeURIComponent(appt.service_id)}`
+            : "");
 
         const res = await fetch(url, { cache: "no-store" });
         const json = await res.json().catch(() => ({}));
@@ -312,7 +330,10 @@ function GestionarCitaInner() {
         const dayKeys = Array.from(
           new Set(arr.map((s) => dayKeyCL(s.start_at)).filter(Boolean)),
         );
-        const initialDay = dayKeys.includes(apptDay) ? apptDay : dayKeys[0] ?? "";
+
+        const initialDay = dayKeys.includes(apptDay)
+          ? apptDay
+          : (dayKeys[0] ?? "");
 
         setSelectedDay(initialDay);
         setSelectedSlotStartISO("");
@@ -325,7 +346,8 @@ function GestionarCitaInner() {
     };
 
     run();
-  }, [appt?.tenant_id, appt?.professional_id, appt?.start_at]);
+    // ✅ incluye service_id para refrescar cuando exista
+  }, [appt?.tenant_id, appt?.professional_id, appt?.start_at, appt?.service_id]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, Slot[]>();
@@ -340,10 +362,19 @@ function GestionarCitaInner() {
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([dayKey, daySlots]) => ({
         dayKey,
-        label: dayLabelCL(dayKey),
+        label: dayLabelCL(dayKey), // ✅ FIX label estable (no mezcla meses)
         slots: daySlots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1)),
       })) as SlotsByDay[];
   }, [slots]);
+
+  // ✅ Si selectedDay queda inválido (por refresh de slots), lo reparamos
+  useEffect(() => {
+    if (!grouped.length) return;
+    if (!selectedDay || !grouped.some((g) => g.dayKey === selectedDay)) {
+      setSelectedDay(grouped[0].dayKey);
+      setSelectedSlotStartISO("");
+    }
+  }, [grouped, selectedDay]);
 
   const daySlots = useMemo(
     () => grouped.find((g) => g.dayKey === selectedDay)?.slots ?? [],
@@ -509,7 +540,9 @@ function GestionarCitaInner() {
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-5">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
-                      <div className="text-xs font-semibold text-slate-500">Cliente</div>
+                      <div className="text-xs font-semibold text-slate-500">
+                        Cliente
+                      </div>
                       <div className="mt-1 text-sm font-bold text-slate-900">
                         {appt.customer_name || "—"}
                       </div>
@@ -548,7 +581,9 @@ function GestionarCitaInner() {
                         {appt.service_name ? `💈 ${appt.service_name}` : "💈 —"}
                       </div>
 
-                      <div className="mt-3 text-xs font-semibold text-slate-500">Código</div>
+                      <div className="mt-3 text-xs font-semibold text-slate-500">
+                        Código
+                      </div>
                       <div className="mt-1 break-all font-mono text-xs text-slate-700">
                         {appt.id}
                       </div>
@@ -559,12 +594,12 @@ function GestionarCitaInner() {
                 {/* Bloqueo 3h */}
                 {isLocked3h && !isCanceled ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    ⏳ Esta cita ya está dentro de las <b>3 horas</b> previas, por lo que
-                    no se puede modificar.
+                    ⏳ Esta cita ya está dentro de las <b>3 horas</b> previas, por lo
+                    que no se puede modificar.
                   </div>
                 ) : null}
 
-                {/* ✅ Acciones (compacto mobile) */}
+                {/* ✅ Acciones */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
@@ -634,7 +669,9 @@ function GestionarCitaInner() {
                   className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4"
                 >
                   <div className="flex flex-col gap-1">
-                    <div className="text-sm font-extrabold text-slate-900">Reagendar</div>
+                    <div className="text-sm font-extrabold text-slate-900">
+                      Reagendar
+                    </div>
                     <div className="text-sm text-slate-600">
                       Selecciona un día y una hora disponible (duración:{" "}
                       <b>{durationMins} min</b>)
@@ -662,9 +699,10 @@ function GestionarCitaInner() {
                     </div>
                   ) : (
                     <>
+                      {/* ✅ FIX navegación: NO limitar a 14 días */}
                       <div className="mt-4 -mx-2 overflow-x-auto px-2 pb-2">
                         <div className="flex gap-2 snap-x snap-mandatory">
-                          {grouped.slice(0, 14).map((d) => (
+                          {grouped.map((d) => (
                             <button
                               key={d.dayKey}
                               type="button"
@@ -691,7 +729,9 @@ function GestionarCitaInner() {
 
                           return (
                             <div key={label}>
-                              <div className="text-xs font-bold text-slate-600">{label}</div>
+                              <div className="text-xs font-bold text-slate-600">
+                                {label}
+                              </div>
 
                               <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                                 {list.map((s) => (
@@ -747,8 +787,7 @@ function GestionarCitaInner() {
                   ) : null}
 
                   <div className="mt-4 text-xs text-slate-500">
-                    💡 Si este enlace fue compartido por error, crea una nueva reserva y usa el
-                    nuevo correo.
+                    💡 Si este enlace fue compartido por error, crea una nueva reserva y usa el nuevo correo.
                   </div>
                 </div>
               </div>

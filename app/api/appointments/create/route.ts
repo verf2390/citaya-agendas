@@ -5,8 +5,6 @@ import { AppointmentCreateSchema } from "@/lib/api/schemas";
 
 /* =====================================================
    CUSTOMERS: UPSERT SERVER-SIDE (para reservar público)
-   - dedupe por tenant + phone/email
-   - update suave (no pisar con null/empty)
 ===================================================== */
 
 function cleanTextOrNull(v: unknown): string | null {
@@ -39,17 +37,14 @@ async function resolveCustomerId(args: {
 }) {
   const { sb, tenantId } = args;
 
-  // 0) Si ya viene customerId, no tocamos nada
   if (args.customerId) return args.customerId;
 
   const full_name = cleanTextOrNull(args.customerName);
   const phone = cleanPhoneOrNull(args.customerPhone);
   const email = cleanEmailOrNull(args.customerEmail);
 
-  // Si no hay forma de identificar, no creamos customer
   if (!phone && !email) return null;
 
-  // 1) Buscar existente por phone dentro del tenant
   let existing:
     | { id: string; full_name: string; phone: string | null; email: string | null }
     | null = null;
@@ -66,7 +61,6 @@ async function resolveCustomerId(args: {
     if (data?.id) existing = data;
   }
 
-  // 2) Si no hubo por phone, buscar por email dentro del tenant
   if (!existing && email) {
     const { data, error } = await sb
       .from("customers")
@@ -79,7 +73,6 @@ async function resolveCustomerId(args: {
     if (data?.id) existing = data;
   }
 
-  // 3) Existe: update suave (solo rellena faltantes)
   if (existing?.id) {
     const patch: any = {};
     if (full_name && !existing.full_name) patch.full_name = full_name;
@@ -100,7 +93,6 @@ async function resolveCustomerId(args: {
     return existing.id;
   }
 
-  // 4) No existe: crear
   const { data: created, error: insErr } = await sb
     .from("customers")
     .insert({
@@ -113,8 +105,15 @@ async function resolveCustomerId(args: {
     .single();
 
   if (insErr) throw insErr;
-
   return created.id as string;
+}
+
+// ✅ NEW: generar token robusto (Node/Next runtime)
+function generateManageToken(): string {
+  // crypto.randomUUID() suele estar disponible en Node 18+ (Next.js)
+  // y es suficientemente robusto para enlace privado
+  // Si quieres más corto: .replace(/-/g,"")
+  return crypto.randomUUID();
 }
 
 export async function POST(req: Request) {
@@ -139,11 +138,6 @@ export async function POST(req: Request) {
 
     const sb = supabaseServer;
 
-    /* =====================================================
-       ✅ CUSTOMER AUTO-SAVE (PUNTO 1)
-       - Si viene customerId: lo usa
-       - Si no: dedupe + insert/update customers
-    ===================================================== */
     const resolvedCustomerId = await resolveCustomerId({
       sb,
       tenantId,
@@ -153,9 +147,6 @@ export async function POST(req: Request) {
       customerEmail: customerEmail ?? null,
     });
 
-    /* =====================================================
-       SNAPSHOT SERVICIO
-    ===================================================== */
     let service_name: string | null = null;
     let description: string | null = null;
 
@@ -173,9 +164,9 @@ export async function POST(req: Request) {
       description = svc?.description ?? null;
     }
 
-    /* =====================================================
-       INSERT DB
-    ===================================================== */
+    // ✅ NEW: token privado SIEMPRE
+    const manage_token = generateManageToken();
+
     const payload = {
       tenant_id: tenantId,
       professional_id: professionalId,
@@ -186,8 +177,9 @@ export async function POST(req: Request) {
       customer_phone: customerPhone ?? null,
       customer_email: customerEmail ?? null,
 
-      // ✅ ahora sí: customer_id real
       customer_id: resolvedCustomerId ?? null,
+
+      service_id: serviceId ?? null,
 
       service_name,
       description,
@@ -196,9 +188,10 @@ export async function POST(req: Request) {
       currency: currency ?? "CLP",
       status: status ?? "confirmed",
 
-      // ⚠️ puedes decidir si reservar debe venir como "public"
-      // pero lo dejo igual para no romper lógica existente:
       source: "admin",
+
+      // ✅ GUARDA TOKEN
+      manage_token,
     };
 
     const { data, error } = await sb
@@ -209,9 +202,6 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
-    /* =====================================================
-       🔥 WEBHOOK N8N (CON SECRET + LOGS)
-    ===================================================== */
     const webhookBase = process.env.N8N_CONFIRMATION_WEBHOOK_URL;
     const secret = process.env.CITAYA_SECRET;
 
@@ -225,7 +215,7 @@ export async function POST(req: Request) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
 
-        const res = await fetch(url.toString(), {
+        await fetch(url.toString(), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -240,8 +230,6 @@ export async function POST(req: Request) {
             customerName,
             customerPhone: customerPhone ?? null,
             customerEmail: customerEmail ?? null,
-
-            // ✅ enviar el customerId resuelto
             customerId: resolvedCustomerId ?? null,
 
             serviceId: serviceId ?? null,
@@ -252,6 +240,9 @@ export async function POST(req: Request) {
             currency: currency ?? "CLP",
             status: status ?? "confirmed",
 
+            // ✅ NEW: manda el token a n8n (así el email siempre lo puede usar)
+            manage_token: data.manage_token,
+
             source: "citaya-api",
             createdAt: new Date().toISOString(),
           }),
@@ -259,15 +250,11 @@ export async function POST(req: Request) {
         });
 
         clearTimeout(timeout);
-        console.log("[appointments/create] n8n webhook status:", res.status);
       } catch (err: any) {
         console.error("[appointments/create] n8n webhook error:", err?.message || err);
       }
     }
 
-    /* =====================================================
-       RESPONSE
-    ===================================================== */
     return NextResponse.json({
       ok: true,
       appointmentId: data.id,

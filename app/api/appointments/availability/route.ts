@@ -40,8 +40,7 @@ function getPartsInTZ(date: Date, timeZone: string) {
   });
 
   const parts = dtf.formatToParts(date);
-  const get = (type: string) =>
-    parts.find((p) => p.type === type)?.value ?? "00";
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
 
   return {
     year: Number(get("year")),
@@ -138,7 +137,6 @@ export async function GET(req: Request) {
 
     const durationMinParam = url.searchParams.get("durationMin");
     const stepMinParam = url.searchParams.get("stepMin");
-
     const debug = url.searchParams.get("debug") === "1";
 
     if (!tenantId || !professionalId || !from || !to) {
@@ -161,14 +159,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const durationMinutes = Math.max(
-      5,
-      Math.min(240, Number(durationMinParam ?? 30) || 30),
-    );
-    const stepMinutes = Math.max(
-      5,
-      Math.min(120, Number(stepMinParam ?? 30) || 30),
-    );
+    const durationMinutes = Math.max(5, Math.min(240, Number(durationMinParam ?? 30) || 30));
+    const stepMinutes = Math.max(5, Math.min(120, Number(stepMinParam ?? 30) || 30));
 
     // 0) availability activos (horario base profesional)
     const { data: avRows, error: avErr } = await supabaseServer
@@ -180,10 +172,7 @@ export async function GET(req: Request) {
 
     if (avErr) {
       console.error(avErr);
-      return NextResponse.json(
-        { error: "Error consultando disponibilidad" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Error consultando disponibilidad" }, { status: 500 });
     }
 
     const availability = (avRows ?? []) as AvailabilityRow[];
@@ -194,9 +183,7 @@ export async function GET(req: Request) {
       blocksByDow[r.day_of_week].push(r);
     }
     Object.keys(blocksByDow).forEach((k) => {
-      blocksByDow[Number(k)].sort((a, b) =>
-        a.start_time > b.start_time ? 1 : -1,
-      );
+      blocksByDow[Number(k)].sort((a, b) => (a.start_time > b.start_time ? 1 : -1));
     });
 
     // 0.5) reglas por servicio — opcional
@@ -212,10 +199,7 @@ export async function GET(req: Request) {
 
       if (ruleErr) {
         console.error(ruleErr);
-        return NextResponse.json(
-          { error: "Error consultando reglas por servicio" },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: "Error consultando reglas por servicio" }, { status: 500 });
       }
 
       serviceRules = (ruleRows ?? []) as ServiceRuleRow[];
@@ -229,9 +213,7 @@ export async function GET(req: Request) {
       rulesByDow[r.day_of_week].push(r);
     }
     Object.keys(rulesByDow).forEach((k) => {
-      rulesByDow[Number(k)].sort((a, b) =>
-        a.start_time > b.start_time ? 1 : -1,
-      );
+      rulesByDow[Number(k)].sort((a, b) => (a.start_time > b.start_time ? 1 : -1));
     });
 
     // 1) citas existentes
@@ -246,18 +228,13 @@ export async function GET(req: Request) {
 
     if (apptErr) {
       console.error(apptErr);
-      return NextResponse.json(
-        { error: "Error consultando citas" },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: "Error consultando citas" }, { status: 500 });
     }
 
-    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map(
-      (a) => ({
-        start: new Date(a.start_at),
-        end: new Date(a.end_at),
-      }),
-    );
+    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map((a) => ({
+      start: new Date(a.start_at),
+      end: new Date(a.end_at),
+    }));
 
     // 2) generar slots
     const nowUTC = new Date();
@@ -266,14 +243,6 @@ export async function GET(req: Request) {
 
     // ✅ iteración por días CL robusta
     const startParts = getPartsInTZ(rangeStart, TZ);
-    const startNoonUTC = localToUTC(
-      startParts.year,
-      startParts.month,
-      startParts.day,
-      12,
-      0,
-      TZ,
-    );
 
     const daysToIterate = Math.min(400, diffDaysCeil(rangeStart, rangeEnd) + 2); // guard amplio
     let y = startParts.year;
@@ -300,7 +269,7 @@ export async function GET(req: Request) {
       const dow = dayOfWeekCL(noonUTC);
 
       const dayBaseBlocks = blocksByDow[dow] ?? [];
-      const dayRuleBlocks = hasServiceRules ? rulesByDow[dow] ?? [] : [];
+      const dayRuleBlocks = hasServiceRules ? (rulesByDow[dow] ?? []) : [];
 
       if (debug) {
         debugDays.push({
@@ -319,7 +288,9 @@ export async function GET(req: Request) {
       if (dayBaseBlocks.length === 0) {
         const next = localToUTC(y, m, d + 1, 12, 0, TZ);
         const np = getPartsInTZ(next, TZ);
-        y = np.year; m = np.month; d = np.day;
+        y = np.year;
+        m = np.month;
+        d = np.day;
         continue;
       }
 
@@ -327,23 +298,26 @@ export async function GET(req: Request) {
       if (hasServiceRules && dayRuleBlocks.length === 0) {
         const next = localToUTC(y, m, d + 1, 12, 0, TZ);
         const np = getPartsInTZ(next, TZ);
-        y = np.year; m = np.month; d = np.day;
+        y = np.year;
+        m = np.month;
+        d = np.day;
         continue;
       }
 
       const pushSlotIfFree = (slotStart: Date, slotEnd: Date) => {
         if (slotEnd <= nowUTC) return;
 
-        const isBusy = booked.some((br) =>
-          overlaps(slotStart, slotEnd, br.start, br.end),
-        );
+        const isBusy = booked.some((br) => overlaps(slotStart, slotEnd, br.start, br.end));
         if (isBusy) return;
 
         const key = `${slotStart.toISOString()}|${slotEnd.toISOString()}`;
         if (slotSeen.has(key)) return;
         slotSeen.add(key);
 
-        slots.push({ start_at: slotStart.toISOString(), end_at: slotEnd.toISOString() });
+        slots.push({
+          start_at: slotStart.toISOString(),
+          end_at: slotEnd.toISOString(),
+        });
       };
 
       if (!hasServiceRules) {
@@ -413,7 +387,9 @@ export async function GET(req: Request) {
       // avanzar 1 día CL (mediodía)
       const next = localToUTC(y, m, d + 1, 12, 0, TZ);
       const np = getPartsInTZ(next, TZ);
-      y = np.year; m = np.month; d = np.day;
+      y = np.year;
+      m = np.month;
+      d = np.day;
     }
 
     slots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
