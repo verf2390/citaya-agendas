@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { parseJson } from "@/lib/api/parse";
 import { AppointmentCreateSchema } from "@/lib/api/schemas";
+import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
 
 /* =====================================================
    CUSTOMERS: UPSERT SERVER-SIDE (para reservar público)
@@ -110,9 +111,6 @@ async function resolveCustomerId(args: {
 
 // ✅ NEW: generar token robusto (Node/Next runtime)
 function generateManageToken(): string {
-  // crypto.randomUUID() suele estar disponible en Node 18+ (Next.js)
-  // y es suficientemente robusto para enlace privado
-  // Si quieres más corto: .replace(/-/g,"")
   return crypto.randomUUID();
 }
 
@@ -138,9 +136,13 @@ export async function POST(req: Request) {
 
     const sb = supabaseServer;
 
+    // ✅ Demo cookie override (subdominios)
+    const demoTenantId = getDemoTenantIdFromCookieHeader(req.headers.get("cookie"));
+    const effectiveTenantId = demoTenantId ?? tenantId;
+
     const resolvedCustomerId = await resolveCustomerId({
       sb,
-      tenantId,
+      tenantId: effectiveTenantId,
       customerId: customerId ?? null,
       customerName: customerName ?? null,
       customerPhone: customerPhone ?? null,
@@ -154,7 +156,7 @@ export async function POST(req: Request) {
       const { data: svc, error } = await sb
         .from("services")
         .select("name, description")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", effectiveTenantId)
         .eq("id", serviceId)
         .maybeSingle();
 
@@ -164,11 +166,11 @@ export async function POST(req: Request) {
       description = svc?.description ?? null;
     }
 
-    // ✅ NEW: token privado SIEMPRE
+    // ✅ token privado SIEMPRE
     const manage_token = generateManageToken();
 
     const payload = {
-      tenant_id: tenantId,
+      tenant_id: effectiveTenantId,
       professional_id: professionalId,
       start_at: startAt,
       end_at: endAt,
@@ -190,7 +192,6 @@ export async function POST(req: Request) {
 
       source: "admin",
 
-      // ✅ GUARDA TOKEN
       manage_token,
     };
 
@@ -222,7 +223,8 @@ export async function POST(req: Request) {
             event: "appointment.created",
             appointmentId: data.id,
 
-            tenantId,
+            // ✅ manda tenant efectivo
+            tenantId: effectiveTenantId,
             professionalId,
             startAt,
             endAt,
@@ -240,7 +242,6 @@ export async function POST(req: Request) {
             currency: currency ?? "CLP",
             status: status ?? "confirmed",
 
-            // ✅ NEW: manda el token a n8n (así el email siempre lo puede usar)
             manage_token: data.manage_token,
 
             source: "citaya-api",
@@ -266,7 +267,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       { ok: false, error: e?.message ?? "Error inesperado" },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

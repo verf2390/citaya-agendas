@@ -1,6 +1,7 @@
 // app/api/appointments/availability/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
 
 type AppointmentRangeRow = {
   start_at: string;
@@ -40,7 +41,8 @@ function getPartsInTZ(date: Date, timeZone: string) {
   });
 
   const parts = dtf.formatToParts(date);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  const get = (type: string) =>
+    parts.find((p) => p.type === type)?.value ?? "00";
 
   return {
     year: Number(get("year")),
@@ -54,7 +56,14 @@ function getPartsInTZ(date: Date, timeZone: string) {
 
 function getTimeZoneOffsetMinutes(date: Date, timeZone: string) {
   const p = getPartsInTZ(date, timeZone);
-  const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const asUTC = Date.UTC(
+    p.year,
+    p.month - 1,
+    p.day,
+    p.hour,
+    p.minute,
+    p.second,
+  );
   return (date.getTime() - asUTC) / 60000;
 }
 
@@ -128,6 +137,13 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
 
     const tenantId = url.searchParams.get("tenantId");
+
+    // ✅ Demo cookie override (subdominios)
+    const demoTenantId = getDemoTenantIdFromCookieHeader(
+      req.headers.get("cookie"),
+    );
+    const effectiveTenantId = demoTenantId ?? tenantId;
+
     const professionalId = url.searchParams.get("professionalId");
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
@@ -139,7 +155,8 @@ export async function GET(req: Request) {
     const stepMinParam = url.searchParams.get("stepMin");
     const debug = url.searchParams.get("debug") === "1";
 
-    if (!tenantId || !professionalId || !from || !to) {
+    if (!effectiveTenantId || !professionalId || !from || !to) {
+
       return NextResponse.json(
         { error: "Faltan parámetros: tenantId, professionalId, from, to" },
         { status: 400 },
@@ -149,7 +166,10 @@ export async function GET(req: Request) {
     const rangeStart = new Date(from);
     const rangeEnd = new Date(to);
 
-    if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime())) {
+    if (
+      Number.isNaN(rangeStart.getTime()) ||
+      Number.isNaN(rangeEnd.getTime())
+    ) {
       return NextResponse.json({ error: "from/to inválidos" }, { status: 400 });
     }
     if (rangeStart >= rangeEnd) {
@@ -159,20 +179,29 @@ export async function GET(req: Request) {
       );
     }
 
-    const durationMinutes = Math.max(5, Math.min(240, Number(durationMinParam ?? 30) || 30));
-    const stepMinutes = Math.max(5, Math.min(120, Number(stepMinParam ?? 30) || 30));
+    const durationMinutes = Math.max(
+      5,
+      Math.min(240, Number(durationMinParam ?? 30) || 30),
+    );
+    const stepMinutes = Math.max(
+      5,
+      Math.min(120, Number(stepMinParam ?? 30) || 30),
+    );
 
     // 0) availability activos (horario base profesional)
     const { data: avRows, error: avErr } = await supabaseServer
       .from("availability")
       .select("day_of_week,start_time,end_time,is_active")
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", effectiveTenantId)
       .eq("professional_id", professionalId)
       .eq("is_active", true);
 
     if (avErr) {
       console.error(avErr);
-      return NextResponse.json({ error: "Error consultando disponibilidad" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Error consultando disponibilidad" },
+        { status: 500 },
+      );
     }
 
     const availability = (avRows ?? []) as AvailabilityRow[];
@@ -183,7 +212,9 @@ export async function GET(req: Request) {
       blocksByDow[r.day_of_week].push(r);
     }
     Object.keys(blocksByDow).forEach((k) => {
-      blocksByDow[Number(k)].sort((a, b) => (a.start_time > b.start_time ? 1 : -1));
+      blocksByDow[Number(k)].sort((a, b) =>
+        a.start_time > b.start_time ? 1 : -1,
+      );
     });
 
     // 0.5) reglas por servicio — opcional
@@ -192,14 +223,17 @@ export async function GET(req: Request) {
       const { data: ruleRows, error: ruleErr } = await supabaseServer
         .from("service_availability_rules")
         .select("day_of_week,start_time,end_time,is_active")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", effectiveTenantId)
         .eq("professional_id", professionalId)
         .eq("service_id", serviceId)
         .eq("is_active", true);
 
       if (ruleErr) {
         console.error(ruleErr);
-        return NextResponse.json({ error: "Error consultando reglas por servicio" }, { status: 500 });
+        return NextResponse.json(
+          { error: "Error consultando reglas por servicio" },
+          { status: 500 },
+        );
       }
 
       serviceRules = (ruleRows ?? []) as ServiceRuleRow[];
@@ -213,14 +247,16 @@ export async function GET(req: Request) {
       rulesByDow[r.day_of_week].push(r);
     }
     Object.keys(rulesByDow).forEach((k) => {
-      rulesByDow[Number(k)].sort((a, b) => (a.start_time > b.start_time ? 1 : -1));
+      rulesByDow[Number(k)].sort((a, b) =>
+        a.start_time > b.start_time ? 1 : -1,
+      );
     });
 
     // 1) citas existentes
     const { data: appts, error: apptErr } = await supabaseServer
       .from("appointments")
       .select("start_at,end_at,status")
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", effectiveTenantId)
       .eq("professional_id", professionalId)
       .neq("status", "canceled")
       .lt("start_at", rangeEnd.toISOString())
@@ -228,13 +264,18 @@ export async function GET(req: Request) {
 
     if (apptErr) {
       console.error(apptErr);
-      return NextResponse.json({ error: "Error consultando citas" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Error consultando citas" },
+        { status: 500 },
+      );
     }
 
-    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map((a) => ({
-      start: new Date(a.start_at),
-      end: new Date(a.end_at),
-    }));
+    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map(
+      (a) => ({
+        start: new Date(a.start_at),
+        end: new Date(a.end_at),
+      }),
+    );
 
     // 2) generar slots
     const nowUTC = new Date();
@@ -307,7 +348,9 @@ export async function GET(req: Request) {
       const pushSlotIfFree = (slotStart: Date, slotEnd: Date) => {
         if (slotEnd <= nowUTC) return;
 
-        const isBusy = booked.some((br) => overlaps(slotStart, slotEnd, br.start, br.end));
+        const isBusy = booked.some((br) =>
+          overlaps(slotStart, slotEnd, br.start, br.end),
+        );
         if (isBusy) return;
 
         const key = `${slotStart.toISOString()}|${slotEnd.toISOString()}`;
@@ -329,19 +372,24 @@ export async function GET(req: Request) {
           const blockEndUTC = localToUTC(y, m, d, eh, em, TZ);
           if (!(blockStartUTC < blockEndUTC)) continue;
 
-          const effectiveStart = blockStartUTC < rangeStart ? rangeStart : blockStartUTC;
+          const effectiveStart =
+            blockStartUTC < rangeStart ? rangeStart : blockStartUTC;
           const effectiveEnd = blockEndUTC > rangeEnd ? rangeEnd : blockEndUTC;
 
           let slotCursor = ceilToStepUTC(effectiveStart, stepMinutes);
 
           while (slotCursor < effectiveEnd) {
             const slotStart = slotCursor;
-            const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
+            const slotEnd = new Date(
+              slotStart.getTime() + durationMinutes * 60 * 1000,
+            );
             if (slotEnd > effectiveEnd) break;
 
             pushSlotIfFree(slotStart, slotEnd);
 
-            slotCursor = new Date(slotCursor.getTime() + stepMinutes * 60 * 1000);
+            slotCursor = new Date(
+              slotCursor.getTime() + stepMinutes * 60 * 1000,
+            );
           }
         }
       } else {
@@ -366,19 +414,24 @@ export async function GET(req: Request) {
             const interEnd = minDate(baseEndUTC, ruleEndUTC);
             if (!(interStart < interEnd)) continue;
 
-            const effectiveStart = interStart < rangeStart ? rangeStart : interStart;
+            const effectiveStart =
+              interStart < rangeStart ? rangeStart : interStart;
             const effectiveEnd = interEnd > rangeEnd ? rangeEnd : interEnd;
 
             let slotCursor = ceilToStepUTC(effectiveStart, stepMinutes);
 
             while (slotCursor < effectiveEnd) {
               const slotStart = slotCursor;
-              const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60 * 1000);
+              const slotEnd = new Date(
+                slotStart.getTime() + durationMinutes * 60 * 1000,
+              );
               if (slotEnd > effectiveEnd) break;
 
               pushSlotIfFree(slotStart, slotEnd);
 
-              slotCursor = new Date(slotCursor.getTime() + stepMinutes * 60 * 1000);
+              slotCursor = new Date(
+                slotCursor.getTime() + stepMinutes * 60 * 1000,
+              );
             }
           }
         }
@@ -395,7 +448,7 @@ export async function GET(req: Request) {
     slots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
 
     return NextResponse.json({
-      tenantId,
+      tenantId: effectiveTenantId,
       professionalId,
       serviceId: serviceId || null,
       from,

@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -14,10 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: 'Agenda Citas | FajasPaola.cl',
-  description: 'Agenda online en construcción',
+  title: {
+    default: "Citaya | Agenda online",
+    template: "%s",
+  },
+  description: "Agenda online para negocios. Reservas 24/7.",
 };
-
 
 export default function RootLayout({
   children,
@@ -26,12 +27,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
         <Toaster />
-
       </body>
     </html>
   );

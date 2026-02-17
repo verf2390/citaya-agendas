@@ -24,6 +24,127 @@ function initialsFromName(name?: string | null) {
     .join("");
 }
 
+function DemoLanding() {
+  return (
+    <main className="min-h-screen bg-slate-50">
+      {/* Fondo suave */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl" />
+        <div className="absolute -bottom-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/35 via-slate-100/20 to-emerald-100/25 blur-3xl" />
+      </div>
+
+      <div className="mx-auto w-full max-w-[980px] px-4 pb-16 pt-10 sm:pt-14">
+        <section className="rounded-3xl border border-slate-200 bg-white/85 shadow-sm backdrop-blur">
+          <div className="p-6 sm:p-10">
+            <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  DEMO · Citaya Pro
+                </div>
+
+                <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+                  Así se vería la agenda online de tu negocio
+                </h1>
+
+                <p className="mt-2 text-base font-semibold text-slate-700">
+                  Profesional · Automática · 24/7
+                </p>
+
+                <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600">
+                  Este demo te permite ver la experiencia completa: elegir
+                  servicio, ver horarios reales, reservar y recibir confirmación.
+                  Sin login.
+                </p>
+
+                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                  <Link
+                    href="/reservar"
+                    className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-6 py-4 text-base font-extrabold text-white shadow-sm hover:opacity-90 active:scale-[0.99] sm:w-auto"
+                  >
+                    Probar demo ahora
+                  </Link>
+
+                  <Link
+                    href="https://citaya.online"
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-4 text-base font-extrabold text-slate-900 hover:bg-slate-50 sm:w-auto"
+                  >
+                    Volver
+                  </Link>
+                </div>
+
+                <p className="mt-3 text-xs text-slate-500">
+                  * Datos de ejemplo. La app real usa tu logo, tus servicios y tu
+                  configuración.
+                </p>
+              </div>
+
+              <div className="w-full sm:w-[360px]">
+                <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-100 to-white shadow-sm">
+                  <div className="p-5">
+                    <div className="text-xs font-semibold text-slate-600">
+                      Qué incluye
+                    </div>
+
+                    <ul className="mt-3 grid gap-2 text-sm text-slate-700">
+                      <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        ✅ Servicios + profesionales
+                      </li>
+                      <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        ✅ Horarios reales por disponibilidad
+                      </li>
+                      <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        ✅ Confirmación + link privado
+                      </li>
+                    </ul>
+
+                    <div className="mt-4 text-[11px] text-slate-500">
+                      Si quieres, luego hacemos una versión con tu marca y tus
+                      textos.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Mini testimonios (opcionales) */}
+            <div className="mt-10 grid gap-3 sm:grid-cols-3">
+              {[
+                {
+                  name: "María",
+                  text: "Reservé en 30 segundos. Se siente súper pro.",
+                },
+                {
+                  name: "Camila",
+                  text: "Me llegó el correo y pude reagendar sin hablar con nadie.",
+                },
+                {
+                  name: "Daniela",
+                  text: "Así debería ser cualquier agenda online.",
+                },
+              ].map((t) => (
+                <div
+                  key={t.name}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="grid h-8 w-8 place-items-center rounded-full bg-slate-900 text-xs font-extrabold text-white">
+                      {t.name.slice(0, 1)}
+                    </div>
+                    <div className="text-sm font-bold text-slate-900">
+                      {t.name}
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">“{t.text}”</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 export default async function TenantHome({
   params,
 }: {
@@ -34,6 +155,11 @@ export default async function TenantHome({
   const h = await headers();
   const host = h.get("host") ?? "";
   const slugFromHost = getSubdomainSlugFromHost(host);
+
+  // ✅ si estamos en demo (por subdominio o por /tenants/demo) -> landing demo bonita
+  if (slugFromHost === "demo" || params?.slug === "demo") {
+    return <DemoLanding />;
+  }
 
   // fallback: si alguna vez llega params.slug, lo usamos; si no, usamos subdominio
   const slug = params?.slug ?? slugFromHost;
@@ -86,7 +212,6 @@ export default async function TenantHome({
     .eq("is_active", true)
     .order("created_at", { ascending: true });
 
-  // ✅ Multi-professional por empresa (para credibilidad en la home)
   const { data: professionals } = await supabase
     .from("professionals")
     .select("id, name, active, avatar_url")
@@ -113,13 +238,11 @@ export default async function TenantHome({
       <header className="border-b bg-white/85 backdrop-blur">
         <div className="mx-auto max-w-4xl px-6 py-10">
           <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
-            {/* Lado izquierdo: marca + copy */}
             <div className="min-w-0">
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                 Reserva online
               </div>
 
-              {/* ✅ Logo + Nombre */}
               <div className="mt-4 flex items-center gap-3">
                 {tenant.logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -149,7 +272,6 @@ export default async function TenantHome({
                   "Elige un servicio y un horario disponible. Confirmación inmediata por correo y enlace privado para gestionar tu cita."}
               </p>
 
-              {/* ✅ Mostrar u ocultar datos según configuración del tenant */}
               {(showAddress || showPhone) && (
                 <div className="mt-4 space-y-1 text-sm text-slate-700">
                   {showAddress && (tenant.address || tenant.city) && (
@@ -158,13 +280,10 @@ export default async function TenantHome({
                       {tenant.city ? ` · ${tenant.city}` : ""}
                     </p>
                   )}
-                  {showPhone && tenant.phone_display && (
-                    <p>📞 {tenant.phone_display}</p>
-                  )}
+                  {showPhone && tenant.phone_display && <p>📞 {tenant.phone_display}</p>}
                 </div>
               )}
 
-              {/* ✅ CTA grande arriba (único CTA fuerte) */}
               <div className="mt-6">
                 <Link
                   href={ctaHref}
@@ -178,7 +297,6 @@ export default async function TenantHome({
               </div>
             </div>
 
-            {/* Lado derecho: banner/credibilidad */}
             <div className="w-full md:w-[360px]">
               <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-100 to-white shadow-sm">
                 <div className="p-5">
@@ -189,7 +307,6 @@ export default async function TenantHome({
                     Agenda sin llamadas y con horarios reales disponibles.
                   </div>
 
-                  {/* “Reseñas” demo */}
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-xs font-semibold text-slate-600">
                       Valoración
@@ -197,11 +314,7 @@ export default async function TenantHome({
                     <div className="mt-1 flex items-center gap-2">
                       <div className="flex items-center">
                         {Array.from({ length: 5 }).map((_, i) => (
-                          <span
-                            key={i}
-                            className="text-slate-900"
-                            aria-hidden="true"
-                          >
+                          <span key={i} className="text-slate-900" aria-hidden="true">
                             ★
                           </span>
                         ))}
@@ -209,16 +322,10 @@ export default async function TenantHome({
                       <div className="text-xs font-semibold text-slate-700">
                         5.0
                       </div>
-                      <div className="text-xs text-slate-500">
-                        (Clientes felices)
-                      </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-slate-500">
-                      
+                      <div className="text-xs text-slate-500">(Clientes felices)</div>
                     </div>
                   </div>
 
-                  {/* Profesionales (multi-professional por tenant) */}
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-xs font-semibold text-slate-600">
                       Profesionales
@@ -271,15 +378,11 @@ export default async function TenantHome({
         <div className="rounded-3xl bg-white shadow-sm border border-slate-200 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-extrabold text-slate-900">
-                Servicios
-              </h2>
+              <h2 className="text-xl font-extrabold text-slate-900">Servicios</h2>
               <p className="text-sm text-slate-600 mt-1">
                 Elige un servicio para ver disponibilidad.
               </p>
             </div>
-
-            {/* ❌ Quitamos el botón duplicado del header */}
           </div>
 
           {!services?.length ? (
@@ -288,17 +391,14 @@ export default async function TenantHome({
                 No hay servicios configurados aún.
               </p>
               <p className="text-sm text-slate-600 mt-1">
-                Crea al menos 1 registro en la tabla <b>services</b> para este
-                tenant.
+                Crea al menos 1 registro en la tabla <b>services</b> para este tenant.
               </p>
             </div>
           ) : (
             <ul className="mt-6 grid gap-3">
               {services.map((s) => {
                 const durationText =
-                  typeof s.duration_min === "number"
-                    ? `${s.duration_min} min`
-                    : null;
+                  typeof s.duration_min === "number" ? `${s.duration_min} min` : null;
 
                 const priceText =
                   typeof s.price === "number"
@@ -336,11 +436,9 @@ export default async function TenantHome({
             </ul>
           )}
 
-          {/* Nota política (simple) */}
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-            <b>Política:</b> puedes reagendar o cancelar con al menos{" "}
-            <b>3 horas</b> de anticipación desde el enlace privado que llega al
-            correo.
+            <b>Política:</b> puedes reagendar o cancelar con al menos <b>3 horas</b> de
+            anticipación desde el enlace privado que llega al correo.
           </div>
         </div>
       </section>
