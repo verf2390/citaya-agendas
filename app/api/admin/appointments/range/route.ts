@@ -4,7 +4,9 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    v,
+  );
 }
 
 function toIsoOrEmpty(v: string) {
@@ -28,7 +30,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
 
     const tenantId = String(searchParams.get("tenantId") || "").trim();
-    const professionalId = String(searchParams.get("professionalId") || "").trim();
+    const professionalId = String(
+      searchParams.get("professionalId") || "",
+    ).trim();
     const startRaw = String(searchParams.get("start") || "").trim();
     const endRaw = String(searchParams.get("end") || "").trim();
 
@@ -77,6 +81,7 @@ export async function GET(req: Request) {
         id,
         tenant_id,
         professional_id,
+        service_id,
         customer_id,
         customer_name,
         customer_phone,
@@ -93,15 +98,20 @@ export async function GET(req: Request) {
       q = q.eq("professional_id", professionalId);
     }
 
-    // ✅ overlap real
-    q = q.lt("start_at", end).gt("end_at", start);
+    // ✅ rango: citas cuyo start cae dentro del rango visible
+    q = q.gte("start_at", start).lt("start_at", end);
 
     const { data, error } = await q;
 
     if (error) {
       console.error("[admin/appointments/range] db error:", error);
       return NextResponse.json(
-        { error: "db error" },
+        {
+          error: error.message,
+          code: (error as any).code ?? null,
+          details: (error as any).details ?? null,
+          hint: (error as any).hint ?? null,
+        },
         { status: 500, headers: NO_STORE_HEADERS },
       );
     }

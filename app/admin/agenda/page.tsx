@@ -93,6 +93,7 @@ type CalendarEvent = {
   classNames?: string[];
   extendedProps: {
     professional_id: string;
+    service_id: string | null;
     customer_phone: string | null;
     status: AppointmentStatus;
     customer_id: string | null;
@@ -725,6 +726,7 @@ export default function AgendaPage() {
             classNames: ["citaya-event", `citaya-status-${status}`],
             extendedProps: {
               professional_id: a.professional_id,
+              service_id: a.service_id ?? null,
               customer_phone: a.customer_phone ?? null,
               status,
               customer_id: a.customer_id ?? null,
@@ -1013,12 +1015,24 @@ export default function AgendaPage() {
     const endMin = dateToMinutes(endDate);
 
     const baseBlocks = getBlocksForDate(availabilityBlocks, startDate);
-
-    // ✅ aquí todavía validamos con el servicio del PANEL (si existe),
-    // pero igual abrimos modal siempre (servicio real se elige en el modal).
     const serviceBlocks = selectedServiceId
       ? getBlocksForDate(serviceRulesBlocks, startDate)
       : [];
+
+    // ✅ aquí todavía validamos con el servicio del PANEL (si existe),
+    // pero igual abrimos modal siempre (servicio real se elige en el modal).
+    const okByBase = isWithinAvailability({
+      startMin,
+      endMin,
+      blocks: baseBlocks,
+    });
+
+    if (!okByBase) {
+      alert("❌ Fuera de disponibilidad del profesional.");
+      return;
+    }
+
+    
 
     const okByRules = isWithinBaseAndService({
       startMin,
@@ -1028,7 +1042,7 @@ export default function AgendaPage() {
     });
 
     if (!okByRules) {
-      const hasServiceRules = (serviceRulesBlocks ?? []).some((b) => b.is_active);
+      const hasServiceRules = serviceRulesBlocks.some((b) => b.is_active);
 
       alert(
         hasServiceRules && selectedServiceId
@@ -1082,8 +1096,13 @@ export default function AgendaPage() {
     const customer = customers.find((c) => c.id === args.customerId) ?? null;
 
     try {
-      const customer_email = String(customer?.email ?? "").trim().toLowerCase();
-      if (!customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)) {
+      const customer_email = String(customer?.email ?? "")
+        .trim()
+        .toLowerCase();
+      if (
+        !customer_email ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customer_email)
+      ) {
         toast({
           title: "Email inválido",
           description: "Este cliente no tiene un email válido guardado.",
@@ -1156,20 +1175,96 @@ export default function AgendaPage() {
       return;
     }
 
+    // ✅ UTC ISOZ siempre
     const start_at = startDate.toISOString();
     const end_at = endDate.toISOString();
 
     const startMin = dateToMinutes(startDate);
     const endMin = dateToMinutes(endDate);
 
-    const blocks = availabilityBlocks.filter(
-      (b) => b.is_active && blockMatchesDateDay(b.day_of_week, startDate),
-    );
+    // ✅ base
+    const baseBlocks = getBlocksForDate(availabilityBlocks, startDate);
 
-    if (!isWithinAvailability({ startMin, endMin, blocks })) {
+    // ✅ service_id desde el evento (viene del range endpoint)
+    const props = (dropInfo.event.extendedProps ?? {}) as {
+      service_id?: string | null;
+    };
+    const eventServiceId = props.service_id ?? null;
+
+    // ✅ si no tiene service_id, no permitimos mover (para evitar saltarse reglas)
+    if (!eventServiceId) {
+      toast({
+        title: "No se puede mover",
+        description:
+          "Esta cita no tiene servicio asociado. Edita la cita o re-crea con servicio.",
+        variant: "destructive",
+      });
+      dropInfo.revert();
+      return;
+    }
+
+    // ✅ reglas por servicio: cargamos en caliente para el servicio del evento
+    // (no depende del selectedServiceId del UI)
+    let serviceBlocks: AvailabilityBlock[] = [];
+    try {
+      const qs = new URLSearchParams();
+      qs.set("tenantId", tenantId);
+      qs.set("professionalId", selectedProfessionalId);
+      qs.set("serviceId", eventServiceId);
+
+      const res = await fetch(
+        `/api/admin/service-rules/list?${qs.toString()}`,
+        {
+          cache: "no-store",
+        },
+      );
+      const json = await res.json().catch(() => null);
+
+      if (res.ok) {
+        const rows = (json?.items ?? []) as Array<{
+          id: string;
+          day_of_week: number;
+          start_time: string;
+          end_time: string;
+          is_active: boolean;
+        }>;
+
+        serviceBlocks = rows.map((r) => ({
+          id: r.id,
+          day_of_week: Number(r.day_of_week),
+          start_time: String(r.start_time).slice(0, 5),
+          end_time: String(r.end_time).slice(0, 5),
+          is_active: !!r.is_active,
+        }));
+      }
+    } catch (e) {
+      // si falla el fetch de reglas, por seguridad NO movemos
+      console.error("service rules fetch error (drop)", e);
+      toast({
+        title: "No se pudo validar reglas",
+        description: "No se pudo validar el horario del servicio. Se revirtió.",
+        variant: "destructive",
+      });
+      dropInfo.revert();
+      return;
+    }
+
+    // ✅ validación final = base ∩ reglas (si existen)
+    const okByRules = isWithinBaseAndService({
+      startMin,
+      endMin,
+      baseBlocks,
+      serviceBlocks: getBlocksForDate(serviceBlocks, startDate),
+    });
+
+    if (!okByRules) {
+      const hasServiceRules = (serviceBlocks ?? []).some((b) => b.is_active);
+
       toast({
         title: "Movimiento no permitido",
-        description: "Fuera de disponibilidad del profesional.",
+        description: hasServiceRules
+          ? "Fuera del horario permitido por este servicio (base ∩ reglas)."
+          : "Fuera de disponibilidad del profesional.",
         variant: "destructive",
       });
       dropInfo.revert();
@@ -1490,7 +1585,9 @@ export default function AgendaPage() {
                   onClick={saveAvailability}
                   disabled={savingAvailability || !selectedProfessionalId}
                 >
-                  {savingAvailability ? "Guardando…" : "Guardar horarios (base)"}
+                  {savingAvailability
+                    ? "Guardando…"
+                    : "Guardar horarios (base)"}
                 </PrimaryButton>
               </div>
 
@@ -1672,7 +1769,9 @@ export default function AgendaPage() {
             <div className="w-full max-w-[560px] rounded-2xl border bg-white p-4 shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-base font-black">Acciones de la cita</div>
+                  <div className="text-base font-black">
+                    Acciones de la cita
+                  </div>
 
                   {(() => {
                     const { date, startTime, endTime } = formatDateTimeRange(
