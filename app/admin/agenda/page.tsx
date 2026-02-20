@@ -371,6 +371,7 @@ export default function AgendaPage() {
   const [tenantError, setTenantError] = useState("");
   const [loadingTenant, setLoadingTenant] = useState(true);
   const [tenantLogoUrl, setTenantLogoUrl] = useState("");
+  const [tenantName, setTenantName] = useState("");
 
   // auth
   const [authChecked, setAuthChecked] = useState(false);
@@ -466,7 +467,7 @@ export default function AgendaPage() {
 
       const { data, error } = await supabase
         .from("tenants")
-        .select("id, slug, logo_url")
+        .select("id, slug, name, logo_url")
         .eq("slug", slug)
         .maybeSingle();
 
@@ -484,6 +485,7 @@ export default function AgendaPage() {
 
       setTenantId(data.id);
       setTenantLogoUrl(data.logo_url ?? "");
+      setTenantName(data.name ?? "");
       setLoadingTenant(false);
     };
 
@@ -1032,8 +1034,6 @@ export default function AgendaPage() {
       return;
     }
 
-    
-
     const okByRules = isWithinBaseAndService({
       startMin,
       endMin,
@@ -1502,18 +1502,64 @@ export default function AgendaPage() {
   return (
     <main className="min-h-screen bg-[#f6f7fb]">
       <style>{`
-        .fc { font-family: system-ui; }
-        .fc .fc-toolbar-title { font-size: 16px; font-weight: 800; }
-        .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
-        .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
-        .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; color: #111827; }
-        .fc .fc-event { border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); padding: 2px; }
-        .citaya-event .fc-event-main { font-weight: 650; }
-        .citaya-status-confirmed { border-color: #2563eb !important; background: #3b82f6 !important; }
-        .citaya-status-canceled { border-color: #9ca3af !important; background: #9ca3af !important; opacity: 0.85; }
-        .citaya-status-completed { border-color: #16a34a !important; background: #22c55e !important; }
-        .citaya-status-no_show { border-color: #ef4444 !important; background: #f87171 !important; }
-      `}</style>
+  .fc { font-family: system-ui; }
+  .fc .fc-toolbar-title { font-size: 16px; font-weight: 800; }
+  .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
+  .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
+  .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; color: #111827; }
+  .fc .fc-event { border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); padding: 2px; }
+  .citaya-event .fc-event-main { font-weight: 650; }
+  .citaya-status-confirmed { border-color: #2563eb !important; background: #3b82f6 !important; }
+  .citaya-status-canceled { border-color: #9ca3af !important; background: #9ca3af !important; opacity: 0.85; }
+  .citaya-status-completed { border-color: #16a34a !important; background: #22c55e !important; }
+  .citaya-status-no_show { border-color: #ef4444 !important; background: #f87171 !important; }
+
+  /* ===============================
+     ✅ FIX burbujas legibles (PC + mobile)
+  ================================ */
+  .fc .fc-timegrid-event .fc-event-main {
+    padding: 4px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .fc .fc-timegrid-event .fc-event-time {
+    font-size: 11px;
+    line-height: 1.1;
+    opacity: 0.95;
+  }
+
+  .fc .fc-timegrid-event .fc-event-title {
+    font-size: 12px;
+    line-height: 1.15;
+    font-weight: 700;
+
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  @media (min-width: 1024px) {
+    .fc .fc-timegrid-event .fc-event-title {
+      font-size: 13px;
+      -webkit-line-clamp: 3;
+    }
+    .fc .fc-timegrid-event .fc-event-time {
+      font-size: 12px;
+    }
+    .fc .fc-timegrid-event .fc-event-main {
+      padding: 6px 8px;
+    }
+    .fc .fc-event {
+      border-radius: 12px;
+    }
+  }
+`}</style>
 
       <AdminAgendaHeader
         tenantName={tenantSlug}
@@ -1841,7 +1887,8 @@ export default function AgendaPage() {
                       dateLabel: date,
                       startTime,
                       endTime,
-                      businessName: UI_CONFIG.BUSINESS_NAME,
+                      businessName:
+                        tenantName || tenantSlug || UI_CONFIG.BUSINESS_NAME,
                     });
 
                     navigator.clipboard.writeText(msg);
