@@ -754,7 +754,7 @@ function ReservarInner() {
   const lockContact = !selectedSlot || !tenantId;
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-gradient-to-b from-background to-muted/40">
+    <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background to-muted/40">
       <div className="mx-auto w-full max-w-[460px] px-3 pb-20 pt-2 font-[system-ui] text-[12px] leading-snug sm:max-w-3xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
         {/* Header sticky */}
         <div
@@ -866,10 +866,9 @@ function ReservarInner() {
                   )}
                 </div>
               ) : (
-                // ✅ Cambiar servicio: abajo en mobile, a la derecha desde sm+
                 <div className="mt-2 rounded-2xl border bg-white p-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/50 ring-1 ring-border">
                         <BadgeCheck className="h-5 w-5 text-muted-foreground" />
                       </div>
@@ -887,19 +886,34 @@ function ReservarInner() {
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const p = new URLSearchParams(searchParams.toString());
-                        p.delete("service");
-                        router.push(`/reservar?${p.toString()}`);
-                        setTimeout(() => scrollToRef(serviceRef), 60);
-                      }}
-                      className="w-full whitespace-nowrap rounded-xl border bg-white px-3 py-2 text-[10px] font-extrabold hover:bg-muted sm:w-auto sm:text-xs"
-                      title="Cambiar servicio"
-                    >
-                      Cambiar servicio
-                    </button>
+                    <div className="flex justify-start">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const p = new URLSearchParams(
+                            searchParams.toString(),
+                          );
+                          p.delete("service");
+                          router.push(`/reservar?${p.toString()}`);
+                          setTimeout(() => scrollToRef(serviceRef), 60);
+                        }}
+                        className={cn(
+                          "inline-flex items-center gap-2",
+                          "h-10",
+                          "rounded-xl border",
+                          "bg-foreground text-background",
+                          "px-4 text-[12px] font-extrabold",
+                          "shadow-sm hover:opacity-95 active:scale-[0.99]",
+                          "max-w-full",
+                        )}
+                        title="Cambiar servicio"
+                      >
+                        <X className="h-4 w-4 shrink-0" />
+                        <span className="whitespace-nowrap">
+                          Cambiar servicio
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1016,7 +1030,9 @@ function ReservarInner() {
                   type="button"
                   onClick={() => {
                     if (!serviceId) {
-                      setServiceAlert("Selecciona un servicio para ver horarios.");
+                      setServiceAlert(
+                        "Selecciona un servicio para ver horarios.",
+                      );
                       scrollToRef(serviceRef);
                       return;
                     }
@@ -1053,21 +1069,21 @@ function ReservarInner() {
                 </div>
               ) : (
                 <div className="mt-2">
-                  <div className="flex items-center gap-2">
+                  {/* ✅ Fila de flechas + carrusel (CORREGIDO) */}
+                  <div className="flex items-center gap-2 min-w-0">
                     <button
                       type="button"
                       onClick={goPrev7}
                       disabled={!canPrev}
-                      className="flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
+                      className="shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
                       title="Anterior"
                       aria-label="Anterior"
                     >
                       <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
 
-                    {/* ✅ Scroll de días: no shrink + touch pan */}
-                    <div className="-mx-1 flex-1 overflow-x-auto px-1 touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-                      <div className="flex gap-1.5">
+                    <div className="flex-1 min-w-0 w-0 overflow-x-auto touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                      <div className="flex flex-nowrap gap-1.5 min-w-max items-center">
                         {visibleDays.map((d) => {
                           const active = d.dayKey === selectedDayKey;
                           const n = dayCounts.get(d.dayKey) ?? 0;
@@ -1081,17 +1097,29 @@ function ReservarInner() {
                                 setSelectedSlot(null);
                               }}
                               className={cn(
-                                "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[10.5px] font-semibold ring-1 ring-border transition sm:px-4 sm:py-2 sm:text-sm",
+                                // 🔥 compacto en mobile
+                                "shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-border transition",
+                                // tamaño normal desde sm
+                                "sm:px-4 sm:py-2 sm:text-sm",
                                 active
                                   ? "bg-foreground text-background"
                                   : "bg-white hover:bg-muted",
                                 n === 0 ? "opacity-70" : "",
                               )}
                             >
-                              <span className="capitalize">{d.label}</span>
+                              {/* 🔥 Mobile muestra abreviado */}
+                              <span className="capitalize sm:hidden">
+                                {d.label}
+                              </span>
+
+                              {/* Desktop muestra completo */}
+                              <span className="capitalize hidden sm:inline">
+                                {d.label}
+                              </span>
+
                               <span
                                 className={cn(
-                                  "ml-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[10px] font-extrabold",
+                                  "ml-1 inline-flex min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold",
                                   active
                                     ? "bg-background/15 text-background"
                                     : "bg-muted text-muted-foreground",
@@ -1109,7 +1137,7 @@ function ReservarInner() {
                       type="button"
                       onClick={goNext7}
                       disabled={!canNext}
-                      className="flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
+                      className="shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
                       title="Siguiente"
                       aria-label="Siguiente"
                     >
@@ -1128,54 +1156,61 @@ function ReservarInner() {
                       </div>
                     ) : (
                       <div className="mt-2 grid gap-4">
-                        {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
-                          const list = buckets[label] ?? [];
-                          if (list.length === 0) return null;
+                        {(["Mañana", "Tarde", "Noche"] as const).map(
+                          (label) => {
+                            const list = buckets[label] ?? [];
+                            if (list.length === 0) return null;
 
-                          return (
-                            <div key={label}>
-                              <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
-                                {label}
-                              </div>
+                            return (
+                              <div key={label}>
+                                <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
+                                  {label}
+                                </div>
 
-                              <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-4 sm:gap-2">
-                                {list.map((s: Slot) => {
-                                  const active =
-                                    selectedSlot?.start_at === s.start_at;
-                                  return (
-                                    <button
-                                      key={s.start_at}
-                                      type="button"
-                                      disabled={saving || !tenantId}
-                                      onClick={() => {
-                                        setSelectedSlot(s);
-                                        setTimeout(() => scrollToRef(contactRef), 90);
-                                      }}
-                                      className={cn(
-                                        "relative h-8 rounded-xl text-[10.5px] font-semibold ring-1 ring-border transition active:scale-[0.99] sm:h-11 sm:text-sm",
-                                        active
-                                          ? "bg-foreground text-background ring-foreground shadow-sm"
-                                          : "bg-white hover:bg-muted",
-                                        saving || !tenantId
-                                          ? "cursor-not-allowed opacity-60"
-                                          : "",
-                                      )}
-                                    >
-                                      {active ? (
-                                        <span className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-background/15">
-                                          <Check className="h-3.5 w-3.5" />
+                                <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-4 sm:gap-2">
+                                  {list.map((s: Slot) => {
+                                    const active =
+                                      selectedSlot?.start_at === s.start_at;
+                                    return (
+                                      <button
+                                        key={s.start_at}
+                                        type="button"
+                                        disabled={saving || !tenantId}
+                                        onClick={() => {
+                                          setSelectedSlot(s);
+                                          setTimeout(
+                                            () => scrollToRef(contactRef),
+                                            90,
+                                          );
+                                        }}
+                                        className={cn(
+                                          "relative h-8 rounded-xl text-[10.5px] font-semibold ring-1 ring-border transition active:scale-[0.99] sm:h-11 sm:text-sm",
+                                          active
+                                            ? "bg-foreground text-background ring-foreground shadow-sm"
+                                            : "bg-white hover:bg-muted",
+                                          saving || !tenantId
+                                            ? "cursor-not-allowed opacity-60"
+                                            : "",
+                                        )}
+                                      >
+                                        {active ? (
+                                          <span className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-background/15">
+                                            <Check className="h-3.5 w-3.5" />
+                                          </span>
+                                        ) : null}
+                                        <span
+                                          className={cn(active ? "pl-5" : "")}
+                                        >
+                                          {onlyTimeCL(s.start_at)}
                                         </span>
-                                      ) : null}
-                                      <span className={cn(active ? "pl-5" : "")}>
-                                        {onlyTimeCL(s.start_at)}
-                                      </span>
-                                    </button>
-                                  );
-                                })}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            );
+                          },
+                        )}
                       </div>
                     )}
 
