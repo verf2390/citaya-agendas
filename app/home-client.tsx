@@ -26,6 +26,16 @@ type Appointment = {
   created_at: string;
 };
 
+type TenantReview = {
+  id: string;
+  tenant_id: string;
+  customer_name: string;
+  rating: number;
+  comment: string;
+  is_hidden: boolean;
+  created_at: string;
+};
+
 // ⚠️ Mantengo tu tenant fijo para no romper nada hoy
 const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
 const TENANT_SLUG = "fajaspaola";
@@ -39,6 +49,9 @@ export default function HomeClient() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const [reviews, setReviews] = useState<TenantReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
 
   // Marca blanca (customizable luego por tenant)
   const business = useMemo(
@@ -55,6 +68,35 @@ export default function HomeClient() {
     [],
   );
 
+  // ✅ Cargar reseñas reales
+  useEffect(() => {
+    const loadReviews = async () => {
+      setReviewsLoading(true);
+
+      const { data, error } = await supabase
+        .from("tenant_reviews")
+        .select(
+          "id, tenant_id, customer_name, rating, comment, created_at, is_hidden",
+        )
+        .eq("tenant_id", TENANT_ID)
+        .eq("is_hidden", false)
+        .order("created_at", { ascending: false })
+        .limit(6);
+
+      if (error) {
+        console.error("reviewsError:", error);
+        setReviews([]);
+      } else {
+        setReviews((data ?? []) as TenantReview[]);
+      }
+
+      setReviewsLoading(false);
+    };
+
+    loadReviews();
+  }, []);
+
+  // ✅ Debug opcional
   useEffect(() => {
     if (!SHOW_DEBUG) return;
 
@@ -138,8 +180,7 @@ export default function HomeClient() {
                 <div className="mt-6">
                   <Link
                     href="/reservar"
-                    className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-4 text-base font-extrabold text-white shadow-sm
-               hover:opacity-90 active:scale-[0.99] sm:w-auto"
+                    className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-4 text-base font-extrabold text-white shadow-sm hover:opacity-90 active:scale-[0.99] sm:w-auto"
                   >
                     Reserva ahora
                   </Link>
@@ -189,6 +230,8 @@ export default function HomeClient() {
                       </div>
                     </div>
 
+                    {/* ⚠️ Por ahora mantenemos este “rating” como visual.
+                        En el paso del modal lo hacemos real (promedio). */}
                     <div className="mt-5 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                       <div className="text-xs font-semibold text-slate-600">
                         Valoración
@@ -206,50 +249,90 @@ export default function HomeClient() {
                           5.0
                         </div>
                         <div className="text-xs text-slate-500">
-                          (Clientes felices)
+                          (
+                          {reviewsLoading
+                            ? "Cargando..."
+                            : `${reviews.length} reseña${reviews.length === 1 ? "" : "s"}`}
+                          )
                         </div>
                       </div>
                     </div>
 
                     <div className="mt-4 text-[11px] text-slate-500">
-                      * Reseñas de ejemplo. Luego lo hacemos real por negocio.
+                      * La sección “Reseñas” ya es real. El promedio lo dejamos
+                      para el siguiente paso.
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Mini testimonios */}
-            <div className="mt-10 grid gap-3 sm:grid-cols-3">
-              {[
-                {
-                  name: "María",
-                  text: "Me encantó, reservé rapidísimo y me llegó la confirmación altiro.",
-                },
-                {
-                  name: "Camila",
-                  text: "Súper claro y ordenado. Pude reagendar sin llamar a nadie.",
-                },
-                {
-                  name: "Daniela",
-                  text: "Excelente, se siente profesional y confiable.",
-                },
-              ].map((t) => (
-                <div
-                  key={t.name}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full bg-slate-900 text-white grid place-items-center text-xs font-extrabold">
-                      {t.name.slice(0, 1)}
-                    </div>
-                    <div className="text-sm font-bold text-slate-900">
-                      {t.name}
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-700">“{t.text}”</p>
+            {/* ✅ Reseñas reales */}
+            <div className="mt-10">
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-extrabold text-slate-900">
+                    Reseñas
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Opiniones reales de clientes.
+                  </p>
                 </div>
-              ))}
+              </div>
+
+              {reviewsLoading ? (
+                <div className="mt-4 text-sm text-slate-600">
+                  Cargando reseñas...
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  Aún no hay reseñas. Sé la primera persona en dejar una 👇
+                </div>
+              ) : (
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {reviews.map((r) => (
+                    <div
+                      key={r.id}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-900 text-xs font-extrabold text-white">
+                            {r.customer_name?.slice(0, 1)?.toUpperCase() ?? "C"}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-bold text-slate-900">
+                              {r.customer_name}
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              {new Date(r.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-0.5">
+                          {[...Array(5)].map((_, i) => (
+                            <Star
+                              key={i}
+                              className={[
+                                "h-4 w-4",
+                                i < (r.rating ?? 0)
+                                  ? "fill-slate-900 text-slate-900"
+                                  : "text-slate-300",
+                              ].join(" ")}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <p className="mt-3 text-sm text-slate-700">
+                        “{r.comment}”
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </section>

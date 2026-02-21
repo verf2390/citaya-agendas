@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { supabaseServer } from "@/lib/supabaseServer";
+import LeaveReviewModal from "@/components/tenant/LeaveReviewModal";
 
 const RESERVED = new Set(["app", "admin", "www", "n8n", "localhost"]);
 
@@ -24,6 +25,35 @@ function initialsFromName(name?: string | null) {
     .join("");
 }
 
+function clampRating(n: number) {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(5, n));
+}
+
+function StarsInline({ value }: { value: number }) {
+  const v = clampRating(value);
+  const full = Math.round(v); // simple (no half-stars) para no complicar UI
+  return (
+    <div className="flex items-center gap-0.5" aria-label={`Valoración ${v}`}>
+      {Array.from({ length: 5 }).map((_, i) => {
+        const filled = i < full;
+        return (
+          <span
+            key={i}
+            aria-hidden="true"
+            className={[
+              "text-sm leading-none",
+              filled ? "text-slate-900" : "text-slate-300",
+            ].join(" ")}
+          >
+            ★
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function DemoLanding() {
   return (
     <main className="min-h-screen bg-slate-50">
@@ -33,10 +63,10 @@ function DemoLanding() {
         <div className="absolute -bottom-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/35 via-slate-100/20 to-emerald-100/25 blur-3xl" />
       </div>
 
-      <div className="mx-auto w-full max-w-[980px] px-4 pb-16 pt-10 sm:pt-14">
+      <div className="mx-auto w-full max-w-[980px] px-4 pb-16 pt-8 sm:pt-14">
         <section className="rounded-3xl border border-slate-200 bg-white/85 shadow-sm backdrop-blur">
           <div className="p-6 sm:p-10">
-            <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                   DEMO · Citaya Pro
@@ -52,8 +82,8 @@ function DemoLanding() {
 
                 <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600">
                   Este demo te permite ver la experiencia completa: elegir
-                  servicio, ver horarios reales, reservar y recibir confirmación.
-                  Sin login.
+                  servicio, ver horarios reales, reservar y recibir
+                  confirmación. Sin login.
                 </p>
 
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -73,12 +103,12 @@ function DemoLanding() {
                 </div>
 
                 <p className="mt-3 text-xs text-slate-500">
-                  * Datos de ejemplo. La app real usa tu logo, tus servicios y tu
-                  configuración.
+                  * Datos de ejemplo. La app real usa tu logo, tus servicios y
+                  tu configuración.
                 </p>
               </div>
 
-              <div className="w-full sm:w-[360px]">
+              <div className="w-full md:w-[360px]">
                 <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-100 to-white shadow-sm">
                   <div className="p-5">
                     <div className="text-xs font-semibold text-slate-600">
@@ -219,6 +249,23 @@ export default async function TenantHome({
     .eq("active", true)
     .order("created_at", { ascending: true });
 
+  // ✅ Reseñas reales (server-side)
+  const { data: reviews } = await supabase
+    .from("tenant_reviews")
+    .select("id, rating")
+    .eq("tenant_id", tenant.id)
+    .eq("is_hidden", false);
+
+  const reviewCount = reviews?.length ?? 0;
+  const avgRatingRaw =
+    reviewCount > 0
+      ? (reviews ?? []).reduce((acc, r) => acc + (Number(r.rating) || 0), 0) /
+        reviewCount
+      : 0;
+
+  // 1 decimal (ej 4.7)
+  const avgRating = Math.round(clampRating(avgRatingRaw) * 10) / 10;
+
   const firstServiceId = services?.[0]?.id ?? null;
 
   const ctaHref = firstServiceId
@@ -236,8 +283,9 @@ export default async function TenantHome({
       </div>
 
       <header className="border-b bg-white/85 backdrop-blur">
-        <div className="mx-auto max-w-4xl px-6 py-10">
-          <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-10">
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+            {/* HERO */}
             <div className="min-w-0">
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                 Reserva online
@@ -275,12 +323,17 @@ export default async function TenantHome({
               {(showAddress || showPhone) && (
                 <div className="mt-4 space-y-1 text-sm text-slate-700">
                   {showAddress && (tenant.address || tenant.city) && (
-                    <p>
+                    <p className="text-slate-700">
                       {tenant.address ?? ""}
                       {tenant.city ? ` · ${tenant.city}` : ""}
                     </p>
                   )}
-                  {showPhone && tenant.phone_display && <p>📞 {tenant.phone_display}</p>}
+                  {showPhone && tenant.phone_display && (
+                    <p className="text-slate-700">
+                      <span className="font-semibold">📞</span>{" "}
+                      {tenant.phone_display}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -292,11 +345,13 @@ export default async function TenantHome({
                   Reserva ahora
                 </Link>
                 <p className="mt-2 text-xs text-slate-500">
-                  Confirmación inmediata · enlace privado para modificar/cancelar
+                  Confirmación inmediata · enlace privado para
+                  modificar/cancelar
                 </p>
               </div>
             </div>
 
+            {/* BANNER (mobile-friendly) */}
             <div className="w-full md:w-[360px]">
               <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-100 to-white shadow-sm">
                 <div className="p-5">
@@ -307,25 +362,36 @@ export default async function TenantHome({
                     Agenda sin llamadas y con horarios reales disponibles.
                   </div>
 
+                  {/* Valoración real */}
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-xs font-semibold text-slate-600">
                       Valoración
                     </div>
+                    <div className="mt-3">
+                      <LeaveReviewModal
+                        tenantId={tenant.id}
+                        businessName={tenant.name}
+                      />
+                    </div>
+
                     <div className="mt-1 flex items-center gap-2">
-                      <div className="flex items-center">
-                        {Array.from({ length: 5 }).map((_, i) => (
-                          <span key={i} className="text-slate-900" aria-hidden="true">
-                            ★
-                          </span>
-                        ))}
-                      </div>
+                      <StarsInline value={avgRating || 0} />
                       <div className="text-xs font-semibold text-slate-700">
-                        5.0
+                        {reviewCount > 0 ? avgRating.toFixed(1) : "—"}
                       </div>
-                      <div className="text-xs text-slate-500">(Clientes felices)</div>
+                      <div className="text-xs text-slate-500">
+                        (
+                        {reviewCount > 0
+                          ? `${reviewCount} reseña${
+                              reviewCount === 1 ? "" : "s"
+                            }`
+                          : "Sin reseñas aún"}
+                        )
+                      </div>
                     </div>
                   </div>
 
+                  {/* Profesionales */}
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-xs font-semibold text-slate-600">
                       Profesionales
@@ -351,9 +417,12 @@ export default async function TenantHome({
                                 {initialsFromName(p.name).slice(0, 1)}
                               </span>
                             )}
-                            <span>{p.name}</span>
+                            <span className="max-w-[180px] truncate">
+                              {p.name}
+                            </span>
                           </span>
                         ))}
+
                         {professionals.length > 6 ? (
                           <span className="text-xs text-slate-500">
                             +{professionals.length - 6} más
@@ -374,11 +443,13 @@ export default async function TenantHome({
         </div>
       </header>
 
-      <section className="mx-auto max-w-4xl px-6 py-10">
-        <div className="rounded-3xl bg-white shadow-sm border border-slate-200 p-6">
+      <section className="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-10">
+        <div className="rounded-3xl bg-white shadow-sm border border-slate-200 p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-extrabold text-slate-900">Servicios</h2>
+              <h2 className="text-xl font-extrabold text-slate-900">
+                Servicios
+              </h2>
               <p className="text-sm text-slate-600 mt-1">
                 Elige un servicio para ver disponibilidad.
               </p>
@@ -391,14 +462,17 @@ export default async function TenantHome({
                 No hay servicios configurados aún.
               </p>
               <p className="text-sm text-slate-600 mt-1">
-                Crea al menos 1 registro en la tabla <b>services</b> para este tenant.
+                Crea al menos 1 registro en la tabla <b>services</b> para este
+                tenant.
               </p>
             </div>
           ) : (
             <ul className="mt-6 grid gap-3">
               {services.map((s) => {
                 const durationText =
-                  typeof s.duration_min === "number" ? `${s.duration_min} min` : null;
+                  typeof s.duration_min === "number"
+                    ? `${s.duration_min} min`
+                    : null;
 
                 const priceText =
                   typeof s.price === "number"
@@ -437,8 +511,9 @@ export default async function TenantHome({
           )}
 
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
-            <b>Política:</b> puedes reagendar o cancelar con al menos <b>3 horas</b> de
-            anticipación desde el enlace privado que llega al correo.
+            <b>Política:</b> puedes reagendar o cancelar con al menos{" "}
+            <b>3 horas</b> de anticipación desde el enlace privado que llega al
+            correo.
           </div>
         </div>
       </section>
