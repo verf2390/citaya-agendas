@@ -3,7 +3,21 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ShimmerButton from "@/components/magicui/ShimmerButton";
-import { CalendarClock, XCircle, Lock } from "lucide-react";
+import {
+  CalendarClock,
+  XCircle,
+  Lock,
+  Check,
+  AlertTriangle,
+  CalendarDays,
+  Sunrise,
+  Sun,
+  Moon,
+  Sparkles,
+  User,
+  Mail,
+  Phone,
+} from "lucide-react";
 
 /* =========================
    Tipos
@@ -100,7 +114,6 @@ function dayKeyCL(iso: string) {
 
 function dateFromDayKeyUTCNoon(dayKey: string) {
   // ✅ FIX: evita que el navegador (local TZ) desplace el día/mes
-  // Construimos un Date en UTC al mediodía y luego formateamos en tz.
   const [yy, mm, dd] = String(dayKey || "").split("-").map((x) => Number(x));
   if (!yy || !mm || !dd) return new Date(NaN);
   return new Date(Date.UTC(yy, mm - 1, dd, 12, 0, 0));
@@ -146,6 +159,10 @@ function isPlanPro(v: any): boolean {
    UI helpers
 ========================= */
 
+function cn(...v: Array<string | false | null | undefined>) {
+  return v.filter(Boolean).join(" ");
+}
+
 function StatusBadge({ status }: { status: string }) {
   const s = (status || "").toLowerCase();
   const meta =
@@ -173,6 +190,47 @@ function StatusBadge({ status }: { status: string }) {
       <span className="inline-block h-2 w-2 rounded-full bg-current opacity-60" />
       {meta.label}
     </span>
+  );
+}
+
+function BucketIcon({ label }: { label: "Mañana" | "Tarde" | "Noche" }) {
+  if (label === "Mañana") return <Sunrise className="h-4 w-4" />;
+  if (label === "Tarde") return <Sun className="h-4 w-4" />;
+  return <Moon className="h-4 w-4" />;
+}
+
+function SectionHeader({
+  icon,
+  title,
+  subtitle,
+  right,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-white/80 ring-1 ring-slate-200">
+            {icon}
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold text-slate-900 sm:text-base">
+              {title}
+            </div>
+            {subtitle ? (
+              <div className="mt-0.5 text-[11px] text-slate-600 sm:mt-1 sm:text-sm">
+                {subtitle}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {right ? <div className="shrink-0">{right}</div> : null}
+    </div>
   );
 }
 
@@ -346,7 +404,6 @@ function GestionarCitaInner() {
     };
 
     run();
-    // ✅ incluye service_id para refrescar cuando exista
   }, [appt?.tenant_id, appt?.professional_id, appt?.start_at, appt?.service_id]);
 
   const grouped = useMemo(() => {
@@ -362,7 +419,7 @@ function GestionarCitaInner() {
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([dayKey, daySlots]) => ({
         dayKey,
-        label: dayLabelCL(dayKey), // ✅ FIX label estable (no mezcla meses)
+        label: dayLabelCL(dayKey),
         slots: daySlots.sort((a, b) => (a.start_at < b.start_at ? -1 : 1)),
       })) as SlotsByDay[];
   }, [slots]);
@@ -389,6 +446,14 @@ function GestionarCitaInner() {
     }
     return b;
   }, [daySlots]);
+
+  const bucketCounts = useMemo(() => {
+    return {
+      Mañana: (buckets.Mañana ?? []).length,
+      Tarde: (buckets.Tarde ?? []).length,
+      Noche: (buckets.Noche ?? []).length,
+    };
+  }, [buckets]);
 
   // Cancelar
   const onCancel = async () => {
@@ -488,326 +553,507 @@ function GestionarCitaInner() {
 
   const actionsDisabled = busy !== null || isCanceled || isLocked3h;
 
+  // ✅ key para micro fade al cambiar día / slot
+  const slotsPanelKey = useMemo(() => {
+    return `${selectedDay}:${appt?.professional_id ?? ""}:${appt?.service_id ?? ""}`;
+  }, [selectedDay, appt?.professional_id, appt?.service_id]);
+
   return (
-    <main className="min-h-screen bg-slate-50 overflow-x-hidden">
+    <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background to-muted/40">
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-20 left-1/2 h-56 w-[28rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl sm:h-72 sm:w-[42rem]" />
         <div className="absolute -bottom-24 left-1/2 h-64 w-[28rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/40 via-slate-100/20 to-emerald-100/30 blur-3xl sm:h-72 sm:w-[42rem]" />
       </div>
 
-      <div className="mx-auto w-full max-w-[430px] px-2 pb-24 pt-3 font-[system-ui] text-[12px] leading-tight sm:max-w-2xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
-        <div className="rounded-2xl border border-slate-200 bg-white/85 backdrop-blur shadow-sm">
-          <div className="p-4 sm:p-6">
-            {/* Header */}
-            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <h1 className="truncate text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
-                  Gestionar cita
-                </h1>
-                <p className="mt-1 text-sm text-slate-600">
-                  Reagenda o cancela tu hora desde este enlace privado.
-                </p>
+      <div className="mx-auto w-full max-w-[460px] px-3 pb-24 pt-2 font-[system-ui] text-[12px] leading-snug sm:max-w-3xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
+        {/* Header sticky (similar Reservar) */}
+        <div className="sticky top-0 z-40 -mx-3 border-b bg-background/85 px-3 pb-2 pt-2 backdrop-blur sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-semibold sm:text-base">
+                Gestionar cita
               </div>
-
-              <div className="flex min-w-0 items-center justify-between gap-3 sm:flex-col sm:items-end">
-                <StatusBadge status={appt?.status || "loading"} />
-                <div className="text-[11px] text-slate-500">🔒 Enlace privado</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground sm:text-sm">
+                Reagenda o cancela tu hora desde este enlace privado.
               </div>
             </div>
 
-            {error ? (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                {error}
+            <div className="flex items-center gap-2">
+              <StatusBadge status={appt?.status || "loading"} />
+              <span className="hidden sm:inline-flex items-center gap-2 rounded-full border bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
+                <Lock className="h-3.5 w-3.5" /> Enlace privado
+              </span>
+            </div>
+          </div>
+
+          {error ? (
+            <div className="mt-2 rounded-2xl border border-red-200 bg-red-50 p-2 text-[11px] text-red-800 sm:p-2.5 sm:text-sm">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4" />
+                <div>{error}</div>
               </div>
-            ) : null}
+            </div>
+          ) : null}
 
-            {notice ? (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                {notice}
-              </div>
-            ) : null}
+          {notice ? (
+            <div className="mt-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-emerald-900 sm:p-2.5 sm:text-sm">
+              {notice}
+            </div>
+          ) : null}
+        </div>
 
-            {loading ? (
-              <div className="mt-5 grid gap-3">
-                <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
-                <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
-              </div>
-            ) : null}
+        {/* Contenido */}
+        <div className="pt-3 grid gap-2.5 sm:gap-4">
+          {loading ? (
+            <div className="grid gap-3">
+              <div className="h-24 rounded-2xl bg-muted/60 animate-pulse" />
+              <div className="h-20 rounded-2xl bg-muted/60 animate-pulse" />
+            </div>
+          ) : null}
 
-            {!loading && appt ? (
-              <div className="mt-5 grid gap-4">
-                {/* Resumen cita */}
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-5">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
-                      <div className="text-xs font-semibold text-slate-500">
-                        Cliente
-                      </div>
-                      <div className="mt-1 text-sm font-bold text-slate-900">
-                        {appt.customer_name || "—"}
-                      </div>
+          {!loading && appt ? (
+            <>
+              {/* Resumen cita (cards compactas mobile) */}
+              <section className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4">
+                <SectionHeader
+                  icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />}
+                  title="Resumen de tu cita"
+                  subtitle="Revisa tus datos y el horario actual."
+                />
 
-                      <div className="mt-3 text-xs font-semibold text-slate-500">
-                        Contacto
-                      </div>
-                      <div className="mt-1 text-sm text-slate-800">
-                        {appt.customer_phone ? `📞 ${appt.customer_phone}` : "📞 —"}
-                      </div>
-                      <div className="mt-1 break-words text-sm text-slate-800">
-                        {appt.customer_email ? `✉️ ${appt.customer_email}` : "✉️ —"}
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 sm:gap-3">
+                  <div className="rounded-2xl border bg-white p-3">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold text-muted-foreground">
+                          Cliente
+                        </div>
+                        <div className="mt-0.5 truncate text-[12px] font-extrabold sm:text-sm">
+                          {appt.customer_name || "—"}
+                        </div>
+
+                        <div className="mt-2 text-[11px] font-semibold text-muted-foreground">
+                          Contacto
+                        </div>
+
+                        <div className="mt-1 text-[11px] text-foreground flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-muted-foreground" />
+                          <span className="truncate">
+                            {appt.customer_phone || "—"}
+                          </span>
+                        </div>
+
+                        <div className="mt-1 text-[11px] text-foreground flex items-start gap-2">
+                          <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                          <span className="break-words">
+                            {appt.customer_email || "—"}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
-                      <div className="text-xs font-semibold text-slate-500">Tu cita</div>
-                      <div className="mt-1 text-sm font-bold text-slate-900">
-                        {fmtLongDate(appt.start_at)}
-                      </div>
-                      <div className="mt-1 text-sm text-slate-800">
-                        🕒 {fmtTime(appt.start_at)} – {fmtTime(appt.end_at)}
-                      </div>
+                  <div className="rounded-2xl border bg-white p-3">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
+                        <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold text-muted-foreground">
+                          Tu cita
+                        </div>
+                        <div className="mt-0.5 text-[12px] font-extrabold sm:text-sm">
+                          {fmtLongDate(appt.start_at)}
+                        </div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          🕒 {fmtTime(appt.start_at)} – {fmtTime(appt.end_at)}
+                        </div>
 
-                      <div className="mt-3 text-xs font-semibold text-slate-500">
-                        Profesional
-                      </div>
-                      <div className="mt-1 text-sm text-slate-800">
-                        {appt.professional_name ? `👤 ${appt.professional_name}` : "👤 —"}
-                      </div>
+                        <div className="mt-2 text-[11px] font-semibold text-muted-foreground">
+                          Profesional
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-foreground">
+                          {appt.professional_name ? `👤 ${appt.professional_name}` : "👤 —"}
+                        </div>
 
-                      <div className="mt-3 text-xs font-semibold text-slate-500">
-                        Servicio
-                      </div>
-                      <div className="mt-1 text-sm text-slate-800">
-                        {appt.service_name ? `💈 ${appt.service_name}` : "💈 —"}
-                      </div>
+                        <div className="mt-2 text-[11px] font-semibold text-muted-foreground">
+                          Servicio
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-foreground">
+                          {appt.service_name ? `💈 ${appt.service_name}` : "💈 —"}
+                        </div>
 
-                      <div className="mt-3 text-xs font-semibold text-slate-500">
-                        Código
-                      </div>
-                      <div className="mt-1 break-all font-mono text-xs text-slate-700">
-                        {appt.id}
+                        <div className="mt-2 text-[11px] font-semibold text-muted-foreground">
+                          Código
+                        </div>
+                        <div className="mt-0.5 break-all font-mono text-[10px] text-muted-foreground">
+                          {appt.id}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
+              </section>
 
-                {/* Bloqueo 3h */}
-                {isLocked3h && !isCanceled ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    ⏳ Esta cita ya está dentro de las <b>3 horas</b> previas, por lo
-                    que no se puede modificar.
-                  </div>
-                ) : null}
+              {/* Bloqueo 3h */}
+              {isLocked3h && !isCanceled ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-900 sm:p-3 sm:text-sm">
+                  ⏳ Esta cita ya está dentro de las <b>3 horas</b> previas, por lo
+                  que no se puede modificar.
+                </div>
+              ) : null}
 
-                {/* ✅ Acciones */}
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <h2 className="text-lg font-semibold text-slate-900">Acciones</h2>
-                      <p className="text-sm text-slate-500">
-                        Reagenda o cancela tu cita en segundos.
-                      </p>
-                    </div>
-
-                    <span className="mt-2 inline-flex w-fit items-center gap-2 rounded-full border bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 sm:mt-0">
-                      🔒 Enlace privado
+              {/* Acciones */}
+              <section className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4">
+                <SectionHeader
+                  icon={<Sparkles className="h-4 w-4 text-muted-foreground" />}
+                  title="Acciones"
+                  subtitle="Reagenda o cancela tu cita en segundos."
+                  right={
+                    <span className="inline-flex items-center gap-2 rounded-full border bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
+                      <Lock className="h-3.5 w-3.5" /> Privado
                     </span>
-                  </div>
+                  }
+                />
 
-                  <div className="mt-4 grid w-full min-w-0 gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={scrollToReschedule}
-                      disabled={actionsDisabled}
-                      className={[
-                        "w-full min-w-0 rounded-xl px-3 h-10 text-[12px] font-bold transition",
-                        "border border-slate-200 bg-white shadow-sm",
-                        "hover:bg-slate-50 active:scale-[0.99]",
-                        "disabled:cursor-not-allowed disabled:opacity-60",
-                        "inline-flex items-center justify-center gap-2",
-                        "sm:h-12 sm:rounded-2xl sm:text-sm sm:font-extrabold",
-                      ].join(" ")}
-                    >
-                      {isLocked3h || isCanceled ? <Lock className="h-4 w-4" /> : null}
-                      <CalendarClock className="h-4 w-4" />
-                      {isCanceled
-                        ? "Reagendar (no disponible)"
-                        : isLocked3h
-                          ? "Reagendar (bloqueado)"
-                          : "Reagendar cita"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={onCancel}
-                      disabled={actionsDisabled}
-                      className={[
-                        "w-full min-w-0 rounded-xl px-3 h-10 text-[12px] font-bold transition",
-                        "border border-red-200 bg-red-50 text-red-700 shadow-sm",
-                        "hover:bg-red-100 active:scale-[0.99]",
-                        "disabled:cursor-not-allowed disabled:opacity-60",
-                        "inline-flex items-center justify-center gap-2",
-                        "sm:h-12 sm:rounded-2xl sm:text-sm sm:font-extrabold",
-                      ].join(" ")}
-                    >
-                      {isLocked3h || isCanceled ? <Lock className="h-4 w-4" /> : null}
-                      <XCircle className="h-4 w-4" />
-                      {busy === "cancel"
-                        ? "Cancelando..."
-                        : isCanceled
-                          ? "Cita cancelada"
-                          : isLocked3h
-                            ? "Cancelar (bloqueado)"
-                            : "Cancelar cita"}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Reagendar */}
-                <div
-                  ref={rescheduleRef}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:p-4"
-                >
-                  <div className="flex flex-col gap-1">
-                    <div className="text-sm font-extrabold text-slate-900">
-                      Reagendar
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      Selecciona un día y una hora disponible (duración:{" "}
-                      <b>{durationMins} min</b>)
-                    </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <div className="text-sm font-extrabold text-slate-900">
-                      Selecciona fecha y hora
-                    </div>
-                    <div className="mt-1 text-sm text-slate-600">
-                      Te mostraremos solo los horarios disponibles.
-                    </div>
-                  </div>
-
-                  {slotsLoading ? (
-                    <div className="mt-4 h-24 rounded-xl bg-slate-100 animate-pulse" />
-                  ) : slotsError ? (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-                      {slotsError}
-                    </div>
-                  ) : grouped.length === 0 ? (
-                    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      No hay horarios disponibles por ahora.
-                    </div>
-                  ) : (
-                    <>
-                      {/* ✅ FIX navegación: NO limitar a 14 días */}
-                      <div className="mt-4 -mx-2 overflow-x-auto px-2 pb-2">
-                        <div className="flex gap-2 snap-x snap-mandatory">
-                          {grouped.map((d) => (
-                            <button
-                              key={d.dayKey}
-                              type="button"
-                              onClick={() => {
-                                setSelectedDay(d.dayKey);
-                                setSelectedSlotStartISO("");
-                              }}
-                              className={`snap-start shrink-0 rounded-xl border px-3 py-2 text-sm font-bold transition ${
-                                selectedDay === d.dayKey
-                                  ? "border-slate-900 bg-slate-900 text-white"
-                                  : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                              }`}
-                            >
-                              {d.label}
-                            </button>
-                          ))}
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={scrollToReschedule}
+                    disabled={actionsDisabled}
+                    className={cn(
+                      "w-full rounded-2xl border bg-white px-3 py-2 text-left transition",
+                      "min-h-[44px]",
+                      "hover:bg-muted/40 active:scale-[0.98] motion-reduce:active:scale-100",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "disabled:cursor-not-allowed disabled:opacity-60",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
+                          <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px] font-extrabold sm:text-sm">
+                            {isCanceled
+                              ? "Reagendar (no disponible)"
+                              : isLocked3h
+                                ? "Reagendar (bloqueado)"
+                                : "Reagendar cita"}
+                          </div>
+                          <div className="mt-0.5 text-[10px] text-muted-foreground sm:text-xs">
+                            Elige un nuevo día y hora disponible
+                          </div>
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-4">
+                      {isLocked3h || isCanceled ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-[10px] font-extrabold text-muted-foreground">
+                          <Lock className="h-3.5 w-3.5" /> Bloq.
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-foreground px-2 py-1 text-[10px] font-extrabold text-background">
+                          Abrir
+                        </span>
+                      )}
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onCancel}
+                    disabled={actionsDisabled}
+                    className={cn(
+                      "w-full rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-left transition",
+                      "min-h-[44px]",
+                      "hover:bg-red-100 active:scale-[0.98] motion-reduce:active:scale-100",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "disabled:cursor-not-allowed disabled:opacity-60",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white/60 ring-1 ring-red-200">
+                          <XCircle className="h-4 w-4 text-red-700" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px] font-extrabold text-red-800 sm:text-sm">
+                            {busy === "cancel"
+                              ? "Cancelando..."
+                              : isCanceled
+                                ? "Cita cancelada"
+                                : isLocked3h
+                                  ? "Cancelar (bloqueado)"
+                                  : "Cancelar cita"}
+                          </div>
+                          <div className="mt-0.5 text-[10px] text-red-800/80 sm:text-xs">
+                            Esto libera el horario para otros clientes
+                          </div>
+                        </div>
+                      </div>
+
+                      {isLocked3h || isCanceled ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-1 text-[10px] font-extrabold text-red-700">
+                          <Lock className="h-3.5 w-3.5" /> Bloq.
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red-700 px-2 py-1 text-[10px] font-extrabold text-white">
+                          OK
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                </div>
+              </section>
+
+              {/* Reagendar */}
+              <section
+                ref={rescheduleRef}
+                className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4"
+              >
+                <SectionHeader
+                  icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />}
+                  title="Reagendar"
+                  subtitle={`Selecciona un día y una hora disponible (duración: ${durationMins} min)`}
+                />
+
+                {slotsLoading ? (
+                  <div className="mt-3 h-28 rounded-2xl bg-muted/60 animate-pulse" />
+                ) : slotsError ? (
+                  <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-2.5 text-[11px] text-red-800 sm:text-sm">
+                    {slotsError}
+                  </div>
+                ) : grouped.length === 0 ? (
+                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-900 sm:text-sm">
+                    No hay horarios disponibles por ahora.
+                  </div>
+                ) : (
+                  <>
+                    {/* Carrusel de días + fades (igual estilo Reservar) */}
+                    <div className="mt-3">
+                      <div className="text-[11px] font-semibold sm:text-sm">
+                        Elige un día
+                      </div>
+
+                      <div className="relative mt-2">
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-background/90 to-transparent"
+                        />
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-background/90 to-transparent"
+                        />
+
+                        <div className="overflow-x-auto touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                          <div className="flex flex-nowrap gap-1.5 min-w-max items-center py-0.5">
+                            {grouped.map((d) => {
+                              const active = selectedDay === d.dayKey;
+                              const count = d.slots?.length ?? 0;
+
+                              return (
+                                <button
+                                  key={d.dayKey}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedDay(d.dayKey);
+                                    setSelectedSlotStartISO("");
+                                  }}
+                                  className={cn(
+                                    "shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-border transition",
+                                    "sm:px-4 sm:py-2 sm:text-sm",
+                                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    active
+                                      ? "bg-foreground text-background"
+                                      : "bg-white hover:bg-muted",
+                                  )}
+                                >
+                                  <span className="capitalize">{d.label}</span>
+                                  <span
+                                    className={cn(
+                                      "ml-1 inline-flex min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold",
+                                      active
+                                        ? "bg-background/15 text-background"
+                                        : "bg-muted text-muted-foreground",
+                                    )}
+                                  >
+                                    {count === 0 ? "—" : count >= 9 ? "9+" : count}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Slots por buckets (tap-friendly) */}
+                    <div
+                      key={slotsPanelKey}
+                      className={cn(
+                        "mt-4 animate-in fade-in-0 duration-200",
+                        "motion-reduce:animate-none",
+                      )}
+                    >
+                      <div className="text-[11px] font-semibold sm:text-sm">
+                        Elige una hora
+                      </div>
+
+                      <div className="mt-3 grid gap-3 sm:gap-4">
                         {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
                           const list = buckets[label] ?? [];
                           if (list.length === 0) return null;
 
+                          const count = bucketCounts[label] ?? 0;
+
                           return (
-                            <div key={label}>
-                              <div className="text-xs font-bold text-slate-600">
-                                {label}
+                            <div
+                              key={label}
+                              className="rounded-2xl border bg-white p-2.5 sm:p-3"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
+                                    <span className="text-muted-foreground">
+                                      <BucketIcon label={label} />
+                                    </span>
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="text-[11px] font-extrabold sm:text-sm">
+                                      {label}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground sm:text-xs">
+                                      {count === 1
+                                        ? "1 horario"
+                                        : `${count} horarios`}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-extrabold text-muted-foreground sm:text-xs">
+                                  {count >= 99 ? "99+" : count}
+                                </span>
                               </div>
 
-                              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                {list.map((s) => (
-                                  <button
-                                    key={s.start_at}
-                                    type="button"
-                                    onClick={() => setSelectedSlotStartISO(s.start_at)}
-                                    className={`min-w-0 rounded-xl border px-2 py-2 text-xs font-bold transition sm:px-3 sm:text-sm ${
-                                      selectedSlotStartISO === s.start_at
-                                        ? "border-blue-600 bg-blue-600 text-white"
-                                        : "border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
-                                    }`}
-                                  >
-                                    {fmtHourButton(s.start_at)}
-                                  </button>
-                                ))}
+                              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                                {list.map((s) => {
+                                  const active = selectedSlotStartISO === s.start_at;
+
+                                  return (
+                                    <button
+                                      key={s.start_at}
+                                      type="button"
+                                      onClick={() => setSelectedSlotStartISO(s.start_at)}
+                                      className={cn(
+                                        "relative w-full rounded-2xl border bg-white text-left transition",
+                                        "min-h-[44px] px-3 py-2",
+                                        "hover:bg-muted/40 active:scale-[0.98] motion-reduce:active:scale-100",
+                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                        "shadow-[0_1px_0_rgba(0,0,0,0.02)]",
+                                        active
+                                          ? "border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
+                                          : "border-border",
+                                      )}
+                                    >
+                                      <span
+                                        className={cn(
+                                          "absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full",
+                                          active ? "bg-background/15" : "bg-muted",
+                                        )}
+                                      >
+                                        {active ? (
+                                          <Check className="h-3.5 w-3.5" />
+                                        ) : (
+                                          <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+                                        )}
+                                      </span>
+
+                                      <div className="text-[13px] font-extrabold leading-none sm:text-sm">
+                                        {fmtHourButton(s.start_at)}
+                                      </div>
+                                      <div
+                                        className={cn(
+                                          "mt-1 text-[10px] leading-none",
+                                          active ? "text-background/80" : "text-muted-foreground",
+                                        )}
+                                      >
+                                        Tap para seleccionar
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
                           );
                         })}
                       </div>
 
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600">
-                        ⚠️ Las horas disponibles podrían agotarse. Agenda lo antes posible.
+                      <div className="mt-4 rounded-2xl border bg-white p-3">
+                        <div className="flex items-start gap-2">
+                          <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
+                            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                          </span>
+
+                          <div className="min-w-0">
+                            <div className="text-[11px] text-muted-foreground sm:text-sm">
+                              ⚠️ Las horas disponibles podrían agotarse. Agenda lo antes posible.
+                            </div>
+                            <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
+                              {selectedSlotStartISO ? (
+                                <>
+                                  Nuevo horario:{" "}
+                                  <span className="font-semibold text-foreground">
+                                    {fmtLongDate(selectedSlotStartISO)} · {fmtTime(selectedSlotStartISO)}
+                                  </span>
+                                </>
+                              ) : (
+                                "Elige un horario para continuar."
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-700">
-                        {selectedSlotStartISO ? (
-                          <>
-                            Nuevo horario:{" "}
-                            <b>
-                              {fmtLongDate(selectedSlotStartISO)} ·{" "}
-                              {fmtTime(selectedSlotStartISO)}
-                            </b>
-                          </>
-                        ) : (
-                          "Elige un horario para continuar."
-                        )}
+                      {plan === "pro" ? (
+                        <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-[11px] text-emerald-900 sm:text-sm">
+                          ✅ Plan Pro: luego podemos activar confirmación por WhatsApp automáticamente.
+                        </div>
+                      ) : null}
+
+                      {isCanceled ? (
+                        <div className="mt-3 text-[11px] text-muted-foreground sm:text-sm">
+                          Esta cita está cancelada; no se puede reagendar.
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 text-[10px] text-muted-foreground sm:text-xs">
+                        💡 Si este enlace fue compartido por error, crea una nueva reserva y usa el nuevo correo.
                       </div>
-                    </>
-                  )}
-
-                  {plan === "pro" ? (
-                    <div className="mt-3 text-xs text-emerald-700">
-                      ✅ Plan Pro: luego podemos activar confirmación por WhatsApp automáticamente.
                     </div>
-                  ) : null}
-
-                  {isCanceled ? (
-                    <div className="mt-3 text-xs text-slate-500">
-                      Esta cita está cancelada; no se puede reagendar.
-                    </div>
-                  ) : null}
-
-                  <div className="mt-4 text-xs text-slate-500">
-                    💡 Si este enlace fue compartido por error, crea una nueva reserva y usa el nuevo correo.
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
+                  </>
+                )}
+              </section>
+            </>
+          ) : null}
         </div>
 
         {/* CTA fija mobile (ShimmerButton se mantiene ✅) */}
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 p-2 backdrop-blur sm:hidden">
-          <div className="mx-auto w-full max-w-[430px] px-2">
-            <div className="mb-2 text-[11px] text-slate-700">
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 p-2 backdrop-blur sm:hidden">
+          <div className="mx-auto w-full max-w-[460px] px-1">
+            <div className="mb-2 rounded-2xl border bg-white px-3 py-2 text-[10.5px] text-muted-foreground">
               {selectedSlotStartISO ? (
-                <>
-                  Nuevo horario:{" "}
-                  <b>
-                    {fmtLongDate(selectedSlotStartISO)} · {fmtTime(selectedSlotStartISO)}
-                  </b>
-                </>
+                <div className="truncate">
+                  <span className="font-semibold text-foreground">
+                    Nuevo horario:
+                  </span>{" "}
+                  {fmtLongDate(selectedSlotStartISO)} · {fmtTime(selectedSlotStartISO)}
+                </div>
               ) : (
-                "Elige un horario para continuar."
+                <div className="truncate">Elige un horario para continuar.</div>
               )}
             </div>
 
@@ -815,7 +1061,9 @@ function GestionarCitaInner() {
               type="button"
               variant="brand"
               onClick={onReschedulePickSlot}
-              disabled={busy !== null || isCanceled || isLocked3h || !selectedSlotStartISO}
+              disabled={
+                busy !== null || isCanceled || isLocked3h || !selectedSlotStartISO
+              }
               className="w-full min-w-0 h-10 text-[12px]"
             >
               {busy === "reschedule"
@@ -837,14 +1085,14 @@ function GestionarCitaInner() {
 
 function PageSkeleton() {
   return (
-    <main className="min-h-screen bg-slate-50 overflow-x-hidden">
-      <div className="mx-auto w-full max-w-[430px] px-2 py-10 font-[system-ui] text-[12px] sm:max-w-2xl sm:px-4 sm:text-[14px] lg:max-w-6xl lg:px-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="h-6 w-40 rounded bg-slate-100 animate-pulse" />
-          <div className="mt-3 h-4 w-64 rounded bg-slate-100 animate-pulse" />
+    <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background to-muted/40">
+      <div className="mx-auto w-full max-w-[460px] px-3 py-10 font-[system-ui] text-[12px] sm:max-w-3xl sm:px-4 sm:text-[14px] lg:max-w-6xl lg:px-6">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm sm:p-6">
+          <div className="h-6 w-44 rounded bg-muted/60 animate-pulse" />
+          <div className="mt-3 h-4 w-72 rounded bg-muted/60 animate-pulse" />
           <div className="mt-6 grid gap-3">
-            <div className="h-24 rounded-xl bg-slate-100 animate-pulse" />
-            <div className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+            <div className="h-24 rounded-2xl bg-muted/60 animate-pulse" />
+            <div className="h-20 rounded-2xl bg-muted/60 animate-pulse" />
           </div>
         </div>
       </div>

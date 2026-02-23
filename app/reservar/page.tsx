@@ -23,6 +23,10 @@ import {
   BadgeCheck,
   Check,
   AlertTriangle,
+  Sunrise,
+  Sun,
+  Moon,
+  Sparkles,
 } from "lucide-react";
 
 type Slot = { start_at: string; end_at: string };
@@ -211,6 +215,47 @@ function useSmoothScrollTo() {
   return scrollToRef;
 }
 
+function SectionHeader({
+  icon,
+  title,
+  subtitle,
+  right,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-white/80 ring-1 ring-border">
+            {icon}
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold sm:text-base">
+              {title}
+            </div>
+            {subtitle ? (
+              <div className="mt-0.5 text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">
+                {subtitle}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {right ? <div className="shrink-0">{right}</div> : null}
+    </div>
+  );
+}
+
+function BucketIcon({ label }: { label: "Mañana" | "Tarde" | "Noche" }) {
+  if (label === "Mañana") return <Sunrise className="h-4 w-4" />;
+  if (label === "Tarde") return <Sun className="h-4 w-4" />;
+  return <Moon className="h-4 w-4" />;
+}
+
 function ReservarInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -380,8 +425,7 @@ function ReservarInner() {
           setProfessionals([]);
           setProfessionalId("");
           setLoadError(
-            (prev) =>
-              prev ?? "No se pudieron cargar profesionales del negocio.",
+            (prev) => prev ?? "No se pudieron cargar profesionales del negocio.",
           );
         }
       } finally {
@@ -575,6 +619,15 @@ function ReservarInner() {
     return b;
   }, [activeSlots]);
 
+  // ✅ Totales por bucket (para badge)
+  const bucketCounts = useMemo(() => {
+    return {
+      Mañana: buckets.Mañana?.length ?? 0,
+      Tarde: buckets.Tarde?.length ?? 0,
+      Noche: buckets.Noche?.length ?? 0,
+    };
+  }, [buckets]);
+
   const canSubmit =
     !!serviceId &&
     !!service &&
@@ -731,9 +784,8 @@ function ReservarInner() {
     const minTs = Date.now() + (minLeadTimeMin || 0) * 60_000;
     for (const d of visibleDays) {
       const list = slotsByDayKey.get(d.dayKey) ?? [];
-      const n = list.filter(
-        (s) => new Date(s.start_at).getTime() >= minTs,
-      ).length;
+      const n = list.filter((s) => new Date(s.start_at).getTime() >= minTs)
+        .length;
       counts.set(d.dayKey, n);
     }
     return counts;
@@ -752,6 +804,11 @@ function ReservarInner() {
 
   const lockSlots = !serviceId || !tenantId || !professionalId;
   const lockContact = !selectedSlot || !tenantId;
+
+  // ✅ key para dar "micro fade" al bloque de slots al cambiar de día
+  const slotsPanelKey = useMemo(() => {
+    return `${selectedDayKey}:${professionalId}:${serviceId}:${pageStart}`;
+  }, [selectedDayKey, professionalId, serviceId, pageStart]);
 
   return (
     <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background to-muted/40">
@@ -809,16 +866,15 @@ function ReservarInner() {
             {/* Servicio */}
             <div ref={serviceRef} />
             <section className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4">
-              <div>
-                <div className="text-[13px] font-semibold sm:text-base">
-                  Servicio
-                </div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">
-                  {showServicePicker
+              <SectionHeader
+                icon={<BadgeCheck className="h-4 w-4 text-muted-foreground" />}
+                title="Servicio"
+                subtitle={
+                  showServicePicker
                     ? "Elige un servicio para continuar."
-                    : "Detalles del servicio seleccionado."}
-                </div>
-              </div>
+                    : "Detalles del servicio seleccionado."
+                }
+              />
 
               {loadingServices ? (
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -837,7 +893,11 @@ function ReservarInner() {
                         key={s.id}
                         type="button"
                         onClick={() => pickService(s.id)}
-                        className="w-full rounded-2xl border bg-white p-2.5 text-left transition hover:bg-muted/40 active:scale-[0.99]"
+                        className={cn(
+                          "w-full rounded-2xl border bg-white p-2.5 text-left transition",
+                          "hover:bg-muted/40 active:scale-[0.99]",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        )}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-3">
@@ -890,9 +950,7 @@ function ReservarInner() {
                       <button
                         type="button"
                         onClick={() => {
-                          const p = new URLSearchParams(
-                            searchParams.toString(),
-                          );
+                          const p = new URLSearchParams(searchParams.toString());
                           p.delete("service");
                           router.push(`/reservar?${p.toString()}`);
                           setTimeout(() => scrollToRef(serviceRef), 60);
@@ -905,6 +963,7 @@ function ReservarInner() {
                           "px-4 text-[12px] font-extrabold",
                           "shadow-sm hover:opacity-95 active:scale-[0.99]",
                           "max-w-full",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                         title="Cambiar servicio"
                       >
@@ -921,15 +980,14 @@ function ReservarInner() {
 
             {/* Profesional */}
             <section className="mt-2 rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:mt-2 sm:p-4">
-              <div className="mb-2 flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
-                <div className="text-[13px] font-semibold sm:text-base">
-                  Profesional
-                </div>
-              </div>
+              <SectionHeader
+                icon={<User className="h-4 w-4 text-muted-foreground" />}
+                title="Profesional"
+                subtitle="Selecciona quién te atenderá."
+              />
 
               {loadingPros ? (
-                <div className="rounded-2xl border bg-white p-3">
+                <div className="mt-2 rounded-2xl border bg-white p-3">
                   <div className="flex items-center gap-3">
                     <div className="h-12 w-12 rounded-2xl bg-muted/60 animate-pulse" />
                     <div className="flex-1 space-y-2">
@@ -939,7 +997,7 @@ function ReservarInner() {
                   </div>
                 </div>
               ) : professionals.length === 0 ? (
-                <div className="rounded-2xl border bg-white p-2.5 text-[12px] font-extrabold sm:text-sm">
+                <div className="mt-2 rounded-2xl border bg-white p-2.5 text-[12px] font-extrabold sm:text-sm">
                   Sin profesionales configurados
                   <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
                     Agrega profesionales en Supabase → <b>professionals</b>{" "}
@@ -953,7 +1011,7 @@ function ReservarInner() {
                       value={professionalId}
                       disabled={saving || !tenantId}
                       onChange={(e) => setProfessionalId(e.target.value)}
-                      className="h-10 w-full rounded-xl border bg-white px-3 text-[12px] font-medium outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
+                      className="mt-2 h-10 w-full rounded-xl border bg-white px-3 text-[12px] font-medium outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
                     >
                       {professionals.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -1015,41 +1073,37 @@ function ReservarInner() {
                 lockSlots ? "opacity-70" : "",
               )}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-[13px] font-semibold sm:text-base">
-                    Selecciona fecha y hora
-                  </div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">
-                    Solo horarios disponibles • Duración:{" "}
-                    <span className="font-medium">{durationMin} min</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!serviceId) {
-                      setServiceAlert(
-                        "Selecciona un servicio para ver horarios.",
-                      );
-                      scrollToRef(serviceRef);
-                      return;
+              <SectionHeader
+                icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />}
+                title="Selecciona fecha y hora"
+                subtitle={`Solo horarios disponibles • Duración: ${durationMin} min`}
+                right={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!serviceId) {
+                        setServiceAlert("Selecciona un servicio para ver horarios.");
+                        scrollToRef(serviceRef);
+                        return;
+                      }
+                      loadSlots();
+                    }}
+                    disabled={
+                      saving ||
+                      loadingSlots ||
+                      !tenantId ||
+                      !professionalId ||
+                      !serviceId
                     }
-                    loadSlots();
-                  }}
-                  disabled={
-                    saving ||
-                    loadingSlots ||
-                    !tenantId ||
-                    !professionalId ||
-                    !serviceId
-                  }
-                  className="h-8 rounded-xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm"
-                >
-                  {loadingSlots ? "Cargando..." : "Recargar"}
-                </button>
-              </div>
+                    className={cn(
+                      "h-8 rounded-xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    )}
+                  >
+                    {loadingSlots ? "Cargando..." : "Recargar"}
+                  </button>
+                }
+              />
 
               {!serviceId ? (
                 <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800 sm:p-2.5 sm:text-sm">
@@ -1069,85 +1123,112 @@ function ReservarInner() {
                 </div>
               ) : (
                 <div className="mt-2">
-                  {/* ✅ Fila de flechas + carrusel (CORREGIDO) */}
-                  <div className="flex items-center gap-2 min-w-0">
-                    <button
-                      type="button"
-                      onClick={goPrev7}
-                      disabled={!canPrev}
-                      className="shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
-                      title="Anterior"
-                      aria-label="Anterior"
-                    >
-                      <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-                    </button>
+                  {/* ✅ Fila de flechas + carrusel */}
+                  <div className="relative">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        type="button"
+                        onClick={goPrev7}
+                        disabled={!canPrev}
+                        className={cn(
+                          "shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        )}
+                        title="Anterior"
+                        aria-label="Anterior"
+                      >
+                        <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                      </button>
 
-                    <div className="flex-1 min-w-0 w-0 overflow-x-auto touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-                      <div className="flex flex-nowrap gap-1.5 min-w-max items-center">
-                        {visibleDays.map((d) => {
-                          const active = d.dayKey === selectedDayKey;
-                          const n = dayCounts.get(d.dayKey) ?? 0;
+                      {/* ✅ wrapper con fades laterales para indicar scroll */}
+                      <div className="relative flex-1 min-w-0 w-0">
+                        {/* fade izquierda */}
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-background/90 to-transparent"
+                        />
+                        {/* fade derecha */}
+                        <div
+                          aria-hidden
+                          className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-background/90 to-transparent"
+                        />
 
-                          return (
-                            <button
-                              key={d.dayKey}
-                              type="button"
-                              onClick={() => {
-                                setSelectedDayKey(d.dayKey);
-                                setSelectedSlot(null);
-                              }}
-                              className={cn(
-                                // 🔥 compacto en mobile
-                                "shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-border transition",
-                                // tamaño normal desde sm
-                                "sm:px-4 sm:py-2 sm:text-sm",
-                                active
-                                  ? "bg-foreground text-background"
-                                  : "bg-white hover:bg-muted",
-                                n === 0 ? "opacity-70" : "",
-                              )}
-                            >
-                              {/* 🔥 Mobile muestra abreviado */}
-                              <span className="capitalize sm:hidden">
-                                {d.label}
-                              </span>
+                        <div className="overflow-x-auto touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                          <div className="flex flex-nowrap gap-1.5 min-w-max items-center py-0.5">
+                            {visibleDays.map((d) => {
+                              const active = d.dayKey === selectedDayKey;
+                              const n = dayCounts.get(d.dayKey) ?? 0;
 
-                              {/* Desktop muestra completo */}
-                              <span className="capitalize hidden sm:inline">
-                                {d.label}
-                              </span>
-
-                              <span
-                                className={cn(
-                                  "ml-1 inline-flex min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold",
-                                  active
-                                    ? "bg-background/15 text-background"
-                                    : "bg-muted text-muted-foreground",
-                                )}
-                              >
-                                {n === 0 ? "—" : n >= 9 ? "9+" : n}
-                              </span>
-                            </button>
-                          );
-                        })}
+                              return (
+                                <button
+                                  key={d.dayKey}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedDayKey(d.dayKey);
+                                    setSelectedSlot(null);
+                                  }}
+                                  className={cn(
+                                    "shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-border transition",
+                                    "sm:px-4 sm:py-2 sm:text-sm",
+                                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                    active
+                                      ? "bg-foreground text-background"
+                                      : "bg-white hover:bg-muted",
+                                    n === 0 ? "opacity-70" : "",
+                                  )}
+                                >
+                                  <span className="capitalize">{d.label}</span>
+                                  <span
+                                    className={cn(
+                                      "ml-1 inline-flex min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold",
+                                      active
+                                        ? "bg-background/15 text-background"
+                                        : "bg-muted text-muted-foreground",
+                                    )}
+                                  >
+                                    {n === 0 ? "—" : n >= 9 ? "9+" : n}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    <button
-                      type="button"
-                      onClick={goNext7}
-                      disabled={!canNext}
-                      className="shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10"
-                      title="Siguiente"
-                      aria-label="Siguiente"
-                    >
-                      <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={goNext7}
+                        disabled={!canNext}
+                        className={cn(
+                          "shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        )}
+                        title="Siguiente"
+                        aria-label="Siguiente"
+                      >
+                        <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="mt-4">
-                    <div className="text-[11px] font-semibold sm:text-sm">
-                      Selecciona una hora
+                  {/* ✅ Panel de slots con micro fade */}
+                  <div
+                    key={slotsPanelKey}
+                    className={cn(
+                      "mt-4 animate-in fade-in-0 duration-200",
+                      "motion-reduce:animate-none",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[11px] font-semibold sm:text-sm">
+                        Selecciona una hora
+                      </div>
+
+                      {/* mini hint UX */}
+                      <div className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
+                        <Sparkles className="h-4 w-4" />
+                        <span></span>
+                      </div>
                     </div>
 
                     {activeSlots.length === 0 ? (
@@ -1155,74 +1236,132 @@ function ReservarInner() {
                         No hay horarios disponibles para este día.
                       </div>
                     ) : (
-                      <div className="mt-2 grid gap-4">
-                        {(["Mañana", "Tarde", "Noche"] as const).map(
-                          (label) => {
-                            const list = buckets[label] ?? [];
-                            if (list.length === 0) return null;
+                      <div className="mt-3 grid gap-3 sm:gap-4">
+                        {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
+                          const list = buckets[label] ?? [];
+                          if (list.length === 0) return null;
 
-                            return (
-                              <div key={label}>
-                                <div className="text-[10px] font-extrabold text-muted-foreground sm:text-xs">
-                                  {label}
+                          const count = bucketCounts[label] ?? 0;
+
+                          return (
+                            <div
+                              key={label}
+                              className="rounded-2xl border bg-white p-2.5 sm:p-3"
+                            >
+                              {/* header bucket */}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
+                                    <span className="text-muted-foreground">
+                                      <BucketIcon label={label} />
+                                    </span>
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className="text-[11px] font-extrabold sm:text-sm">
+                                      {label}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground sm:text-xs">
+                                      {count === 1
+                                        ? "1 horario"
+                                        : `${count} horarios`}
+                                    </div>
+                                  </div>
                                 </div>
 
-                                <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-4 sm:gap-2">
-                                  {list.map((s: Slot) => {
-                                    const active =
-                                      selectedSlot?.start_at === s.start_at;
-                                    return (
-                                      <button
-                                        key={s.start_at}
-                                        type="button"
-                                        disabled={saving || !tenantId}
-                                        onClick={() => {
-                                          setSelectedSlot(s);
-                                          setTimeout(
-                                            () => scrollToRef(contactRef),
-                                            90,
-                                          );
-                                        }}
+                                <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] font-extrabold text-muted-foreground sm:text-xs">
+                                  {count >= 99 ? "99+" : count}
+                                </span>
+                              </div>
+
+                              {/* grid slots - más “clicable” en mobile */}
+                              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                                {list.map((s: Slot) => {
+                                  const active =
+                                    selectedSlot?.start_at === s.start_at;
+
+                                  return (
+                                    <button
+                                      key={s.start_at}
+                                      type="button"
+                                      disabled={saving || !tenantId}
+                                      onClick={() => {
+                                        setSelectedSlot(s);
+                                        setTimeout(
+                                          () => scrollToRef(contactRef),
+                                          90,
+                                        );
+                                      }}
+                                      className={cn(
+                                        "relative w-full rounded-2xl border bg-white text-left transition",
+                                        "min-h-[44px] px-3 py-2",
+                                        "active:scale-[0.98] motion-reduce:active:scale-100",
+                                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                        "hover:bg-muted/40",
+                                        "shadow-[0_1px_0_rgba(0,0,0,0.02)]",
+                                        active
+                                          ? "border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
+                                          : "border-border",
+                                        saving || !tenantId
+                                          ? "cursor-not-allowed opacity-60"
+                                          : "",
+                                      )}
+                                    >
+                                      {/* check */}
+                                      <span
                                         className={cn(
-                                          "relative h-8 rounded-xl text-[10.5px] font-semibold ring-1 ring-border transition active:scale-[0.99] sm:h-11 sm:text-sm",
+                                          "absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full",
                                           active
-                                            ? "bg-foreground text-background ring-foreground shadow-sm"
-                                            : "bg-white hover:bg-muted",
-                                          saving || !tenantId
-                                            ? "cursor-not-allowed opacity-60"
-                                            : "",
+                                            ? "bg-background/15"
+                                            : "bg-muted",
                                         )}
                                       >
                                         {active ? (
-                                          <span className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-background/15">
-                                            <Check className="h-3.5 w-3.5" />
-                                          </span>
-                                        ) : null}
-                                        <span
-                                          className={cn(active ? "pl-5" : "")}
-                                        >
-                                          {onlyTimeCL(s.start_at)}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
+                                          <Check className="h-3.5 w-3.5" />
+                                        ) : (
+                                          <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+                                        )}
+                                      </span>
+
+                                      <div className="text-[13px] font-extrabold leading-none sm:text-sm">
+                                        {onlyTimeCL(s.start_at)}
+                                      </div>
+                                      <div
+                                        className={cn(
+                                          "mt-1 text-[10px] leading-none",
+                                          active
+                                            ? "text-background/80"
+                                            : "text-muted-foreground",
+                                        )}
+                                      >
+                                        Tap para seleccionar
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                               </div>
-                            );
-                          },
-                        )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
-                    <div className="mt-4 rounded-xl border bg-white p-2.5 text-[11px] sm:text-sm">
-                      <div className="text-muted-foreground">
-                        <span className="font-semibold text-foreground">
-                          Elegido:
-                        </span>{" "}
-                        {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
-                      </div>
-                      <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
-                        Las horas podrían agotarse. Agenda lo antes posible.
+                    <div className="mt-4 rounded-2xl border bg-white p-3">
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
+                          <Check className="h-4 w-4 text-muted-foreground" />
+                        </span>
+
+                        <div className="min-w-0">
+                          <div className="text-[11px] text-muted-foreground sm:text-sm">
+                            <span className="font-semibold text-foreground">
+                              Elegido:
+                            </span>{" "}
+                            {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
+                          </div>
+                          <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
+                            Las horas podrían agotarse. Agenda lo antes posible.
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1238,16 +1377,11 @@ function ReservarInner() {
                 lockContact ? "opacity-70" : "",
               )}
             >
-              <div className="mb-2 flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                <div className="text-[13px] font-semibold sm:text-base">
-                  Datos de contacto
-                </div>
-              </div>
-
-              <div className="text-[11px] text-muted-foreground sm:text-sm">
-                Te enviaremos la confirmación al correo.
-              </div>
+              <SectionHeader
+                icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
+                title="Datos de contacto"
+                subtitle="Te enviaremos la confirmación al correo."
+              />
 
               <div className="mt-2 grid gap-3">
                 <div>
