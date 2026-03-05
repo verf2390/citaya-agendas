@@ -1,7 +1,7 @@
 const ROOT_DOMAIN = "citaya.online";
 
 // Subdominios que NO son tenants
-const RESERVED = new Set(["app", "admin", "www", "n8n", "localhost", "demo"]);
+const RESERVED = new Set(["app", "admin", "www", "n8n", "localhost"]);
 
 
 function isIpHost(host: string) {
