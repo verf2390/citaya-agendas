@@ -1,15 +1,15 @@
-// app/tenants/[slug]/page.tsx
 import Link from "next/link";
 import { headers } from "next/headers";
 import { supabaseServer } from "@/lib/supabaseServer";
 import LeaveReviewModal from "@/components/tenant/LeaveReviewModal";
+import DemoQuoteCard from "./DemoQuoteCard";
 
 const RESERVED = new Set(["app", "admin", "www", "n8n", "localhost"]);
 
 function getSubdomainSlugFromHost(host: string) {
-  const cleanHost = (host || "").split(":")[0]; // quita puerto
+  const cleanHost = (host || "").split(":")[0];
   const parts = cleanHost.split(".");
-  if (parts.length < 3) return null; // ej: citaya.online (sin subdominio)
+  if (parts.length < 3) return null;
   const sub = parts[0];
   if (!sub || RESERVED.has(sub)) return null;
   return sub;
@@ -32,7 +32,8 @@ function clampRating(n: number) {
 
 function StarsInline({ value }: { value: number }) {
   const v = clampRating(value);
-  const full = Math.round(v); // simple (no half-stars) para no complicar UI
+  const full = Math.round(v);
+
   return (
     <div className="flex items-center gap-0.5" aria-label={`Valoración ${v}`}>
       {Array.from({ length: 5 }).map((_, i) => {
@@ -57,7 +58,6 @@ function StarsInline({ value }: { value: number }) {
 function DemoLanding() {
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Fondo suave */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl" />
         <div className="absolute -bottom-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/35 via-slate-100/20 to-emerald-100/25 blur-3xl" />
@@ -136,7 +136,8 @@ function DemoLanding() {
               </div>
             </div>
 
-            {/* Mini testimonios (opcionales) */}
+            <DemoQuoteCard />
+
             <div className="mt-10 grid gap-3 sm:grid-cols-3">
               {[
                 {
@@ -186,12 +187,10 @@ export default async function TenantHome({
   const host = h.get("host") ?? "";
   const slugFromHost = getSubdomainSlugFromHost(host);
 
-  // ✅ si estamos en demo (por subdominio o por /tenants/demo) -> landing demo bonita
   if (slugFromHost === "demo" || params?.slug === "demo") {
     return <DemoLanding />;
   }
 
-  // fallback: si alguna vez llega params.slug, lo usamos; si no, usamos subdominio
   const slug = params?.slug ?? slugFromHost;
 
   if (!slug) {
@@ -249,7 +248,6 @@ export default async function TenantHome({
     .eq("active", true)
     .order("created_at", { ascending: true });
 
-  // ✅ Reseñas reales (server-side)
   const { data: reviews } = await supabase
     .from("tenant_reviews")
     .select("id, rating")
@@ -263,7 +261,6 @@ export default async function TenantHome({
         reviewCount
       : 0;
 
-  // 1 decimal (ej 4.7)
   const avgRating = Math.round(clampRating(avgRatingRaw) * 10) / 10;
 
   const firstServiceId = services?.[0]?.id ?? null;
@@ -276,7 +273,6 @@ export default async function TenantHome({
 
   return (
     <main className="min-h-screen bg-slate-50">
-      {/* Fondo suave */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl" />
         <div className="absolute -bottom-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/35 via-slate-100/20 to-emerald-100/25 blur-3xl" />
@@ -285,7 +281,6 @@ export default async function TenantHome({
       <header className="border-b bg-white/85 backdrop-blur">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-10">
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-            {/* HERO */}
             <div className="min-w-0">
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
                 Reserva online
@@ -293,7 +288,6 @@ export default async function TenantHome({
 
               <div className="mt-4 flex items-center gap-3">
                 {tenant.logo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={tenant.logo_url}
                     alt={`${tenant.name} logo`}
@@ -351,7 +345,6 @@ export default async function TenantHome({
               </div>
             </div>
 
-            {/* BANNER (mobile-friendly) */}
             <div className="w-full md:w-[360px]">
               <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-100 to-white shadow-sm">
                 <div className="p-5">
@@ -362,7 +355,6 @@ export default async function TenantHome({
                     Agenda sin llamadas y con horarios reales disponibles.
                   </div>
 
-                  {/* Valoración real */}
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-xs font-semibold text-slate-600">
                       Valoración
@@ -391,7 +383,6 @@ export default async function TenantHome({
                     </div>
                   </div>
 
-                  {/* Profesionales */}
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="text-xs font-semibold text-slate-600">
                       Profesionales
@@ -405,7 +396,6 @@ export default async function TenantHome({
                             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700"
                           >
                             {p.avatar_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={p.avatar_url}
                                 alt={p.name}
@@ -438,7 +428,6 @@ export default async function TenantHome({
                 </div>
               </div>
             </div>
-            {/* /banner */}
           </div>
         </div>
       </header>

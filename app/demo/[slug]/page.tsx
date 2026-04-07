@@ -1,7 +1,7 @@
-// app/demo/[slug]/page.tsx
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabaseServer";
+import DemoQuoteSection from "./DemoQuoteSection";
 
 type DemoTenantRow = {
   id: string;
@@ -38,7 +38,6 @@ type DemoProfessional = {
 async function getDemoBySlug(slug: string) {
   const sb = supabaseServer;
 
-  // 1) Resolve demo -> tenant_id
   const { data: demo, error: dErr } = await sb
     .from("demo_tenants")
     .select(
@@ -51,7 +50,6 @@ async function getDemoBySlug(slug: string) {
   if (dErr) throw dErr;
   if (!demo?.tenant_id) return null;
 
-  // 2) Load tenant core (real tenant used for demo data)
   const { data: tenant, error: tErr } = await sb
     .from("tenants")
     .select("id, slug, name, logo_url, description")
@@ -61,7 +59,6 @@ async function getDemoBySlug(slug: string) {
   if (tErr) throw tErr;
   if (!tenant?.id) return null;
 
-  // 3) Services
   const { data: services, error: sErr } = await sb
     .from("services")
     .select("id, name, duration_min, price")
@@ -70,7 +67,6 @@ async function getDemoBySlug(slug: string) {
 
   if (sErr) throw sErr;
 
-  // 4) Professionals
   const { data: professionals, error: pErr } = await sb
     .from("professionals")
     .select("id, full_name")
@@ -99,7 +95,6 @@ export default async function DemoLandingPage({
 
   const { demo, tenant, services, professionals } = payload;
 
-  // Branding: demo override -> fallback tenant
   const brandName = demo.brand_name ?? tenant.name ?? "Tu negocio";
   const heroTitle = demo.hero_title ?? "Así se vería tu agenda online";
   const heroSubtitle =
@@ -111,10 +106,9 @@ export default async function DemoLandingPage({
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="h-14 w-14 overflow-hidden rounded-2xl border bg-white">
           {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={logoUrl}
               alt={brandName}
@@ -135,12 +129,18 @@ export default async function DemoLandingPage({
 
         <Link
           href={`/demo/${slug}/reservar`}
-          className="rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow"
+          className="inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow"
           style={{ backgroundColor: primaryColor }}
         >
           Probar agenda
         </Link>
       </div>
+
+      {/* Cotizador */}
+      <DemoQuoteSection
+        whatsappNumber="56961425029"
+        primaryColor={primaryColor}
+      />
 
       {/* Servicios */}
       <section className="mt-10">
@@ -157,9 +157,13 @@ export default async function DemoLandingPage({
           ) : (
             services.map((s) => (
               <div key={s.id} className="rounded-2xl border p-4">
-                <div className="text-sm font-semibold">{s.name ?? "Servicio"}</div>
+                <div className="text-sm font-semibold">
+                  {s.name ?? "Servicio"}
+                </div>
                 <div className="mt-1 text-xs text-gray-600">
-                  {s.duration_min ? `${s.duration_min} min` : "Duración configurable"}
+                  {s.duration_min
+                    ? `${s.duration_min} min`
+                    : "Duración configurable"}
                   {typeof s.price === "number" ? ` • $${s.price}` : ""}
                 </div>
               </div>
@@ -194,8 +198,8 @@ export default async function DemoLandingPage({
       <section className="mt-10 rounded-2xl border bg-gray-50 p-4 text-sm text-gray-700">
         <div className="font-semibold">Nota</div>
         <div className="mt-1">
-          Esta demo permite probar el flujo real (agendar, correo y gestionar).
-          En el siguiente paso conectamos la pantalla de reservar.
+          Esta demo permite probar el flujo real de Citaya y además estimar el
+          valor de implementación y mensualidad según el tamaño de tu equipo.
         </div>
       </section>
     </main>
