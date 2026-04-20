@@ -6,94 +6,212 @@ type PropiedadDetallePageProps = {
   };
 };
 
-const relacionadas = [
+type Propiedad = {
+  slug: string;
+  titulo: string;
+  ubicacion: string;
+  precio: string;
+  badge?: "Destacada" | "Exclusiva";
+  habitaciones: number;
+  banos: number;
+  metros: number;
+  estacionamientos: number;
+  tipo: string;
+  descripcion: string;
+};
+
+const propiedades: Propiedad[] = [
   {
-    slug: "residencia-jardin-privado",
-    titulo: "Residencia con jardín privado",
-    precio: "UF 24.500",
-    ubicacion: "Lo Barnechea, Santiago",
+    slug: "penthouse-vista-andes-las-condes",
+    titulo: "Penthouse Vista Andes",
+    ubicacion: "Las Condes, Santiago",
+    precio: "UF 24.900",
+    badge: "Exclusiva",
+    habitaciones: 4,
+    banos: 4,
+    metros: 285,
+    estacionamientos: 3,
+    tipo: "Penthouse",
+    descripcion:
+      "Residencia de alto estándar con terrazas panorámicas, terminaciones nobles y una atmósfera diseñada para quienes valoran privacidad, luz natural y una conexión privilegiada con la ciudad. Ideal para vivir con amplitud o consolidar una inversión de categoría en uno de los sectores más cotizados de Santiago.",
   },
   {
-    slug: "departamento-boutique-vitacura",
-    titulo: "Departamento boutique en Vitacura",
-    precio: "UF 12.300",
+    slug: "casa-jardin-privado-lo-barnechea",
+    titulo: "Casa Jardín Privado",
+    ubicacion: "Lo Barnechea, Santiago",
+    precio: "UF 19.800",
+    badge: "Destacada",
+    habitaciones: 5,
+    banos: 5,
+    metros: 340,
+    estacionamientos: 4,
+    tipo: "Casa",
+    descripcion:
+      "Propiedad familiar de arquitectura contemporánea, con jardín consolidado, piscina climatizada y espacios sociales de gran escala. Una propuesta única para disfrutar estilo de vida residencial premium con acceso directo a colegios, servicios y áreas verdes.",
+  },
+  {
+    slug: "departamento-autor-vitacura",
+    titulo: "Departamento de Autor",
     ubicacion: "Vitacura, Santiago",
+    precio: "UF 13.450",
+    habitaciones: 3,
+    banos: 3,
+    metros: 168,
+    estacionamientos: 2,
+    tipo: "Departamento",
+    descripcion:
+      "Diseño interior sofisticado, materiales de primera línea y una distribución inteligente pensada para confort urbano de lujo. Perfecto para quienes buscan elegancia discreta, conectividad y valor patrimonial en una ubicación estratégica.",
   },
 ];
 
 export default function PropiedadDetallePage({ params }: PropiedadDetallePageProps) {
+  const propiedad = propiedades.find((item) => item.slug === params.slug);
+
+  if (!propiedad) {
+    return (
+      <main className="mx-auto flex min-h-screen w-full max-w-5xl items-center px-6 py-16">
+        <section className="w-full rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-950 to-neutral-900 p-10 text-neutral-100 shadow-2xl">
+          <p className="text-xs uppercase tracking-[0.25em] text-neutral-400">inmo demo</p>
+          <h1 className="mt-4 text-3xl font-semibold md:text-4xl">Propiedad no encontrada</h1>
+          <p className="mt-4 max-w-2xl text-neutral-300">
+            No encontramos una propiedad asociada al slug <span className="font-mono">{params.slug}</span>.
+            Puedes volver al listado para seguir explorando oportunidades exclusivas.
+          </p>
+          <Link
+            href="/inmo-demo/propiedades"
+            className="mt-8 inline-flex rounded-full border border-neutral-600 px-6 py-3 text-sm font-medium text-neutral-100 transition hover:border-neutral-400 hover:bg-neutral-800"
+          >
+            ← Volver al catálogo
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
+  const relacionadas = propiedades.filter((item) => item.slug !== propiedad.slug).slice(0, 3);
+
   return (
-    <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 px-4 py-8 text-white sm:px-6 sm:py-12">
-      <div className="mx-auto w-full max-w-3xl">
+    <main className="bg-neutral-950 text-neutral-100">
+      <div className="mx-auto w-full max-w-7xl px-6 py-10 md:px-8 md:py-14">
         <Link
           href="/inmo-demo/propiedades"
-          className="inline-flex items-center text-sm font-medium text-stone-300 transition-colors duration-200 hover:text-[#d4c09e]"
+          className="inline-flex rounded-full border border-neutral-700 px-4 py-2 text-xs uppercase tracking-[0.18em] text-neutral-300 transition hover:border-neutral-500 hover:text-white"
         >
           ← Volver a propiedades
         </Link>
 
-        <section className="mt-5 rounded-2xl border border-stone-300/20 bg-zinc-900/75 p-6 shadow-[0_22px_45px_-30px_rgba(0,0,0,0.9)] backdrop-blur-sm sm:mt-6 sm:p-8">
-          <p className="text-xs uppercase tracking-[0.2em] text-stone-300">Slug dinámico</p>
-          <p className="mt-2 rounded-lg border border-stone-300/20 bg-black/25 px-3 py-2 font-mono text-sm text-stone-100 sm:text-base">
-            {params.slug}
-          </p>
+        <section className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="space-y-8">
+            <article className="rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-950 to-black p-8 md:p-10 shadow-2xl">
+              <div className="flex flex-wrap items-center gap-4">
+                <p className="text-xs uppercase tracking-[0.24em] text-neutral-400">Ficha Premium</p>
+                {propiedad.badge ? (
+                  <span className="rounded-full border border-amber-300/50 bg-amber-100/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.15em] text-amber-200">
+                    {propiedad.badge}
+                  </span>
+                ) : null}
+              </div>
 
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight text-stone-100 sm:text-4xl">Detalle de la propiedad</h1>
-          <p className="mt-3 text-sm leading-relaxed text-stone-300 sm:text-base">
-            Esta es una página de ejemplo para mostrar información detallada de una propiedad.
-          </p>
+              <h1 className="mt-5 text-4xl font-semibold leading-tight md:text-5xl">{propiedad.titulo}</h1>
+              <p className="mt-4 text-base text-neutral-300 md:text-lg">{propiedad.ubicacion}</p>
+              <p className="mt-8 text-3xl font-semibold text-amber-100 md:text-4xl">{propiedad.precio}</p>
+            </article>
 
-          <div className="mt-7 rounded-xl border border-[#d4c09e]/35 bg-[#d4c09e]/10 p-5">
-            <p className="text-xs uppercase tracking-[0.2em] text-stone-200/90">Precio referencial</p>
-            <p className="mt-2 text-3xl font-semibold text-[#d4c09e] sm:text-4xl">UF 18.900</p>
+            <section className="grid gap-4 md:grid-cols-3">
+              <div className="md:col-span-2 rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-800 via-neutral-900 to-neutral-950 p-8 shadow-xl">
+                <p className="text-xs uppercase tracking-[0.22em] text-neutral-300">Galería Principal</p>
+                <div className="mt-10 h-72 rounded-2xl border border-neutral-700 bg-gradient-to-tr from-neutral-700/40 via-neutral-600/20 to-amber-200/20" />
+              </div>
+
+              <div className="grid gap-4">
+                <div className="h-36 rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-800 to-neutral-900 p-4" />
+                <div className="h-36 rounded-2xl border border-neutral-800 bg-gradient-to-tr from-neutral-900 to-neutral-700 p-4" />
+                <div className="h-36 rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-4" />
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-neutral-800 bg-neutral-900/70 p-8">
+              <h2 className="text-xl font-semibold">Características</h2>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Feature label="Habitaciones" value={`${propiedad.habitaciones}`} />
+                <Feature label="Baños" value={`${propiedad.banos}`} />
+                <Feature label="Superficie" value={`${propiedad.metros} m²`} />
+                <Feature label="Estacionamientos" value={`${propiedad.estacionamientos}`} />
+                <Feature label="Tipo" value={propiedad.tipo} />
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-neutral-800 bg-neutral-900/70 p-8">
+              <h2 className="text-xl font-semibold">Descripción</h2>
+              <p className="mt-5 text-neutral-300">{propiedad.descripcion}</p>
+            </section>
           </div>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <a
-              href="https://wa.me/56961425029"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex w-full items-center justify-center rounded-xl bg-[#d4c09e] px-5 py-3 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ddccb1] hover:shadow-[0_14px_28px_-16px_rgba(212,192,158,0.9)] sm:w-auto"
-            >
-              Escribir por WhatsApp
-            </a>
-            <button
-              type="button"
-              className="inline-flex w-full items-center justify-center rounded-xl border border-stone-300/30 bg-white/5 px-5 py-3 text-sm font-semibold text-stone-100 transition-all duration-200 hover:border-[#d4c09e]/60 hover:bg-[#d4c09e]/10 sm:w-auto"
-            >
-              Solicitar visita
-            </button>
-          </div>
+          <aside className="h-fit rounded-3xl border border-neutral-800 bg-neutral-900/80 p-6 shadow-2xl lg:sticky lg:top-8">
+            <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">Asesoría personalizada</p>
+            <h3 className="mt-3 text-2xl font-semibold">Agenda una visita privada</h3>
+            <p className="mt-3 text-sm text-neutral-300">
+              Nuestro equipo te acompaña en cada etapa para encontrar una propiedad que combine estilo,
+              rentabilidad y visión de largo plazo.
+            </p>
+
+            <div className="mt-6 space-y-3">
+              <a
+                href="https://wa.me/56961425029"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full justify-center rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
+              >
+                WhatsApp: +56 9 6142 5029
+              </a>
+              <a
+                href="mailto:verf14@gmail.com"
+                className="inline-flex w-full justify-center rounded-full border border-neutral-600 px-5 py-3 text-sm font-semibold text-neutral-100 transition hover:border-neutral-400 hover:bg-neutral-800"
+              >
+                Contactar por Email
+              </a>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-neutral-800 bg-black/30 p-4 text-sm text-neutral-300">
+              <p>
+                Instagram: <span className="font-medium text-neutral-100">@citaya_agenda</span>
+              </p>
+              <p className="mt-2">Email: verf14@gmail.com</p>
+            </div>
+          </aside>
         </section>
 
-        <section className="mt-7 sm:mt-8">
-          <div className="mb-4 flex items-end justify-between gap-4">
-            <h2 className="text-xl font-semibold tracking-tight text-stone-100 sm:text-2xl">Propiedades relacionadas</h2>
-            <Link
-              href="/inmo-demo/propiedades"
-              className="text-sm font-medium text-stone-300 transition-colors duration-200 hover:text-[#d4c09e]"
-            >
-              Ver todas
-            </Link>
-          </div>
+        <section className="mt-10 rounded-3xl border border-neutral-800 bg-neutral-900/60 p-8">
+          <h2 className="text-2xl font-semibold">Propiedades relacionadas</h2>
+          <p className="mt-2 text-sm text-neutral-400">Opciones similares que podrían interesarte.</p>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            {relacionadas.map((propiedad) => (
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            {relacionadas.map((item) => (
               <Link
-                key={propiedad.slug}
-                href={`/inmo-demo/propiedades/${propiedad.slug}`}
-                className="group rounded-2xl border border-stone-300/20 bg-zinc-900/70 p-4 shadow-[0_20px_35px_-28px_rgba(0,0,0,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#d4c09e]/50 hover:bg-zinc-900"
+                key={item.slug}
+                href={`/inmo-demo/propiedades/${item.slug}`}
+                className="group rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 to-black p-5 transition hover:border-neutral-600"
               >
-                <p className="text-xs uppercase tracking-[0.18em] text-stone-400">{propiedad.ubicacion}</p>
-                <h3 className="mt-2 text-base font-medium text-stone-100 transition-colors duration-200 group-hover:text-white">
-                  {propiedad.titulo}
+                <p className="text-sm uppercase tracking-[0.18em] text-neutral-400">{item.tipo}</p>
+                <h3 className="mt-2 text-lg font-medium text-neutral-100 group-hover:text-amber-100">
+                  {item.titulo}
                 </h3>
-                <p className="mt-3 text-lg font-semibold text-[#d4c09e]">{propiedad.precio}</p>
+                <p className="mt-1 text-sm text-neutral-400">{item.ubicacion}</p>
+                <p className="mt-4 text-base font-semibold text-amber-100">{item.precio}</p>
               </Link>
             ))}
           </div>
         </section>
       </div>
     </main>
+  );
+}
+
+function Feature({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="rounded-2xl border border-neutral-800 bg-black/30 p-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-neutral-400">{label}</p>
+      <p className="mt-2 text-xl font-semibold text-neutral-100">{value}</p>
+    </article>
   );
 }
