@@ -10,7 +10,7 @@ const propiedades = [
     habitaciones: 4,
     banos: 3,
     metros: 245,
-    gradiente: "from-zinc-700 via-zinc-800 to-black",
+    imagen: "/inmo-demo/properties/pexels-griffinw-6643264.jpg",
   },
   {
     slug: "residencia-jardin-privado",
@@ -21,7 +21,7 @@ const propiedades = [
     habitaciones: 5,
     banos: 4,
     metros: 390,
-    gradiente: "from-stone-700 via-zinc-700 to-zinc-900",
+    imagen: "/inmo-demo/properties/pexels-artbovich-8141956.jpg",
   },
   {
     slug: "departamento-boutique-vitacura",
@@ -32,7 +32,7 @@ const propiedades = [
     habitaciones: 3,
     banos: 2,
     metros: 148,
-    gradiente: "from-neutral-600 via-zinc-700 to-zinc-900",
+    imagen: "/inmo-demo/properties/pexels-naimbic-2030037.jpg",
   },
   {
     slug: "casa-contemporanea-chicureo",
@@ -43,7 +43,7 @@ const propiedades = [
     habitaciones: 4,
     banos: 4,
     metros: 320,
-    gradiente: "from-zinc-700 via-neutral-800 to-black",
+    imagen: "/inmo-demo/properties/pexels-the-ghazi-2152398165-32421762.jpg",
   },
   {
     slug: "loft-autor-ultima-milla",
@@ -54,7 +54,7 @@ const propiedades = [
     habitaciones: 2,
     banos: 2,
     metros: 112,
-    gradiente: "from-stone-600 via-zinc-700 to-zinc-900",
+    imagen: "/inmo-demo/properties/pexels-ansar-muhammad-380085065-27604130.jpg",
   },
   {
     slug: "duplex-terraza-mirador",
@@ -65,7 +65,7 @@ const propiedades = [
     habitaciones: 3,
     banos: 3,
     metros: 176,
-    gradiente: "from-neutral-700 via-zinc-800 to-black",
+    imagen: "/inmo-demo/properties/pexels-the-ghazi-2152398165-33314761.jpg",
   },
 ];
 
@@ -134,14 +134,16 @@ export default function PropiedadesPage() {
               key={propiedad.slug}
               className="group overflow-hidden rounded-2xl border border-stone-300/15 bg-zinc-900/80 shadow-xl shadow-black/20 transition-all duration-250 hover:-translate-y-1 hover:border-[#d4c09e]/45"
             >
-              <div className={`relative h-52 bg-gradient-to-br ${propiedad.gradiente}`}>
+              <div className="relative h-56 overflow-hidden rounded-t-2xl">
+                <img
+                  src={propiedad.imagen}
+                  alt={propiedad.titulo}
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-black/35" />
                 <span className="absolute left-4 top-4 rounded-full border border-[#d4c09e]/40 bg-black/50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-stone-100">
                   {propiedad.etiqueta}
                 </span>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2),transparent_45%)]" />
-                <div className="absolute bottom-4 left-4 rounded-md border border-stone-300/20 bg-black/35 px-2 py-1 text-xs text-stone-100/90">
-                  Imagen referencial
-                </div>
               </div>
 
               <div className="space-y-4 p-4 sm:p-5">
