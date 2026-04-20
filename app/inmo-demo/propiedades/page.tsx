@@ -72,10 +72,10 @@ const propiedades = [
 export default function PropiedadesPage() {
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-900 to-zinc-950 text-white">
-      <section className="mx-auto w-full max-w-7xl px-4 pb-9 pt-14 sm:px-6 sm:pb-10 sm:pt-16 lg:px-8">
-        <div className="overflow-hidden rounded-3xl border border-stone-300/15 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-6 shadow-2xl shadow-black/30 sm:p-12">
+      <section className="mx-auto w-full max-w-7xl px-4 pb-8 pt-12 sm:px-6 sm:pb-10 sm:pt-16 lg:px-8">
+        <div className="overflow-hidden rounded-3xl border border-stone-300/15 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 p-5 shadow-2xl shadow-black/30 sm:p-12">
           <p className="text-sm font-medium uppercase tracking-[0.22em] text-stone-300">Colección inmobiliaria</p>
-          <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">Propiedades disponibles</h1>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-5xl">Propiedades disponibles</h1>
           <p className="mt-5 max-w-3xl text-base text-zinc-300 sm:text-lg">
             Selección premium de activos residenciales con alto estándar de diseño, ubicación estratégica y potencial
             sólido de valorización para vivienda e inversión.
@@ -144,10 +144,10 @@ export default function PropiedadesPage() {
                 </div>
               </div>
 
-              <div className="space-y-4 p-5">
+              <div className="space-y-4 p-4 sm:p-5">
                 <p className="text-2xl font-semibold text-[#d4c09e]">{propiedad.precio}</p>
                 <div>
-                  <h2 className="text-lg font-semibold leading-tight text-white">{propiedad.titulo}</h2>
+                  <h2 className="text-base font-semibold leading-tight text-white sm:text-lg">{propiedad.titulo}</h2>
                   <p className="mt-1 text-sm text-zinc-400">{propiedad.ubicacion}</p>
                 </div>
 
@@ -168,7 +168,7 @@ export default function PropiedadesPage() {
 
                 <Link
                   href={`/inmo-demo/propiedades/${propiedad.slug}`}
-                  className="inline-flex items-center rounded-lg border border-stone-300/25 bg-white/5 px-4 py-2 text-sm font-semibold text-stone-100 transition-all duration-200 hover:border-[#d4c09e]/50 hover:bg-[#d4c09e]/10"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-stone-300/25 bg-white/5 px-4 py-2 text-sm font-semibold text-stone-100 transition-all duration-200 hover:border-[#d4c09e]/50 hover:bg-[#d4c09e]/10 sm:w-auto sm:justify-start"
                 >
                   Ver detalle
                   <span aria-hidden="true" className="ml-1 transition-transform duration-200 group-hover:translate-x-1">
@@ -182,8 +182,8 @@ export default function PropiedadesPage() {
       </section>
 
       <section className="mx-auto w-full max-w-7xl px-4 pb-14 sm:px-6 sm:pb-16 lg:px-8">
-        <div className="rounded-3xl border border-stone-300/15 bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 p-7 sm:p-10">
-          <h3 className="text-2xl font-semibold text-white sm:text-3xl">Asesoría personalizada para tu próxima inversión</h3>
+        <div className="rounded-3xl border border-stone-300/15 bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 p-6 sm:p-10">
+          <h3 className="text-xl font-semibold text-white sm:text-3xl">Asesoría personalizada para tu próxima inversión</h3>
           <p className="mt-3 max-w-3xl text-zinc-300">
             Nuestro equipo te acompaña con análisis de oportunidades, evaluación financiera y negociación estratégica
             para encontrar la propiedad ideal según tu perfil.
@@ -195,7 +195,7 @@ export default function PropiedadesPage() {
           <div className="mt-6">
             <Link
               href="/inmo-demo/contacto"
-              className="inline-flex rounded-xl bg-[#d4c09e] px-6 py-3 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ddccb1]"
+              className="inline-flex min-h-11 rounded-xl bg-[#d4c09e] px-6 py-3 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ddccb1]"
             >
               Hablar con un asesor
             </Link>
@@ -220,7 +220,7 @@ export default function PropiedadesPage() {
         target="_blank"
         rel="noreferrer"
         aria-label="Contactar por WhatsApp"
-        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/95 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-[0_16px_35px_-18px_rgba(16,185,129,0.8)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-400"
+        className="fixed bottom-4 right-4 z-50 inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/95 px-3.5 py-2.5 text-sm font-semibold text-emerald-950 shadow-[0_16px_35px_-18px_rgba(16,185,129,0.8)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-400 sm:bottom-5 sm:right-5 sm:px-4 sm:py-3"
       >
         <span aria-hidden="true">✦</span>
         WhatsApp
