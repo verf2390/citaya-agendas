@@ -167,6 +167,10 @@ export default function InmoDemoHomePage() {
             Nuestro equipo está listo para ayudarte a encontrar oportunidades únicas alineadas con
             tus objetivos patrimoniales.
           </p>
+          <p className="text-sm text-stone-300/90">
+            ¿Prefieres una respuesta inmediata? Escríbenos directo por WhatsApp y te orientamos en
+            minutos.
+          </p>
           <Link
             href="/inmo-demo/contacto"
             className="inline-flex items-center justify-center rounded-lg bg-[#d4c09e] px-7 py-3 text-sm font-semibold text-neutral-900 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ddccb1]"
@@ -175,6 +179,17 @@ export default function InmoDemoHomePage() {
           </Link>
         </div>
       </section>
+
+      <a
+        href="https://wa.me/56961425029"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Contactar por WhatsApp"
+        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/95 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-[0_16px_35px_-18px_rgba(16,185,129,0.8)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-400"
+      >
+        <span aria-hidden="true">✦</span>
+        WhatsApp
+      </a>
     </main>
   );
 }

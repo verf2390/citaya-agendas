@@ -84,6 +84,16 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
             ← Volver al catálogo
           </Link>
         </section>
+        <a
+          href="https://wa.me/56961425029"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Contactar por WhatsApp"
+          className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/95 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-[0_16px_35px_-18px_rgba(16,185,129,0.8)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-400"
+        >
+          <span aria-hidden="true">✦</span>
+          WhatsApp
+        </a>
       </main>
     );
   }
@@ -154,15 +164,19 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
               Nuestro equipo te acompaña en cada etapa para encontrar una propiedad que combine estilo,
               rentabilidad y visión de largo plazo.
             </p>
+            <p className="mt-3 text-sm text-neutral-300/90">
+              Te ayudamos a evaluar precio, potencial de valorización y próximos pasos para cerrar con
+              confianza.
+            </p>
 
             <div className="mt-6 space-y-3">
               <a
                 href="https://wa.me/56961425029"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex w-full justify-center rounded-full bg-emerald-500 px-5 py-3 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
+                className="inline-flex w-full justify-center rounded-full border border-emerald-300/30 bg-emerald-500/95 px-5 py-3 text-sm font-semibold text-emerald-950 shadow-[0_16px_30px_-20px_rgba(16,185,129,0.8)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-400"
               >
-                WhatsApp: +56 9 6142 5029
+                Escribir por WhatsApp
               </a>
               <a
                 href="mailto:verf14@gmail.com"
@@ -203,6 +217,17 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
           </div>
         </section>
       </div>
+
+      <a
+        href="https://wa.me/56961425029"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Contactar por WhatsApp"
+        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/95 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-[0_16px_35px_-18px_rgba(16,185,129,0.8)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-400"
+      >
+        <span aria-hidden="true">✦</span>
+        WhatsApp
+      </a>
     </main>
   );
 }
