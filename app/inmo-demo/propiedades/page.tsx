@@ -188,12 +188,16 @@ export default function PropiedadesPage() {
             Nuestro equipo te acompaña con análisis de oportunidades, evaluación financiera y negociación estratégica
             para encontrar la propiedad ideal según tu perfil.
           </p>
+          <p className="mt-3 max-w-3xl text-sm text-zinc-300/90">
+            Elige una propiedad y agenda una llamada guiada para resolver plusvalía, financiamiento y plazos en una
+            sola conversación.
+          </p>
           <div className="mt-6">
             <Link
               href="/inmo-demo/contacto"
               className="inline-flex rounded-xl bg-[#d4c09e] px-6 py-3 text-sm font-semibold text-zinc-900 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ddccb1]"
             >
-              Contactar asesor
+              Hablar con un asesor
             </Link>
           </div>
 
@@ -210,6 +214,17 @@ export default function PropiedadesPage() {
           </div>
         </div>
       </section>
+
+      <a
+        href="https://wa.me/56961425029"
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Contactar por WhatsApp"
+        className="fixed bottom-5 right-5 z-50 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/95 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-[0_16px_35px_-18px_rgba(16,185,129,0.8)] backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-400"
+      >
+        <span aria-hidden="true">✦</span>
+        WhatsApp
+      </a>
     </main>
   );
 }
