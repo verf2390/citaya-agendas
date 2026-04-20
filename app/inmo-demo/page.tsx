@@ -43,6 +43,7 @@ export default function InmoDemoHomePage() {
           loop
           playsInline
           preload="auto"
+          poster="/inmo-demo/properties/pexels-griffinw-6643264.jpg"
           className="absolute inset-0 -z-30 h-full w-full object-cover"
         >
           <source src="/inmo-demo/hero/12529403_1080_1920_60fps.mp4" type="video/mp4" />
