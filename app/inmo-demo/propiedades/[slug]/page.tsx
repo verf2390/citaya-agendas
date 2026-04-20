@@ -18,6 +18,8 @@ type Propiedad = {
   estacionamientos: number;
   tipo: string;
   descripcion: string;
+  imagenPrincipal: string;
+  galeria: string[];
 };
 
 const propiedades: Propiedad[] = [
@@ -34,6 +36,12 @@ const propiedades: Propiedad[] = [
     tipo: "Penthouse",
     descripcion:
       "Residencia de alto estándar con terrazas panorámicas, terminaciones nobles y una atmósfera diseñada para quienes valoran privacidad, luz natural y una conexión privilegiada con la ciudad. Ideal para vivir con amplitud o consolidar una inversión de categoría en uno de los sectores más cotizados de Santiago.",
+    imagenPrincipal: "/inmo-demo/properties/pexels-griffinw-6643264.jpg",
+    galeria: [
+      "/inmo-demo/properties/pexels-the-ghazi-2152398165-33314761.jpg",
+      "/inmo-demo/properties/pexels-naimbic-2030037.jpg",
+      "/inmo-demo/properties/pexels-the-ghazi-2152398165-32421762.jpg",
+    ],
   },
   {
     slug: "casa-jardin-privado-lo-barnechea",
@@ -48,6 +56,12 @@ const propiedades: Propiedad[] = [
     tipo: "Casa",
     descripcion:
       "Propiedad familiar de arquitectura contemporánea, con jardín consolidado, piscina climatizada y espacios sociales de gran escala. Una propuesta única para disfrutar estilo de vida residencial premium con acceso directo a colegios, servicios y áreas verdes.",
+    imagenPrincipal: "/inmo-demo/properties/pexels-artbovich-8141956.jpg",
+    galeria: [
+      "/inmo-demo/properties/pexels-ansar-muhammad-380085065-27604130.jpg",
+      "/inmo-demo/properties/pexels-the-ghazi-2152398165-32421762.jpg",
+      "/inmo-demo/properties/pexels-naimbic-2030037.jpg",
+    ],
   },
   {
     slug: "departamento-autor-vitacura",
@@ -61,6 +75,12 @@ const propiedades: Propiedad[] = [
     tipo: "Departamento",
     descripcion:
       "Diseño interior sofisticado, materiales de primera línea y una distribución inteligente pensada para confort urbano de lujo. Perfecto para quienes buscan elegancia discreta, conectividad y valor patrimonial en una ubicación estratégica.",
+    imagenPrincipal: "/inmo-demo/properties/pexels-naimbic-2030037.jpg",
+    galeria: [
+      "/inmo-demo/properties/pexels-griffinw-6643264.jpg",
+      "/inmo-demo/properties/pexels-the-ghazi-2152398165-33314761.jpg",
+      "/inmo-demo/properties/pexels-alef-morais-336305364-34277650.jpg",
+    ],
   },
 ];
 
@@ -130,13 +150,25 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
             <section className="grid gap-4 md:grid-cols-3">
               <div className="md:col-span-2 rounded-3xl border border-neutral-800 bg-gradient-to-br from-neutral-800 via-neutral-900 to-neutral-950 p-5 shadow-xl sm:p-8">
                 <p className="text-xs uppercase tracking-[0.22em] text-neutral-300">Galería Principal</p>
-                <div className="mt-6 h-56 rounded-2xl border border-neutral-700 bg-gradient-to-tr from-neutral-700/40 via-neutral-600/20 to-amber-200/20 sm:mt-10 sm:h-72" />
+                <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-700 sm:mt-10">
+                  <img
+                    src={propiedad.imagenPrincipal}
+                    alt={`${propiedad.titulo} imagen principal`}
+                    className="h-56 w-full object-cover sm:h-72"
+                  />
+                </div>
               </div>
 
               <div className="grid gap-4">
-                <div className="h-36 rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-800 to-neutral-900 p-4" />
-                <div className="h-36 rounded-2xl border border-neutral-800 bg-gradient-to-tr from-neutral-900 to-neutral-700 p-4" />
-                <div className="h-36 rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-800 via-neutral-900 to-black p-4" />
+                {propiedad.galeria.slice(0, 3).map((imagen, index) => (
+                  <div key={imagen} className="overflow-hidden rounded-2xl border border-neutral-800">
+                    <img
+                      src={imagen}
+                      alt={`${propiedad.titulo} galería ${index + 1}`}
+                      className="h-36 w-full object-cover"
+                    />
+                  </div>
+                ))}
               </div>
             </section>
 

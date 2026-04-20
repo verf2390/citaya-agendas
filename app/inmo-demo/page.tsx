@@ -10,6 +10,7 @@ export default function InmoDemoHomePage() {
       habitaciones: 4,
       banos: 3,
       metros: 285,
+      imagen: "/inmo-demo/properties/pexels-griffinw-6643264.jpg",
     },
     {
       id: 2,
@@ -19,6 +20,7 @@ export default function InmoDemoHomePage() {
       habitaciones: 5,
       banos: 4,
       metros: 340,
+      imagen: "/inmo-demo/properties/pexels-artbovich-8141956.jpg",
     },
     {
       id: 3,
@@ -28,6 +30,7 @@ export default function InmoDemoHomePage() {
       habitaciones: 3,
       banos: 3,
       metros: 210,
+      imagen: "/inmo-demo/properties/pexels-naimbic-2030037.jpg",
     },
   ];
 
@@ -110,7 +113,14 @@ export default function InmoDemoHomePage() {
               key={propiedad.id}
             className="group overflow-hidden rounded-2xl border border-stone-300/15 bg-neutral-900/75 shadow-[0_18px_45px_-30px_rgba(0,0,0,0.9)] transition-all duration-250 hover:-translate-y-0.5 hover:border-[#d4c09e]/45"
             >
-              <div className="h-48 bg-[linear-gradient(120deg,#262626,#3f3f46,#525252)] transition-transform duration-300 group-hover:scale-[1.02]" />
+              <div className="relative h-48 overflow-hidden">
+                <img
+                  src={propiedad.imagen}
+                  alt={propiedad.titulo}
+                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-black/35" />
+              </div>
               <div className="space-y-5 p-5 sm:p-6">
                 <div>
                   <p className="text-sm uppercase tracking-[0.17em] text-stone-300/80">{propiedad.ubicacion}</p>
