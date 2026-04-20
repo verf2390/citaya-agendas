@@ -35,10 +35,19 @@ export default function InmoDemoHomePage() {
   ];
 
   return (
-    <main className="bg-neutral-950 text-white">
-      <section className="relative isolate flex min-h-screen items-center overflow-hidden px-4 py-14 sm:px-10 sm:py-20 lg:px-16">
-        <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top_right,rgba(212,192,158,0.25),transparent_42%),radial-gradient(circle_at_left,rgba(120,113,108,0.25),transparent_40%),linear-gradient(135deg,#0a0a0a_0%,#171717_42%,#262626_100%)]" />
-        <div className="absolute inset-0 -z-10 bg-black/45" />
+    <main className="overflow-x-hidden bg-neutral-950 text-white">
+      <section className="relative isolate flex min-h-[75vh] items-center overflow-hidden px-4 py-14 sm:min-h-[82vh] sm:px-10 sm:py-20 lg:px-16">
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="absolute inset-0 -z-30 h-full w-full object-cover"
+        >
+          <source src="/inmo-demo/hero/12529403_1080_1920_60fps.mp4" type="video/mp4" />
+        </video>
+        <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top_right,rgba(212,192,158,0.2),transparent_42%),radial-gradient(circle_at_left,rgba(120,113,108,0.15),transparent_40%)]" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(110deg,rgba(0,0,0,0.72),rgba(0,0,0,0.58)_45%,rgba(0,0,0,0.74))]" />
 
         <div className="mx-auto w-full max-w-6xl">
           <div className="max-w-3xl">
