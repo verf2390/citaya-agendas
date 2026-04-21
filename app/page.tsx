@@ -1,6 +1,7 @@
 import { BrandHeroSection } from "./(marketing)/components/home/brand-hero-section";
 import { ServicesGridSection } from "./(marketing)/components/home/services-grid-section";
 import { DemosShowcaseSection } from "./(marketing)/components/home/demos-showcase-section";
+import { BenefitsProblemsSection } from "./(marketing)/components/home/benefits-problems-section";
 
 export default function Home() {
   return (
@@ -8,6 +9,7 @@ export default function Home() {
       <BrandHeroSection />
       <ServicesGridSection />
       <DemosShowcaseSection />
+      <BenefitsProblemsSection />
     </main>
   );
 }
