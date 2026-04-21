@@ -5,22 +5,22 @@ const services = [
   {
     title: "Instalación",
     description:
-      "Montaje profesional de equipos split y multi split con evaluación técnica previa y puesta en marcha segura.",
+      "Montaje de equipos split y multi split con evaluación previa, propuesta clara y entrega lista para operar.",
   },
   {
     title: "Mantención",
     description:
-      "Planes preventivos para extender la vida útil de tus equipos, mejorar rendimiento y reducir fallas inesperadas.",
+      "Planes preventivos para reducir fallas, proteger la inversión y mantener rendimiento estable todo el año.",
   },
   {
     title: "Reparación",
     description:
-      "Diagnóstico y solución de averías con enfoque rápido para recuperar el confort en tu hogar o negocio.",
+      "Diagnóstico técnico con prioridad operativa para recuperar confort y continuidad en hogar o negocio.",
   },
   {
     title: "Limpieza de equipos",
     description:
-      "Limpieza profunda de unidades internas y externas para optimizar eficiencia, calidad del aire y consumo.",
+      "Limpieza interna y externa para mejorar calidad del aire, eficiencia energética y vida útil del sistema.",
   },
 ] as const;
 
@@ -30,8 +30,8 @@ export function ServicesSection() {
       <div className="mx-auto max-w-6xl">
         <SectionHeading
           eyebrow="Servicios"
-          title="Soluciones de climatización para cada etapa del cliente"
-          description="Cada servicio está presentado para convertir interés en acciones concretas desde el sitio web."
+          title="Oferta clara para convertir interés en ventas concretas"
+          description="Cada bloque guía al cliente a cotizar o agendar de inmediato, con lenguaje directo y foco comercial."
         />
 
         <div className="mt-7 grid gap-4 sm:mt-9 sm:grid-cols-2">
@@ -46,7 +46,7 @@ export function ServicesSection() {
                 href="#solicitar-servicio"
                 className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm font-semibold text-cyan-700 transition-colors duration-200 hover:bg-cyan-100"
               >
-                Solicitar servicio
+                Quiero este servicio
               </Link>
             </article>
           ))}

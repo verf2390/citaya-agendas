@@ -21,6 +21,12 @@ const initialFormData: FormData = {
   mensaje: "",
 };
 
+const continuitySteps = [
+  "Confirmación automática del ingreso",
+  "Priorización del lead según tipo de servicio",
+  "Contacto comercial para cerrar visita o cotización",
+] as const;
+
 export function LeadCaptureSection() {
   const [formData, setFormData] = useState<FormData>(initialFormData);
   const [submitted, setSubmitted] = useState(false);
@@ -42,12 +48,25 @@ export function LeadCaptureSection() {
           <div>
             <SectionHeading
               eyebrow="Captación de clientes"
-              title="Solicita tu servicio en minutos"
-              description="Este formulario simula un ingreso de lead real: datos ordenados, solicitud registrada y confirmación visual inmediata."
+              title="Convierte visitas en leads listos para gestionar"
+              description="Formulario optimizado para negocio local: rápido para el cliente y útil para tu equipo comercial y técnico."
             />
             <p className="mt-4 rounded-2xl border border-cyan-100 bg-white p-4 text-sm leading-relaxed text-slate-600">
-              Completa los datos y recibe una confirmación integrada en la misma experiencia. Sin fricción, sin recargas y con una percepción de sistema profesional.
+              Este flujo está pensado para operar hoy: el cliente solicita, tu negocio confirma de inmediato y el proceso
+              continúa con seguimiento real.
             </p>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_16px_30px_-30px_rgba(15,23,42,0.8)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Qué pasa después de enviar</p>
+              <ul className="mt-3 space-y-2">
+                {continuitySteps.map((step) => (
+                  <li key={step} className="flex items-start gap-2 text-sm text-slate-700">
+                    <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-500" />
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_25px_60px_-45px_rgba(15,23,42,0.7)] sm:p-7">
@@ -59,12 +78,13 @@ export function LeadCaptureSection() {
                     <path d="m8.5 12 2.3 2.3 4.7-4.8" />
                   </svg>
                 </div>
-                <h3 className="mt-4 text-lg font-semibold text-emerald-900">Solicitud recibida correctamente</h3>
+                <h3 className="mt-4 text-lg font-semibold text-emerald-900">Lead recibido y en proceso</h3>
                 <p className="mt-2 text-sm leading-relaxed text-emerald-800">
-                  Tu solicitud fue recibida. Te enviaremos confirmación automáticamente.
+                  Tu solicitud quedó registrada con confirmación automática. El equipo comercial la priorizará para
+                  coordinar visita técnica o cotización.
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-emerald-800">
-                  Te contactaremos para confirmar la visita o enviarte una cotización según el servicio solicitado.
+                  Próximo paso: contacto inicial para definir fecha y asegurar continuidad del servicio.
                 </p>
                 <button
                   type="button"
@@ -78,13 +98,13 @@ export function LeadCaptureSection() {
               <form className="space-y-4" onSubmit={handleSubmit}>
                 <InputField
                   id="nombre"
-                  label="Nombre"
+                  label="Nombre y apellido"
                   value={formData.nombre}
                   onChange={(value) => setFormData((prev) => ({ ...prev, nombre: value }))}
                 />
                 <InputField
                   id="telefono"
-                  label="Teléfono"
+                  label="WhatsApp o teléfono"
                   type="tel"
                   value={formData.telefono}
                   onChange={(value) => setFormData((prev) => ({ ...prev, telefono: value }))}
@@ -97,7 +117,7 @@ export function LeadCaptureSection() {
                 />
                 <InputField
                   id="tipoServicio"
-                  label="Tipo de servicio"
+                  label="Servicio que necesitas"
                   value={formData.tipoServicio}
                   onChange={(value) => setFormData((prev) => ({ ...prev, tipoServicio: value }))}
                 />
@@ -109,14 +129,14 @@ export function LeadCaptureSection() {
                   onChange={(value) => setFormData((prev) => ({ ...prev, fechaTentativa: value }))}
                 />
                 <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-700">Mensaje</span>
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Detalle adicional</span>
                   <textarea
                     name="mensaje"
                     rows={4}
                     value={formData.mensaje}
                     onChange={(event) => setFormData((prev) => ({ ...prev, mensaje: event.target.value }))}
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-colors focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                    placeholder="Cuéntanos brevemente qué necesitas."
+                    placeholder="Ej: tipo de espacio, metraje aproximado o urgencia del servicio."
                   />
                 </label>
 
@@ -124,7 +144,7 @@ export function LeadCaptureSection() {
                   type="submit"
                   className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500"
                 >
-                  Solicitar visita técnica
+                  Quiero coordinar mi servicio
                 </button>
               </form>
             )}
