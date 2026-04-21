@@ -73,36 +73,49 @@ function DemoLanding() {
                 </div>
 
                 <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-                  Así se vería la agenda online de tu negocio
+                  Empieza a recibir reservas automáticas desde hoy
                 </h1>
 
                 <p className="mt-2 text-base font-semibold text-slate-700">
-                  Profesional · Automática · 24/7
+                  Tus clientes eligen horario, tú solo atiendes
+                </p>
+
+                <p className="mt-3 text-sm font-semibold text-emerald-700">
+                  Respuestas en menos de 15 minutos
                 </p>
 
                 <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600">
-                  Este demo te permite ver la experiencia completa: elegir
-                  servicio, ver horarios reales, reservar y recibir
-                  confirmación. Sin login.
+                  Esta demo te muestra cómo se vería una agenda online real para
+                  tu negocio: reservas 24/7, horarios disponibles, confirmación
+                  automática y una experiencia profesional desde el celular.
                 </p>
 
                 <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                   <Link
                     href="/reservar"
-                    className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-6 py-4 text-base font-extrabold text-white shadow-sm hover:opacity-90 active:scale-[0.99] sm:w-auto"
+                    className="inline-flex min-h-[52px] w-full items-center justify-center rounded-2xl bg-slate-900 px-6 py-4 text-base font-extrabold text-white shadow-sm transition hover:opacity-90 active:scale-[0.99] sm:w-auto"
                   >
-                    Probar demo ahora
+                    Ver agenda funcionando en vivo
                   </Link>
 
                   <Link
                     href="https://citaya.online"
-                    className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-4 text-base font-extrabold text-slate-900 hover:bg-slate-50 sm:w-auto"
+                    className="inline-flex min-h-[52px] w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-4 text-base font-extrabold text-slate-900 transition hover:bg-slate-50 active:scale-[0.99] sm:w-auto"
                   >
-                    Volver
+                    Volver a Citaya
                   </Link>
                 </div>
 
-                <p className="mt-3 text-xs text-slate-500">
+                <div className="mt-3 space-y-1">
+                  <p className="text-xs font-medium text-slate-600">
+                    Sin compromiso • Sin pago • Demo real
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    En menos de 1 minuto puedes ver cómo funciona
+                  </p>
+                </div>
+
+                <p className="mt-4 text-xs text-slate-500">
                   * Datos de ejemplo. La app real usa tu logo, tus servicios y
                   tu configuración.
                 </p>
@@ -117,26 +130,84 @@ function DemoLanding() {
 
                     <ul className="mt-3 grid gap-2 text-sm text-slate-700">
                       <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        ✅ Servicios + profesionales
+                        ✅ Clientes pueden reservar 24/7
                       </li>
                       <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        ✅ Horarios reales por disponibilidad
+                        ✅ Confirmación automática después de reservar
                       </li>
                       <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        ✅ Confirmación + link privado
+                        ✅ Horarios reales según disponibilidad
                       </li>
                     </ul>
 
                     <div className="mt-4 text-[11px] text-slate-500">
-                      Si quieres, luego hacemos una versión con tu marca y tus
-                      textos.
+                      Luego hacemos esta misma versión con tu logo, tus
+                      servicios y tus textos.
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <DemoQuoteCard />
+            <div className="mt-8 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+                <p className="text-sm font-extrabold text-slate-900">
+                  ¿Te pasa esto?
+                </p>
+                <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                  <li>• Respondes mensajes todo el día</li>
+                  <li>• Pierdes clientes por no contestar rápido</li>
+                  <li>• Tu agenda está desordenada</li>
+                </ul>
+                <p className="mt-3 text-sm font-semibold text-slate-900">
+                  Esto se soluciona automáticamente 👇
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+                  Caso real
+                </div>
+
+                <h2 className="mt-3 text-lg font-extrabold text-slate-900">
+                  Negocios reales ya están usando esto
+                </h2>
+
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  Clientes ya están recibiendo reservas automáticas sin depender
+                  de mensajes.
+                </p>
+
+                <p className="mt-3 text-sm font-bold text-slate-900">
+                  Fajas Paola — La Serena
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Clientes reales usando este sistema
+                </p>
+
+                <a
+                  href="https://instagram.com/fajaspaola"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-900 transition hover:bg-slate-100 active:scale-[0.99]"
+                >
+                  Ver negocio real funcionando
+                </a>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <p className="mb-3 text-sm font-semibold text-slate-700">
+                Primero mira cómo funciona 👇
+              </p>
+
+              <DemoQuoteCard />
+
+              <p className="mt-3 text-xs text-slate-500">
+                Esto es opcional. Primero prueba la agenda.
+              </p>
+            </div>
 
             <div className="mt-10 grid gap-3 sm:grid-cols-3">
               {[
@@ -146,11 +217,11 @@ function DemoLanding() {
                 },
                 {
                   name: "Camila",
-                  text: "Me llegó el correo y pude reagendar sin hablar con nadie.",
+                  text: "Me llegó la confirmación y pude reagendar sin hablar con nadie.",
                 },
                 {
                   name: "Daniela",
-                  text: "Así debería ser cualquier agenda online.",
+                  text: "Así debería funcionar cualquier agenda online.",
                 },
               ].map((t) => (
                 <div
