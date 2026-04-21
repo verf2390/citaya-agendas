@@ -37,7 +37,7 @@ const demos = [
 
 export function DemosShowcaseSection() {
   return (
-    <section id="demos" className="px-4 pb-14 pt-4 sm:px-6 sm:pb-16 sm:pt-6 lg:px-10 lg:pb-20 lg:pt-8">
+    <section id="demos" className="px-4 pb-14 pt-6 sm:px-6 sm:pb-16 sm:pt-8 lg:px-10 lg:pb-20 lg:pt-10">
       <div className="mx-auto w-full max-w-6xl">
         <div className="max-w-3xl">
           <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
@@ -77,7 +77,7 @@ export function DemosShowcaseSection() {
                 href={demo.href}
                 target={demo.isExternal ? "_blank" : undefined}
                 rel={demo.isExternal ? "noopener noreferrer" : undefined}
-                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-cyan-500 active:bg-cyan-700"
+                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:bg-cyan-700"
               >
                 {demo.cta}
               </Link>
