@@ -66,13 +66,13 @@ export function FinalCtaSection() {
             href={`https://wa.me/56961425029?text=${whatsappMessage}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-400 px-6 py-3 text-sm font-semibold text-emerald-950 transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-300"
+            className="inline-flex min-h-12 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)]"
           >
             Quiero implementarlo en mi negocio
           </Link>
           <Link
             href="#solicitar-demo"
-            className="inline-flex min-h-12 items-center justify-center rounded-xl border border-cyan-200/40 bg-white/10 px-6 py-3 text-sm font-semibold text-cyan-50 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/20"
+            className="inline-flex min-h-12 items-center justify-center rounded-xl border border-cyan-200/40 bg-white/10 px-6 py-3 text-sm font-medium text-cyan-50 transition-all duration-200 hover:border-cyan-100/60 hover:bg-white/20"
           >
             Solicitar demo guiada
           </Link>
@@ -91,7 +91,7 @@ export function FinalCtaSection() {
                 href={button.href}
                 target="_blank"
                 rel="noreferrer"
-                className={`group inline-flex min-h-14 items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5 ${button.tone}`}
+                className={`group inline-flex min-h-14 items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] ${button.tone}`}
               >
                 <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/15 text-xs font-bold tracking-wide">
                   {button.icon}
