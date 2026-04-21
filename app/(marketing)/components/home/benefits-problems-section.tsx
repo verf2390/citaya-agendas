@@ -31,7 +31,7 @@ export function BenefitsProblemsSection() {
           {problemSolutionBlocks.map((block) => (
             <article
               key={block.problem}
-              className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_58px_-32px_rgba(15,23,42,0.46)] transition-all duration-300 hover:-translate-y-2 hover:border-cyan-400 hover:shadow-[0_35px_70px_-25px_rgba(8,145,178,0.55)] sm:p-6"
+              className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_58px_-32px_rgba(15,23,42,0.46)] transition-all duration-500 hover:-translate-y-3 hover:scale-[1.012] hover:border-cyan-500 hover:shadow-[0_46px_95px_-24px_rgba(8,145,178,0.62)] sm:p-6"
             >
               <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Problema</p>

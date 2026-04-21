@@ -28,7 +28,7 @@ export function SocialProofSection() {
           {testimonials.map((testimonial) => (
             <article
               key={testimonial}
-              className="rounded-2xl border border-cyan-400/30 bg-white/95 p-5 shadow-[0_28px_65px_-32px_rgba(6,182,212,0.55)] transition-all duration-300 hover:-translate-y-2 hover:border-cyan-400 hover:shadow-[0_38px_78px_-24px_rgba(34,211,238,0.62)] sm:p-6"
+              className="rounded-2xl border border-cyan-400/30 bg-white/95 p-5 shadow-[0_28px_65px_-32px_rgba(6,182,212,0.55)] transition-all duration-500 hover:-translate-y-3 hover:scale-[1.012] hover:border-cyan-300 hover:shadow-[0_48px_98px_-20px_rgba(34,211,238,0.68)] sm:p-6"
             >
               <p className="text-sm leading-relaxed text-slate-700 sm:text-base">“{testimonial}”</p>
             </article>

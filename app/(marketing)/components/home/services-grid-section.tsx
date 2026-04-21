@@ -43,7 +43,7 @@ export function ServicesGridSection() {
           {services.map((service) => (
             <article
               key={service.title}
-              className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.48)] transition-all duration-300 hover:-translate-y-3 hover:border-cyan-500 hover:shadow-[0_42px_90px_-24px_rgba(8,145,178,0.62)] sm:p-6 [&:nth-child(2n)]:bg-slate-50/70"
+              className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.48)] transition-all duration-500 hover:-translate-y-3.5 hover:scale-[1.015] hover:border-cyan-500 hover:shadow-[0_52px_105px_-22px_rgba(8,145,178,0.66)] sm:p-6 [&:nth-child(2n)]:bg-slate-50/70"
             >
               <h3 className="text-lg font-semibold text-slate-950">{service.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">{service.description}</p>

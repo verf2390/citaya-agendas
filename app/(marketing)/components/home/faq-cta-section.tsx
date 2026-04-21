@@ -44,7 +44,7 @@ export function FaqCtaSection() {
             {faqs.map((faq) => (
               <details
                 key={faq.question}
-                className="group rounded-2xl border border-slate-300 bg-white p-4 shadow-[0_22px_55px_-34px_rgba(15,23,42,0.5)] transition-all duration-300 hover:-translate-y-1.5 hover:border-cyan-400 hover:shadow-[0_34px_76px_-32px_rgba(8,145,178,0.56)] sm:p-5"
+                className="group rounded-2xl border border-slate-300 bg-white p-4 shadow-[0_22px_55px_-34px_rgba(15,23,42,0.5)] transition-all duration-500 hover:-translate-y-2.5 hover:scale-[1.01] hover:border-cyan-500 hover:shadow-[0_44px_92px_-28px_rgba(8,145,178,0.62)] sm:p-5"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-left text-sm font-semibold text-slate-900 sm:text-base">
                   <span>{faq.question}</span>
@@ -74,7 +74,7 @@ export function FaqCtaSection() {
               href={whatsappHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_26px_56px_-12px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-1.5 hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_38px_78px_-15px_rgba(8,145,178,0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
             >
               Muéstrame cómo funcionaría
             </Link>

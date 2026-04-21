@@ -52,10 +52,14 @@ export function DemosShowcaseSection() {
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-5 sm:mt-14 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-7">
-          {demos.map((demo) => (
+          {demos.map((demo, index) => (
             <article
               key={demo.name}
-              className="flex h-full flex-col rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-300 hover:-translate-y-3 hover:border-cyan-500 hover:shadow-[0_42px_90px_-24px_rgba(8,145,178,0.62)] sm:p-6"
+              className={`flex h-full flex-col rounded-2xl bg-white p-5 transition-all duration-500 sm:p-6 ${
+                index === 0
+                  ? "scale-[1.02] border-2 border-cyan-400 shadow-[0_36px_95px_-28px_rgba(8,145,178,0.7)]"
+                  : "border border-slate-300 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)]"
+              } hover:-translate-y-3.5 hover:scale-[1.02] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)]`}
             >
               <h3 className="text-lg font-semibold text-slate-950">{demo.name}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">{demo.description}</p>
@@ -80,7 +84,7 @@ export function DemosShowcaseSection() {
                 href={demo.href}
                 target={demo.isExternal ? "_blank" : undefined}
                 rel={demo.isExternal ? "noopener noreferrer" : undefined}
-                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_20px_45px_-14px_rgba(8,145,178,0.98)] transition-all duration-300 hover:-translate-y-1.5 hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_34px_70px_-16px_rgba(8,145,178,0.95)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700"
+                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_24px_54px_-12px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.01] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_42px_84px_-14px_rgba(8,145,178,0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700"
               >
                 {demo.cta}
               </Link>

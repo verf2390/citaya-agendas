@@ -38,7 +38,7 @@ export function BrandHeroSection() {
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute -top-24 right-4 h-80 w-80 rounded-full bg-cyan-400/60 blur-3xl"
+            className="pointer-events-none absolute -top-24 right-2 h-96 w-96 rounded-full bg-cyan-400/65 blur-[110px]"
           />
           <div
             aria-hidden
@@ -79,7 +79,7 @@ export function BrandHeroSection() {
                 href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_26px_56px_-12px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-1.5 hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_38px_78px_-15px_rgba(8,145,178,0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
               >
                 Ver cómo funcionaría en mi negocio
               </Link>
@@ -101,7 +101,7 @@ export function BrandHeroSection() {
               aria-hidden
               className="pointer-events-none absolute inset-x-2 top-1 h-40 rounded-full bg-cyan-400/75 blur-3xl sm:inset-x-7"
             />
-            <div className="relative scale-[1.015] rounded-2xl border border-cyan-100 bg-white/88 p-4 shadow-[0_54px_130px_-32px_rgba(15,23,42,0.82)] backdrop-blur-[3px] sm:p-5">
+            <div className="relative scale-[1.02] rounded-2xl border border-cyan-100 bg-white/88 p-4 shadow-[0_62px_150px_-28px_rgba(15,23,42,0.86)] ring-1 ring-cyan-100/70 backdrop-blur-[3px] sm:p-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista previa</p>
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
