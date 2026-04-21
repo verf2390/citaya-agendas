@@ -15,12 +15,12 @@ export function HeroSection() {
             Climatización residencial y comercial
           </span>
           <h1 className="mt-5 text-3xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
-            Más clientes y menos desorden con una atención técnica que responde rápido
+            Empieza a recibir reservas automáticas desde hoy
           </h1>
           <p className="mt-4 text-base leading-relaxed text-slate-600 sm:mt-5 sm:text-lg">
-            Instalación, mantención y soporte de aire acondicionado con un flujo comercial claro:
-            captas solicitudes, confirmas en automático y avanzas cada oportunidad sin perder tiempo.
+            Tus clientes eligen horario, tú solo atiendes. Agenda online activa 24/7 con confirmación automática.
           </p>
+          <p className="mt-2 text-sm font-medium text-cyan-700/90">Respuestas en menos de 15 minutos</p>
 
           <div className="mt-6 flex flex-wrap gap-2.5 sm:mt-7">
             {trustPills.map((pill) => (
@@ -33,20 +33,33 @@ export function HeroSection() {
             ))}
           </div>
 
+          <div className="mt-5 rounded-2xl border border-slate-200/90 bg-white/85 p-4">
+            <p className="text-sm font-semibold text-slate-900">¿Te pasa esto?</p>
+            <ul className="mt-2 space-y-1.5 text-sm text-slate-600">
+              <li>• Respondes mensajes todo el día</li>
+              <li>• Pierdes clientes por no contestar a tiempo</li>
+              <li>• Tu agenda está desordenada</li>
+            </ul>
+            <p className="mt-3 text-sm font-semibold text-cyan-700">Esto lo soluciona automáticamente 👇</p>
+          </div>
+
           <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
             <Link
-              href="#agendar-visita"
-              className="inline-flex min-h-12 items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500"
+              href="/reservar"
+              className="inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-cyan-500 active:scale-[0.99] active:translate-y-0 active:bg-cyan-700 sm:min-h-12 sm:w-auto"
             >
-              Agendar visita técnica
+              Ver agenda funcionando en vivo
             </Link>
             <Link
               href="#solicitar-cotizacion"
-              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700"
+              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:border-cyan-300 hover:text-cyan-700 active:scale-[0.99]"
             >
               Solicitar cotización rápida
             </Link>
           </div>
+          <p className="mt-3 text-xs font-semibold tracking-wide text-slate-500">Sin compromiso • Sin pago • Demo real</p>
+          <p className="mt-1 text-sm text-slate-600">En menos de 1 minuto puedes ver cómo funciona</p>
+          <p className="mt-3 text-sm font-medium text-slate-500">Usado por negocios en La Serena y Coquimbo</p>
         </div>
       </div>
     </section>

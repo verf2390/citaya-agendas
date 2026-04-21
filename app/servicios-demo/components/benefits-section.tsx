@@ -2,23 +2,18 @@ import { SectionHeading } from "./section-heading";
 
 const benefits = [
   {
-    title: "Captación sin fricción",
-    description: "Tus clientes envían la solicitud en minutos desde el celular, sin llamadas largas ni pasos confusos.",
+    title: "Clientes pueden reservar 24/7",
+    description: "Tu agenda sigue tomando reservas incluso fuera de horario, sin depender de llamadas o mensajes.",
     icon: "calendar",
   },
   {
-    title: "Cobertura local ordenada",
-    description: "Priorizas comunas de La Serena y Coquimbo con mejor coordinación de agenda y rutas técnicas.",
-    icon: "pin",
-  },
-  {
-    title: "Seguimiento automático",
-    description: "Cada lead queda confirmado y visible para que el equipo comercial no pierda oportunidades.",
+    title: "Confirmación automática (WhatsApp o email)",
+    description: "Cada reserva queda confirmada al instante para dar confianza y evitar pérdidas por falta de respuesta.",
     icon: "check",
   },
   {
-    title: "Ejecución confiable",
-    description: "Tu marca se percibe profesional con procesos claros desde el primer mensaje hasta la visita.",
+    title: "Evita perder horas respondiendo mensajes",
+    description: "Automatiza lo repetitivo y enfócate en atender clientes, cerrar ventas y ejecutar mejor tu servicio.",
     icon: "shield",
   },
 ] as const;
@@ -64,11 +59,11 @@ export function BenefitsSection() {
       <div className="mx-auto max-w-6xl">
         <SectionHeading
           eyebrow="Beneficios de negocio"
-          title="Una web que vende mejor y ordena tu operación diaria"
-          description="Conecta marketing, captación y coordinación técnica en un solo recorrido para cerrar más servicios con menos fricción."
+          title="Qué incluye esta agenda online"
+          description="Beneficios concretos para convertir más y operar con menos carga manual."
         />
 
-        <div className="mt-7 grid gap-4 sm:mt-9 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-7 grid gap-4 sm:mt-9 sm:grid-cols-2 lg:grid-cols-3">
           {benefits.map((benefit) => (
             <article
               key={benefit.title}

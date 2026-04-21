@@ -3,7 +3,7 @@ import { SectionHeading } from "./section-heading";
 const testimonials = [
   {
     type: "Hogar",
-    quote: "Nos respondieron el mismo día, agendamos visita y quedó todo instalado sin vueltas.",
+    quote: "Reservé en 30 segundos. Se siente súper pro.",
     author: "Familia Rojas · La Serena",
   },
   {
@@ -45,8 +45,8 @@ export function SocialProofSection() {
               <p className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700">
                 {item.type}
               </p>
-              <p className="mt-3 text-sm leading-relaxed text-slate-700">“{item.quote}”</p>
-              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{item.author}</p>
+              <p className="mt-3 text-sm leading-7 text-slate-700 sm:leading-relaxed">“{item.quote}”</p>
+              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{item.author}</p>
             </article>
           ))}
         </div>
