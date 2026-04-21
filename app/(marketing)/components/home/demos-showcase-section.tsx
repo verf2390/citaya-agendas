@@ -37,7 +37,10 @@ const demos = [
 
 export function DemosShowcaseSection() {
   return (
-    <section id="demos" className="px-4 pb-16 pt-8 sm:px-6 sm:pb-20 sm:pt-10 lg:px-10 lg:pb-24 lg:pt-12">
+    <section
+      id="demos"
+      className="bg-gradient-to-b from-cyan-50/70 via-slate-50 to-white px-4 pb-16 pt-10 sm:px-6 sm:pb-20 sm:pt-12 lg:px-10 lg:pb-24 lg:pt-14"
+    >
       <div className="mx-auto w-full max-w-6xl">
         <div className="max-w-3xl">
           <h2 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
@@ -52,7 +55,7 @@ export function DemosShowcaseSection() {
           {demos.map((demo) => (
             <article
               key={demo.name}
-              className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-2 hover:border-cyan-300 hover:shadow-[0_30px_65px_-28px_rgba(8,145,178,0.5)] sm:p-6"
+              className="flex h-full flex-col rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-300 hover:-translate-y-2.5 hover:border-cyan-400 hover:shadow-[0_34px_72px_-26px_rgba(8,145,178,0.58)] sm:p-6"
             >
               <h3 className="text-lg font-semibold text-slate-900">{demo.name}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-700 sm:text-base">{demo.description}</p>
@@ -77,7 +80,7 @@ export function DemosShowcaseSection() {
                 href={demo.href}
                 target={demo.isExternal ? "_blank" : undefined}
                 rel={demo.isExternal ? "noopener noreferrer" : undefined}
-                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_35px_-20px_rgba(8,145,178,0.9)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-cyan-600 hover:shadow-[0_24px_45px_-20px_rgba(8,145,178,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:bg-cyan-800"
+                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_35px_-16px_rgba(8,145,178,0.95)] transition-all duration-300 hover:-translate-y-1 hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_28px_50px_-18px_rgba(8,145,178,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700"
               >
                 {demo.cta}
               </Link>
