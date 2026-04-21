@@ -12,7 +12,7 @@ const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsa
 
 export function BrandHeroSection() {
   return (
-    <section className="px-4 pb-12 pt-6 sm:px-6 sm:pb-16 sm:pt-8 lg:px-10 lg:pb-20 lg:pt-10">
+    <section className="px-4 pb-20 pt-6 sm:px-6 sm:pb-24 sm:pt-8 lg:px-10 lg:pb-28 lg:pt-10">
       <div className="mx-auto w-full max-w-6xl">
         <header className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-2.5 backdrop-blur sm:mb-5 sm:px-5">
           <Image
@@ -31,20 +31,32 @@ export function BrandHeroSection() {
           </a>
         </header>
 
-        <div className="grid gap-8 rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-slate-50 to-cyan-50/60 p-6 shadow-[0_30px_80px_-50px_rgba(15,23,42,0.35)] sm:p-8 lg:grid-cols-2 lg:items-center lg:gap-10 lg:p-12">
-          <div>
+        <div className="relative grid gap-8 overflow-hidden rounded-3xl border border-cyan-200/80 bg-gradient-to-br from-slate-950/15 via-cyan-200/75 to-white p-6 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.62)] sm:p-8 lg:grid-cols-2 lg:items-center lg:gap-12 lg:p-12">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_8%,rgba(14,116,144,0.22),transparent_45%),radial-gradient(circle_at_90%_18%,rgba(34,211,238,0.28),transparent_42%)]"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -top-24 right-2 h-96 w-96 rounded-full bg-cyan-400/65 blur-[110px]"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -bottom-16 -left-20 h-72 w-72 rounded-full bg-sky-300/55 blur-3xl"
+          />
+          <div className="relative z-10">
             <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-800 sm:text-xs">
               Para negocios locales que viven de su agenda
             </span>
 
-            <h1 className="mt-4 text-3xl font-semibold leading-tight tracking-tight text-slate-950 sm:mt-5 sm:text-4xl lg:text-5xl">
+            <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:mt-5 sm:text-5xl lg:text-6xl">
               Deja de perder clientes por un WhatsApp desordenado
             </h1>
 
-            <p className="mt-4 text-base leading-relaxed text-slate-700 sm:text-lg">
+            <p className="mt-5 text-base leading-relaxed text-slate-600 sm:text-lg">
               Si hoy agendas respondiendo mensajes uno a uno, estás perdiendo tiempo y clientes.
             </p>
-            <p className="mt-2 text-base leading-relaxed text-slate-700 sm:text-lg">
+            <p className="mt-2 text-base leading-relaxed text-slate-600 sm:text-lg">
               En Citaya te ayudamos a ordenar tu captación con una web clara, agenda online y automatizaciones simples
               que sí se usan.
             </p>
@@ -67,13 +79,13 @@ export function BrandHeroSection() {
                 href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_-20px_rgba(8,145,178,0.95)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500 hover:shadow-[0_20px_40px_-20px_rgba(8,145,178,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:bg-cyan-700 sm:w-auto"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
               >
                 Ver cómo funcionaría en mi negocio
               </Link>
               <a
                 href="#demos"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-50/50 hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
               >
                 Ver demos reales
               </a>
@@ -84,8 +96,12 @@ export function BrandHeroSection() {
             </p>
           </div>
 
-          <div>
-            <div className="rounded-2xl border border-cyan-100 bg-white p-4 shadow-[0_20px_55px_-40px_rgba(15,23,42,0.55)] sm:p-5">
+          <div className="relative z-10 rounded-[1.8rem] border border-cyan-200/70 bg-slate-900/[0.035] p-3 sm:p-4">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-2 top-1 h-40 rounded-full bg-cyan-400/75 blur-3xl sm:inset-x-7"
+            />
+            <div className="relative scale-[1.02] rounded-2xl border border-cyan-100 bg-white/88 p-4 shadow-[0_62px_150px_-28px_rgba(15,23,42,0.86)] ring-1 ring-cyan-100/70 backdrop-blur-[3px] sm:p-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista previa</p>
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">

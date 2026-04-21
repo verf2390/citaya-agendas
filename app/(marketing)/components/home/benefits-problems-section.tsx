@@ -19,19 +19,19 @@ const problemSolutionBlocks = [
 
 export function BenefitsProblemsSection() {
   return (
-    <section className="px-4 pb-14 pt-6 sm:px-6 sm:pb-16 sm:pt-8 lg:px-10 lg:pb-20 lg:pt-10">
+    <section className="bg-slate-50 px-4 pb-16 pt-10 sm:px-6 sm:pb-20 sm:pt-12 lg:px-10 lg:pb-24 lg:pt-14">
       <div className="mx-auto w-full max-w-6xl">
         <div className="max-w-3xl">
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+          <h2 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
             Menos desorden, más clientes atendidos
           </h2>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:mt-10 sm:grid-cols-2 sm:gap-5 lg:gap-6">
+        <div className="mt-10 grid grid-cols-1 gap-5 sm:mt-12 sm:grid-cols-2 sm:gap-6 lg:gap-7">
           {problemSolutionBlocks.map((block) => (
             <article
               key={block.problem}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
+              className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_58px_-32px_rgba(15,23,42,0.46)] transition-all duration-500 hover:-translate-y-3 hover:scale-[1.012] hover:border-cyan-500 hover:shadow-[0_46px_95px_-24px_rgba(8,145,178,0.62)] sm:p-6"
             >
               <div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Problema</p>

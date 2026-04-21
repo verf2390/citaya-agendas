@@ -37,10 +37,13 @@ const demos = [
 
 export function DemosShowcaseSection() {
   return (
-    <section id="demos" className="px-4 pb-14 pt-6 sm:px-6 sm:pb-16 sm:pt-8 lg:px-10 lg:pb-20 lg:pt-10">
+    <section
+      id="demos"
+      className="bg-gradient-to-b from-cyan-50/70 via-slate-50 to-white px-4 pb-16 pt-10 sm:px-6 sm:pb-20 sm:pt-12 lg:px-10 lg:pb-24 lg:pt-14"
+    >
       <div className="mx-auto w-full max-w-6xl">
         <div className="max-w-3xl">
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+          <h2 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
             Mira cómo se vería en tu negocio
           </h2>
           <p className="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg">
@@ -48,13 +51,17 @@ export function DemosShowcaseSection() {
           </p>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:mt-10 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6">
-          {demos.map((demo) => (
+        <div className="mt-12 grid grid-cols-1 gap-5 sm:mt-14 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-7">
+          {demos.map((demo, index) => (
             <article
               key={demo.name}
-              className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-md sm:p-6"
+              className={`flex h-full flex-col rounded-2xl bg-white p-5 transition-all duration-500 sm:p-6 ${
+                index === 0
+                  ? "scale-[1.02] border-2 border-cyan-400 shadow-[0_36px_95px_-28px_rgba(8,145,178,0.7)]"
+                  : "border border-slate-300 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)]"
+              } hover:-translate-y-3.5 hover:scale-[1.02] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)]`}
             >
-              <h3 className="text-lg font-semibold text-slate-900">{demo.name}</h3>
+              <h3 className="text-lg font-semibold text-slate-950">{demo.name}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">{demo.description}</p>
 
               <div className="mt-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -77,7 +84,7 @@ export function DemosShowcaseSection() {
                 href={demo.href}
                 target={demo.isExternal ? "_blank" : undefined}
                 rel={demo.isExternal ? "noopener noreferrer" : undefined}
-                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:bg-cyan-700"
+                className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_24px_54px_-12px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.01] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_42px_84px_-14px_rgba(8,145,178,0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700"
               >
                 {demo.cta}
               </Link>
