@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-const whatsappMessage = encodeURIComponent("Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.");
-
 const painPoints = [
   "Mensajes sin responder a tiempo",
   "Clientes que preguntan y no vuelven",
@@ -44,15 +42,13 @@ export function BrandHeroSection() {
 
           <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
             <Link
-              href={`https://wa.me/56961425029?text=${whatsappMessage}`}
+              href="#"
               className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_-20px_rgba(8,145,178,0.95)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500 active:translate-y-0 active:bg-cyan-700 sm:w-auto"
-              target="_blank"
-              rel="noreferrer"
             >
               Ver cómo funcionaría en mi negocio
             </Link>
             <Link
-              href="#demos"
+              href="/servicios-demo"
               className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700 active:translate-y-0 sm:w-auto"
             >
               Ver demos reales
