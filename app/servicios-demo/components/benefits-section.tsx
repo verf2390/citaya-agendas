@@ -2,23 +2,23 @@ import { SectionHeading } from "./section-heading";
 
 const benefits = [
   {
-    title: "Agenda rápida en línea",
-    description: "Tus clientes reservan en minutos sin llamadas largas ni esperas innecesarias.",
+    title: "Captación sin fricción",
+    description: "Tus clientes envían la solicitud en minutos desde el celular, sin llamadas largas ni pasos confusos.",
     icon: "calendar",
   },
   {
-    title: "Atención local",
-    description: "Cobertura enfocada en La Serena y Coquimbo con tiempos de respuesta eficientes.",
+    title: "Cobertura local ordenada",
+    description: "Priorizas comunas de La Serena y Coquimbo con mejor coordinación de agenda y rutas técnicas.",
     icon: "pin",
   },
   {
-    title: "Confirmación automática",
-    description: "Cada solicitud queda registrada y confirmada para reducir ausencias en visitas.",
+    title: "Seguimiento automático",
+    description: "Cada lead queda confirmado y visible para que el equipo comercial no pierda oportunidades.",
     icon: "check",
   },
   {
-    title: "Técnicos certificados",
-    description: "Equipo capacitado para instalaciones, mantenciones y diagnósticos confiables.",
+    title: "Ejecución confiable",
+    description: "Tu marca se percibe profesional con procesos claros desde el primer mensaje hasta la visita.",
     icon: "shield",
   },
 ] as const;
@@ -63,9 +63,9 @@ export function BenefitsSection() {
     <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <SectionHeading
-          eyebrow="Beneficios clave"
-          title="Una operación más ágil para captar y cerrar más clientes"
-          description="Diseñada para empresas de climatización que quieren profesionalizar su proceso comercial desde el primer contacto."
+          eyebrow="Beneficios de negocio"
+          title="Una web que vende mejor y ordena tu operación diaria"
+          description="Conecta marketing, captación y coordinación técnica en un solo recorrido para cerrar más servicios con menos fricción."
         />
 
         <div className="mt-7 grid gap-4 sm:mt-9 sm:grid-cols-2 lg:grid-cols-4">

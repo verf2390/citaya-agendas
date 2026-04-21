@@ -3,21 +3,21 @@ import { SectionHeading } from "./section-heading";
 const steps = [
   {
     number: "01",
-    title: "Solicitas el servicio",
+    title: "Cliente completa el formulario",
     description:
-      "El cliente completa una solicitud simple desde el celular o computador, con datos claros del requerimiento.",
+      "La solicitud entra con datos clave para decidir rápido: tipo de servicio, comuna, fecha tentativa y contexto.",
   },
   {
     number: "02",
-    title: "Agendamos o cotizamos",
+    title: "Tu equipo prioriza y contacta",
     description:
-      "La información queda ordenada para priorizar contacto, definir visita técnica o enviar cotización según el tipo de servicio.",
+      "El lead llega ordenado para responder antes, agendar visita técnica o enviar cotización según urgencia.",
   },
   {
     number: "03",
-    title: "Recibes confirmación automática",
+    title: "Se confirma y se ejecuta",
     description:
-      "El sistema comunica recepción y seguimiento para que cada solicitud avance con trazabilidad y atención profesional.",
+      "El cliente recibe confirmación automática y tu operación continúa con seguimiento claro hasta el cierre.",
   },
 ] as const;
 
@@ -27,8 +27,8 @@ export function HowItWorksSection() {
       <div className="mx-auto max-w-6xl">
         <SectionHeading
           eyebrow="Cómo funciona"
-          title="Un flujo comercial claro para convertir visitas en oportunidades"
-          description="Diseñado para transmitir rapidez, orden y confianza desde el primer contacto con tu empresa."
+          title="Un embudo simple: captar, ordenar y convertir"
+          description="El recorrido está pensado para negocios de servicios locales que necesitan velocidad comercial y control operativo."
         />
 
         <div className="mt-7 grid gap-4 sm:mt-9 md:grid-cols-3">
