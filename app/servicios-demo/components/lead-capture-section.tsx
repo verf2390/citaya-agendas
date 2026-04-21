@@ -22,9 +22,9 @@ const initialFormData: FormData = {
 };
 
 const continuitySteps = [
-  "Confirmación automática del ingreso",
-  "Priorización del lead según tipo de servicio",
-  "Contacto comercial para cerrar visita o cotización",
+  "Clientes pueden reservar 24/7",
+  "Confirmación automática (WhatsApp o email)",
+  "Evita perder horas respondiendo mensajes",
 ] as const;
 
 export function LeadCaptureSection() {
@@ -46,18 +46,23 @@ export function LeadCaptureSection() {
       <div className="mx-auto max-w-6xl">
         <div className="grid gap-6 lg:grid-cols-[1fr_1.15fr] lg:items-start">
           <div>
+            <p className="text-sm font-semibold text-slate-600">Esto es opcional. Primero prueba la agenda 👆</p>
             <SectionHeading
-              eyebrow="Captación de clientes"
-              title="Convierte visitas en leads listos para gestionar"
-              description="Formulario optimizado para negocio local: rápido para el cliente y útil para tu equipo comercial y técnico."
+              eyebrow="Micro cotizador"
+              title="¿Cuánto cuesta implementar esto?"
+              description="Hazte una idea rápida según tu negocio"
             />
+            <p className="mt-3 text-sm font-semibold text-cyan-700">Primero mira cómo funciona 👇</p>
             <p className="mt-4 rounded-2xl border border-cyan-100 bg-white p-4 text-sm leading-relaxed text-slate-600">
-              Este flujo está pensado para operar hoy: el cliente solicita, tu negocio confirma de inmediato y el proceso
-              continúa con seguimiento real.
+              Planes desde $29.000 mensual según tamaño del negocio
+            </p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">
+              Este valor es referencial. La configuración final puede variar según servicios, volumen y nivel de
+              automatización.
             </p>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_16px_30px_-30px_rgba(15,23,42,0.8)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Qué pasa después de enviar</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Qué incluye</p>
               <ul className="mt-3 space-y-2">
                 {continuitySteps.map((step) => (
                   <li key={step} className="flex items-start gap-2 text-sm text-slate-700">
@@ -69,7 +74,7 @@ export function LeadCaptureSection() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_25px_60px_-45px_rgba(15,23,42,0.7)] sm:p-7">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-35px_rgba(15,23,42,0.45)] sm:p-7">
             {submitted ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
                 <div className="inline-flex rounded-full bg-emerald-100 p-2 text-emerald-700">
@@ -142,10 +147,16 @@ export function LeadCaptureSection() {
 
                 <button
                   type="submit"
-                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-cyan-500 active:scale-[0.99]"
                 >
                   Quiero coordinar mi servicio
                 </button>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Resumen de cotización</p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Completa los campos para visualizar una propuesta estimada con recomendaciones para tu operación.
+                  </p>
+                </div>
               </form>
             )}
           </div>
