@@ -33,10 +33,10 @@ const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsa
 
 export function FaqCtaSection() {
   return (
-    <section className="px-4 pb-20 pt-6 sm:px-6 sm:pb-24 sm:pt-8 lg:px-10 lg:pb-28 lg:pt-10">
-      <div className="mx-auto grid w-full max-w-6xl gap-10">
+    <section className="px-4 pb-20 pt-8 sm:px-6 sm:pb-24 sm:pt-10 lg:px-10 lg:pb-28 lg:pt-12">
+      <div className="mx-auto grid w-full max-w-6xl gap-12">
         <div>
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+          <h2 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-4xl lg:text-5xl">
             Preguntas frecuentes
           </h2>
 
@@ -44,7 +44,7 @@ export function FaqCtaSection() {
             {faqs.map((faq) => (
               <details
                 key={faq.question}
-                className="group rounded-2xl border border-slate-200 bg-white p-4 transition-colors duration-200 hover:border-cyan-200 sm:p-5"
+                className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_18px_45px_-30px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-1 hover:border-cyan-300 hover:shadow-[0_30px_65px_-35px_rgba(8,145,178,0.5)] sm:p-5"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-left text-sm font-semibold text-slate-900 sm:text-base">
                   <span>{faq.question}</span>
@@ -55,17 +55,17 @@ export function FaqCtaSection() {
                     +
                   </span>
                 </summary>
-                <p className="pt-3 text-sm leading-relaxed text-slate-600 sm:text-base">{faq.answer}</p>
+                <p className="pt-3 text-sm leading-relaxed text-slate-700 sm:text-base">{faq.answer}</p>
               </details>
             ))}
           </div>
         </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-cyan-50/60 px-5 py-8 text-center shadow-[0_30px_80px_-55px_rgba(15,23,42,0.45)] sm:px-8 sm:py-10">
-          <h3 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl">
+        <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-100/80 to-cyan-100/60 px-5 py-8 text-center shadow-[0_34px_90px_-50px_rgba(15,23,42,0.5)] sm:px-8 sm:py-10">
+          <h3 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-4xl">
             Tu negocio puede verse profesional y vender con más orden
           </h3>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg">
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-700 sm:text-lg">
             Te muestro cómo se vería esto en tu negocio (sin compromiso).
           </p>
 
@@ -74,7 +74,7 @@ export function FaqCtaSection() {
               href={whatsappHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_-20px_rgba(8,145,178,0.95)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:bg-cyan-700 sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-700 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_-14px_rgba(8,145,178,0.95)] transition-all duration-300 hover:-translate-y-1 hover:bg-cyan-600 hover:shadow-[0_28px_55px_-18px_rgba(8,145,178,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:bg-cyan-800 sm:w-auto"
             >
               Muéstrame cómo funcionaría
             </Link>
