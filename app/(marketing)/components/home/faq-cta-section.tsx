@@ -33,10 +33,10 @@ const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsa
 
 export function FaqCtaSection() {
   return (
-    <section className="px-4 pb-20 pt-6 sm:px-6 sm:pb-24 sm:pt-8 lg:px-10 lg:pb-28 lg:pt-10">
+    <section className="px-4 pb-20 pt-8 sm:px-6 sm:pb-24 sm:pt-10 lg:px-10 lg:pb-28 lg:pt-12">
       <div className="mx-auto grid w-full max-w-6xl gap-10">
         <div>
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-950 sm:text-3xl lg:text-4xl">
             Preguntas frecuentes
           </h2>
 
@@ -44,12 +44,12 @@ export function FaqCtaSection() {
             {faqs.map((faq) => (
               <details
                 key={faq.question}
-                className="group rounded-2xl border border-slate-200 bg-white p-4 transition-colors duration-200 hover:border-cyan-200 sm:p-5"
+                className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_14px_32px_-30px_rgba(15,23,42,0.45)] transition-all duration-300 hover:border-cyan-200 group-open:border-cyan-200 group-open:bg-cyan-50/40 group-open:shadow-[0_18px_36px_-28px_rgba(8,145,178,0.36)] sm:p-5"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-left text-sm font-semibold text-slate-900 sm:text-base">
                   <span>{faq.question}</span>
                   <span
-                    className="text-xl leading-none text-cyan-700 transition-transform duration-200 group-open:rotate-45"
+                    className="text-xl leading-none text-cyan-700 transition-transform duration-300 group-open:rotate-45"
                     aria-hidden
                   >
                     +
@@ -65,7 +65,7 @@ export function FaqCtaSection() {
           <h3 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl">
             Tu negocio puede verse profesional y vender con más orden
           </h3>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg">
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-500 sm:text-lg">
             Te muestro cómo se vería esto en tu negocio (sin compromiso).
           </p>
 
@@ -74,13 +74,13 @@ export function FaqCtaSection() {
               href={whatsappHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_-20px_rgba(8,145,178,0.95)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:bg-cyan-700 sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_22px_44px_-24px_rgba(8,145,178,0.95)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:bg-cyan-700 sm:w-auto"
             >
               Muéstrame cómo funcionaría
             </Link>
             <a
               href="#demos"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-600 transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-300 hover:bg-cyan-50/60 hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
             >
               Ver demos
             </a>
