@@ -18,13 +18,13 @@ export function SocialProofSection() {
           <h2 className="text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">
             Resultados que se notan en el día a día
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-slate-300 sm:text-lg">
+          <p className="mt-4 text-base leading-relaxed text-slate-400 sm:text-lg">
             Cuando el proceso de contacto y agenda se ordena, se nota rápido: menos caos, más control y mejores
             conversiones.
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-5 sm:mt-12 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-7">
+        <div className="mt-12 grid grid-cols-1 gap-5 sm:mt-14 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-7">
           {testimonials.map((testimonial) => (
             <article
               key={testimonial}

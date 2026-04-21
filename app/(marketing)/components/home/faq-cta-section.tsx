@@ -55,7 +55,7 @@ export function FaqCtaSection() {
                     +
                   </span>
                 </summary>
-                <p className="pt-3 text-sm leading-relaxed text-slate-700 sm:text-base">{faq.answer}</p>
+                <p className="pt-3 text-sm leading-relaxed text-slate-600 sm:text-base">{faq.answer}</p>
               </details>
             ))}
           </div>
@@ -65,7 +65,7 @@ export function FaqCtaSection() {
           <h3 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-4xl">
             Tu negocio puede verse profesional y vender con más orden
           </h3>
-          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-700 sm:text-lg">
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg">
             Te muestro cómo se vería esto en tu negocio (sin compromiso).
           </p>
 
@@ -74,13 +74,13 @@ export function FaqCtaSection() {
               href={whatsappHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_22px_45px_-12px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-1 hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_30px_58px_-14px_rgba(8,145,178,0.95)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_26px_56px_-12px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-1.5 hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_38px_78px_-15px_rgba(8,145,178,0.98)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
             >
               Muéstrame cómo funcionaría
             </Link>
             <a
               href="#demos"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
             >
               Ver demos
             </a>
