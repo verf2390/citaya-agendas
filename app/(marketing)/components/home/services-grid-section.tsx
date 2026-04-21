@@ -28,7 +28,7 @@ const services = [
 
 export function ServicesGridSection() {
   return (
-    <section className="px-4 pb-14 pt-4 sm:px-6 sm:pb-16 sm:pt-6 lg:px-10 lg:pb-20 lg:pt-8">
+    <section className="px-4 pb-14 pt-6 sm:px-6 sm:pb-16 sm:pt-8 lg:px-10 lg:pb-20 lg:pt-10">
       <div className="mx-auto w-full max-w-6xl">
         <div className="max-w-3xl">
           <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">

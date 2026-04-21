@@ -4,6 +4,7 @@ import { DemosShowcaseSection } from "./(marketing)/components/home/demos-showca
 import { BenefitsProblemsSection } from "./(marketing)/components/home/benefits-problems-section";
 import { SocialProofSection } from "./(marketing)/components/home/social-proof-section";
 import { FaqCtaSection } from "./(marketing)/components/home/faq-cta-section";
+import { WhatsAppFloatingButton } from "./(marketing)/components/home/whatsapp-floating-button";
 
 export default function Home() {
   return (
@@ -14,6 +15,7 @@ export default function Home() {
       <BenefitsProblemsSection />
       <SocialProofSection />
       <FaqCtaSection />
+      <WhatsAppFloatingButton />
     </main>
   );
 }
