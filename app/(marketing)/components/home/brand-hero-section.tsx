@@ -6,6 +6,9 @@ const painPoints = [
   "Agenda desordenada y difícil de controlar",
 ] as const;
 
+const whatsappMessage = "Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.";
+const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsappMessage)}`;
+
 export function BrandHeroSection() {
   return (
     <section className="px-4 pb-10 pt-8 sm:px-6 sm:pb-14 sm:pt-10 lg:px-10 lg:pt-14">
@@ -42,13 +45,15 @@ export function BrandHeroSection() {
 
           <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
             <Link
-              href="#"
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_35px_-20px_rgba(8,145,178,0.95)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-500 active:translate-y-0 active:bg-cyan-700 sm:w-auto"
             >
               Ver cómo funcionaría en mi negocio
             </Link>
             <Link
-              href="/servicios-demo"
+              href="#demos"
               className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700 active:translate-y-0 sm:w-auto"
             >
               Ver demos reales
