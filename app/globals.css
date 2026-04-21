@@ -29,8 +29,27 @@ html {
   scroll-behavior: smooth;
 }
 
+@keyframes fade-up-soft {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up-soft {
+  animation: fade-up-soft 420ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .animate-fade-up-soft {
+    animation: none;
   }
 }

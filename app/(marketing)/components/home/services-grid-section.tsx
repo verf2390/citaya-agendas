@@ -28,13 +28,13 @@ const services = [
 
 export function ServicesGridSection() {
   return (
-    <section className="px-4 pb-14 pt-6 sm:px-6 sm:pb-16 sm:pt-8 lg:px-10 lg:pb-20 lg:pt-10">
+    <section className="px-4 pb-16 pt-8 sm:px-6 sm:pb-18 sm:pt-10 lg:px-10 lg:pb-24 lg:pt-12">
       <div className="mx-auto w-full max-w-6xl">
         <div className="max-w-3xl">
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
+          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-950 sm:text-3xl lg:text-4xl">
             Lo que implementamos para que tu negocio venda con más orden
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg">
+          <p className="mt-4 text-base leading-relaxed text-slate-500 sm:text-lg">
             No se trata solo de tener una web, sino de tener un sistema que atrae, organiza y convierte mejor.
           </p>
         </div>
@@ -43,10 +43,10 @@ export function ServicesGridSection() {
           {services.map((service) => (
             <article
               key={service.title}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-md sm:p-6"
+              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.55)] transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200 hover:shadow-[0_26px_48px_-30px_rgba(8,145,178,0.42)] sm:p-6"
             >
               <h3 className="text-lg font-semibold text-slate-900">{service.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">{service.description}</p>
+              <p className="mt-3 text-sm leading-relaxed text-slate-600 sm:text-base">{service.description}</p>
             </article>
           ))}
         </div>
