@@ -7,6 +7,7 @@ import { LeadCaptureSection } from "./components/lead-capture-section";
 import { ServicesSection } from "./components/services-section";
 import { SocialProofSection } from "./components/social-proof-section";
 import { TrustIndicatorsSection } from "./components/trust-indicators-section";
+import { WhatsAppFloatingButton } from "./components/whatsapp-floating-button";
 
 export default function ServiciosDemoPage() {
   return (
@@ -20,6 +21,7 @@ export default function ServiciosDemoPage() {
       <AutomationFlowSection />
       <SocialProofSection />
       <FinalCtaSection />
+      <WhatsAppFloatingButton />
     </main>
   );
 }

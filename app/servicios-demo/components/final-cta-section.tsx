@@ -6,6 +6,39 @@ const closingPoints = [
   "Un flujo digital que ordena ventas y operación",
 ] as const;
 
+const whatsappMessage = encodeURIComponent(
+  "Hola, vi esta demo y me gustaría cotizar una web o automatización para mi negocio.",
+);
+
+const emailSubject = encodeURIComponent("Consulta sobre web y automatización");
+const emailBody = encodeURIComponent(
+  "Hola, vi la demo y me gustaría recibir más información sobre una solución para mi negocio.",
+);
+
+const contactButtons = [
+  {
+    label: "WhatsApp",
+    helper: "+56 9 6142 5029",
+    href: `https://wa.me/56961425029?text=${whatsappMessage}`,
+    tone: "bg-emerald-400 text-emerald-950 hover:bg-emerald-300",
+    icon: "WA",
+  },
+  {
+    label: "Síguenos en Instagram",
+    helper: "@citaya_agenda",
+    href: "https://www.instagram.com/citaya_agenda",
+    tone: "bg-fuchsia-500/90 text-white hover:bg-fuchsia-400",
+    icon: "IG",
+  },
+  {
+    label: "Enviar correo",
+    helper: "verf14@gmail.com",
+    href: `mailto:verf14@gmail.com?subject=${emailSubject}&body=${emailBody}`,
+    tone: "border border-cyan-200/50 bg-white/10 text-cyan-50 hover:bg-white/20",
+    icon: "@",
+  },
+] as const;
+
 export function FinalCtaSection() {
   return (
     <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-10">
@@ -30,7 +63,7 @@ export function FinalCtaSection() {
 
         <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
           <Link
-            href="https://wa.me/56912345678"
+            href={`https://wa.me/56961425029?text=${whatsappMessage}`}
             target="_blank"
             rel="noreferrer"
             className="inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-400 px-6 py-3 text-sm font-semibold text-emerald-950 transition-all duration-200 hover:-translate-y-0.5 hover:bg-emerald-300"
@@ -43,6 +76,33 @@ export function FinalCtaSection() {
           >
             Solicitar demo guiada
           </Link>
+        </div>
+
+        <div className="mt-8 border-t border-white/20 pt-6 sm:mt-10 sm:pt-8">
+          <p className="text-sm font-medium text-cyan-100 sm:text-base">
+            ¿Te gustaría una solución así para tu negocio? Hablemos sobre tu web, automatización o captación de
+            clientes.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:mt-5 sm:grid-cols-2 lg:grid-cols-3">
+            {contactButtons.map((button) => (
+              <Link
+                key={button.label}
+                href={button.href}
+                target="_blank"
+                rel="noreferrer"
+                className={`group inline-flex min-h-14 items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5 ${button.tone}`}
+              >
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/15 text-xs font-bold tracking-wide">
+                  {button.icon}
+                </span>
+                <span className="flex flex-col leading-tight">
+                  <span>{button.label}</span>
+                  <span className="mt-1 text-xs font-medium opacity-90">{button.helper}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
     </section>
