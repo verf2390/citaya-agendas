@@ -6,6 +6,10 @@ const trustPills = [
   "Atención para hogar, oficina y local comercial",
 ] as const;
 
+const quickQuoteWhatsappMessage = encodeURIComponent(
+  "Hola Victor, quiero solicitar una cotización rápida para una web o agenda online.",
+);
+
 export function HeroSection() {
   return (
     <section className="px-4 pb-8 pt-8 sm:px-6 sm:pb-12 sm:pt-10 lg:px-10">
@@ -45,13 +49,17 @@ export function HeroSection() {
 
           <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
             <Link
-              href="/reservar"
+              href="https://demo.citaya.online/"
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-cyan-500 active:scale-[0.99] active:translate-y-0 active:bg-cyan-700 sm:min-h-12 sm:w-auto"
             >
               Ver agenda funcionando en vivo
             </Link>
             <Link
-              href="#solicitar-cotizacion"
+              href={`https://wa.me/56961425029?text=${quickQuoteWhatsappMessage}`}
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:border-cyan-300 hover:text-cyan-700 active:scale-[0.99]"
             >
               Solicitar cotización rápida
