@@ -1,6 +1,9 @@
+import { AutomationFlowSection } from "./components/automation-flow-section";
 import { BenefitsSection } from "./components/benefits-section";
 import { FinalCtaSection } from "./components/final-cta-section";
 import { HeroSection } from "./components/hero-section";
+import { HowItWorksSection } from "./components/how-it-works-section";
+import { LeadCaptureSection } from "./components/lead-capture-section";
 import { ServicesSection } from "./components/services-section";
 
 export default function ServiciosDemoPage() {
@@ -8,7 +11,10 @@ export default function ServiciosDemoPage() {
     <main className="overflow-x-hidden bg-white text-slate-900">
       <HeroSection />
       <BenefitsSection />
+      <HowItWorksSection />
       <ServicesSection />
+      <AutomationFlowSection />
+      <LeadCaptureSection />
       <FinalCtaSection />
     </main>
   );
