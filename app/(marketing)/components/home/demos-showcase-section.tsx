@@ -37,7 +37,7 @@ const demos = [
 
 export function DemosShowcaseSection() {
   return (
-    <section id="demos" className="scroll-mt-6 px-4 pb-14 pt-4 sm:px-6 sm:pb-16 sm:pt-6 lg:px-10 lg:pb-20 lg:pt-8">
+    <section id="demos" className="px-4 pb-14 pt-4 sm:px-6 sm:pb-16 sm:pt-6 lg:px-10 lg:pb-20 lg:pt-8">
       <div className="mx-auto w-full max-w-6xl">
         <div className="max-w-3xl">
           <h2 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-3xl lg:text-4xl">
