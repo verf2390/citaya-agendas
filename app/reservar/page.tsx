@@ -227,14 +227,14 @@ function SectionHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-2">
+    <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-white/80 ring-1 ring-border">
+        <div className="flex items-center gap-2.5">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white ring-1 ring-border shadow-sm">
             {icon}
           </span>
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold sm:text-base">
+            <div className="truncate text-[13px] font-extrabold sm:text-base">
               {title}
             </div>
             {subtitle ? (
@@ -811,80 +811,95 @@ function ReservarInner() {
   }, [selectedDayKey, professionalId, serviceId, pageStart]);
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background to-muted/40">
-      <div className="mx-auto w-full max-w-[460px] px-3 pb-20 pt-2 font-[system-ui] text-[12px] leading-snug sm:max-w-3xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
+    <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background via-background to-muted/40">
+      <div className="mx-auto w-full max-w-[460px] px-3 pb-24 pt-2 font-[system-ui] text-[12px] leading-snug sm:max-w-3xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
         {/* Header sticky */}
         <div
           className={cn(
             "sticky top-0 z-40 -mx-3 px-3 pt-2 pb-2 sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:px-0 lg:pt-0",
-            "bg-background/85 backdrop-blur",
+            "bg-background/90 backdrop-blur-xl",
             isScrolled ? "shadow-sm border-b" : "border-b border-transparent",
           )}
         >
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-white/80 ring-1 ring-border sm:h-11 sm:w-11">
-                <span className="text-[10px] font-extrabold sm:text-sm">
-                  {(tenantName || tenantSlug || "C").slice(0, 2).toUpperCase()}
+          <div className="rounded-2xl border border-border/70 bg-white/85 px-3 py-3 shadow-sm sm:px-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white ring-1 ring-border shadow-sm sm:h-11 sm:w-11">
+                  <span className="text-[10px] font-extrabold sm:text-sm">
+                    {(tenantName || tenantSlug || "C").slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-[13px] font-extrabold sm:text-base">
+                    {tenantName || tenantSlug || "Reserva tu hora"}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground sm:text-sm">
+                    Reserva en pocos pasos • confirmación automática
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-2xl border bg-white shadow-sm transition hover:bg-muted sm:h-10 sm:w-10"
+                aria-label="Cerrar"
+                title="Cerrar"
+              >
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+            </div>
+
+            {!selectedSlot ? (
+              <div className="mt-3 rounded-2xl bg-muted/50 px-3 py-2 text-[10.5px] text-muted-foreground sm:text-xs">
+                Elige un servicio, selecciona la hora y confirma tus datos.
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10.5px] text-emerald-800 sm:text-xs">
+                Hora elegida:{" "}
+                <span className="font-extrabold">
+                  {formatCL(selectedSlot.start_at)}
                 </span>
               </div>
-              <div className="min-w-0">
-                <div className="truncate text-[13px] font-semibold sm:text-base">
-                  {tenantName || tenantSlug || "Reserva tu hora"}
-                </div>
-                <div className="text-[11px] text-muted-foreground sm:text-sm">
-                  Selecciona servicio, profesional y confirma.
+            )}
+
+            {serviceAlert ? (
+              <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800 sm:p-2.5 sm:text-sm">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4" />
+                  <div>
+                    <b>Atención:</b> {serviceAlert}
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-2xl border bg-white/80 shadow-sm hover:bg-muted sm:h-10 sm:w-10"
-              aria-label="Cerrar"
-              title="Cerrar"
-            >
-              <X className="h-4 w-4 sm:h-5 sm:w-5" />
-            </button>
+            ) : null}
           </div>
-
-          {serviceAlert ? (
-            <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800 sm:p-2.5 sm:text-sm">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4" />
-                <div>
-                  <b>Atención:</b> {serviceAlert}
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
 
-        <div className="grid gap-2.5 sm:gap-4 pt-3">
+        <div className="grid gap-3 pt-3 sm:gap-4">
           <div className="md:col-span-1 lg:col-span-2">
             {/* Servicio */}
             <div ref={serviceRef} />
-            <section className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4">
+            <section className="rounded-3xl border bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4">
               <SectionHeader
                 icon={<BadgeCheck className="h-4 w-4 text-muted-foreground" />}
                 title="Servicio"
                 subtitle={
                   showServicePicker
-                    ? "Elige un servicio para continuar."
-                    : "Detalles del servicio seleccionado."
+                    ? "Elige el servicio para seguir con la reserva."
+                    : "Este es el servicio que estás por agendar."
                 }
               />
 
               {loadingServices ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <SkeletonCard />
                   <SkeletonCard />
                 </div>
               ) : showServicePicker ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
                   {services.length === 0 ? (
-                    <div className="rounded-xl border bg-white p-2.5 text-[11px] text-muted-foreground sm:text-sm">
+                    <div className="rounded-2xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
                       No hay servicios activos configurados.
                     </div>
                   ) : (
@@ -894,14 +909,14 @@ function ReservarInner() {
                         type="button"
                         onClick={() => pickService(s.id)}
                         className={cn(
-                          "w-full rounded-2xl border bg-white p-2.5 text-left transition",
-                          "hover:bg-muted/40 active:scale-[0.99]",
+                          "w-full rounded-2xl border bg-white p-3 text-left transition",
+                          "hover:bg-muted/40 hover:shadow-sm active:scale-[0.99]",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/50 ring-1 ring-border">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted/50 ring-1 ring-border">
                               <BadgeCheck className="h-5 w-5 text-muted-foreground" />
                             </div>
                             <div className="min-w-0">
@@ -917,7 +932,7 @@ function ReservarInner() {
                             </div>
                           </div>
 
-                          <span className="shrink-0 rounded-xl bg-foreground px-3 py-2 text-[10px] font-extrabold text-background sm:text-xs">
+                          <span className="shrink-0 rounded-xl bg-foreground px-3 py-2 text-[10px] font-extrabold text-background shadow-sm sm:text-xs">
                             Elegir
                           </span>
                         </div>
@@ -926,10 +941,10 @@ function ReservarInner() {
                   )}
                 </div>
               ) : (
-                <div className="mt-2 rounded-2xl border bg-white p-3">
+                <div className="mt-3 rounded-2xl border bg-white p-3">
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/50 ring-1 ring-border">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted/50 ring-1 ring-border">
                         <BadgeCheck className="h-5 w-5 text-muted-foreground" />
                       </div>
 
@@ -979,7 +994,7 @@ function ReservarInner() {
             </section>
 
             {/* Profesional */}
-            <section className="mt-2 rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:mt-2 sm:p-4">
+            <section className="mt-3 rounded-3xl border bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4">
               <SectionHeader
                 icon={<User className="h-4 w-4 text-muted-foreground" />}
                 title="Profesional"
@@ -987,7 +1002,7 @@ function ReservarInner() {
               />
 
               {loadingPros ? (
-                <div className="mt-2 rounded-2xl border bg-white p-3">
+                <div className="mt-3 rounded-2xl border bg-white p-3">
                   <div className="flex items-center gap-3">
                     <div className="h-12 w-12 rounded-2xl bg-muted/60 animate-pulse" />
                     <div className="flex-1 space-y-2">
@@ -997,7 +1012,7 @@ function ReservarInner() {
                   </div>
                 </div>
               ) : professionals.length === 0 ? (
-                <div className="mt-2 rounded-2xl border bg-white p-2.5 text-[12px] font-extrabold sm:text-sm">
+                <div className="mt-3 rounded-2xl border bg-white p-3 text-[12px] font-extrabold sm:text-sm">
                   Sin profesionales configurados
                   <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
                     Agrega profesionales en Supabase → <b>professionals</b>{" "}
@@ -1011,7 +1026,7 @@ function ReservarInner() {
                       value={professionalId}
                       disabled={saving || !tenantId}
                       onChange={(e) => setProfessionalId(e.target.value)}
-                      className="mt-2 h-10 w-full rounded-xl border bg-white px-3 text-[12px] font-medium outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
+                      className="mt-3 h-11 w-full rounded-2xl border bg-white px-3 text-[12px] font-medium outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                     >
                       {professionals.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -1028,9 +1043,9 @@ function ReservarInner() {
                     if (!pro) return null;
 
                     return (
-                      <div className="mt-2 rounded-2xl border bg-white p-2.5 sm:p-4">
+                      <div className="mt-3 rounded-2xl border bg-white p-3 sm:p-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-muted/40 ring-1 ring-border sm:h-12 sm:w-12">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-muted/40 ring-1 ring-border">
                             {pro.avatar_url ? (
                               <img
                                 src={pro.avatar_url}
@@ -1069,7 +1084,7 @@ function ReservarInner() {
             <div ref={slotRef} />
             <section
               className={cn(
-                "mt-2 rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:mt-2 sm:p-4",
+                "mt-3 rounded-3xl border bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4",
                 lockSlots ? "opacity-70" : "",
               )}
             >
@@ -1096,7 +1111,7 @@ function ReservarInner() {
                       !serviceId
                     }
                     className={cn(
-                      "h-8 rounded-xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm",
+                      "h-9 rounded-xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     )}
                   >
@@ -1106,23 +1121,23 @@ function ReservarInner() {
               />
 
               {!serviceId ? (
-                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800 sm:p-2.5 sm:text-sm">
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:text-sm">
                   <b>Primero elige un servicio</b> para cargar disponibilidad.
                 </div>
               ) : null}
 
               {loadError ? (
-                <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2 text-[11px] text-red-700 sm:p-2.5 sm:text-sm">
+                <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-[11px] text-red-700 sm:text-sm">
                   {loadError}
                 </div>
               ) : null}
 
               {lockSlots ? (
-                <div className="mt-2 rounded-xl border bg-white p-2.5 text-[11px] text-muted-foreground sm:text-sm">
+                <div className="mt-3 rounded-2xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
                   Selecciona un <b>servicio</b> para ver horarios.
                 </div>
               ) : (
-                <div className="mt-2">
+                <div className="mt-3">
                   {/* ✅ Fila de flechas + carrusel */}
                   <div className="relative">
                     <div className="flex items-center gap-2 min-w-0">
@@ -1131,7 +1146,7 @@ function ReservarInner() {
                         onClick={goPrev7}
                         disabled={!canPrev}
                         className={cn(
-                          "shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10",
+                          "shrink-0 flex h-9 w-9 items-center justify-center rounded-2xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                         title="Anterior"
@@ -1140,21 +1155,18 @@ function ReservarInner() {
                         <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                       </button>
 
-                      {/* ✅ wrapper con fades laterales para indicar scroll */}
                       <div className="relative flex-1 min-w-0 w-0">
-                        {/* fade izquierda */}
                         <div
                           aria-hidden
                           className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-background/90 to-transparent"
                         />
-                        {/* fade derecha */}
                         <div
                           aria-hidden
                           className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-background/90 to-transparent"
                         />
 
                         <div className="overflow-x-auto touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-                          <div className="flex flex-nowrap gap-1.5 min-w-max items-center py-0.5">
+                          <div className="flex min-w-max flex-nowrap items-center gap-2 py-0.5">
                             {visibleDays.map((d) => {
                               const active = d.dayKey === selectedDayKey;
                               const n = dayCounts.get(d.dayKey) ?? 0;
@@ -1168,11 +1180,11 @@ function ReservarInner() {
                                     setSelectedSlot(null);
                                   }}
                                   className={cn(
-                                    "shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-border transition",
+                                    "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[10px] font-semibold ring-1 ring-border transition",
                                     "sm:px-4 sm:py-2 sm:text-sm",
                                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     active
-                                      ? "bg-foreground text-background"
+                                      ? "bg-foreground text-background shadow-sm"
                                       : "bg-white hover:bg-muted",
                                     n === 0 ? "opacity-70" : "",
                                   )}
@@ -1200,7 +1212,7 @@ function ReservarInner() {
                         onClick={goNext7}
                         disabled={!canNext}
                         className={cn(
-                          "shrink-0 flex h-8 w-8 items-center justify-center rounded-xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10",
+                          "shrink-0 flex h-9 w-9 items-center justify-center rounded-2xl border bg-white hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:w-10",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                         title="Siguiente"
@@ -1220,19 +1232,18 @@ function ReservarInner() {
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-[11px] font-semibold sm:text-sm">
-                        Selecciona una hora
+                      <div className="text-[11px] font-extrabold sm:text-sm">
+                        Selecciona una hora disponible
                       </div>
 
-                      {/* mini hint UX */}
-                      <div className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
+                      <div className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
                         <Sparkles className="h-4 w-4" />
-                        <span></span>
+                        <span>Elige la que más te acomode</span>
                       </div>
                     </div>
 
                     {activeSlots.length === 0 ? (
-                      <div className="mt-2 rounded-xl border bg-white p-2.5 text-[11px] text-muted-foreground sm:text-sm">
+                      <div className="mt-3 rounded-2xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
                         No hay horarios disponibles para este día.
                       </div>
                     ) : (
@@ -1246,9 +1257,8 @@ function ReservarInner() {
                           return (
                             <div
                               key={label}
-                              className="rounded-2xl border bg-white p-2.5 sm:p-3"
+                              className="rounded-2xl border bg-white p-3 sm:p-3.5"
                             >
-                              {/* header bucket */}
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
@@ -1273,7 +1283,6 @@ function ReservarInner() {
                                 </span>
                               </div>
 
-                              {/* grid slots - más “clicable” en mobile */}
                               <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                                 {list.map((s: Slot) => {
                                   const active =
@@ -1293,7 +1302,7 @@ function ReservarInner() {
                                       }}
                                       className={cn(
                                         "relative w-full rounded-2xl border bg-white text-left transition",
-                                        "min-h-[44px] px-3 py-2",
+                                        "min-h-[48px] px-3 py-2.5",
                                         "active:scale-[0.98] motion-reduce:active:scale-100",
                                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                         "hover:bg-muted/40",
@@ -1306,7 +1315,6 @@ function ReservarInner() {
                                           : "",
                                       )}
                                     >
-                                      {/* check */}
                                       <span
                                         className={cn(
                                           "absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-full",
@@ -1359,7 +1367,7 @@ function ReservarInner() {
                             {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
                           </div>
                           <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
-                            Las horas podrían agotarse. Agenda lo antes posible.
+                            Las horas pueden agotarse. Confirma cuando estés listo.
                           </div>
                         </div>
                       </div>
@@ -1373,7 +1381,7 @@ function ReservarInner() {
             <div ref={contactRef} />
             <section
               className={cn(
-                "mt-2 rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:mt-4 sm:p-4",
+                "mt-3 rounded-3xl border bg-white/85 p-3 shadow-sm backdrop-blur sm:p-4",
                 lockContact ? "opacity-70" : "",
               )}
             >
@@ -1383,7 +1391,12 @@ function ReservarInner() {
                 subtitle="Te enviaremos la confirmación al correo."
               />
 
-              <div className="mt-2 grid gap-3">
+              <div className="mt-3 rounded-2xl bg-muted/50 px-3 py-2 text-[10.5px] text-muted-foreground sm:text-xs">
+                Tus datos se usan solo para gestionar tu reserva y enviarte la
+                confirmación.
+              </div>
+
+              <div className="mt-3 grid gap-3">
                 <div>
                   <label className="mb-1.5 block text-[11px] font-semibold sm:text-sm">
                     Nombre
@@ -1396,7 +1409,7 @@ function ReservarInner() {
                       if (!nameTouched) setNameTouched(true);
                     }}
                     placeholder="Ej: Juan Pérez"
-                    className="h-9 w-full rounded-xl border bg-white px-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
+                    className="h-10 w-full rounded-2xl border bg-white px-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
                   />
                 </div>
 
@@ -1419,7 +1432,7 @@ function ReservarInner() {
                       }}
                       placeholder="Ej: 912345678 o +56912345678"
                       className={cn(
-                        "h-9 w-full rounded-xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm",
+                        "h-10 w-full rounded-2xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm",
                         phoneTouched && phone.trim().length > 0 && !isPhoneValid
                           ? "border-red-300 focus:ring-red-200"
                           : "focus:ring-foreground/20",
@@ -1451,7 +1464,7 @@ function ReservarInner() {
                       onBlur={() => setEmail((v) => v.trim().toLowerCase())}
                       placeholder="Ej: nombre@gmail.com"
                       className={cn(
-                        "h-9 w-full rounded-xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm",
+                        "h-10 w-full rounded-2xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm",
                         email.trim().length > 0 && !isValidEmail(email)
                           ? "border-red-300 focus:ring-red-200"
                           : "focus:ring-foreground/20",
@@ -1460,7 +1473,7 @@ function ReservarInner() {
                   </div>
                 </div>
 
-                <div className="text-center text-[10px] text-muted-foreground sm:text-xs">
+                <div className="rounded-2xl border bg-white px-3 py-2 text-center text-[10px] text-muted-foreground sm:text-xs">
                   Al reservar aceptas recibir mensajes relacionados a tu cita.
                 </div>
               </div>
@@ -1469,21 +1482,21 @@ function ReservarInner() {
 
           {/* Sidebar desktop */}
           <aside className="hidden lg:block lg:col-span-1">
-            <section className="rounded-2xl border bg-white/80 p-4 shadow-sm backdrop-blur lg:sticky lg:top-6">
+            <section className="rounded-3xl border bg-white/85 p-4 shadow-sm backdrop-blur lg:sticky lg:top-6">
               <div className="mb-2 flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                <div className="text-base font-semibold">
-                  Información de tu reserva
+                <div className="text-base font-extrabold">
+                  Resumen de tu reserva
                 </div>
               </div>
 
-              <div className="mt-2 rounded-2xl border bg-white p-4">
+              <div className="mt-3 rounded-2xl border bg-white p-4">
                 <div className="text-sm font-extrabold">
                   {service?.name ??
                     (serviceId ? "Servicio seleccionado" : "Servicio")}
                 </div>
 
-                <div className="mt-2 text-sm text-muted-foreground">
+                <div className="mt-3 text-sm text-muted-foreground">
                   Profesional:{" "}
                   <span className="font-medium text-foreground">
                     {professionalName}
@@ -1506,12 +1519,16 @@ function ReservarInner() {
                   </div>
                 ) : null}
 
-                <div className="mt-2 text-sm text-muted-foreground">
+                <div className="mt-3 text-sm text-muted-foreground">
                   Fecha y hora:
                 </div>
-                <div className="mt-1 text-sm font-semibold">
+                <div className="mt-1 text-sm font-extrabold">
                   {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
                 </div>
+              </div>
+
+              <div className="mt-3 rounded-2xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                Confirmación inmediata por correo y enlace privado para gestionar tu cita.
               </div>
 
               <div className="mt-4">
@@ -1522,7 +1539,7 @@ function ReservarInner() {
                   className={cn(
                     "h-12 w-full rounded-2xl text-sm font-extrabold transition",
                     canSubmit
-                      ? "bg-foreground text-background hover:opacity-95"
+                      ? "bg-foreground text-background shadow-sm hover:opacity-95"
                       : "cursor-not-allowed bg-muted text-muted-foreground",
                   )}
                 >
@@ -1533,12 +1550,12 @@ function ReservarInner() {
           </aside>
         </div>
 
-        {/* CTA fija mobile (más compacta) */}
+        {/* CTA fija mobile */}
         <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 p-2 backdrop-blur lg:hidden">
           <div className="mx-auto max-w-[460px] px-1">
-            <div className="mb-2 rounded-2xl border bg-white px-3 py-2 text-[10.5px] text-muted-foreground">
+            <div className="mb-2 rounded-2xl border bg-white px-3 py-2 text-[10.5px] text-muted-foreground shadow-sm">
               <div className="truncate">
-                <span className="font-semibold text-foreground">
+                <span className="font-extrabold text-foreground">
                   {mobileSummary.svc}
                 </span>
                 {mobileSummary.price ? (
@@ -1553,7 +1570,7 @@ function ReservarInner() {
               onClick={handleReserve}
               disabled={!canSubmit}
               className={cn(
-                "h-10 w-full rounded-2xl text-[12px] font-extrabold transition",
+                "h-11 w-full rounded-2xl text-[12px] font-extrabold transition shadow-sm",
                 canSubmit
                   ? "bg-foreground text-background hover:opacity-95"
                   : "cursor-not-allowed bg-muted text-muted-foreground",
