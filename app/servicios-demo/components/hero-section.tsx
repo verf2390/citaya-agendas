@@ -12,13 +12,13 @@ const quickQuoteWhatsappMessage = encodeURIComponent(
 
 export function HeroSection() {
   return (
-    <section className="px-4 pb-8 pt-8 sm:px-6 sm:pb-12 sm:pt-10 lg:px-10">
-      <div className="mx-auto max-w-6xl rounded-3xl border border-cyan-100 bg-[linear-gradient(140deg,#f8fcff,#ecf8ff_45%,#f8fafc)] p-6 shadow-[0_20px_60px_-45px_rgba(14,116,144,0.5)] sm:p-10 lg:p-14">
+    <section className="px-4 pb-16 pt-6 sm:px-6 sm:pb-20 sm:pt-8 lg:px-10 lg:pb-24 lg:pt-10">
+      <div className="mx-auto max-w-6xl rounded-3xl border border-cyan-200/80 bg-gradient-to-br from-slate-950/10 via-cyan-200/70 to-white p-6 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.62)] sm:p-10 lg:p-12">
         <div className="max-w-3xl">
           <span className="inline-flex rounded-full border border-cyan-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700 sm:text-xs">
             Climatización residencial y comercial
           </span>
-          <h1 className="mt-5 text-3xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-4xl lg:text-5xl">
+          <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
             Empieza a recibir reservas automáticas desde hoy
           </h1>
           <p className="mt-4 text-base leading-relaxed text-slate-600 sm:mt-5 sm:text-lg">
@@ -52,7 +52,7 @@ export function HeroSection() {
               href="https://demo.citaya.online/"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-14 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-cyan-500 active:scale-[0.99] active:translate-y-0 active:bg-cyan-700 sm:min-h-12 sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)] active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
             >
               Ver agenda funcionando en vivo
             </Link>
@@ -60,7 +60,7 @@ export function HeroSection() {
               href={`https://wa.me/56961425029?text=${quickQuoteWhatsappMessage}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:border-cyan-300 hover:text-cyan-700 active:scale-[0.99]"
+              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700 sm:w-auto"
             >
               Solicitar cotización rápida
             </Link>

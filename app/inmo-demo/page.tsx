@@ -35,7 +35,7 @@ export default function InmoDemoHomePage() {
   ];
 
   return (
-    <main className="overflow-x-hidden bg-neutral-950 text-white">
+    <main className="overflow-x-hidden bg-white text-slate-900">
       <section className="relative isolate flex min-h-[75vh] items-center overflow-hidden px-4 py-14 sm:min-h-[82vh] sm:px-10 sm:py-20 lg:px-16">
         <video
           autoPlay
@@ -49,14 +49,14 @@ export default function InmoDemoHomePage() {
           <source src="/inmo-demo/hero/17224730-hd_1920_1080_30fps.mp4" type="video/mp4" />
         </video>
         <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_top_right,rgba(212,192,158,0.16),transparent_42%),radial-gradient(circle_at_left,rgba(120,113,108,0.12),transparent_40%)]" />
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(110deg,rgba(0,0,0,0.64),rgba(0,0,0,0.48)_45%,rgba(0,0,0,0.68))]" />
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(110deg,rgba(3,7,18,0.68),rgba(3,7,18,0.54)_45%,rgba(3,7,18,0.72))]" />
 
         <div className="mx-auto w-full max-w-6xl">
           <div className="max-w-3xl">
             <p className="inline-flex rounded-full border border-stone-300/20 bg-stone-200/10 px-4 py-1 text-xs uppercase tracking-[0.22em] text-stone-200">
               Brokerage Inmobiliario Premium
             </p>
-            <h1 className="mt-6 text-3xl font-semibold tracking-tight text-white sm:text-5xl lg:text-7xl">
+            <h1 className="mt-6 text-3xl font-bold tracking-tight text-white sm:text-5xl lg:text-7xl">
               Encuentra tu propiedad ideal
             </h1>
             <p className="mt-5 max-w-3xl text-base leading-relaxed text-stone-200 sm:mt-6 sm:text-lg">
@@ -67,13 +67,13 @@ export default function InmoDemoHomePage() {
             <div className="mt-9 flex flex-wrap gap-3 sm:mt-10 sm:gap-4">
               <Link
                 href="/inmo-demo/propiedades"
-                className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d4c09e] px-6 py-3 text-sm font-semibold text-neutral-900 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ddccb1] hover:shadow-[0_14px_28px_-18px_rgba(212,192,158,0.95)]"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)]"
               >
                 Ver propiedades
               </Link>
               <Link
                 href="/inmo-demo/contacto"
-                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-stone-300/30 bg-white/5 px-6 py-3 text-sm font-semibold text-stone-100 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#d4c09e]/60 hover:bg-[#d4c09e]/10"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/40 bg-white/10 px-6 py-3 text-sm font-medium text-white transition-all duration-200 hover:border-white/60 hover:bg-white/20"
               >
                 Contactar
               </Link>
@@ -88,11 +88,11 @@ export default function InmoDemoHomePage() {
                   id="busqueda-home"
                   type="text"
                   placeholder="Buscar por ubicación, comuna..."
-                  className="h-11 w-full rounded-lg border border-stone-300/20 bg-stone-100/10 px-4 py-3 text-sm text-stone-100 placeholder:text-stone-300/60 outline-none ring-offset-0 transition-all duration-200 focus:border-[#d4c09e]/55 focus:bg-white/10"
+                  className="h-11 w-full rounded-lg border border-stone-300/20 bg-stone-100/10 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-600/60 outline-none ring-offset-0 transition-all duration-200 focus:border-[#d4c09e]/55 focus:bg-white/10"
                 />
                 <button
                   type="button"
-                  className="min-h-11 rounded-lg bg-[#d4c09e] px-6 py-3 text-sm font-semibold text-neutral-900 transition-all duration-200 hover:bg-[#ddccb1] sm:self-stretch"
+                  className="min-h-11 rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 hover:from-cyan-600 hover:to-cyan-500 sm:self-stretch"
                 >
                   Buscar
                 </button>
@@ -102,17 +102,17 @@ export default function InmoDemoHomePage() {
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-10 sm:py-20 lg:px-16">
+      <section className="mx-auto w-full max-w-6xl bg-white px-4 py-14 sm:px-10 sm:py-20 lg:px-16">
         <div className="mb-8 flex items-end justify-between gap-5 sm:mb-10">
           <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-stone-300">Selección exclusiva</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-stone-100 sm:text-4xl">
+            <p className="text-xs uppercase tracking-[0.22em] text-slate-600">Selección exclusiva</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
               Propiedades destacadas
             </h2>
           </div>
           <Link
             href="/inmo-demo/propiedades"
-            className="hidden text-sm font-medium text-stone-300 transition-colors duration-200 hover:text-[#d4c09e] sm:inline-flex"
+            className="hidden text-sm font-medium text-slate-500 transition-colors duration-200 hover:text-cyan-700 sm:inline-flex"
           >
             Ver catálogo completo
           </Link>
@@ -122,7 +122,7 @@ export default function InmoDemoHomePage() {
           {propiedadesDestacadas.map((propiedad) => (
             <article
               key={propiedad.id}
-            className="group overflow-hidden rounded-2xl border border-stone-300/15 bg-neutral-900/75 shadow-[0_18px_45px_-30px_rgba(0,0,0,0.9)] transition-all duration-250 hover:-translate-y-0.5 hover:border-[#d4c09e]/45"
+            className="group overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-500 hover:-translate-y-3.5 hover:scale-[1.015] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)]"
             >
               <div className="relative h-48 overflow-hidden">
                 <img
@@ -130,33 +130,33 @@ export default function InmoDemoHomePage() {
                   alt={propiedad.titulo}
                   className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-black/35" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/45 via-slate-900/10 to-slate-900/35" />
               </div>
               <div className="space-y-5 p-5 sm:p-6">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.17em] text-stone-300/80">{propiedad.ubicacion}</p>
-                  <h3 className="mt-2 text-xl font-medium text-stone-100 sm:text-2xl">{propiedad.titulo}</h3>
-                  <p className="mt-3 text-xl font-semibold text-[#d4c09e]">{propiedad.precio}</p>
+                  <p className="text-sm uppercase tracking-[0.17em] text-slate-500">{propiedad.ubicacion}</p>
+                  <h3 className="mt-2 text-xl font-medium text-slate-900 sm:text-2xl">{propiedad.titulo}</h3>
+                  <p className="mt-3 text-xl font-semibold text-cyan-700">{propiedad.precio}</p>
                 </div>
 
-                <dl className="grid grid-cols-3 gap-3 rounded-xl border border-stone-300/10 bg-black/25 p-4 text-center">
+                <dl className="grid grid-cols-3 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
                   <div>
-                    <dt className="text-xs uppercase tracking-wider text-stone-400">Hab.</dt>
-                    <dd className="mt-1 text-sm font-medium text-stone-100">{propiedad.habitaciones}</dd>
+                    <dt className="text-xs uppercase tracking-wider text-slate-500">Hab.</dt>
+                    <dd className="mt-1 text-sm font-medium text-slate-900">{propiedad.habitaciones}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wider text-stone-400">Baños</dt>
-                    <dd className="mt-1 text-sm font-medium text-stone-100">{propiedad.banos}</dd>
+                    <dt className="text-xs uppercase tracking-wider text-slate-500">Baños</dt>
+                    <dd className="mt-1 text-sm font-medium text-slate-900">{propiedad.banos}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs uppercase tracking-wider text-stone-400">m²</dt>
-                    <dd className="mt-1 text-sm font-medium text-stone-100">{propiedad.metros}</dd>
+                    <dt className="text-xs uppercase tracking-wider text-slate-500">m²</dt>
+                    <dd className="mt-1 text-sm font-medium text-slate-900">{propiedad.metros}</dd>
                   </div>
                 </dl>
 
                 <Link
                   href="/inmo-demo/propiedades"
-                  className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-stone-300/30 bg-white/5 px-4 py-3 text-sm font-semibold text-stone-100 transition-all duration-200 group-hover:border-[#d4c09e]/50 group-hover:bg-[#d4c09e]/10"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-4 py-3 text-sm font-medium text-slate-600 transition-all duration-200 group-hover:border-slate-300 group-hover:bg-white group-hover:text-slate-700"
                 >
                   Ver propiedad
                 </Link>
@@ -166,35 +166,35 @@ export default function InmoDemoHomePage() {
         </div>
       </section>
 
-      <section className="border-y border-stone-300/10 bg-neutral-900/60 px-4 py-14 sm:px-10 sm:py-20 lg:px-16">
+      <section className="border-y border-slate-200 bg-slate-50 px-4 py-14 sm:px-10 sm:py-20 lg:px-16">
         <div className="mx-auto max-w-4xl text-center">
-          <h2 className="text-2xl font-semibold tracking-tight text-stone-100 sm:text-4xl">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
             Asesoría inmobiliaria de alto nivel
           </h2>
-          <p className="mx-auto mt-6 max-w-3xl text-base leading-relaxed text-stone-300 sm:text-lg">
+          <p className="mx-auto mt-6 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg">
             Combinamos análisis de mercado, negociación experta y acompañamiento personalizado para
             proteger tu inversión y maximizar cada decisión inmobiliaria con total confianza.
           </p>
         </div>
       </section>
 
-      <section className="px-4 py-14 sm:px-10 sm:py-20 lg:px-16">
-        <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-6 rounded-3xl border border-[#d4c09e]/25 bg-[linear-gradient(140deg,#1c1917,#292524)] px-5 py-9 text-center shadow-[0_25px_80px_-40px_rgba(0,0,0,0.95)] sm:px-14 sm:py-12">
-          <p className="text-xs uppercase tracking-[0.22em] text-stone-300">Da el siguiente paso</p>
-          <h2 className="text-2xl font-semibold tracking-tight text-stone-100 sm:text-4xl">
+      <section className="bg-white px-4 py-14 sm:px-10 sm:py-20 lg:px-16">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-6 rounded-3xl border border-slate-300 bg-white px-5 py-9 text-center shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] sm:px-14 sm:py-12">
+          <p className="text-xs uppercase tracking-[0.22em] text-slate-500">Da el siguiente paso</p>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
             Agenda una asesoría personalizada para tu próxima inversión
           </h2>
-          <p className="max-w-2xl text-base text-stone-300">
+          <p className="max-w-2xl text-base text-slate-600">
             Nuestro equipo está listo para ayudarte a encontrar oportunidades únicas alineadas con
             tus objetivos patrimoniales.
           </p>
-          <p className="text-sm text-stone-300/90">
+          <p className="text-sm text-slate-500">
             ¿Prefieres una respuesta inmediata? Escríbenos directo por WhatsApp y te orientamos en
             minutos.
           </p>
           <Link
             href="/inmo-demo/contacto"
-            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#d4c09e] px-7 py-3 text-sm font-semibold text-neutral-900 transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#ddccb1]"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-7 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)]"
           >
             Contactar ahora
           </Link>

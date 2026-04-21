@@ -38,7 +38,7 @@ export function LeadCaptureSection() {
   };
 
   return (
-    <section id="solicitar-servicio" className="bg-slate-50 px-4 py-10 sm:px-6 sm:py-14 lg:px-10">
+    <section id="solicitar-servicio" className="bg-slate-50 px-4 py-12 sm:px-6 sm:py-16 lg:px-10 lg:py-20">
       <span id="agendar-visita" className="block -translate-y-24" aria-hidden="true" />
       <span id="solicitar-cotizacion" className="block -translate-y-24" aria-hidden="true" />
       <span id="solicitar-demo" className="block -translate-y-24" aria-hidden="true" />
@@ -74,7 +74,7 @@ export function LeadCaptureSection() {
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_18px_40px_-35px_rgba(15,23,42,0.45)] sm:p-7">
+          <div className="rounded-3xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] sm:p-7">
             {submitted ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 sm:p-6">
                 <div className="inline-flex rounded-full bg-emerald-100 p-2 text-emerald-700">
@@ -147,7 +147,7 @@ export function LeadCaptureSection() {
 
                 <button
                   type="submit"
-                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_30px_-20px_rgba(8,145,178,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-cyan-500 active:scale-[0.99]"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)]"
                 >
                   Quiero coordinar mi servicio
                 </button>

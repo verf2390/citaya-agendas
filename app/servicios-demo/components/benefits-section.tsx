@@ -48,7 +48,7 @@ function BenefitIcon({ type }: { type: (typeof benefits)[number]["icon"] }) {
 
 export function BenefitsSection() {
   return (
-    <section className="px-4 py-10 sm:px-6 sm:py-14 lg:px-10">
+    <section className="bg-white px-4 py-12 sm:px-6 sm:py-16 lg:px-10 lg:py-20">
       <div className="mx-auto max-w-6xl">
         <SectionHeading
           eyebrow="Beneficios de negocio"
@@ -60,7 +60,7 @@ export function BenefitsSection() {
           {benefits.map((benefit) => (
             <article
               key={benefit.title}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_16px_35px_-30px_rgba(15,23,42,0.5)]"
+              className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-500 hover:-translate-y-3.5 hover:scale-[1.015] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)]"
             >
               <div className="inline-flex rounded-lg bg-cyan-50 p-2.5">
                 <BenefitIcon type={benefit.icon} />
