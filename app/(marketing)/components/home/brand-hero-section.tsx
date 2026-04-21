@@ -52,12 +52,12 @@ export function BrandHeroSection() {
             >
               Ver cómo funcionaría en mi negocio
             </Link>
-            <Link
+            <a
               href="#demos"
               className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-300 hover:text-cyan-700 active:translate-y-0 sm:w-auto"
             >
               Ver demos reales
-            </Link>
+            </a>
           </div>
 
           <p className="mt-3 text-xs font-semibold tracking-wide text-slate-500 sm:text-sm">
