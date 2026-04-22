@@ -35,18 +35,18 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
   const relacionadas = propiedadesInmo.filter((item) => item.slug !== propiedad.slug).slice(0, 3);
 
   return (
-    <main className="bg-[#f8fafc] text-slate-900">
+    <main className="bg-[#f8fafc] pt-24 text-slate-900">
       <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 md:px-8 md:py-12">
         <div className="flex flex-wrap items-center gap-3">
           <Link
             href="/inmo-demo/propiedades"
-            className="inline-flex min-h-12 items-center rounded-xl border border-slate-300 px-4 py-2 text-xs uppercase tracking-[0.18em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+            className="btn-inmo-secondary"
           >
             ← Volver a propiedades
           </Link>
           <Link
             href="/inmo-demo"
-            className="inline-flex min-h-12 items-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs uppercase tracking-[0.18em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+            className="btn-inmo-secondary"
           >
             Inicio inmo demo
           </Link>
@@ -115,7 +115,7 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
               <div className="mt-6 space-y-3">
                 <a
                   href="/inmo-demo/contacto"
-                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-[0_16px_45px_-14px_rgba(109,40,217,0.9)] transition-all duration-300 hover:scale-[1.02] hover:brightness-110"
+                  className="btn-inmo-primary w-full justify-center"
                 >
                   Agendar visita
                 </a>
