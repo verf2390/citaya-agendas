@@ -122,7 +122,8 @@ html {
   .animate-gradient-shift,
   .animate-floating-card,
   .animate-soft-pulse,
-  .animate-glow-drift {
+  .animate-glow-drift,
+  .animate-hero-zoom {
     animation: none !important;
   }
 }
@@ -148,6 +149,19 @@ html {
 
 .animate-fade-in-up {
   animation: fadeInUp 700ms ease-out both;
+}
+
+@keyframes heroZoom {
+  0% {
+    transform: scale(1);
+  }
+  100% {
+    transform: scale(1.05);
+  }
+}
+
+.animate-hero-zoom {
+  animation: heroZoom 18s ease-out both;
 }
 
 .btn-inmo-primary {

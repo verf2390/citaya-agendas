@@ -53,14 +53,27 @@ export default function InmoDemoHomePage() {
         eyebrow="Advisory boutique · Santiago Oriente"
         title="Residencias y activos premium para decisiones inmobiliarias con criterio patrimonial"
         subtitle="Un sistema inmobiliario curado para clientes que exigen estrategia, confianza y ejecución impecable."
+        editorialNote="Selección privada · Santiago Oriente"
       >
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Link href="/inmo-demo/propiedades" className="btn-inmo-primary">
-            Ver propiedades premium
-          </Link>
-          <Link href="/inmo-demo/contacto" className="btn-inmo-secondary border-white/45 bg-white/10 text-white hover:border-white hover:bg-white/20">
-            Hablar con un asesor
-          </Link>
+        <div className="grid gap-6 lg:grid-cols-[auto_minmax(0,320px)] lg:items-end">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/inmo-demo/propiedades"
+              className="btn-inmo-primary shadow-[0_0_40px_rgba(99,102,241,0.35)] transition-transform duration-300 hover:scale-[1.02]"
+            >
+              Ver propiedades premium
+            </Link>
+            <Link href="/inmo-demo/contacto" className="btn-inmo-secondary border-white/45 bg-white/10 text-white hover:border-white hover:bg-white/20">
+              Hablar con un asesor
+            </Link>
+          </div>
+
+          <aside className="rounded-2xl border border-white/10 bg-white/10 p-5 text-slate-100 backdrop-blur-xl">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-200/90">Curaduría activa</p>
+            <p className="mt-3 text-sm leading-relaxed text-slate-100/90">
+              Oportunidades validadas por potencial de plusvalía, calidad de entorno y timing de entrada.
+            </p>
+          </aside>
         </div>
       </InmoHero>
 
