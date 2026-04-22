@@ -1,75 +1,66 @@
 import Link from "next/link";
-
-const trustPills = [
-  "Respuesta inicial en menos de 15 min hábiles",
-  "Cobertura La Serena y Coquimbo",
-  "Atención para hogar, oficina y local comercial",
-] as const;
+import { RevealOnScroll } from "./reveal-on-scroll";
 
 const quickQuoteWhatsappMessage = encodeURIComponent(
-  "Hola Victor, quiero solicitar una cotización rápida para una web o agenda online.",
+  "Hola Victor, vi la demo y quiero una solución similar para mi negocio.",
 );
 
 export function HeroSection() {
   return (
-    <section className="px-4 pb-16 pt-6 sm:px-6 sm:pb-20 sm:pt-8 lg:px-10 lg:pb-24 lg:pt-10">
-      <div className="mx-auto max-w-6xl rounded-3xl border border-cyan-200/80 bg-gradient-to-br from-slate-950/10 via-cyan-200/70 to-white p-6 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.62)] sm:p-10 lg:p-12">
-        <div className="max-w-3xl">
-          <span className="inline-flex rounded-full border border-cyan-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-700 sm:text-xs">
-            Climatización residencial y comercial
+    <section className="relative overflow-hidden px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-10 lg:px-10 lg:pb-28">
+      <div className="pointer-events-none absolute inset-x-0 -top-24 mx-auto h-[420px] max-w-5xl rounded-full bg-gradient-to-r from-indigo-500/25 via-purple-500/25 to-cyan-400/20 blur-3xl" />
+
+      <RevealOnScroll className="mx-auto grid max-w-6xl items-center gap-8 rounded-[2rem] border border-indigo-100/80 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 shadow-[0_40px_120px_-48px_rgba(79,70,229,0.5)] sm:p-10 lg:grid-cols-[1.1fr_0.9fr] lg:p-12">
+        <div>
+          <span className="inline-flex rounded-full border border-indigo-200/80 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-700 sm:text-xs">
+            Agenda inteligente para negocios de servicios
           </span>
+
           <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-            Empieza a recibir reservas automáticas desde hoy
+            Deja de perder clientes por WhatsApp
           </h1>
-          <p className="mt-4 text-base leading-relaxed text-slate-600 sm:mt-5 sm:text-lg">
-            Tus clientes eligen horario, tú solo atiendes. Agenda online activa 24/7 con confirmación automática.
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg">
+            Transformamos tu negocio en una experiencia online donde tus clientes reservan solos.
           </p>
-          <p className="mt-2 text-sm font-medium text-cyan-700/90">Respuestas en menos de 15 minutos</p>
-
-          <div className="mt-6 flex flex-wrap gap-2.5 sm:mt-7">
-            {trustPills.map((pill) => (
-              <span
-                key={pill}
-                className="inline-flex min-h-9 items-center rounded-full border border-cyan-200 bg-white px-3.5 py-1.5 text-xs font-medium text-slate-700"
-              >
-                {pill}
-              </span>
-            ))}
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-200/90 bg-white/85 p-4">
-            <p className="text-sm font-semibold text-slate-900">¿Te pasa esto?</p>
-            <ul className="mt-2 space-y-1.5 text-sm text-slate-600">
-              <li>• Respondes mensajes todo el día</li>
-              <li>• Pierdes clientes por no contestar a tiempo</li>
-              <li>• Tu agenda está desordenada</li>
-            </ul>
-            <p className="mt-3 text-sm font-semibold text-cyan-700">Esto lo soluciona automáticamente 👇</p>
-          </div>
 
           <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
             <Link
               href="https://demo.citaya.online/"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)] active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
+              className="inline-flex min-h-12 items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_20px_55px_-20px_rgba(79,70,229,0.85)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:from-indigo-500 hover:to-purple-500 hover:shadow-[0_28px_70px_-18px_rgba(79,70,229,0.9)]"
             >
-              Ver agenda funcionando en vivo
+              Ver demo en vivo
             </Link>
             <Link
               href={`https://wa.me/56961425029?text=${quickQuoteWhatsappMessage}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700 sm:w-auto"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-6 py-3 text-sm font-semibold text-emerald-700 transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-emerald-100 hover:shadow-[0_20px_45px_-25px_rgba(16,185,129,0.8)]"
             >
-              Solicitar cotización rápida
+              Hablar por WhatsApp
             </Link>
           </div>
-          <p className="mt-3 text-xs font-semibold tracking-wide text-slate-500">Sin compromiso • Sin pago • Demo real</p>
-          <p className="mt-1 text-sm text-slate-600">En menos de 1 minuto puedes ver cómo funciona</p>
-          <p className="mt-3 text-sm font-medium text-slate-500">Usado por negocios en La Serena y Coquimbo</p>
+
+          <p className="mt-4 text-sm text-slate-500">Sin compromiso · Demo real · Implementación guiada</p>
         </div>
-      </div>
+
+        <div className="relative">
+          <div className="absolute -inset-2 rounded-[2rem] bg-gradient-to-tr from-indigo-500/20 to-purple-500/20 blur-xl" aria-hidden="true" />
+          <div className="relative rounded-[1.75rem] border border-slate-200/80 bg-white/90 p-4 shadow-[0_24px_80px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Vista cliente</p>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-900">Reserva en 30 segundos</p>
+              <p className="mt-1 text-sm text-slate-600">El cliente elige servicio, horario y confirma al instante.</p>
+            </div>
+            <div className="mt-3 space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="h-3 w-2/3 rounded-full bg-slate-200" />
+              <div className="h-3 w-full rounded-full bg-slate-100" />
+              <div className="h-10 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600" />
+            </div>
+          </div>
+        </div>
+      </RevealOnScroll>
     </section>
   );
 }

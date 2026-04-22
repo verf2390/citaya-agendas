@@ -27,8 +27,8 @@ export function AutomationFlowSection() {
 
         <div className="mt-7 grid gap-3 sm:mt-9 sm:grid-cols-2 lg:grid-cols-5">
           {workflow.map((step, index) => (
-            <div key={step} className="rounded-2xl border border-cyan-100 bg-white/90 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700">Paso {index + 1}</p>
+            <div key={step} className="rounded-2xl border border-indigo-100 bg-white/90 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">Paso {index + 1}</p>
               <p className="mt-2 text-sm font-medium leading-relaxed text-slate-700">{step}</p>
             </div>
           ))}
@@ -36,7 +36,7 @@ export function AutomationFlowSection() {
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_20px_45px_-38px_rgba(15,23,42,0.75)] sm:p-5">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700">Bandeja operativa</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">Bandeja operativa</p>
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Actualización en tiempo real</span>
           </div>
           <div className="mt-3 space-y-2.5">
@@ -49,7 +49,7 @@ export function AutomationFlowSection() {
                   <p className="text-sm font-semibold text-slate-900">{lead.client}</p>
                   <p className="mt-1 text-sm text-slate-600">{lead.note}</p>
                 </div>
-                <span className="mt-2 inline-flex rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-700 sm:mt-0">
+                <span className="mt-2 inline-flex rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-600 sm:mt-0">
                   {lead.label}
                 </span>
               </article>

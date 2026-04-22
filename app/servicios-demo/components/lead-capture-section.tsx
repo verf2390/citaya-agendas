@@ -48,12 +48,12 @@ export function LeadCaptureSection() {
           <div>
             <p className="text-sm font-semibold text-slate-600">Esto es opcional. Primero prueba la agenda 👆</p>
             <SectionHeading
-              eyebrow="Micro cotizador"
-              title="¿Cuánto cuesta implementar esto?"
-              description="Hazte una idea rápida según tu negocio"
+              eyebrow="Implementación guiada"
+              title="¿Listo para llevarlo a tu negocio?"
+              description="Déjanos tus datos y te mostramos el camino más rápido para implementarlo."
             />
-            <p className="mt-3 text-sm font-semibold text-cyan-700">Primero mira cómo funciona 👇</p>
-            <p className="mt-4 rounded-2xl border border-cyan-100 bg-white p-4 text-sm leading-relaxed text-slate-600">
+            <p className="mt-3 text-sm font-semibold text-indigo-700">Sin compromiso. Te orientamos según tu caso 👇</p>
+            <p className="mt-4 rounded-2xl border border-indigo-100 bg-white p-4 text-sm leading-relaxed text-slate-600">
               Planes desde $29.000 mensual según tamaño del negocio
             </p>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
@@ -62,11 +62,11 @@ export function LeadCaptureSection() {
             </p>
 
             <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_16px_30px_-30px_rgba(15,23,42,0.8)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Qué incluye</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-700">Qué incluye</p>
               <ul className="mt-3 space-y-2">
                 {continuitySteps.map((step) => (
                   <li key={step} className="flex items-start gap-2 text-sm text-slate-700">
-                    <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-500" />
+                    <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-500" />
                     <span>{step}</span>
                   </li>
                 ))}
@@ -94,7 +94,7 @@ export function LeadCaptureSection() {
                 <button
                   type="button"
                   onClick={() => setSubmitted(false)}
-                  className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                  className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
                 >
                   Registrar otra solicitud
                 </button>
@@ -140,16 +140,16 @@ export function LeadCaptureSection() {
                     rows={4}
                     value={formData.mensaje}
                     onChange={(event) => setFormData((prev) => ({ ...prev, mensaje: event.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-colors focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                     placeholder="Ej: tipo de espacio, metraje aproximado o urgencia del servicio."
                   />
                 </label>
 
                 <button
                   type="submit"
-                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)]"
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-16px_rgba(79,70,229,0.85)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-indigo-500 hover:to-purple-500 hover:shadow-[0_40px_85px_-20px_rgba(79,70,229,0.9)]"
                 >
-                  Quiero coordinar mi servicio
+                  Quiero una propuesta para mi negocio
                 </button>
                 <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Resumen de cotización</p>
@@ -185,7 +185,7 @@ function InputField({ id, label, type = "text", value, onChange }: InputFieldPro
         value={value}
         onChange={(event) => onChange(event.target.value)}
         required
-        className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-colors focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+        className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
       />
     </label>
   );
