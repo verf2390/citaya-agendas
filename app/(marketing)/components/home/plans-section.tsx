@@ -6,7 +6,20 @@ import { useEffect, useMemo, useState } from "react";
 const countdownTarget = new Date("2026-04-30T23:59:59-04:00").getTime();
 const whatsappBase = "https://wa.me/56961425029";
 
-const plans = [
+type Plan = {
+  title: string;
+  price: string;
+  subtitle?: string;
+  description: string;
+  benefits: string[];
+  cta: string;
+  message: string;
+  footnote?: string;
+  note?: string;
+  highlighted: boolean;
+};
+
+const plans: Plan[] = [
   {
     title: "Empieza a ordenar",
     price: "$14.990 / mes",
@@ -39,6 +52,7 @@ const plans = [
       "Opción de agenda online",
     ],
     cta: "Quiero esta opción",
+    highlighted: false,
     footnote: "El valor depende del alcance y funcionalidades.",
     message: "Hola Victor, quiero la opción Negocio profesional de Citaya.",
   },
@@ -55,9 +69,10 @@ const plans = [
       "Estructura comercial más robusta",
     ],
     cta: "Quiero una propuesta",
+    highlighted: false,
     message: "Hola Victor, quiero una propuesta personalizada de Citaya.",
   },
-] as const;
+];
 
 const supportPills = ["Agenda online real", "Web para servicios", "Ejemplo premium personalizable"] as const;
 
