@@ -1,39 +1,6 @@
-import Link from "next/link";
+import { demos } from "./marketing-content";
 
-const demos = [
-  {
-    name: "Agenda online para negocios de atención por hora",
-    description:
-      "Ideal para negocios que necesitan ordenar reservas y evitar pérdidas por coordinación manual.",
-    before: "Agenda manual, mensajes cruzados y pérdida de clientes.",
-    after: "Sistema de reservas 24/7 con horarios claros y confirmaciones automáticas.",
-    result: "Más reservas y menos tiempo coordinando.",
-    cta: "Ver demo en vivo",
-    href: "https://demo.citaya.online/",
-    isExternal: true,
-  },
-  {
-    name: "Web para negocios de servicios",
-    description:
-      "Ejemplo de página pensada para explicar servicios de forma clara y facilitar el contacto.",
-    before: "Información poco clara y pocas consultas.",
-    after: "Página ordenada con servicios visibles y contacto directo.",
-    result: "Más claridad y más consultas útiles.",
-    cta: "Ver demo",
-    href: "/servicios-demo",
-    isExternal: false,
-  },
-  {
-    name: "Web inmobiliaria",
-    description: "Demo de catálogo inmobiliario con navegación simple y estructura profesional.",
-    before: "Propiedades mal organizadas y difícil navegación.",
-    after: "Catálogo claro con estructura profesional.",
-    result: "Mejor presentación y más contactos.",
-    cta: "Ver demo",
-    href: "/inmo-demo",
-    isExternal: false,
-  },
-] as const;
+import Link from "next/link";
 
 export function DemosShowcaseSection() {
   return (
