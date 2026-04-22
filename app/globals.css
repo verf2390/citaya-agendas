@@ -73,6 +73,17 @@ html {
   }
 }
 
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
 .animate-gradient-shift {
   background-size: 200% 200%;
   animation: gradientShift 16s ease infinite;
@@ -88,6 +99,10 @@ html {
 
 .animate-glow-drift {
   animation: glowDrift 8s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 700ms ease-out both;
 }
 
 .link-underline {
@@ -122,7 +137,8 @@ html {
   .animate-gradient-shift,
   .animate-floating-card,
   .animate-soft-pulse,
-  .animate-glow-drift {
+  .animate-glow-drift,
+  .animate-fade-in-up {
     animation: none !important;
   }
 }
