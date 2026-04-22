@@ -1,62 +1,74 @@
 import Link from "next/link";
+import { RevealOnScroll } from "./reveal-on-scroll";
 
 const indicators = [
   {
     title: "Respuesta comercial",
     value: "< 15 min hábiles",
-    description: "Primer contacto para priorizar visita o cotización.",
+    description: "Tu cliente siente atención inmediata y avanza más rápido.",
   },
   {
     title: "Confirmación",
-    value: "100% automática",
-    description: "Cada lead recibe respaldo inmediato del ingreso.",
+    value: "Automática",
+    description: "Cada reserva se confirma sola por WhatsApp o email.",
   },
   {
     title: "Cobertura",
     value: "La Serena + Coquimbo",
-    description: "Operación local con ventanas horarias flexibles.",
-  },
-  {
-    title: "Tipo de clientes",
-    value: "Hogar y negocios",
-    description: "Flujo adaptado a residencial, oficinas y comercio.",
+    description: "Operación local, horarios claros y comunicación ordenada.",
   },
 ] as const;
 
 export function TrustIndicatorsSection() {
   return (
-    <section className="px-4 pb-10 sm:px-6 sm:pb-14 lg:px-10">
-      <div className="mx-auto max-w-6xl">
-        <article className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-500 hover:-translate-y-3.5 hover:scale-[1.015] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)] sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Prueba social</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-            Negocios reales ya están usando esto
+    <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-10 lg:py-20">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <RevealOnScroll className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_30px_70px_-45px_rgba(15,23,42,0.6)] sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">Problema → solución</p>
+          <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+            Si hoy todo depende de mensajes, estás perdiendo ventas sin notarlo
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">
-            Clientes ya están recibiendo reservas automáticas sin depender de mensajes.
+          <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
+            Mientras respondes chats, nuevos clientes se enfrían. Con esta experiencia, ellos reservan solos y tú
+            recibes cada solicitud lista para cerrar.
           </p>
-          <p className="mt-3 text-sm font-semibold text-slate-800">Fajas Paola — La Serena</p>
-          <p className="mt-1 text-sm text-slate-600">Clientes reales usando este sistema</p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-4">
+              <p className="text-sm font-semibold text-rose-700">Antes</p>
+              <p className="mt-1 text-sm text-rose-900">Respondes todo manualmente y llegas tarde.</p>
+            </div>
+            <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
+              <p className="text-sm font-semibold text-amber-700">Durante</p>
+              <p className="mt-1 text-sm text-amber-900">La agenda se desordena y se escapan oportunidades.</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4">
+              <p className="text-sm font-semibold text-emerald-700">Después</p>
+              <p className="mt-1 text-sm text-emerald-900">Tus clientes reservan solos mientras tú trabajas.</p>
+            </div>
+          </div>
+
           <Link
             href="https://instagram.com/fajaspaola"
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700"
+            className="mt-6 inline-flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition-all duration-300 hover:bg-slate-100"
           >
             Ver negocio real funcionando
           </Link>
-        </article>
+        </RevealOnScroll>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {indicators.map((indicator) => (
-            <article
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {indicators.map((indicator, index) => (
+            <RevealOnScroll
               key={indicator.title}
-              className="rounded-2xl border border-slate-300 bg-white p-4 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-500 hover:-translate-y-3.5 hover:scale-[1.015] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)] sm:p-5"
+              delayMs={index * 70}
+              className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">{indicator.title}</p>
-              <p className="mt-2 text-lg font-semibold tracking-tight text-slate-900">{indicator.value}</p>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600">{indicator.description}</p>
-            </article>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600">{indicator.title}</p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">{indicator.value}</p>
+              <p className="mt-2 text-sm text-slate-600">{indicator.description}</p>
+            </RevealOnScroll>
           ))}
         </div>
       </div>

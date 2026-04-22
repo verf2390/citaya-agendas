@@ -1,25 +1,26 @@
+import { RevealOnScroll } from "./reveal-on-scroll";
 import { SectionHeading } from "./section-heading";
 
 const benefits = [
   {
-    title: "Clientes pueden reservar 24/7",
-    description: "Tu agenda sigue tomando reservas incluso fuera de horario, sin depender de llamadas o mensajes.",
+    title: "Menos chats, más trabajo productivo",
+    description: "Deja de responder lo mismo cada día y recupera horas de foco.",
     icon: "calendar",
   },
   {
-    title: "Confirmación automática (WhatsApp o email)",
-    description: "Cada reserva queda confirmada al instante para dar confianza y evitar pérdidas por falta de respuesta.",
+    title: "Más reservas sin perseguir clientes",
+    description: "Tu página convierte visitas en citas confirmadas de forma automática.",
     icon: "check",
   },
   {
-    title: "Evita perder horas respondiendo mensajes",
-    description: "Automatiza lo repetitivo y enfócate en atender clientes, cerrar ventas y ejecutar mejor tu servicio.",
+    title: "Operación ordenada y predecible",
+    description: "Toda la información entra estructurada para atender mejor y crecer.",
     icon: "shield",
   },
 ] as const;
 
 function BenefitIcon({ type }: { type: (typeof benefits)[number]["icon"] }) {
-  const baseClass = "h-5 w-5 text-cyan-600";
+  const baseClass = "h-5 w-5 text-indigo-600";
 
   switch (type) {
     case "calendar":
@@ -48,26 +49,29 @@ function BenefitIcon({ type }: { type: (typeof benefits)[number]["icon"] }) {
 
 export function BenefitsSection() {
   return (
-    <section className="bg-white px-4 py-12 sm:px-6 sm:py-16 lg:px-10 lg:py-20">
+    <section className="bg-white px-4 py-14 sm:px-6 sm:py-20 lg:px-10 lg:py-24">
       <div className="mx-auto max-w-6xl">
-        <SectionHeading
-          eyebrow="Beneficios de negocio"
-          title="Qué incluye esta agenda online"
-          description="Beneficios concretos para convertir más y operar con menos carga manual."
-        />
+        <RevealOnScroll>
+          <SectionHeading
+            eyebrow="Beneficios reales"
+            title="Resultados que tu cliente nota desde la primera reserva"
+            description="No son funciones sueltas: es una experiencia que acelera tus ventas y reduce carga operativa."
+          />
+        </RevealOnScroll>
 
-        <div className="mt-7 grid gap-4 sm:mt-9 sm:grid-cols-2 lg:grid-cols-3">
-          {benefits.map((benefit) => (
-            <article
+        <div className="mt-8 grid gap-4 sm:mt-10 lg:grid-cols-3">
+          {benefits.map((benefit, index) => (
+            <RevealOnScroll
               key={benefit.title}
-              className="rounded-2xl border border-slate-300 bg-white p-5 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)] transition-all duration-500 hover:-translate-y-3.5 hover:scale-[1.015] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)]"
+              delayMs={index * 80}
+              className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
             >
-              <div className="inline-flex rounded-lg bg-cyan-50 p-2.5">
+              <div className="inline-flex rounded-xl bg-indigo-50 p-2.5">
                 <BenefitIcon type={benefit.icon} />
               </div>
-              <h3 className="mt-4 text-base font-semibold text-slate-900">{benefit.title}</h3>
+              <h3 className="mt-4 text-lg font-semibold text-slate-900">{benefit.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">{benefit.description}</p>
-            </article>
+            </RevealOnScroll>
           ))}
         </div>
       </div>

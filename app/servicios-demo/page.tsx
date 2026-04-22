@@ -15,13 +15,13 @@ export default function ServiciosDemoPage() {
     <main className="overflow-x-hidden bg-white text-slate-900">
       <HeroSection />
       <TrustIndicatorsSection />
+      <ServicesSection />
       <LiveAgendaDemoSection />
-      <LeadCaptureSection />
       <BenefitsSection />
       <HowItWorksSection />
-      <ServicesSection />
       <AutomationFlowSection />
       <SocialProofSection />
+      <LeadCaptureSection />
       <FinalCtaSection />
       <WhatsAppFloatingButton />
     </main>
