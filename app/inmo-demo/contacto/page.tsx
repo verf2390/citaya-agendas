@@ -1,7 +1,15 @@
+import Link from "next/link";
+
 export default function ContactoPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f8fafc] px-4 py-10 text-slate-900 sm:px-6">
       <section className="w-full max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
+        <Link
+          href="/inmo-demo"
+          className="inline-flex min-h-11 items-center rounded-xl border border-slate-300 bg-white px-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+        >
+          ← Volver al inicio demo
+        </Link>
         <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Concierge inmobiliario</p>
         <h1 className="mt-3 text-3xl font-semibold text-slate-950 sm:text-5xl">Recibe asesoría inmobiliaria personalizada</h1>
         <p className="mt-4 max-w-2xl text-slate-600 sm:text-lg">

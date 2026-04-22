@@ -37,12 +37,20 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
   return (
     <main className="bg-[#f8fafc] text-slate-900">
       <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 md:px-8 md:py-12">
-        <Link
-          href="/inmo-demo/propiedades"
-          className="inline-flex min-h-12 items-center rounded-xl border border-slate-300 px-4 py-2 text-xs uppercase tracking-[0.18em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
-        >
-          ← Volver a propiedades
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/inmo-demo/propiedades"
+            className="inline-flex min-h-12 items-center rounded-xl border border-slate-300 px-4 py-2 text-xs uppercase tracking-[0.18em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+          >
+            ← Volver a propiedades
+          </Link>
+          <Link
+            href="/inmo-demo"
+            className="inline-flex min-h-12 items-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs uppercase tracking-[0.18em] text-slate-600 transition hover:border-slate-400 hover:text-slate-900"
+          >
+            Inicio inmo demo
+          </Link>
+        </div>
 
         <section className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="relative">
