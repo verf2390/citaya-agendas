@@ -57,132 +57,142 @@ function StarsInline({ value }: { value: number }) {
 
 function DemoLanding() {
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.12),transparent_36%),linear-gradient(180deg,#e9eef5_0%,#f6f8fb_28%,#eef3f8_100%)]">
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl" />
-        <div className="absolute -bottom-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/35 via-slate-100/20 to-emerald-100/25 blur-3xl" />
+        <div className="absolute left-1/2 top-[-10rem] h-[32rem] w-[62rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(15,23,42,0.22),rgba(15,23,42,0.06)_42%,transparent_72%)] blur-3xl" />
+        <div className="absolute right-[-5rem] top-24 h-72 w-72 rounded-full bg-emerald-300/30 blur-3xl" />
+        <div className="absolute bottom-[-9rem] left-[-5rem] h-80 w-80 rounded-full bg-amber-300/25 blur-3xl" />
       </div>
 
-      <div className="mx-auto w-full max-w-[980px] px-4 pb-16 pt-8 sm:pt-14">
-        <section className="rounded-3xl border border-slate-200 bg-white/85 shadow-sm backdrop-blur">
-          <div className="p-6 sm:p-10">
-            <div className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                  DEMO · Citaya Pro
-                </div>
+      <div className="mx-auto w-full max-w-[1120px] px-4 pb-20 pt-6 sm:pt-10">
+        <section className="overflow-hidden rounded-[32px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.95))] shadow-[0_30px_100px_rgba(15,23,42,0.14)] backdrop-blur">
+          <div className="relative p-5 sm:p-8 lg:p-10">
+            <div className="absolute inset-x-0 top-0 h-44 bg-[linear-gradient(180deg,rgba(15,23,42,0.07),transparent)]" />
+            <div className="relative flex flex-col gap-8 lg:gap-10">
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_360px] lg:items-start">
+                <div className="min-w-0">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-slate-950 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-slate-100 shadow-[0_10px_30px_rgba(15,23,42,0.22)]">
+                    DEMO · Citaya Pro
+                  </div>
 
-                <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-                  Empieza a recibir reservas automáticas desde hoy
-                </h1>
+                  <h1 className="mt-5 max-w-3xl text-4xl font-black tracking-[-0.04em] text-slate-950 sm:text-5xl lg:text-[4rem] lg:leading-[0.95]">
+                    Empieza a recibir reservas automáticas desde hoy
+                  </h1>
 
-                <p className="mt-2 text-base font-semibold text-slate-700">
-                  Tus clientes eligen horario, tú solo atiendes
-                </p>
+                  <p className="mt-4 text-lg font-semibold text-slate-700 sm:text-xl">
+                    Tus clientes eligen horario, tú solo atiendes
+                  </p>
 
-                <p className="mt-3 text-sm font-semibold text-emerald-700">
-                  Respuestas en menos de 15 minutos
-                </p>
+                  <p className="mt-4 inline-flex items-center rounded-full bg-[linear-gradient(180deg,#ecfdf5,#d1fae5)] px-3 py-1 text-sm font-bold text-emerald-800 ring-1 ring-emerald-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                    Respuestas en menos de 15 minutos
+                  </p>
 
-                <p className="mt-4 max-w-xl text-sm leading-relaxed text-slate-600">
-                  Esta demo te muestra cómo se vería una agenda online real para
-                  tu negocio: reservas 24/7, horarios disponibles, confirmación
-                  automática y una experiencia profesional desde el celular.
-                </p>
+                  <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
+                    Esta demo te muestra cómo se vería una agenda online real para
+                    tu negocio: reservas 24/7, horarios disponibles, confirmación
+                    automática y una experiencia profesional desde el celular.
+                  </p>
 
-                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                  <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                    <Link
+                      href="/reservar"
+                      className="inline-flex min-h-[56px] w-full items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] px-7 py-4 text-base font-extrabold text-white shadow-[0_18px_40px_rgba(15,23,42,0.32)] ring-1 ring-slate-900/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(15,23,42,0.38)] hover:brightness-110 active:translate-y-0 active:scale-[0.985] sm:w-auto"
+                    >
+                      Ver agenda funcionando en vivo
+                    </Link>
+
                   <Link
-                    href="/reservar"
-                    className="inline-flex min-h-[52px] w-full items-center justify-center rounded-2xl bg-slate-900 px-6 py-4 text-base font-extrabold text-white shadow-sm transition hover:opacity-90 active:scale-[0.99] sm:w-auto"
-                  >
-                    Ver agenda funcionando en vivo
-                  </Link>
-
-                  <Link
-                    href="https://citaya.online"
-                    className="inline-flex min-h-[52px] w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 py-4 text-base font-extrabold text-slate-900 transition hover:bg-slate-50 active:scale-[0.99] sm:w-auto"
+                    href="https://citaya-agendas.vercel.app/"
+                    className="inline-flex min-h-[56px] w-full items-center justify-center rounded-2xl border border-slate-300/90 bg-white/90 px-6 py-4 text-base font-extrabold text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition duration-200 hover:border-slate-400 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.12)] active:scale-[0.99] sm:w-auto"
                   >
                     Volver a Citaya
-                  </Link>
+                    </Link>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(241,245,249,0.9))] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/70">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
+                      Sin compromiso • Sin pago • Demo real
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      En menos de 1 minuto puedes ver cómo funciona
+                    </p>
+                  </div>
+
+                  <p className="mt-4 text-xs text-slate-500">
+                    * Datos de ejemplo. La app real usa tu logo, tus servicios y
+                    tu configuración.
+                  </p>
                 </div>
 
-                <div className="mt-3 space-y-1">
-                  <p className="text-xs font-medium text-slate-600">
-                    Sin compromiso • Sin pago • Demo real
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    En menos de 1 minuto puedes ver cómo funciona
-                  </p>
-                </div>
+                <div className="w-full md:w-[360px]">
+                  <div className="overflow-hidden rounded-[28px] border border-slate-800/10 bg-[linear-gradient(180deg,#020617_0%,#0f172a_18%,#f8fafc_18%,#ffffff_100%)] shadow-[0_28px_60px_rgba(15,23,42,0.18)]">
+                    <div className="p-5 sm:p-6">
+                      <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-300">
+                        Qué incluye
+                      </div>
 
-                <p className="mt-4 text-xs text-slate-500">
-                  * Datos de ejemplo. La app real usa tu logo, tus servicios y
-                  tu configuración.
-                </p>
-              </div>
+                      <ul className="mt-5 grid gap-3 text-sm text-slate-700">
+                        <li className="rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+                          ✅ Clientes pueden reservar 24/7
+                        </li>
+                        <li className="rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+                          ✅ Confirmación automática después de reservar
+                        </li>
+                        <li className="rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
+                          ✅ Horarios reales según disponibilidad
+                        </li>
+                      </ul>
 
-              <div className="w-full md:w-[360px]">
-                <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-100 to-white shadow-sm">
-                  <div className="p-5">
-                    <div className="text-xs font-semibold text-slate-600">
-                      Qué incluye
-                    </div>
-
-                    <ul className="mt-3 grid gap-2 text-sm text-slate-700">
-                      <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        ✅ Clientes pueden reservar 24/7
-                      </li>
-                      <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        ✅ Confirmación automática después de reservar
-                      </li>
-                      <li className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                        ✅ Horarios reales según disponibilidad
-                      </li>
-                    </ul>
-
-                    <div className="mt-4 text-[11px] text-slate-500">
-                      Luego hacemos esta misma versión con tu logo, tus
-                      servicios y tus textos.
+                      <div className="mt-5 rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4 text-[11px] leading-relaxed text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                        Luego hacemos esta misma versión con tu logo, tus
+                        servicios y tus textos.
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-8 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
-                <p className="text-sm font-extrabold text-slate-900">
+            <div className="mt-8 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="rounded-[28px] border border-amber-200/80 bg-[linear-gradient(180deg,#fff8eb_0%,#fff3db_100%)] p-5 shadow-[0_18px_40px_rgba(180,83,9,0.10)] sm:p-6">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
                   ¿Te pasa esto?
                 </p>
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  <li>• Respondes mensajes todo el día</li>
-                  <li>• Pierdes clientes por no contestar rápido</li>
-                  <li>• Tu agenda está desordenada</li>
+                <ul className="mt-4 space-y-3 text-sm text-slate-700">
+                  <li className="rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,251,235,0.85))] px-4 py-3 shadow-[0_8px_20px_rgba(180,83,9,0.08)] ring-1 ring-amber-100">
+                    • Respondes mensajes todo el día
+                  </li>
+                  <li className="rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,251,235,0.85))] px-4 py-3 shadow-[0_8px_20px_rgba(180,83,9,0.08)] ring-1 ring-amber-100">
+                    • Pierdes clientes por no contestar rápido
+                  </li>
+                  <li className="rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(255,251,235,0.85))] px-4 py-3 shadow-[0_8px_20px_rgba(180,83,9,0.08)] ring-1 ring-amber-100">
+                    • Tu agenda está desordenada
+                  </li>
                 </ul>
-                <p className="mt-3 text-sm font-semibold text-slate-900">
+                <p className="mt-4 text-base font-bold text-slate-900">
                   Esto se soluciona automáticamente 👇
                 </p>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600">
+              <div className="rounded-[28px] border border-slate-800/10 bg-[linear-gradient(145deg,#020617_0%,#0f172a_55%,#172554_100%)] p-5 text-white shadow-[0_24px_55px_rgba(15,23,42,0.28)] sm:p-6">
+                <div className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                   Caso real
                 </div>
 
-                <h2 className="mt-3 text-lg font-extrabold text-slate-900">
+                <h2 className="mt-4 text-2xl font-extrabold leading-tight text-white">
                   Negocios reales ya están usando esto
                 </h2>
 
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                <p className="mt-3 text-sm leading-relaxed text-slate-300">
                   Clientes ya están recibiendo reservas automáticas sin depender
                   de mensajes.
                 </p>
 
-                <p className="mt-3 text-sm font-bold text-slate-900">
+                <p className="mt-5 text-sm font-bold text-white">
                   Fajas Paola — La Serena
                 </p>
 
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-400">
                   Clientes reales usando este sistema
                 </p>
 
@@ -190,55 +200,59 @@ function DemoLanding() {
                   href="https://instagram.com/fajaspaola"
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-4 inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-extrabold text-slate-900 transition hover:bg-slate-100 active:scale-[0.99]"
+                  className="mt-5 inline-flex min-h-[48px] items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] px-5 py-3 text-sm font-extrabold text-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 active:scale-[0.99]"
                 >
                   Ver negocio real funcionando
                 </a>
               </div>
             </div>
 
-            <div className="mt-8">
-              <p className="mb-3 text-sm font-semibold text-slate-700">
+            <div className="mt-10 rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,245,249,0.92))] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.10)] sm:p-6">
+              <p className="mb-4 text-sm font-bold uppercase tracking-[0.12em] text-slate-700">
                 Primero mira cómo funciona 👇
               </p>
 
               <DemoQuoteCard />
 
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-4 text-xs text-slate-500">
                 Esto es opcional. Primero prueba la agenda.
               </p>
             </div>
 
-            <div className="mt-10 grid gap-3 sm:grid-cols-3">
-              {[
-                {
-                  name: "María",
-                  text: "Reservé en 30 segundos. Se siente súper pro.",
-                },
-                {
-                  name: "Camila",
-                  text: "Me llegó la confirmación y pude reagendar sin hablar con nadie.",
-                },
-                {
-                  name: "Daniela",
-                  text: "Así debería funcionar cualquier agenda online.",
-                },
-              ].map((t) => (
-                <div
-                  key={t.name}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="grid h-8 w-8 place-items-center rounded-full bg-slate-900 text-xs font-extrabold text-white">
-                      {t.name.slice(0, 1)}
+            <div className="mt-10">
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  {
+                    name: "María",
+                    text: "Reservé en 30 segundos. Se siente súper pro.",
+                  },
+                  {
+                    name: "Camila",
+                    text: "Me llegó la confirmación y pude reagendar sin hablar con nadie.",
+                  },
+                  {
+                    name: "Daniela",
+                    text: "Así debería funcionar cualquier agenda online.",
+                  },
+                ].map((t) => (
+                  <div
+                    key={t.name}
+                    className="rounded-[24px] border border-white/70 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_14px_32px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(180deg,#0f172a_0%,#020617_100%)] text-xs font-extrabold text-white shadow-[0_10px_20px_rgba(15,23,42,0.25)]">
+                        {t.name.slice(0, 1)}
+                      </div>
+                      <div className="text-sm font-bold text-slate-900">
+                        {t.name}
+                      </div>
                     </div>
-                    <div className="text-sm font-bold text-slate-900">
-                      {t.name}
-                    </div>
+                    <p className="mt-4 text-sm leading-6 text-slate-700">
+                      “{t.text}”
+                    </p>
                   </div>
-                  <p className="mt-2 text-sm text-slate-700">“{t.text}”</p>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         </section>

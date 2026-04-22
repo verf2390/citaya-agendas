@@ -832,7 +832,7 @@ function ReservarInner() {
     fullName.trim().length >= 2 && isPhoneValid && isValidEmail(email);
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,rgba(255,255,255,1),rgba(248,250,252,1)_42%,rgba(241,245,249,1)_100%)]">
+    <main className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.08),transparent_28%),linear-gradient(180deg,#ecf2f8_0%,#f8fafc_28%,#eef3f8_100%)]">
       <div className="mx-auto w-full max-w-[460px] px-3 pb-28 pt-2 font-[system-ui] text-[12px] leading-snug sm:max-w-3xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
         <div
           className={cn(
@@ -841,16 +841,16 @@ function ReservarInner() {
             isScrolled ? "border-b shadow-sm" : "border-b border-transparent",
           )}
         >
-          <div className="rounded-[28px] border border-border/70 bg-white/90 px-3 py-3 shadow-sm sm:px-4 sm:py-4">
+          <div className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] ring-1 ring-slate-200/70 sm:px-4 sm:py-4">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 sm:gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-50 ring-1 ring-border shadow-sm sm:h-11 sm:w-11">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] ring-1 ring-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.10)] sm:h-11 sm:w-11">
                   <span className="text-[10px] font-extrabold sm:text-sm">
                     {(tenantName || tenantSlug || "C").slice(0, 2).toUpperCase()}
                   </span>
                 </div>
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-extrabold sm:text-lg">
+                <div className="min-w-0 max-w-full flex-1">
+                  <div className="max-w-full break-words text-[12px] font-extrabold leading-tight sm:text-lg sm:leading-tight">
                     {tenantName || tenantSlug || "Reserva tu hora"}
                   </div>
                   <div className="text-[11px] text-muted-foreground sm:text-sm">
@@ -887,11 +887,11 @@ function ReservarInner() {
             </div>
 
             {!selectedSlot ? (
-              <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-[10.5px] text-muted-foreground sm:text-xs">
+              <div className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(241,245,249,0.86))] px-3 py-2 text-[10.5px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-xs">
                 Elige un servicio, selecciona la hora y confirma tus datos.
               </div>
             ) : (
-              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[10.5px] text-emerald-800 sm:text-xs">
+              <div className="mt-3 rounded-2xl border border-emerald-200 bg-[linear-gradient(180deg,#ecfdf5_0%,#d1fae5_100%)] px-3 py-2 text-[10.5px] text-emerald-800 shadow-[0_8px_20px_rgba(16,185,129,0.10)] sm:text-xs">
                 Hora elegida:{" "}
                 <span className="font-extrabold">
                   {formatCL(selectedSlot.start_at)}
@@ -915,7 +915,7 @@ function ReservarInner() {
         <div className="grid gap-3 pt-3 sm:gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <div ref={serviceRef} />
-            <section className="rounded-[28px] border border-border/80 bg-white/90 p-3 shadow-sm backdrop-blur sm:p-5">
+            <section className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur sm:p-5">
               <SectionHeader
                 icon={<BadgeCheck className="h-4 w-4 text-muted-foreground" />}
                 title="Servicio"
@@ -934,7 +934,7 @@ function ReservarInner() {
               ) : showServicePicker ? (
                 <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
                   {services.length === 0 ? (
-                    <div className="rounded-2xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
+                    <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 text-[11px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-sm">
                       No hay servicios activos configurados.
                     </div>
                   ) : (
@@ -944,14 +944,14 @@ function ReservarInner() {
                         type="button"
                         onClick={() => pickService(s.id)}
                         className={cn(
-                          "w-full rounded-3xl border bg-white p-3 text-left transition",
-                          "hover:bg-slate-50 hover:shadow-md active:scale-[0.99]",
+                          "w-full rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition duration-200",
+                          "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_34px_rgba(15,23,42,0.12)] active:translate-y-0 active:scale-[0.99]",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-50 ring-1 ring-border">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] ring-1 ring-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
                               <BadgeCheck className="h-5 w-5 text-muted-foreground" />
                             </div>
                             <div className="min-w-0">
@@ -967,7 +967,7 @@ function ReservarInner() {
                             </div>
                           </div>
 
-                          <span className="shrink-0 rounded-2xl bg-slate-900 px-3 py-2 text-[10px] font-extrabold text-white shadow-sm sm:text-xs">
+                          <span className="shrink-0 rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] px-3 py-2 text-[10px] font-extrabold text-white shadow-[0_12px_24px_rgba(15,23,42,0.22)] ring-1 ring-slate-900/15 sm:text-xs">
                             Elegir
                           </span>
                         </div>
@@ -976,10 +976,10 @@ function ReservarInner() {
                   )}
                 </div>
               ) : (
-                <div className="mt-3 rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4">
+                <div className="mt-3 rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] text-white shadow-[0_12px_26px_rgba(15,23,42,0.20)]">
                         <BadgeCheck className="h-5 w-5" />
                       </div>
 
@@ -1007,8 +1007,8 @@ function ReservarInner() {
                         }}
                         className={cn(
                           "inline-flex items-center gap-2",
-                          "h-10 rounded-2xl border bg-white px-4 text-[12px] font-extrabold text-slate-900 shadow-sm",
-                          "hover:bg-slate-50 active:scale-[0.99]",
+                          "h-10 rounded-2xl border border-slate-200 bg-white px-4 text-[12px] font-extrabold text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.08)]",
+                          "hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:scale-[0.99]",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                         title="Cambiar servicio"
@@ -1022,7 +1022,7 @@ function ReservarInner() {
               )}
             </section>
 
-            <section className="mt-3 rounded-[28px] border border-border/80 bg-white/90 p-3 shadow-sm backdrop-blur sm:p-5">
+            <section className="mt-4 rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur sm:p-5">
               <SectionHeader
                 icon={<User className="h-4 w-4 text-muted-foreground" />}
                 title="Profesional"
@@ -1030,7 +1030,7 @@ function ReservarInner() {
               />
 
               {loadingPros ? (
-                <div className="mt-3 rounded-3xl border bg-white p-3">
+                <div className="mt-3 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
                   <div className="flex items-center gap-3">
                     <div className="h-12 w-12 rounded-2xl bg-muted/60 animate-pulse" />
                     <div className="flex-1 space-y-2">
@@ -1040,7 +1040,7 @@ function ReservarInner() {
                   </div>
                 </div>
               ) : professionals.length === 0 ? (
-                <div className="mt-3 rounded-3xl border bg-white p-3 text-[12px] font-extrabold sm:text-sm">
+                <div className="mt-3 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 text-[12px] font-extrabold shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:text-sm">
                   Sin profesionales configurados
                   <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
                     Agrega profesionales en Supabase → <b>professionals</b> (active=true).
@@ -1053,7 +1053,7 @@ function ReservarInner() {
                       value={professionalId}
                       disabled={saving || !tenantId}
                       onChange={(e) => setProfessionalId(e.target.value)}
-                      className="mt-3 h-11 w-full rounded-2xl border bg-white px-3 text-[12px] font-medium outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                      className="mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 text-[12px] font-medium shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                     >
                       {professionals.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -1070,9 +1070,9 @@ function ReservarInner() {
                     if (!pro) return null;
 
                     return (
-                      <div className="mt-3 rounded-3xl border bg-gradient-to-br from-white to-slate-50 p-3 sm:p-4">
+                      <div className="mt-3 rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)] sm:p-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-muted/40 ring-1 ring-border">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] ring-1 ring-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
                             {pro.avatar_url ? (
                               <img
                                 src={pro.avatar_url}
@@ -1396,7 +1396,7 @@ function ReservarInner() {
             <div ref={contactRef} />
             <section
               className={cn(
-                "mt-3 rounded-[28px] border border-border/80 bg-white/90 p-3 shadow-sm backdrop-blur sm:p-5",
+                "mt-4 rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur sm:p-5",
                 lockContact ? "opacity-70" : "",
               )}
             >
@@ -1406,7 +1406,7 @@ function ReservarInner() {
                 subtitle="Te enviaremos la confirmación al correo."
               />
 
-              <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-[10.5px] text-muted-foreground sm:text-xs">
+              <div className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(241,245,249,0.86))] px-3 py-2 text-[10.5px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-xs">
                 Tus datos se usan solo para gestionar tu reserva y enviarte la confirmación.
               </div>
 
@@ -1423,7 +1423,7 @@ function ReservarInner() {
                       if (!nameTouched) setNameTouched(true);
                     }}
                     placeholder="Ej: Juan Pérez"
-                    className="h-11 w-full rounded-2xl border bg-white px-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 text-[12px] shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                   />
                 </div>
 
@@ -1446,10 +1446,10 @@ function ReservarInner() {
                       }}
                       placeholder="Ej: 912345678 o +56912345678"
                       className={cn(
-                        "h-11 w-full rounded-2xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
+                        "h-11 w-full rounded-2xl border bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] pl-10 pr-3 text-[12px] shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
                         phoneTouched && phone.trim().length > 0 && !isPhoneValid
                           ? "border-red-300 focus:ring-red-200"
-                          : "focus:ring-foreground/20",
+                          : "border-slate-200 focus:ring-foreground/20",
                       )}
                     />
                   </div>
@@ -1478,16 +1478,16 @@ function ReservarInner() {
                       onBlur={() => setEmail((v) => v.trim().toLowerCase())}
                       placeholder="Ej: nombre@gmail.com"
                       className={cn(
-                        "h-11 w-full rounded-2xl border bg-white pl-10 pr-3 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
+                        "h-11 w-full rounded-2xl border bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] pl-10 pr-3 text-[12px] shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
                         email.trim().length > 0 && !isValidEmail(email)
                           ? "border-red-300 focus:ring-red-200"
-                          : "focus:ring-foreground/20",
+                          : "border-slate-200 focus:ring-foreground/20",
                       )}
                     />
                   </div>
                 </div>
 
-                <div className="rounded-2xl border bg-white px-3 py-2 text-center text-[10px] text-muted-foreground sm:text-xs">
+                <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 py-2 text-center text-[10px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-xs">
                   Al reservar aceptas recibir mensajes relacionados a tu cita.
                 </div>
               </div>
@@ -1495,7 +1495,7 @@ function ReservarInner() {
           </div>
 
           <aside className="hidden lg:block">
-            <section className="rounded-[28px] border border-border/80 bg-white/90 p-4 shadow-sm backdrop-blur lg:sticky lg:top-6">
+            <section className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] p-4 shadow-[0_24px_55px_rgba(15,23,42,0.14)] ring-1 ring-slate-200/70 backdrop-blur lg:sticky lg:top-6">
               <div className="mb-2 flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-muted-foreground" />
                 <div className="text-base font-extrabold">
@@ -1503,7 +1503,7 @@ function ReservarInner() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-3xl border bg-gradient-to-br from-white to-slate-50 p-4">
+              <div className="mt-3 rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
                 <div className="text-sm font-extrabold">
                   {service?.name ??
                     (serviceId ? "Servicio seleccionado" : "Servicio")}
@@ -1540,7 +1540,7 @@ function ReservarInner() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+              <div className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(241,245,249,0.86))] px-3 py-2 text-xs text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
                 Confirmación inmediata por correo y enlace privado para gestionar tu cita.
               </div>
 
@@ -1550,9 +1550,9 @@ function ReservarInner() {
                   onClick={handleReserve}
                   disabled={!canSubmit}
                   className={cn(
-                    "h-12 w-full rounded-2xl text-sm font-extrabold transition shadow-sm",
+                    "h-12 w-full rounded-2xl text-sm font-extrabold transition duration-200",
                     canSubmit
-                      ? "bg-slate-900 text-white hover:opacity-95"
+                      ? "bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/15 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(15,23,42,0.34)] hover:brightness-110 active:translate-y-0 active:scale-[0.985]"
                       : "cursor-not-allowed bg-muted text-muted-foreground",
                   )}
                 >
@@ -1563,9 +1563,9 @@ function ReservarInner() {
           </aside>
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 p-2 backdrop-blur lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200/80 bg-background/95 p-2 backdrop-blur lg:hidden">
           <div className="mx-auto max-w-[460px] px-1">
-            <div className="mb-2 rounded-3xl border bg-white px-3 py-2.5 text-[10.5px] text-muted-foreground shadow-sm">
+            <div className="mb-2 rounded-3xl border border-white/70 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_12px_28px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70">
               <div className="truncate">
                 <span className="font-extrabold text-foreground">
                   {mobileSummary.svc}
@@ -1580,9 +1580,9 @@ function ReservarInner() {
               onClick={handleReserve}
               disabled={!canSubmit}
               className={cn(
-                "h-12 w-full rounded-3xl text-[12px] font-extrabold transition shadow-sm",
+                "h-12 w-full rounded-3xl text-[12px] font-extrabold transition duration-200",
                 canSubmit
-                  ? "bg-slate-900 text-white hover:opacity-95"
+                  ? "bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/15 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(15,23,42,0.34)] hover:brightness-110 active:translate-y-0 active:scale-[0.985]"
                   : "cursor-not-allowed bg-muted text-muted-foreground",
               )}
             >
