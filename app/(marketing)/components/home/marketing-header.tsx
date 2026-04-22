@@ -19,7 +19,7 @@ export function MarketingHeader() {
         </Link>
         <nav className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 text-xs font-semibold text-slate-600 sm:gap-x-4 sm:text-sm">
           {navItems.map((item) => (
-            <Link key={item.href} href={item.href} className="transition-colors hover:text-cyan-700">
+            <Link key={item.href} href={item.href} className="link-underline rounded-sm transition-colors duration-300 hover:text-cyan-700 focus-visible:outline-none focus-visible:text-cyan-700">
               {item.label}
             </Link>
           ))}
