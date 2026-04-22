@@ -1,30 +1,4 @@
-const services = [
-  {
-    title: "Diseño de páginas web",
-    description:
-      "Creamos páginas claras y modernas para que tus clientes entiendan lo que haces y te contacten sin fricción.",
-  },
-  {
-    title: "Agenda online",
-    description:
-      "Tus clientes pueden reservar en cualquier momento sin depender de que respondas mensajes.",
-  },
-  {
-    title: "Automatizaciones",
-    description:
-      "Confirmaciones, recordatorios y seguimiento automático para reducir trabajo manual.",
-  },
-  {
-    title: "Optimización web",
-    description:
-      "Mejoramos tu web para que cargue rápido, se entienda mejor y genere más consultas.",
-  },
-  {
-    title: "Soluciones digitales",
-    description:
-      "Combinamos herramientas según tu negocio para ayudarte a vender con más orden.",
-  },
-] as const;
+import { services } from "./marketing-content";
 
 export function ServicesGridSection() {
   return (

@@ -1,35 +1,6 @@
+import { faqs, whatsappHref } from "./marketing-content";
+
 import Link from "next/link";
-
-const faqs = [
-  {
-    question: "¿Esto sirve para mi tipo de negocio?",
-    answer:
-      "Sí, está pensado para negocios que trabajan por agenda: estéticas, barberías, salud y servicios.",
-  },
-  {
-    question: "¿Necesito saber de tecnología?",
-    answer: "No, todo está pensado para ser simple de usar.",
-  },
-  {
-    question: "¿Puedo empezar básico?",
-    answer: "Sí, puedes partir simple y luego escalar.",
-  },
-  {
-    question: "¿Incluye agenda online?",
-    answer: "Sí, según tu caso.",
-  },
-  {
-    question: "¿Cuánto demora?",
-    answer: "Se puede lanzar una versión funcional en poco tiempo.",
-  },
-  {
-    question: "¿Incluye soporte?",
-    answer: "Sí, se puede acompañar el proceso.",
-  },
-] as const;
-
-const whatsappMessage = "Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.";
-const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsappMessage)}`;
 
 export function FaqCtaSection() {
   return (

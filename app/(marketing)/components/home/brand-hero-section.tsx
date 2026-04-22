@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 
 const painPoints = [
@@ -14,23 +13,6 @@ export function BrandHeroSection() {
   return (
     <section className="px-4 pb-20 pt-6 sm:px-6 sm:pb-24 sm:pt-8 lg:px-10 lg:pb-28 lg:pt-10">
       <div className="mx-auto w-full max-w-6xl">
-        <header className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/75 px-4 py-2.5 backdrop-blur sm:mb-5 sm:px-5">
-          <Image
-            src="/citaya-logo.svg"
-            alt="Logo Citaya"
-            width={176}
-            height={50}
-            priority
-            className="h-9 w-auto sm:h-10"
-          />
-          <a
-            href="#demos"
-            className="text-xs font-semibold tracking-wide text-slate-600 transition-colors hover:text-cyan-700 sm:text-sm"
-          >
-            Ver demos
-          </a>
-        </header>
-
         <div className="relative grid gap-8 overflow-hidden rounded-3xl border border-cyan-200/80 bg-gradient-to-br from-slate-950/15 via-cyan-200/75 to-white p-6 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.62)] sm:p-8 lg:grid-cols-2 lg:items-center lg:gap-12 lg:p-12">
           <div
             aria-hidden
@@ -84,10 +66,10 @@ export function BrandHeroSection() {
                 Ver cómo funcionaría en mi negocio
               </Link>
               <a
-                href="#demos"
+                href="/demos"
                 className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
               >
-                Ver demos reales
+                Ver demos
               </a>
             </div>
 
