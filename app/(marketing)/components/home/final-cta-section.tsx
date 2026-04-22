@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CtaButton } from "./cta-button";
 import { whatsappHref } from "./marketing-content";
 
 type FinalCtaSectionProps = {
@@ -17,20 +18,18 @@ export function FinalCtaSection({ showFaqTeaser = false }: FinalCtaSectionProps)
         </p>
 
         <div className="mx-auto mt-7 grid w-full max-w-xl gap-3 sm:mt-8 sm:flex sm:justify-center sm:gap-4">
-          <Link
-            href="/contacto"
-            className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-1.5 hover:from-cyan-600 hover:to-cyan-500 sm:w-auto"
-          >
-            Ir a contacto
-          </Link>
-          <Link
+          <CtaButton href="/contacto" variant="primary" showArrow className="sm:w-auto">
+            Quiero ver cómo funciona
+          </CtaButton>
+          <CtaButton
             href={whatsappHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-700 transition-all duration-200 hover:border-slate-300 sm:w-auto"
+            variant="whatsapp"
+            className="sm:w-auto"
           >
-            Escribir por WhatsApp
-          </Link>
+            Hablar por WhatsApp
+          </CtaButton>
         </div>
 
         {showFaqTeaser ? (

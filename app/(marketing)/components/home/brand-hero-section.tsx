@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { CtaButton } from "./cta-button";
 
 const painPoints = [
   "Mensajes sin responder a tiempo",
@@ -57,20 +57,19 @@ export function BrandHeroSection() {
             </ul>
 
             <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
-              <Link
+              <CtaButton
                 href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
+                variant="primary"
+                showArrow
+                className="sm:w-auto"
               >
-                Ver cómo funcionaría en mi negocio
-              </Link>
-              <a
-                href="/demos"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
-              >
-                Ver demos
-              </a>
+                Ver cómo funciona en mi negocio
+              </CtaButton>
+              <CtaButton href="/demos" variant="secondary" className="sm:w-auto">
+                Ver ejemplos
+              </CtaButton>
             </div>
 
             <p className="mt-3 text-xs font-semibold tracking-wide text-slate-500 sm:text-sm">
