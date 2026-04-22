@@ -16,15 +16,19 @@ export function BrandHeroSection() {
         <div className="relative grid gap-8 overflow-hidden rounded-3xl border border-cyan-200/80 bg-gradient-to-br from-slate-950/15 via-cyan-200/75 to-white p-6 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.62)] sm:p-8 lg:grid-cols-2 lg:items-center lg:gap-12 lg:p-12">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_8%,rgba(14,116,144,0.22),transparent_45%),radial-gradient(circle_at_90%_18%,rgba(34,211,238,0.28),transparent_42%)]"
+            className="animate-gradient-shift pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_14%_10%,rgba(14,116,144,0.24),transparent_46%),radial-gradient(circle_at_86%_20%,rgba(34,211,238,0.26),transparent_44%),linear-gradient(120deg,rgba(255,255,255,0.62),rgba(207,250,254,0.68),rgba(224,242,254,0.6),rgba(255,255,255,0.62))]"
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute -top-24 right-2 h-96 w-96 rounded-full bg-cyan-400/65 blur-[110px]"
+            className="animate-glow-drift pointer-events-none absolute -top-24 right-2 h-96 w-96 rounded-full bg-cyan-400/65 blur-[110px]"
           />
           <div
             aria-hidden
             className="pointer-events-none absolute -bottom-16 -left-20 h-72 w-72 rounded-full bg-sky-300/55 blur-3xl"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-[18%] top-[58%] h-16 w-16 rounded-full border border-cyan-300/45 bg-white/35 blur-sm sm:h-20 sm:w-20"
           />
           <div className="relative z-10">
             <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-800 sm:text-xs">
@@ -61,15 +65,17 @@ export function BrandHeroSection() {
                 href={whatsappHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-10px_rgba(8,145,178,1)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-cyan-600 hover:to-cyan-500 hover:shadow-[0_46px_92px_-12px_rgba(8,145,178,1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:translate-y-0 active:from-cyan-800 active:to-cyan-700 sm:w-auto"
+                className="animate-soft-pulse group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 via-sky-500 to-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_24px_56px_-16px_rgba(8,145,178,0.6)] transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.015] hover:shadow-[0_38px_84px_-18px_rgba(14,165,233,0.75)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:scale-[0.985] sm:w-auto"
               >
-                Ver cómo funcionaría en mi negocio
+                <span>Ver cómo funcionaría en mi negocio</span>
+                <span className="text-base transition-transform duration-300 group-hover:translate-x-1">→</span>
               </Link>
               <a
                 href="/demos"
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-200 hover:border-slate-300 hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:translate-y-0 sm:w-auto"
+                className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:scale-[0.99] sm:w-auto"
               >
-                Ver demos
+                <span>Ver demos</span>
+                <span className="text-base text-cyan-700 transition-transform duration-300 group-hover:translate-x-1">→</span>
               </a>
             </div>
 
@@ -78,12 +84,16 @@ export function BrandHeroSection() {
             </p>
           </div>
 
-          <div className="relative z-10 rounded-[1.8rem] border border-cyan-200/70 bg-slate-900/[0.035] p-3 sm:p-4">
+          <div className="relative z-10 rounded-[1.9rem] border border-cyan-200/70 bg-slate-900/[0.035] p-3 backdrop-blur-sm sm:p-4">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute -inset-8 -z-10 rounded-[2.2rem] bg-[radial-gradient(circle,rgba(34,211,238,0.45),rgba(34,211,238,0)_65%)] blur-2xl"
+            />
             <div
               aria-hidden
               className="pointer-events-none absolute inset-x-2 top-1 h-40 rounded-full bg-cyan-400/75 blur-3xl sm:inset-x-7"
             />
-            <div className="relative scale-[1.02] rounded-2xl border border-cyan-100 bg-white/88 p-4 shadow-[0_62px_150px_-28px_rgba(15,23,42,0.86)] ring-1 ring-cyan-100/70 backdrop-blur-[3px] sm:p-5">
+            <div className="animate-floating-card relative scale-[1.02] rounded-3xl border border-cyan-100 bg-white/90 p-4 shadow-[0_62px_150px_-28px_rgba(15,23,42,0.86)] ring-1 ring-cyan-100/70 backdrop-blur-[3px] transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_72px_170px_-26px_rgba(14,165,233,0.58)] sm:p-5 motion-safe:lg:translate-y-1">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista previa</p>
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
@@ -106,11 +116,11 @@ export function BrandHeroSection() {
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-3">
+                <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-3 py-3 shadow-[0_14px_26px_-20px_rgba(6,182,212,0.8)]">
                   <p className="text-[11px] text-slate-500">Reservas</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">+12</p>
                 </div>
-                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-3 shadow-[0_14px_26px_-20px_rgba(16,185,129,0.8)]">
                   <p className="text-[11px] text-slate-500">Tasa de respuesta</p>
                   <p className="mt-1 text-lg font-semibold text-slate-900">94%</p>
                 </div>
