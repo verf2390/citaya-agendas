@@ -31,7 +31,7 @@ export function NavigationCardsSection() {
             <RevealOnScroll key={card.title} delayMs={index * 90}>
               <Link
                 href={card.href}
-                className={`group rounded-3xl border bg-white/95 p-6 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.5)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-cyan-400 hover:shadow-[0_42px_85px_-28px_rgba(8,145,178,0.55)] active:scale-[0.995] ${
+                className={`group flex h-full flex-col rounded-3xl border bg-white/95 p-6 shadow-[0_28px_60px_-36px_rgba(15,23,42,0.5)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-cyan-400 hover:shadow-[0_42px_85px_-28px_rgba(8,145,178,0.55)] active:scale-[0.995] ${
                   index === 0 ? "border-cyan-300" : "border-slate-200"
                 }`}
               >
