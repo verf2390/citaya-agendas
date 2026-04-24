@@ -3,6 +3,10 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
+import { Button } from "@/components/ui/button";
+import { Section } from "@/components/ui/section";
+import { SurfaceCard } from "@/components/ui/card";
 import {
   BadgeCheck,
   CalendarPlus,
@@ -146,9 +150,9 @@ export default function ConfirmacionPage() {
 
 function ConfirmacionFallback() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-      <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
-        <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
+    <DemoShell>
+      <DemoContainer className="max-w-3xl px-4 py-8 font-[system-ui] sm:py-10">
+        <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-6">
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-2xl bg-muted/60 animate-pulse" />
             <div>
@@ -162,9 +166,9 @@ function ConfirmacionFallback() {
             <div className="h-28 rounded-2xl bg-muted/50 animate-pulse" />
             <div className="h-12 rounded-2xl bg-muted/50 animate-pulse" />
           </div>
-        </div>
-      </div>
-    </main>
+        </SurfaceCard>
+      </DemoContainer>
+    </DemoShell>
   );
 }
 
@@ -184,34 +188,32 @@ function ConfirmacionInner() {
 
   if (!id) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-        <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
-          <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
+      <DemoShell>
+        <DemoContainer className="max-w-3xl px-4 py-8 font-[system-ui] sm:py-10">
+          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-6">
             <div className="text-lg font-extrabold">⚠️ Link inválido</div>
             <div className="mt-2 text-sm font-semibold text-red-600">
               Falta el id de la cita.
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 rounded-2xl border bg-white/70 px-4 py-2 text-sm font-extrabold hover:bg-white"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Volver al inicio
-              </Link>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button asChild variant="pill" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/">
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver al inicio
+                </Link>
+              </Button>
 
-              <Link
-                href="/reservar"
-                className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2 text-sm font-extrabold text-background hover:opacity-95"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Reservar otra hora
-              </Link>
+              <Button asChild variant="hero" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/reservar">
+                  <RefreshCw className="h-4 w-4" />
+                  Reservar otra hora
+                </Link>
+              </Button>
             </div>
-          </div>
-        </div>
-      </main>
+          </SurfaceCard>
+        </DemoContainer>
+      </DemoShell>
     );
   }
 
@@ -350,34 +352,32 @@ function ConfirmacionInner() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-        <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
-          <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
+      <DemoShell>
+        <DemoContainer className="max-w-3xl px-4 py-8 font-[system-ui] sm:py-10">
+          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-6">
             <div className="text-lg font-extrabold">
               ⚠️ No se pudo cargar la cita
             </div>
             <div className="mt-2 text-sm font-semibold text-red-600">{error}</div>
 
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 rounded-2xl border bg-white/70 px-4 py-2 text-sm font-extrabold hover:bg-white"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Volver al inicio
-              </Link>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button asChild variant="pill" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/">
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver al inicio
+                </Link>
+              </Button>
 
-              <Link
-                href="/reservar"
-                className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2 text-sm font-extrabold text-background hover:opacity-95"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Reservar otra hora
-              </Link>
+              <Button asChild variant="hero" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/reservar">
+                  <RefreshCw className="h-4 w-4" />
+                  Reservar otra hora
+                </Link>
+              </Button>
             </div>
-          </div>
-        </div>
-      </main>
+          </SurfaceCard>
+        </DemoContainer>
+      </DemoShell>
     );
   }
 
@@ -569,28 +569,31 @@ function ConfirmacionInner() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-background to-muted/40">
-      <div className="mx-auto w-full max-w-[560px] px-4 py-10 font-[system-ui]">
+    <DemoShell>
+      <DemoContainer className="max-w-4xl px-4 py-8 font-[system-ui] sm:py-10">
         {/* ✅ Links arriba */}
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 rounded-2xl border bg-white/70 px-4 py-2 text-sm font-extrabold hover:bg-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver al inicio
-          </Link>
+        <div className="mb-4 flex flex-wrap gap-3">
+          <Button asChild variant="pill" className="h-11 gap-2 px-4 text-sm font-extrabold">
+            <Link href="/">
+              <ArrowLeft className="h-4 w-4" />
+              Volver al inicio
+            </Link>
+          </Button>
 
-          <Link
-            href="/reservar"
-            className="inline-flex items-center gap-2 rounded-2xl bg-foreground px-4 py-2 text-sm font-extrabold text-background hover:opacity-95"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Reservar otra hora
-          </Link>
+          <Button asChild variant="hero" className="h-11 gap-2 px-4 text-sm font-extrabold">
+            <Link href="/reservar">
+              <RefreshCw className="h-4 w-4" />
+              Reservar otra hora
+            </Link>
+          </Button>
         </div>
 
-        <div className="rounded-3xl border bg-white/80 p-6 shadow-sm backdrop-blur">
+        <SurfaceCard
+          tone="glass"
+          shadow="panel"
+          radius="xl"
+          className="p-5 sm:p-6"
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-600 text-white shadow-sm">
@@ -619,9 +622,9 @@ function ConfirmacionInner() {
               Cargando detalles de tu cita…
             </div>
           ) : null}
-        </div>
+        </SurfaceCard>
 
-        <section className="mt-4 rounded-3xl border border-emerald-200 bg-emerald-50/60 p-6 shadow-sm">
+        <Section className="mt-4 border-emerald-200/70 bg-[linear-gradient(180deg,rgba(236,253,245,0.92),rgba(209,250,229,0.82))] p-5 sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="text-sm text-emerald-900/80">Resumen</div>
@@ -646,7 +649,7 @@ function ConfirmacionInner() {
             </button>
           </div>
 
-          <div className="mt-5 grid gap-3 text-sm">
+          <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
             <Row label="Negocio" value={businessName} />
             <Row
               label="Profesional"
@@ -664,7 +667,12 @@ function ConfirmacionInner() {
 
           {/* ✅ NUEVO: Description completo */}
           {descriptionText ? (
-            <div className="mt-5 rounded-2xl bg-white/60 px-4 py-3">
+            <SurfaceCard
+              tone="default"
+              shadow="soft"
+              radius="lg"
+              className="mt-5 bg-white/78 px-4 py-4 sm:col-span-2"
+            >
               <div className="mb-2 flex items-center gap-2 text-xs font-extrabold text-emerald-950/70">
                 <FileText className="h-4 w-4" />
                 Detalle / descripción
@@ -672,7 +680,7 @@ function ConfirmacionInner() {
               <div className="whitespace-pre-wrap text-sm font-semibold text-emerald-950">
                 {descriptionText}
               </div>
-            </div>
+            </SurfaceCard>
           ) : null}
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -741,19 +749,24 @@ function ConfirmacionInner() {
               </div>
             ) : null}
           </div>
-        </section>
-      </div>
-    </main>
+        </Section>
+      </DemoContainer>
+    </DemoShell>
   );
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-2xl bg-white/60 px-4 py-3">
+    <SurfaceCard
+      tone="default"
+      shadow="soft"
+      radius="lg"
+      className="flex items-start justify-between gap-3 bg-white/78 px-4 py-3"
+    >
       <div className="text-xs font-extrabold text-emerald-950/70">{label}</div>
       <div className="text-right text-sm font-semibold text-emerald-950">
         {value}
       </div>
-    </div>
+    </SurfaceCard>
   );
 }

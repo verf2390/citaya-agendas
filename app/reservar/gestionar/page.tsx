@@ -3,6 +3,10 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ShimmerButton from "@/components/magicui/ShimmerButton";
+import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
+import { Section } from "@/components/ui/section";
+import { SurfaceCard } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   CalendarClock,
   XCircle,
@@ -211,18 +215,18 @@ function SectionHeader({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-2">
+    <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-white/80 ring-1 ring-slate-200">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-[18px] bg-[linear-gradient(180deg,#ffffff_0%,#eef2f7_100%)] ring-1 ring-slate-200/80 shadow-[0_10px_22px_rgba(15,23,42,0.08)]">
             {icon}
           </span>
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold text-slate-900 sm:text-base">
+            <div className="truncate text-[13px] font-black tracking-[-0.01em] text-slate-900 sm:text-base">
               {title}
             </div>
             {subtitle ? (
-              <div className="mt-0.5 text-[11px] text-slate-600 sm:mt-1 sm:text-sm">
+              <div className="mt-0.5 text-[11px] text-slate-600/90 sm:mt-1 sm:text-sm">
                 {subtitle}
               </div>
             ) : null}
@@ -559,15 +563,24 @@ function GestionarCitaInner() {
   }, [selectedDay, appt?.professional_id, appt?.service_id]);
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background to-muted/40">
+    <DemoShell className="overflow-x-clip">
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-20 left-1/2 h-56 w-[28rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl sm:h-72 sm:w-[42rem]" />
         <div className="absolute -bottom-24 left-1/2 h-64 w-[28rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/40 via-slate-100/20 to-emerald-100/30 blur-3xl sm:h-72 sm:w-[42rem]" />
       </div>
 
-      <div className="mx-auto w-full max-w-[460px] px-3 pb-24 pt-2 font-[system-ui] text-[12px] leading-snug sm:max-w-3xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
+      <DemoContainer
+        size="booking"
+        className="max-w-full overflow-x-clip font-[system-ui] text-[12px] leading-snug sm:text-[14px] sm:leading-normal"
+      >
         {/* Header sticky (similar Reservar) */}
-        <div className="sticky top-0 z-40 -mx-3 border-b bg-background/85 px-3 pb-2 pt-2 backdrop-blur sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:border-b-0 lg:bg-transparent lg:px-0">
+        <div className="sticky top-0 z-40 -mx-2 px-2 pb-3 pt-3 sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:px-0 lg:pt-0">
+          <SurfaceCard
+            tone="glass"
+            shadow="panel"
+            radius="xl"
+            className="relative overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9))] px-4 py-4 ring-white/60 shadow-[0_24px_60px_rgba(15,23,42,0.12)] sm:px-5 sm:py-5"
+          >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="truncate text-[13px] font-semibold sm:text-base">
@@ -580,7 +593,7 @@ function GestionarCitaInner() {
 
             <div className="flex items-center gap-2">
               <StatusBadge status={appt?.status || "loading"} />
-              <span className="hidden sm:inline-flex items-center gap-2 rounded-full border bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
+              <span className="hidden sm:inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/78 px-3 py-1 text-xs font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
                 <Lock className="h-3.5 w-3.5" /> Enlace privado
               </span>
             </div>
@@ -600,10 +613,12 @@ function GestionarCitaInner() {
               {notice}
             </div>
           ) : null}
+          </SurfaceCard>
         </div>
 
         {/* Contenido */}
-        <div className="pt-3 grid gap-2.5 sm:gap-4">
+        <div className="grid max-w-full gap-4 pt-4 sm:gap-5 lg:grid-cols-[minmax(0,1.08fr)_320px]">
+          <div className="min-w-0 max-w-full">
           {loading ? (
             <div className="grid gap-3">
               <div className="h-24 rounded-2xl bg-muted/60 animate-pulse" />
@@ -614,15 +629,15 @@ function GestionarCitaInner() {
           {!loading && appt ? (
             <>
               {/* Resumen cita (cards compactas mobile) */}
-              <section className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4">
+              <Section className="min-w-0 max-w-full bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
                 <SectionHeader
                   icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />}
                   title="Resumen de tu cita"
                   subtitle="Revisa tus datos y el horario actual."
                 />
 
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 sm:gap-3">
-                  <div className="rounded-2xl border bg-white p-3">
+                <div className="mt-4 grid max-w-full gap-3 sm:grid-cols-2">
+                  <SurfaceCard tone="default" shadow="soft" radius="lg" className="min-w-0 max-w-full bg-white/88 p-4">
                     <div className="flex items-start gap-3">
                       <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
                         <User className="h-4 w-4 text-muted-foreground" />
@@ -654,9 +669,9 @@ function GestionarCitaInner() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </SurfaceCard>
 
-                  <div className="rounded-2xl border bg-white p-3">
+                  <SurfaceCard tone="default" shadow="soft" radius="lg" className="min-w-0 max-w-full bg-white/88 p-4">
                     <div className="flex items-start gap-3">
                       <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
                         <CalendarClock className="h-4 w-4 text-muted-foreground" />
@@ -694,9 +709,9 @@ function GestionarCitaInner() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </SurfaceCard>
                 </div>
-              </section>
+              </Section>
 
               {/* Bloqueo 3h */}
               {isLocked3h && !isCanceled ? (
@@ -707,7 +722,7 @@ function GestionarCitaInner() {
               ) : null}
 
               {/* Acciones */}
-              <section className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4">
+              <Section className="min-w-0 max-w-full bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
                 <SectionHeader
                   icon={<Sparkles className="h-4 w-4 text-muted-foreground" />}
                   title="Acciones"
@@ -725,7 +740,7 @@ function GestionarCitaInner() {
                     onClick={scrollToReschedule}
                     disabled={actionsDisabled}
                     className={cn(
-                      "w-full rounded-2xl border bg-white px-3 py-2 text-left transition",
+                      "w-full min-w-0 max-w-full rounded-[26px] border border-slate-200/70 bg-white/88 px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition",
                       "min-h-[44px]",
                       "hover:bg-muted/40 active:scale-[0.98] motion-reduce:active:scale-100",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -768,7 +783,7 @@ function GestionarCitaInner() {
                     onClick={onCancel}
                     disabled={actionsDisabled}
                     className={cn(
-                      "w-full rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-left transition",
+                      "w-full min-w-0 max-w-full rounded-[26px] border border-red-200/80 bg-red-50/92 px-4 py-3 text-left shadow-[0_10px_24px_rgba(239,68,68,0.06)] transition",
                       "min-h-[44px]",
                       "hover:bg-red-100 active:scale-[0.98] motion-reduce:active:scale-100",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -808,12 +823,12 @@ function GestionarCitaInner() {
                     </div>
                   </button>
                 </div>
-              </section>
+              </Section>
 
               {/* Reagendar */}
               <section
                 ref={rescheduleRef}
-                className="rounded-2xl border bg-white/80 p-2.5 shadow-sm backdrop-blur sm:p-4"
+                className="min-w-0 max-w-full overflow-x-hidden rounded-[30px] border border-white/70 bg-white/84 p-4 shadow-[0_22px_56px_rgba(15,23,42,0.09)] ring-1 ring-white/70 backdrop-blur sm:p-6"
               >
                 <SectionHeader
                   icon={<CalendarDays className="h-4 w-4 text-muted-foreground" />}
@@ -839,7 +854,7 @@ function GestionarCitaInner() {
                         Elige un día
                       </div>
 
-                      <div className="relative mt-2">
+                      <div className="relative mt-2 min-w-0 max-w-full">
                         <div
                           aria-hidden
                           className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-background/90 to-transparent"
@@ -849,8 +864,8 @@ function GestionarCitaInner() {
                           className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-background/90 to-transparent"
                         />
 
-                        <div className="overflow-x-auto touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-                          <div className="flex flex-nowrap gap-1.5 min-w-max items-center py-0.5">
+                        <div className="w-full min-w-0 overflow-x-auto overflow-y-hidden touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                          <div className="flex min-w-max flex-nowrap items-center gap-2 py-0.5 pr-2">
                             {grouped.map((d) => {
                               const active = selectedDay === d.dayKey;
                               const count = d.slots?.length ?? 0;
@@ -864,12 +879,12 @@ function GestionarCitaInner() {
                                     setSelectedSlotStartISO("");
                                   }}
                                   className={cn(
-                                    "shrink-0 whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-semibold ring-1 ring-border transition",
+                                    "shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[10px] font-semibold ring-1 ring-slate-200/80 transition",
                                     "sm:px-4 sm:py-2 sm:text-sm",
                                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     active
-                                      ? "bg-foreground text-background"
-                                      : "bg-white hover:bg-muted",
+                                      ? "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.14)]"
+                                      : "bg-white/82 hover:bg-white",
                                   )}
                                 >
                                   <span className="capitalize">{d.label}</span>
@@ -903,7 +918,7 @@ function GestionarCitaInner() {
                         Elige una hora
                       </div>
 
-                      <div className="mt-3 grid gap-3 sm:gap-4">
+                      <div className="mt-3 grid max-w-full gap-3 sm:gap-4">
                         {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
                           const list = buckets[label] ?? [];
                           if (list.length === 0) return null;
@@ -911,9 +926,12 @@ function GestionarCitaInner() {
                           const count = bucketCounts[label] ?? 0;
 
                           return (
-                            <div
+                            <SurfaceCard
                               key={label}
-                              className="rounded-2xl border bg-white p-2.5 sm:p-3"
+                              tone="default"
+                              shadow="soft"
+                              radius="lg"
+                              className="min-w-0 max-w-full border-slate-200/60 bg-gradient-to-br from-white/96 to-slate-50/96 p-3 sm:p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -939,7 +957,7 @@ function GestionarCitaInner() {
                                 </span>
                               </div>
 
-                              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                              <div className="mt-3 grid max-w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
                                 {list.map((s) => {
                                   const active = selectedSlotStartISO === s.start_at;
 
@@ -949,14 +967,14 @@ function GestionarCitaInner() {
                                       type="button"
                                       onClick={() => setSelectedSlotStartISO(s.start_at)}
                                       className={cn(
-                                        "relative w-full rounded-2xl border bg-white text-left transition",
+                                        "relative w-full min-w-0 max-w-full rounded-2xl border text-left transition shadow-[0_8px_18px_rgba(15,23,42,0.05)]",
                                         "min-h-[44px] px-3 py-2",
                                         "hover:bg-muted/40 active:scale-[0.98] motion-reduce:active:scale-100",
                                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                         "shadow-[0_1px_0_rgba(0,0,0,0.02)]",
                                         active
-                                          ? "border-foreground bg-foreground text-background shadow-sm ring-2 ring-foreground/20"
-                                          : "border-border",
+                                          ? "border-slate-900/10 bg-[linear-gradient(135deg,#0f172a_0%,#1e293b_100%)] text-white ring-2 ring-slate-900/15"
+                                          : "border-slate-200/70 bg-white/88",
                                       )}
                                     >
                                       <span
@@ -987,22 +1005,22 @@ function GestionarCitaInner() {
                                   );
                                 })}
                               </div>
-                            </div>
+                            </SurfaceCard>
                           );
                         })}
                       </div>
 
-                      <div className="mt-4 rounded-2xl border bg-white p-3">
+                      <SurfaceCard tone="default" shadow="soft" radius="lg" className="mt-4 border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(248,250,252,0.86))] p-3.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
                         <div className="flex items-start gap-2">
                           <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-muted/40 ring-1 ring-border">
                             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                           </span>
 
-                          <div className="min-w-0">
-                            <div className="text-[11px] text-muted-foreground sm:text-sm">
+                          <div className="min-w-0 max-w-full">
+                            <div className="text-[11px] leading-5 text-muted-foreground sm:text-sm">
                               ⚠️ Las horas disponibles podrían agotarse. Agenda lo antes posible.
                             </div>
-                            <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
+                            <div className="mt-2 text-[10px] leading-5 text-muted-foreground sm:text-xs">
                               {selectedSlotStartISO ? (
                                 <>
                                   Nuevo horario:{" "}
@@ -1016,7 +1034,7 @@ function GestionarCitaInner() {
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </SurfaceCard>
 
                       {plan === "pro" ? (
                         <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-2.5 text-[11px] text-emerald-900 sm:text-sm">
@@ -1039,6 +1057,50 @@ function GestionarCitaInner() {
               </section>
             </>
           ) : null}
+          </div>
+
+          <aside className="hidden lg:block">
+            <Section className="bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9))] p-5 ring-white/70 shadow-[0_24px_56px_rgba(15,23,42,0.10)] lg:sticky lg:top-6">
+              <SectionHeader
+                icon={<CalendarClock className="h-4 w-4 text-muted-foreground" />}
+                title="Estado de la cita"
+                subtitle="Resumen rápido para gestionar tu hora."
+              />
+
+              <SurfaceCard tone="default" shadow="soft" radius="lg" className="mt-4 bg-white/86 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                <div className="text-sm font-extrabold">
+                  {appt?.service_name || "Servicio"}
+                </div>
+                <div className="mt-3 text-sm text-muted-foreground">
+                  Estado: <span className="font-medium text-foreground">{appt?.status || "—"}</span>
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Fecha: <span className="font-medium text-foreground">{appt?.start_at ? fmtLongDate(appt.start_at) : "—"}</span>
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Hora: <span className="font-medium text-foreground">{appt?.start_at ? fmtTime(appt.start_at) : "—"}{appt?.end_at ? ` – ${fmtTime(appt.end_at)}` : ""}</span>
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Profesional: <span className="font-medium text-foreground">{appt?.professional_name || "—"}</span>
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Cliente: <span className="font-medium text-foreground">{appt?.customer_name || "—"}</span>
+                </div>
+              </SurfaceCard>
+
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  variant="pill"
+                  className="h-11 w-full text-sm font-extrabold"
+                  onClick={scrollToReschedule}
+                  disabled={actionsDisabled}
+                >
+                  Ir a reagendamiento
+                </Button>
+              </div>
+            </Section>
+          </aside>
         </div>
 
         {/* CTA fija mobile (ShimmerButton se mantiene ✅) */}
@@ -1078,25 +1140,25 @@ function GestionarCitaInner() {
             <div className="h-[calc(env(safe-area-inset-bottom,0px)+4px)]" />
           </div>
         </div>
-      </div>
-    </main>
+      </DemoContainer>
+    </DemoShell>
   );
 }
 
 function PageSkeleton() {
   return (
-    <main className="min-h-screen overflow-x-clip bg-gradient-to-b from-background to-muted/40">
-      <div className="mx-auto w-full max-w-[460px] px-3 py-10 font-[system-ui] text-[12px] sm:max-w-3xl sm:px-4 sm:text-[14px] lg:max-w-6xl lg:px-6">
-        <div className="rounded-2xl border bg-white p-4 shadow-sm sm:p-6">
+    <DemoShell className="overflow-x-clip">
+      <DemoContainer size="booking" className="py-10 font-[system-ui] text-[12px] sm:text-[14px]">
+        <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-4 sm:p-6">
           <div className="h-6 w-44 rounded bg-muted/60 animate-pulse" />
           <div className="mt-3 h-4 w-72 rounded bg-muted/60 animate-pulse" />
           <div className="mt-6 grid gap-3">
             <div className="h-24 rounded-2xl bg-muted/60 animate-pulse" />
             <div className="h-20 rounded-2xl bg-muted/60 animate-pulse" />
           </div>
-        </div>
-      </div>
-    </main>
+        </SurfaceCard>
+      </DemoContainer>
+    </DemoShell>
   );
 }
 
