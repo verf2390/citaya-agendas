@@ -95,6 +95,7 @@ type CalendarEvent = {
     professional_id: string;
     service_id: string | null;
     customer_phone: string | null;
+    customer_name: string | null;
     status: AppointmentStatus;
     customer_id: string | null;
   };
@@ -716,13 +717,17 @@ export default function AgendaPage() {
           return;
         }
 
-        const mapped: CalendarEvent[] = (json?.items ?? []).map((a: any) => {
+        const visibleItems = (json?.items ?? []).filter(
+          (a: any) => a.status !== "canceled",
+        );
+
+        const mapped: CalendarEvent[] = visibleItems.map((a: any) => {
           const titleBase = a.customer_name ?? "Cita";
           const status = (a.status ?? "confirmed") as AppointmentStatus;
 
           return {
             id: a.id,
-            title: status === "canceled" ? `❌ ${titleBase}` : titleBase,
+            title: titleBase,
             start: toIsoZ(a.start_at),
             end: toIsoZ(a.end_at),
             classNames: ["citaya-event", `citaya-status-${status}`],
@@ -730,6 +735,7 @@ export default function AgendaPage() {
               professional_id: a.professional_id,
               service_id: a.service_id ?? null,
               customer_phone: a.customer_phone ?? null,
+              customer_name: a.customer_name ?? null,
               status,
               customer_id: a.customer_id ?? null,
             },
@@ -1500,64 +1506,129 @@ export default function AgendaPage() {
   ===================================================== */
 
   return (
-    <main className="min-h-screen bg-[#f6f7fb]">
+    <main className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.06),transparent_24%),linear-gradient(180deg,#eef3f8_0%,#f8fafc_22%,#eef3f8_100%)]">
       <style>{`
   .fc { font-family: system-ui; }
   .fc .fc-toolbar-title { font-size: 16px; font-weight: 800; }
   .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
   .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
   .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; color: #111827; }
-  .fc .fc-event { border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); padding: 2px; }
+  .fc .fc-event {
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.22);
+    padding: 0;
+    box-shadow: 0 8px 18px rgba(15,23,42,0.10);
+    overflow: hidden;
+  }
   .citaya-event .fc-event-main { font-weight: 650; }
-  .citaya-status-confirmed { border-color: #2563eb !important; background: #3b82f6 !important; }
-  .citaya-status-canceled { border-color: #9ca3af !important; background: #9ca3af !important; opacity: 0.85; }
+  .citaya-status-confirmed {
+    border-color: #2563eb !important;
+    background: linear-gradient(180deg,#3b82f6 0%,#2563eb 100%) !important;
+    z-index: 4 !important;
+  }
+  .citaya-status-canceled {
+    border-color: rgba(148,163,184,0.45) !important;
+    background: linear-gradient(180deg,rgba(203,213,225,0.72) 0%,rgba(148,163,184,0.72) 100%) !important;
+    opacity: 0.55;
+    z-index: 1 !important;
+    box-shadow: none !important;
+  }
   .citaya-status-completed { border-color: #16a34a !important; background: #22c55e !important; }
   .citaya-status-no_show { border-color: #ef4444 !important; background: #f87171 !important; }
+
+  .fc .fc-timegrid-event.citaya-status-canceled {
+    border-radius: 999px !important;
+  }
+
+  .fc .fc-timegrid-event.citaya-status-canceled .fc-event-main {
+    justify-content: center;
+    padding: 2px 6px;
+  }
 
   /* ===============================
      ✅ FIX burbujas legibles (PC + mobile)
   ================================ */
   .fc .fc-timegrid-event .fc-event-main {
+    height: 100%;
+    min-height: 100%;
     padding: 4px 6px;
     display: flex;
     flex-direction: column;
+    justify-content: flex-start;
     gap: 2px;
+    overflow: hidden;
   }
 
   .fc .fc-timegrid-event .fc-event-time {
-    font-size: 11px;
-    line-height: 1.1;
-    opacity: 0.95;
+    font-size: 10px;
+    line-height: 1.05;
+    opacity: 0.96;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .fc .fc-timegrid-event .fc-event-title {
-    font-size: 12px;
-    line-height: 1.15;
+    font-size: 11px;
+    line-height: 1.1;
     font-weight: 700;
-
-    white-space: normal;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+  .citaya-event-content {
+    height: 100%;
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    overflow: hidden;
+    line-height: 1.05;
+  }
+
+  .citaya-event-name {
+    width: 100%;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.15;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .citaya-event-pill {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 16px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   @media (min-width: 1024px) {
     .fc .fc-timegrid-event .fc-event-title {
-      font-size: 13px;
-      -webkit-line-clamp: 3;
-    }
-    .fc .fc-timegrid-event .fc-event-time {
       font-size: 12px;
     }
+    .fc .fc-timegrid-event .fc-event-time {
+      font-size: 11px;
+    }
     .fc .fc-timegrid-event .fc-event-main {
-      padding: 6px 8px;
+      padding: 5px 7px;
     }
     .fc .fc-event {
       border-radius: 12px;
     }
+    .citaya-event-name { font-size: 14px; }
+    .citaya-event-pill { font-size: 10px; }
   }
 `}</style>
 
@@ -1602,7 +1673,7 @@ export default function AgendaPage() {
         }
       />
 
-      <div className="mx-auto max-w-[1280px] p-4">
+      <div className="mx-auto max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5">
         {/* Selector profesional + Horarios base */}
         <div className="mt-3">
           <Card>
@@ -1615,7 +1686,7 @@ export default function AgendaPage() {
                   <select
                     value={selectedProfessionalId}
                     onChange={(e) => setSelectedProfessionalId(e.target.value)}
-                    className="h-10 w-full rounded-xl border bg-white px-3 text-sm font-semibold"
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
                   >
                     {professionals.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1672,7 +1743,7 @@ export default function AgendaPage() {
                   <select
                     value={selectedServiceId}
                     onChange={(e) => setSelectedServiceId(e.target.value)}
-                    className="h-10 w-full rounded-xl border bg-white px-3 text-sm font-semibold"
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
                     disabled={loadingServices || services.length === 0}
                   >
                     {services.length === 0 ? (
@@ -1761,6 +1832,8 @@ export default function AgendaPage() {
         <div className="mt-4">
           <Card>
             <CardBody>
+              <div className="overflow-x-auto">
+                <div className="min-w-[820px]">
               <FullCalendar
                 plugins={[timeGridPlugin, interactionPlugin, luxonPlugin]}
                 initialView={UI_CONFIG.CALENDAR_VIEW as any}
@@ -1778,10 +1851,77 @@ export default function AgendaPage() {
                 allDaySlot={false}
                 slotMinTime={UI_CONFIG.SLOT_MIN_TIME}
                 slotMaxTime={UI_CONFIG.SLOT_MAX_TIME}
+                slotEventOverlap
+                eventOrderStrict
+                eventOrder={(a: any, b: any) => {
+                  const aStatus =
+                    typeof a.extendedProps?.status === "string"
+                      ? a.extendedProps.status
+                      : "confirmed";
+                  const bStatus =
+                    typeof b.extendedProps?.status === "string"
+                      ? b.extendedProps.status
+                      : "confirmed";
+
+                  if (aStatus === bStatus) return 0;
+                  if (aStatus === "canceled") return 1;
+                  if (bStatus === "canceled") return -1;
+                  return 0;
+                }}
                 headerToolbar={false}
                 dayHeaderFormat={{ weekday: "short", day: "numeric" }}
                 ref={calendarRef}
+                eventContent={(arg) => {
+                  const customerName =
+                    typeof arg.event.extendedProps?.customer_name === "string"
+                      ? arg.event.extendedProps.customer_name.trim()
+                      : "";
+                  const status =
+                    typeof arg.event.extendedProps?.status === "string"
+                      ? arg.event.extendedProps.status
+                      : "confirmed";
+                  const isCanceled = status === "canceled";
+                  const displayName = customerName || "Cita";
+
+                  const start = arg.event.start;
+                  const end = arg.event.end;
+
+                  const timeLabel =
+                    start && end
+                      ? `${start.toLocaleTimeString("es-CL", {
+                          timeZone: UI_CONFIG.ADMIN_TIMEZONE,
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })} - ${end.toLocaleTimeString("es-CL", {
+                          timeZone: UI_CONFIG.ADMIN_TIMEZONE,
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`
+                      : arg.timeText || "Cita";
+                  const titleLabel = customerName
+                    ? `${customerName} · ${timeLabel}`
+                    : timeLabel;
+
+                  return (
+                    <div
+                      className="citaya-event-content min-w-0 max-w-full"
+                      title={titleLabel}
+                    >
+                      {isCanceled ? (
+                        <div className="citaya-event-pill text-slate-700/90">
+                          Cancelada
+                        </div>
+                      ) : (
+                        <div className="citaya-event-name text-white">
+                          {displayName}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }}
               />
+                </div>
+              </div>
             </CardBody>
           </Card>
         </div>
