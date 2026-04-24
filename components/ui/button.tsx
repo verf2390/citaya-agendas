@@ -10,6 +10,12 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        hero:
+          "rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] text-white shadow-[0_18px_40px_rgba(15,23,42,0.32)] ring-1 ring-slate-900/20 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_22px_50px_rgba(15,23,42,0.38)] active:translate-y-0 active:scale-[0.985]",
+        soft:
+          "rounded-2xl border border-slate-300/90 bg-white/90 text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.08)] hover:border-slate-400 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.12)] active:scale-[0.99]",
+        pill:
+          "rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.08)] hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:scale-[0.99]",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
