@@ -5,6 +5,11 @@ import { isUuid } from "@/lib/api/validators";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 
 const PaymentModeSchema = z.enum(["none", "optional", "required"]);
+const DepositTypeSchema = z.enum(["fixed", "percentage"]).nullable();
+
+function hasOwn(obj: unknown, key: string) {
+  return typeof obj === "object" && obj !== null && Object.prototype.hasOwnProperty.call(obj, key);
+}
 
 export async function GET(req: Request) {
   try {
@@ -44,6 +49,8 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
     const tenantId = String(body?.tenantId ?? "").trim();
     const parsedMode = PaymentModeSchema.safeParse(body?.paymentMode);
+    const hasDepositType = hasOwn(body, "depositType");
+    const hasDepositValue = hasOwn(body, "depositValue");
 
     if (!tenantId || !isUuid(tenantId)) {
       return NextResponse.json(
@@ -59,8 +66,69 @@ export async function POST(req: Request) {
       );
     }
 
+    const rawDepositType =
+      body?.depositType === "" || body?.depositType === undefined
+        ? null
+        : body?.depositType;
+    const parsedDepositType = hasDepositType
+      ? DepositTypeSchema.safeParse(rawDepositType)
+      : null;
+
+    if (hasDepositType && !parsedDepositType?.success) {
+      return NextResponse.json(
+        { ok: false, error: "depositType inválido" },
+        { status: 400 },
+      );
+    }
+
     const paymentMode = parsedMode.data;
     const active = paymentMode !== "none";
+    const depositType = hasDepositType ? parsedDepositType!.data : undefined;
+    let depositValue: number | null | undefined = undefined;
+
+    if (hasDepositValue) {
+      const rawValue = body?.depositValue;
+      depositValue =
+        rawValue === null || rawValue === "" || rawValue === undefined
+          ? null
+          : Number(rawValue);
+    }
+
+    if (depositType === null) {
+      depositValue = null;
+    }
+
+    if (depositType === "fixed" || depositType === "percentage") {
+      if (!Number.isFinite(depositValue) || Number(depositValue) <= 0) {
+        return NextResponse.json(
+          { ok: false, error: "depositValue debe ser mayor a 0" },
+          { status: 400 },
+        );
+      }
+
+      if (depositType === "percentage" && Number(depositValue) > 100) {
+        return NextResponse.json(
+          { ok: false, error: "depositValue no puede ser mayor a 100%" },
+          { status: 400 },
+        );
+      }
+    }
+
+    const paymentSettingsPayload: {
+      active: boolean;
+      payment_mode: typeof paymentMode;
+      updated_at?: string;
+      deposit_type?: "fixed" | "percentage" | null;
+      deposit_value?: number | null;
+    } = {
+      active,
+      payment_mode: paymentMode,
+    };
+
+    if (hasDepositType || hasDepositValue) {
+      paymentSettingsPayload.deposit_type = depositType ?? null;
+      paymentSettingsPayload.deposit_value = depositValue ?? null;
+    }
 
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("tenant_payment_settings")
@@ -83,8 +151,7 @@ export async function POST(req: Request) {
       const { error: updateError } = await supabaseAdmin
         .from("tenant_payment_settings")
         .update({
-          active,
-          payment_mode: paymentMode,
+          ...paymentSettingsPayload,
           updated_at: new Date().toISOString(),
         })
         .eq("tenant_id", tenantId);
@@ -104,8 +171,7 @@ export async function POST(req: Request) {
         .from("tenant_payment_settings")
         .insert({
           tenant_id: tenantId,
-          active,
-          payment_mode: paymentMode,
+          ...paymentSettingsPayload,
         });
 
       if (insertError) {
@@ -126,6 +192,8 @@ export async function POST(req: Request) {
         tenantId,
         enabled: active,
         paymentMode,
+        depositType: depositType ?? null,
+        depositValue: depositValue ?? null,
       },
     });
   } catch (error: any) {

@@ -86,6 +86,8 @@ type Service = {
 };
 
 type TenantPaymentMode = "none" | "optional" | "required";
+type TenantDepositType = "fixed" | "percentage" | null;
+type TenantChargeType = "none" | "full" | "fixed" | "percentage";
 
 type CalendarEvent = {
   id: string;
@@ -377,6 +379,9 @@ export default function AgendaPage() {
   const [tenantName, setTenantName] = useState("");
   const [tenantPaymentMode, setTenantPaymentMode] =
     useState<TenantPaymentMode>("none");
+  const [tenantChargeType, setTenantChargeType] =
+    useState<TenantChargeType>("none");
+  const [tenantDepositValue, setTenantDepositValue] = useState("");
   const [savingPaymentMode, setSavingPaymentMode] = useState(false);
 
   // auth
@@ -539,6 +544,26 @@ export default function AgendaPage() {
 
         setTenantPaymentMode(
           (json.settings?.paymentMode as TenantPaymentMode | undefined) ?? "none",
+        );
+        const depositType =
+          (json.settings?.depositType as TenantDepositType | undefined) ?? null;
+        const depositValue = json.settings?.depositValue;
+        const paymentMode =
+          (json.settings?.paymentMode as TenantPaymentMode | undefined) ?? "none";
+
+        setTenantChargeType(
+          paymentMode === "none"
+            ? "none"
+            : depositType === "fixed"
+              ? "fixed"
+              : depositType === "percentage"
+                ? "percentage"
+                : "full",
+        );
+        setTenantDepositValue(
+          depositValue !== null && depositValue !== undefined
+            ? String(depositValue)
+            : "",
         );
       } catch (error) {
         console.error("[admin/agenda] payment settings error:", error);
@@ -1442,6 +1467,45 @@ export default function AgendaPage() {
   const saveTenantPaymentMode = async () => {
     if (!tenantId || savingPaymentMode) return;
 
+    const nextPaymentMode: TenantPaymentMode =
+      tenantChargeType === "none"
+        ? "none"
+        : tenantPaymentMode === "none"
+          ? "required"
+          : tenantPaymentMode;
+    const nextDepositType: TenantDepositType =
+      tenantChargeType === "fixed"
+        ? "fixed"
+        : tenantChargeType === "percentage"
+          ? "percentage"
+          : null;
+    const rawDepositValue = tenantDepositValue.trim();
+    const nextDepositValue =
+      nextDepositType && rawDepositValue ? Number(rawDepositValue) : null;
+
+    if (nextDepositType) {
+      if (!Number.isFinite(nextDepositValue) || Number(nextDepositValue) <= 0) {
+        toast({
+          title: "Monto inválido",
+          description:
+            nextDepositType === "fixed"
+              ? "Ingresa una seña fija mayor a 0."
+              : "Ingresa un porcentaje mayor a 0.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (nextDepositType === "percentage" && Number(nextDepositValue) > 100) {
+        toast({
+          title: "Porcentaje inválido",
+          description: "La seña por porcentaje no puede ser mayor a 100%.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setSavingPaymentMode(true);
 
     try {
@@ -1450,7 +1514,9 @@ export default function AgendaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tenantId,
-          paymentMode: tenantPaymentMode,
+          paymentMode: nextPaymentMode,
+          depositType: nextDepositType,
+          depositValue: nextDepositValue,
         }),
       });
 
@@ -1463,12 +1529,13 @@ export default function AgendaPage() {
       toast({
         title: "Cobros actualizados",
         description:
-          tenantPaymentMode === "none"
+          nextPaymentMode === "none"
             ? "El tenant quedó sin pago online."
-            : tenantPaymentMode === "optional"
+            : nextPaymentMode === "optional"
               ? "El tenant quedó con pago online opcional."
               : "El tenant quedó con pago online obligatorio.",
       });
+      setTenantPaymentMode(nextPaymentMode);
     } catch (error: any) {
       console.error("[admin/agenda] save payment settings error:", error);
       toast({
