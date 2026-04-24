@@ -28,6 +28,10 @@ import {
   Moon,
   Sparkles,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Section } from "@/components/ui/section";
+import { SurfaceCard } from "@/components/ui/card";
+import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 
 type Slot = { start_at: string; end_at: string };
 
@@ -175,7 +179,7 @@ function SkeletonLine({ w = "w-full" }: { w?: string }) {
 
 function SkeletonCard() {
   return (
-    <div className="rounded-3xl border bg-white p-3 shadow-sm">
+    <div className="rounded-3xl border border-white/70 bg-white/88 p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)] backdrop-blur-sm">
       <div className="flex items-center gap-3">
         <div className="h-10 w-10 rounded-2xl bg-muted/60 animate-pulse" />
         <div className="flex-1 space-y-2">
@@ -218,15 +222,15 @@ function SectionHeader({
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white ring-1 ring-border shadow-sm">
+          <span className="inline-flex h-10 w-10 items-center justify-center rounded-[18px] bg-[linear-gradient(180deg,#ffffff_0%,#eef2f7_100%)] ring-1 ring-slate-200/80 shadow-[0_10px_22px_rgba(15,23,42,0.08)]">
             {icon}
           </span>
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-extrabold sm:text-base">
+            <div className="truncate text-[13px] font-black tracking-[-0.01em] sm:text-base">
               {title}
             </div>
             {subtitle ? (
-              <div className="mt-0.5 text-[11px] text-muted-foreground sm:mt-1 sm:text-sm">
+              <div className="mt-0.5 text-[11px] text-muted-foreground/90 sm:mt-1 sm:text-sm">
                 {subtitle}
               </div>
             ) : null}
@@ -258,12 +262,12 @@ function StepPill({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-bold sm:text-xs",
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-bold backdrop-blur-sm sm:text-xs",
         done
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          ? "border-emerald-200/70 bg-emerald-50/90 text-emerald-700 shadow-[0_8px_18px_rgba(16,185,129,0.08)]"
           : active
-            ? "border-slate-300 bg-slate-900 text-white"
-            : "border-slate-200 bg-white text-slate-500",
+            ? "border-slate-900/10 bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.14)]"
+            : "border-white/80 bg-white/78 text-slate-500 shadow-[0_8px_18px_rgba(15,23,42,0.05)]",
       )}
     >
       <span
@@ -273,7 +277,7 @@ function StepPill({
             ? "bg-emerald-100 text-emerald-700"
             : active
               ? "bg-white/15 text-white"
-              : "bg-slate-100 text-slate-500",
+              : "bg-slate-100/90 text-slate-500",
         )}
       >
         {done ? <Check className="h-3.5 w-3.5" /> : step}
@@ -832,75 +836,88 @@ function ReservarInner() {
     fullName.trim().length >= 2 && isPhoneValid && isValidEmail(email);
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.08),transparent_28%),linear-gradient(180deg,#ecf2f8_0%,#f8fafc_28%,#eef3f8_100%)]">
-      <div className="mx-auto w-full max-w-[460px] px-3 pb-28 pt-2 font-[system-ui] text-[12px] leading-snug sm:max-w-3xl sm:px-4 sm:pb-16 sm:pt-4 sm:text-[14px] sm:leading-normal lg:max-w-6xl lg:px-6 lg:pb-24 lg:pt-6">
+    <DemoShell className="overflow-x-clip">
+      <DemoContainer
+        size="booking"
+        className="font-[system-ui] text-[12px] leading-snug sm:text-[14px] sm:leading-normal"
+      >
         <div
           className={cn(
-            "sticky top-0 z-40 -mx-3 px-3 pb-2 pt-2 sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:px-0 lg:pt-0",
-            "bg-background/90 backdrop-blur-xl",
-            isScrolled ? "border-b shadow-sm" : "border-b border-transparent",
+            "sticky top-0 z-40 -mx-2 px-2 pb-3 pt-3 sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:px-0 lg:pt-0",
+            isScrolled ? "bg-background/72 backdrop-blur-2xl" : "bg-transparent",
           )}
         >
-          <div className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] ring-1 ring-slate-200/70 sm:px-4 sm:py-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 sm:gap-3">
+          <SurfaceCard
+            tone="glass"
+            shadow="panel"
+            radius="xl"
+            className="relative overflow-hidden bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9))] px-4 py-4 ring-white/60 shadow-[0_24px_60px_rgba(15,23,42,0.12)] sm:px-5 sm:py-5"
+          >
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(15,23,42,0.06),transparent)]" />
+
+            <div className="relative flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] ring-1 ring-slate-200 shadow-[0_10px_24px_rgba(15,23,42,0.10)] sm:h-11 sm:w-11">
                   <span className="text-[10px] font-extrabold sm:text-sm">
                     {(tenantName || tenantSlug || "C").slice(0, 2).toUpperCase()}
                   </span>
                 </div>
-                <div className="min-w-0 max-w-full flex-1">
-                  <div className="max-w-full break-words text-[12px] font-extrabold leading-tight sm:text-lg sm:leading-tight">
+                <div className="min-w-0 flex-1">
+                  <div className="max-w-full break-words text-[13px] font-black leading-tight tracking-[-0.02em] sm:text-[18px] sm:leading-tight">
                     {tenantName || tenantSlug || "Reserva tu hora"}
                   </div>
-                  <div className="text-[11px] text-muted-foreground sm:text-sm">
+                  <div className="mt-0.5 text-[11px] text-muted-foreground sm:text-sm">
                     Reserva en pocos pasos • confirmación automática
                   </div>
                 </div>
               </div>
 
-              <button
+              <Button
                 type="button"
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-2xl border bg-white shadow-sm transition hover:bg-muted sm:h-10 sm:w-10"
+                variant="pill"
+                size="icon"
+                className="h-9 w-9 rounded-2xl sm:h-10 sm:w-10"
                 aria-label="Cerrar"
                 title="Cerrar"
               >
                 <X className="h-4 w-4 sm:h-5 sm:w-5" />
-              </button>
+              </Button>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <StepPill step="1" label="Servicio" active={!serviceDone} done={serviceDone} />
-              <StepPill
-                step="2"
-                label="Horario"
-                active={serviceDone && !slotDone}
-                done={slotDone}
-              />
-              <StepPill
-                step="3"
-                label="Datos"
-                active={slotDone && !contactDone}
-                done={contactDone}
-              />
-            </div>
+            <div className="relative mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-2.5">
+                <StepPill step="1" label="Servicio" active={!serviceDone} done={serviceDone} />
+                <StepPill
+                  step="2"
+                  label="Horario"
+                  active={serviceDone && !slotDone}
+                  done={slotDone}
+                />
+                <StepPill
+                  step="3"
+                  label="Datos"
+                  active={slotDone && !contactDone}
+                  done={contactDone}
+                />
+              </div>
 
-            {!selectedSlot ? (
-              <div className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(241,245,249,0.86))] px-3 py-2 text-[10.5px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-xs">
-                Elige un servicio, selecciona la hora y confirma tus datos.
-              </div>
-            ) : (
-              <div className="mt-3 rounded-2xl border border-emerald-200 bg-[linear-gradient(180deg,#ecfdf5_0%,#d1fae5_100%)] px-3 py-2 text-[10.5px] text-emerald-800 shadow-[0_8px_20px_rgba(16,185,129,0.10)] sm:text-xs">
-                Hora elegida:{" "}
-                <span className="font-extrabold">
-                  {formatCL(selectedSlot.start_at)}
-                </span>
-              </div>
-            )}
+              {!selectedSlot ? (
+                <div className="rounded-2xl border border-white/80 bg-white/72 px-3.5 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs lg:max-w-[320px]">
+                  Elige un servicio, selecciona la hora y confirma tus datos.
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-emerald-200/80 bg-[linear-gradient(180deg,#ecfdf5_0%,#d1fae5_100%)] px-3.5 py-2.5 text-[10.5px] text-emerald-800 shadow-[0_10px_24px_rgba(16,185,129,0.10)] sm:text-xs lg:max-w-[320px]">
+                  Hora elegida:{" "}
+                  <span className="font-extrabold">
+                    {formatCL(selectedSlot.start_at)}
+                  </span>
+                </div>
+              )}
+            </div>
 
             {serviceAlert ? (
-              <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800 sm:p-2.5 sm:text-sm">
+              <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50/92 p-2.5 text-[11px] text-amber-800 shadow-[0_8px_18px_rgba(245,158,11,0.08)] sm:text-sm">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="mt-0.5 h-4 w-4" />
                   <div>
@@ -909,13 +926,13 @@ function ReservarInner() {
                 </div>
               </div>
             ) : null}
-          </div>
+          </SurfaceCard>
         </div>
 
-        <div className="grid gap-3 pt-3 sm:gap-4 lg:grid-cols-3">
+        <div className="grid gap-4 pt-4 sm:gap-5 lg:grid-cols-[minmax(0,1.08fr)_320px]">
           <div className="lg:col-span-2">
             <div ref={serviceRef} />
-            <section className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur sm:p-5">
+            <Section className="bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
               <SectionHeader
                 icon={<BadgeCheck className="h-4 w-4 text-muted-foreground" />}
                 title="Servicio"
@@ -932,11 +949,16 @@ function ReservarInner() {
                   <SkeletonCard />
                 </div>
               ) : showServicePicker ? (
-                <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {services.length === 0 ? (
-                    <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 text-[11px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-sm">
+                    <SurfaceCard
+                      tone="default"
+                      shadow="soft"
+                      radius="lg"
+                      className="p-3 text-[11px] text-muted-foreground sm:text-sm"
+                    >
                       No hay servicios activos configurados.
-                    </div>
+                    </SurfaceCard>
                   ) : (
                     services.map((s) => (
                       <button
@@ -944,8 +966,8 @@ function ReservarInner() {
                         type="button"
                         onClick={() => pickService(s.id)}
                         className={cn(
-                          "w-full rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.08)] transition duration-200",
-                          "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_34px_rgba(15,23,42,0.12)] active:translate-y-0 active:scale-[0.99]",
+                          "w-full rounded-[26px] border border-slate-200/70 bg-white/88 p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition duration-200",
+                          "hover:-translate-y-px hover:border-slate-300/80 hover:shadow-[0_16px_28px_rgba(15,23,42,0.10)] active:translate-y-0 active:scale-[0.99]",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         )}
                       >
@@ -967,7 +989,7 @@ function ReservarInner() {
                             </div>
                           </div>
 
-                          <span className="shrink-0 rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] px-3 py-2 text-[10px] font-extrabold text-white shadow-[0_12px_24px_rgba(15,23,42,0.22)] ring-1 ring-slate-900/15 sm:text-xs">
+                          <span className="shrink-0 rounded-full bg-slate-900 px-3 py-1.5 text-[10px] font-extrabold text-white shadow-[0_8px_18px_rgba(15,23,42,0.12)] sm:text-xs">
                             Elegir
                           </span>
                         </div>
@@ -976,7 +998,12 @@ function ReservarInner() {
                   )}
                 </div>
               ) : (
-                <div className="mt-3 rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
+                <SurfaceCard
+                  tone="default"
+                  shadow="soft"
+                  radius="lg"
+                  className="mt-4 bg-white/88 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                >
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] text-white shadow-[0_12px_26px_rgba(15,23,42,0.20)]">
@@ -997,7 +1024,7 @@ function ReservarInner() {
                     </div>
 
                     <div className="flex justify-start">
-                      <button
+                      <Button
                         type="button"
                         onClick={() => {
                           const p = new URLSearchParams(searchParams.toString());
@@ -1005,24 +1032,20 @@ function ReservarInner() {
                           router.push(`/reservar?${p.toString()}`);
                           setTimeout(() => scrollToRef(serviceRef), 60);
                         }}
-                        className={cn(
-                          "inline-flex items-center gap-2",
-                          "h-10 rounded-2xl border border-slate-200 bg-white px-4 text-[12px] font-extrabold text-slate-900 shadow-[0_8px_20px_rgba(15,23,42,0.08)]",
-                          "hover:border-slate-300 hover:bg-slate-50 hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] active:scale-[0.99]",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        )}
+                        variant="pill"
+                        className="h-10 gap-2 border-white/80 bg-white/78 px-4 text-[12px] font-extrabold shadow-[0_8px_18px_rgba(15,23,42,0.06)] hover:bg-white"
                         title="Cambiar servicio"
                       >
                         <X className="h-4 w-4 shrink-0" />
                         <span className="whitespace-nowrap">Cambiar servicio</span>
-                      </button>
+                      </Button>
                     </div>
                   </div>
-                </div>
+                </SurfaceCard>
               )}
-            </section>
+            </Section>
 
-            <section className="mt-4 rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur sm:p-5">
+            <Section className="mt-4 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
               <SectionHeader
                 icon={<User className="h-4 w-4 text-muted-foreground" />}
                 title="Profesional"
@@ -1030,7 +1053,12 @@ function ReservarInner() {
               />
 
               {loadingPros ? (
-                <div className="mt-3 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
+                <SurfaceCard
+                  tone="default"
+                  shadow="soft"
+                  radius="lg"
+                  className="mt-3 p-3"
+                >
                   <div className="flex items-center gap-3">
                     <div className="h-12 w-12 rounded-2xl bg-muted/60 animate-pulse" />
                     <div className="flex-1 space-y-2">
@@ -1038,14 +1066,19 @@ function ReservarInner() {
                       <SkeletonLine w="w-2/3" />
                     </div>
                   </div>
-                </div>
+                </SurfaceCard>
               ) : professionals.length === 0 ? (
-                <div className="mt-3 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 text-[12px] font-extrabold shadow-[0_10px_24px_rgba(15,23,42,0.08)] sm:text-sm">
+                <SurfaceCard
+                  tone="default"
+                  shadow="soft"
+                  radius="lg"
+                  className="mt-3 p-3 text-[12px] font-extrabold sm:text-sm"
+                >
                   Sin profesionales configurados
                   <div className="mt-1 text-[10px] text-muted-foreground sm:text-xs">
                     Agrega profesionales en Supabase → <b>professionals</b> (active=true).
                   </div>
-                </div>
+                </SurfaceCard>
               ) : (
                 <>
                   {professionals.length > 1 ? (
@@ -1053,7 +1086,7 @@ function ReservarInner() {
                       value={professionalId}
                       disabled={saving || !tenantId}
                       onChange={(e) => setProfessionalId(e.target.value)}
-                      className="mt-3 h-11 w-full rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 text-[12px] font-medium shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                      className="mt-4 h-11 w-full rounded-2xl border border-white/80 bg-white/88 px-3 text-[12px] font-medium shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                     >
                       {professionals.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -1070,7 +1103,12 @@ function ReservarInner() {
                     if (!pro) return null;
 
                     return (
-                      <div className="mt-3 rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-3 shadow-[0_14px_32px_rgba(15,23,42,0.08)] sm:p-4">
+                      <SurfaceCard
+                        tone="default"
+                        shadow="soft"
+                        radius="lg"
+                        className="mt-4 bg-white/88 p-3 sm:p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                      >
                         <div className="flex items-center gap-3">
                           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] ring-1 ring-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
                             {pro.avatar_url ? (
@@ -1100,17 +1138,17 @@ function ReservarInner() {
                             ) : null}
                           </div>
                         </div>
-                      </div>
+                      </SurfaceCard>
                     );
                   })()}
                 </>
               )}
-            </section>
+            </Section>
 
             <div ref={slotRef} />
-            <section
+            <Section
               className={cn(
-                "mt-3 rounded-[28px] border border-border/80 bg-white/90 p-3 shadow-sm backdrop-blur sm:p-5",
+                "mt-4 border-white/70 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6",
                 lockSlots ? "opacity-70" : "",
               )}
             >
@@ -1119,7 +1157,7 @@ function ReservarInner() {
                 title="Selecciona fecha y hora"
                 subtitle={`Solo horarios disponibles • Duración: ${durationMin} min`}
                 right={
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       if (!serviceId) {
@@ -1136,13 +1174,11 @@ function ReservarInner() {
                       !professionalId ||
                       !serviceId
                     }
-                    className={cn(
-                      "h-9 rounded-2xl border bg-white px-3 text-[11px] font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:text-sm",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    )}
+                    variant="pill"
+                    className="h-9 border-white/80 bg-white/78 px-3 text-[11px] font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)] hover:bg-white sm:h-10 sm:text-sm"
                   >
                     {loadingSlots ? "Cargando..." : "Recargar"}
-                  </button>
+                  </Button>
                 }
               />
 
@@ -1159,26 +1195,30 @@ function ReservarInner() {
               ) : null}
 
               {lockSlots ? (
-                <div className="mt-3 rounded-2xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
+                <SurfaceCard
+                  tone="default"
+                  shadow="soft"
+                  radius="lg"
+                  className="mt-3 p-3 text-[11px] text-muted-foreground sm:text-sm"
+                >
                   Selecciona un <b>servicio</b> para ver horarios.
-                </div>
+                </SurfaceCard>
               ) : (
                 <div className="mt-3">
                   <div className="relative">
                     <div className="flex items-center gap-2 min-w-0">
-                      <button
+                      <Button
                         type="button"
                         onClick={goPrev7}
                         disabled={!canPrev}
-                        className={cn(
-                          "shrink-0 flex h-10 w-10 items-center justify-center rounded-2xl border bg-white shadow-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        )}
+                        variant="pill"
+                        size="icon"
+                        className="h-10 w-10 rounded-2xl border-white/80 bg-white/78 shadow-[0_8px_18px_rgba(15,23,42,0.05)] hover:bg-white"
                         title="Anterior"
                         aria-label="Anterior"
                       >
                         <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </button>
+                      </Button>
 
                       <div className="relative flex-1 min-w-0 w-0">
                         <div
@@ -1205,12 +1245,12 @@ function ReservarInner() {
                                     setSelectedSlot(null);
                                   }}
                                   className={cn(
-                                    "shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[10px] font-semibold ring-1 ring-border transition",
+                                    "shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[10px] font-semibold ring-1 ring-slate-200/80 transition",
                                     "sm:px-4 sm:py-2 sm:text-sm",
                                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     active
-                                      ? "bg-slate-900 text-white shadow-sm"
-                                      : "bg-white hover:bg-muted",
+                                      ? "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.14)]"
+                                      : "bg-white/82 hover:bg-white",
                                     n === 0 ? "opacity-70" : "",
                                   )}
                                 >
@@ -1232,19 +1272,18 @@ function ReservarInner() {
                         </div>
                       </div>
 
-                      <button
+                      <Button
                         type="button"
                         onClick={goNext7}
                         disabled={!canNext}
-                        className={cn(
-                          "shrink-0 flex h-10 w-10 items-center justify-center rounded-2xl border bg-white shadow-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        )}
+                        variant="pill"
+                        size="icon"
+                        className="h-10 w-10 rounded-2xl border-white/80 bg-white/78 shadow-[0_8px_18px_rgba(15,23,42,0.05)] hover:bg-white"
                         title="Siguiente"
                         aria-label="Siguiente"
                       >
                         <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
 
@@ -1279,9 +1318,12 @@ function ReservarInner() {
                           const count = bucketCounts[label] ?? 0;
 
                           return (
-                            <div
+                            <SurfaceCard
                               key={label}
-                              className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-3 sm:p-4"
+                              tone="default"
+                              shadow="soft"
+                              radius="lg"
+                              className="border-slate-200/60 bg-gradient-to-br from-white/96 to-slate-50/96 p-3 sm:p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -1324,10 +1366,10 @@ function ReservarInner() {
                                         "min-h-[52px] px-3 py-3",
                                         "active:scale-[0.98] motion-reduce:active:scale-100",
                                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                                        "shadow-sm",
+                                        "shadow-[0_8px_18px_rgba(15,23,42,0.05)]",
                                         active
-                                          ? "border-slate-900 bg-slate-900 text-white ring-2 ring-slate-900/20"
-                                          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+                                          ? "border-slate-900/10 bg-[linear-gradient(135deg,#0f172a_0%,#1e293b_100%)] text-white ring-2 ring-slate-900/15"
+                                          : "border-slate-200/70 bg-white/88 hover:border-slate-300/80 hover:bg-white",
                                         saving || !tenantId
                                           ? "cursor-not-allowed opacity-60"
                                           : "",
@@ -1363,13 +1405,18 @@ function ReservarInner() {
                                   );
                                 })}
                               </div>
-                            </div>
+                            </SurfaceCard>
                           );
                         })}
                       </div>
                     )}
 
-                    <div className="mt-4 rounded-3xl border bg-white p-3">
+                    <SurfaceCard
+                      tone="default"
+                      shadow="soft"
+                      radius="lg"
+                      className="mt-4 border-white/80 bg-white/80 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]"
+                    >
                       <div className="flex items-start gap-2">
                         <span className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-50 ring-1 ring-border">
                           <Check className="h-4 w-4 text-muted-foreground" />
@@ -1387,16 +1434,16 @@ function ReservarInner() {
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </SurfaceCard>
                   </div>
                 </div>
               )}
-            </section>
+            </Section>
 
             <div ref={contactRef} />
-            <section
+            <Section
               className={cn(
-                "mt-4 rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-3 shadow-[0_20px_48px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70 backdrop-blur sm:p-5",
+                "mt-4 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6",
                 lockContact ? "opacity-70" : "",
               )}
             >
@@ -1406,7 +1453,7 @@ function ReservarInner() {
                 subtitle="Te enviaremos la confirmación al correo."
               />
 
-              <div className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(241,245,249,0.86))] px-3 py-2 text-[10.5px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-xs">
+              <div className="mt-4 rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs">
                 Tus datos se usan solo para gestionar tu reserva y enviarte la confirmación.
               </div>
 
@@ -1423,7 +1470,7 @@ function ReservarInner() {
                       if (!nameTouched) setNameTouched(true);
                     }}
                     placeholder="Ej: Juan Pérez"
-                    className="h-11 w-full rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 text-[12px] shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                    className="h-11 w-full rounded-2xl border border-white/80 bg-white/90 px-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                   />
                 </div>
 
@@ -1446,7 +1493,7 @@ function ReservarInner() {
                       }}
                       placeholder="Ej: 912345678 o +56912345678"
                       className={cn(
-                        "h-11 w-full rounded-2xl border bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] pl-10 pr-3 text-[12px] shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
+                        "h-11 w-full rounded-2xl border bg-white/90 pl-10 pr-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
                         phoneTouched && phone.trim().length > 0 && !isPhoneValid
                           ? "border-red-300 focus:ring-red-200"
                           : "border-slate-200 focus:ring-foreground/20",
@@ -1478,7 +1525,7 @@ function ReservarInner() {
                       onBlur={() => setEmail((v) => v.trim().toLowerCase())}
                       placeholder="Ej: nombre@gmail.com"
                       className={cn(
-                        "h-11 w-full rounded-2xl border bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] pl-10 pr-3 text-[12px] shadow-[0_8px_20px_rgba(15,23,42,0.06)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
+                        "h-11 w-full rounded-2xl border bg-white/90 pl-10 pr-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
                         email.trim().length > 0 && !isValidEmail(email)
                           ? "border-red-300 focus:ring-red-200"
                           : "border-slate-200 focus:ring-foreground/20",
@@ -1487,15 +1534,20 @@ function ReservarInner() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 py-2 text-center text-[10px] text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)] sm:text-xs">
+                <SurfaceCard
+                  tone="default"
+                  shadow="soft"
+                  radius="lg"
+                  className="border-white/80 bg-white/76 px-3 py-2 text-center text-[10px] text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] sm:text-xs"
+                >
                   Al reservar aceptas recibir mensajes relacionados a tu cita.
-                </div>
+                </SurfaceCard>
               </div>
-            </section>
+            </Section>
           </div>
 
           <aside className="hidden lg:block">
-            <section className="rounded-[30px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] p-4 shadow-[0_24px_55px_rgba(15,23,42,0.14)] ring-1 ring-slate-200/70 backdrop-blur lg:sticky lg:top-6">
+            <Section className="bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.9))] p-5 ring-white/70 shadow-[0_24px_56px_rgba(15,23,42,0.10)] lg:sticky lg:top-6">
               <div className="mb-2 flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-muted-foreground" />
                 <div className="text-base font-extrabold">
@@ -1503,7 +1555,12 @@ function ReservarInner() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-3xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_14px_32px_rgba(15,23,42,0.08)]">
+              <SurfaceCard
+                tone="default"
+                shadow="soft"
+                radius="lg"
+                className="mt-4 border-white/80 bg-white/86 p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]"
+              >
                 <div className="text-sm font-extrabold">
                   {service?.name ??
                     (serviceId ? "Servicio seleccionado" : "Servicio")}
@@ -1538,34 +1595,34 @@ function ReservarInner() {
                 <div className="mt-1 text-sm font-extrabold">
                   {selectedSlot ? formatCL(selectedSlot.start_at) : "—"}
                 </div>
-              </div>
+              </SurfaceCard>
 
-              <div className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(241,245,249,0.86))] px-3 py-2 text-xs text-muted-foreground shadow-[0_8px_20px_rgba(15,23,42,0.06)]">
+              <div className="mt-4 rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-xs text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm">
                 Confirmación inmediata por correo y enlace privado para gestionar tu cita.
               </div>
 
               <div className="mt-4">
-                <button
+                <Button
                   type="button"
                   onClick={handleReserve}
                   disabled={!canSubmit}
+                  variant={canSubmit ? "hero" : "secondary"}
                   className={cn(
-                    "h-12 w-full rounded-2xl text-sm font-extrabold transition duration-200",
-                    canSubmit
-                      ? "bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/15 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(15,23,42,0.34)] hover:brightness-110 active:translate-y-0 active:scale-[0.985]"
-                      : "cursor-not-allowed bg-muted text-muted-foreground",
+                    "h-12 w-full rounded-2xl text-sm font-extrabold",
+                    canSubmit ? "shadow-[0_16px_34px_rgba(15,23,42,0.18)] hover:shadow-[0_20px_40px_rgba(15,23,42,0.22)]" : "border border-white/80 bg-white/74 shadow-[0_8px_18px_rgba(15,23,42,0.04)]",
+                    !canSubmit ? "cursor-not-allowed" : "",
                   )}
                 >
                   {saving ? "Reservando..." : "Confirmar reserva"}
-                </button>
+                </Button>
               </div>
-            </section>
+            </Section>
           </aside>
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200/80 bg-background/95 p-2 backdrop-blur lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/70 bg-background/80 p-2.5 backdrop-blur-2xl lg:hidden">
           <div className="mx-auto max-w-[460px] px-1">
-            <div className="mb-2 rounded-3xl border border-white/70 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-3 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_12px_28px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70">
+            <div className="mb-2 rounded-3xl border border-white/80 bg-white/84 px-3 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm">
               <div className="truncate">
                 <span className="font-extrabold text-foreground">
                   {mobileSummary.svc}
@@ -1575,23 +1632,23 @@ function ReservarInner() {
               <div className="truncate">🕒 {mobileSummary.time}</div>
             </div>
 
-            <button
+            <Button
               type="button"
               onClick={handleReserve}
               disabled={!canSubmit}
+              variant={canSubmit ? "hero" : "secondary"}
               className={cn(
-                "h-12 w-full rounded-3xl text-[12px] font-extrabold transition duration-200",
-                canSubmit
-                  ? "bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/15 hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(15,23,42,0.34)] hover:brightness-110 active:translate-y-0 active:scale-[0.985]"
-                  : "cursor-not-allowed bg-muted text-muted-foreground",
+                "h-12 w-full rounded-3xl text-[12px] font-extrabold",
+                canSubmit ? "shadow-[0_16px_34px_rgba(15,23,42,0.18)] hover:shadow-[0_20px_40px_rgba(15,23,42,0.22)]" : "border border-white/80 bg-white/76 shadow-[0_8px_18px_rgba(15,23,42,0.04)]",
+                !canSubmit ? "cursor-not-allowed" : "",
               )}
             >
               {saving ? "Reservando..." : "Confirmar reserva"}
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
-    </main>
+      </DemoContainer>
+    </DemoShell>
   );
 }
 

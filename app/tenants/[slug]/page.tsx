@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { headers } from "next/headers";
+import { Button } from "@/components/ui/button";
+import { Section } from "@/components/ui/section";
+import { SurfaceCard } from "@/components/ui/card";
+import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 import { supabaseServer } from "@/lib/supabaseServer";
 import LeaveReviewModal from "@/components/tenant/LeaveReviewModal";
 import DemoQuoteCard from "./DemoQuoteCard";
@@ -57,15 +61,20 @@ function StarsInline({ value }: { value: number }) {
 
 function DemoLanding() {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.12),transparent_36%),linear-gradient(180deg,#e9eef5_0%,#f6f8fb_28%,#eef3f8_100%)]">
+    <DemoShell className="bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.12),transparent_36%),linear-gradient(180deg,#e9eef5_0%,#f6f8fb_28%,#eef3f8_100%)]">
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute left-1/2 top-[-10rem] h-[32rem] w-[62rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(15,23,42,0.22),rgba(15,23,42,0.06)_42%,transparent_72%)] blur-3xl" />
         <div className="absolute right-[-5rem] top-24 h-72 w-72 rounded-full bg-emerald-300/30 blur-3xl" />
         <div className="absolute bottom-[-9rem] left-[-5rem] h-80 w-80 rounded-full bg-amber-300/25 blur-3xl" />
       </div>
 
-      <div className="mx-auto w-full max-w-[1120px] px-4 pb-20 pt-6 sm:pt-10">
-        <section className="overflow-hidden rounded-[32px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.95))] shadow-[0_30px_100px_rgba(15,23,42,0.14)] backdrop-blur">
+      <DemoContainer size="hero">
+        <SurfaceCard
+          tone="glass"
+          shadow="panel"
+          radius="xl"
+          className="overflow-hidden rounded-[32px] bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.95))]"
+        >
           <div className="relative p-5 sm:p-8 lg:p-10">
             <div className="absolute inset-x-0 top-0 h-44 bg-[linear-gradient(180deg,rgba(15,23,42,0.07),transparent)]" />
             <div className="relative flex flex-col gap-8 lg:gap-10">
@@ -94,29 +103,40 @@ function DemoLanding() {
                   </p>
 
                   <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                    <Link
-                      href="/reservar"
-                      className="inline-flex min-h-[56px] w-full items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#020617_0%,#0f172a_45%,#1e293b_100%)] px-7 py-4 text-base font-extrabold text-white shadow-[0_18px_40px_rgba(15,23,42,0.32)] ring-1 ring-slate-900/20 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(15,23,42,0.38)] hover:brightness-110 active:translate-y-0 active:scale-[0.985] sm:w-auto"
+                    <Button
+                      asChild
+                      variant="hero"
+                      className="min-h-[56px] w-full px-7 py-4 text-base font-extrabold sm:w-auto"
                     >
-                      Ver agenda funcionando en vivo
-                    </Link>
+                      <Link href="/reservar">
+                        Ver agenda funcionando en vivo
+                      </Link>
+                    </Button>
 
-                  <Link
-                    href="https://citaya-agendas.vercel.app/"
-                    className="inline-flex min-h-[56px] w-full items-center justify-center rounded-2xl border border-slate-300/90 bg-white/90 px-6 py-4 text-base font-extrabold text-slate-900 shadow-[0_8px_24px_rgba(15,23,42,0.08)] transition duration-200 hover:border-slate-400 hover:bg-white hover:shadow-[0_14px_30px_rgba(15,23,42,0.12)] active:scale-[0.99] sm:w-auto"
-                  >
-                    Volver a Citaya
-                    </Link>
+                    <Button
+                      asChild
+                      variant="soft"
+                      className="min-h-[56px] w-full px-6 py-4 text-base font-extrabold sm:w-auto"
+                    >
+                      <Link href="https://citaya-agendas.vercel.app/">
+                        Volver a Citaya
+                      </Link>
+                    </Button>
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(241,245,249,0.9))] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)] ring-1 ring-slate-200/70">
+                  <SurfaceCard
+                    tone="glass"
+                    shadow="soft"
+                    radius="lg"
+                    className="mt-4 rounded-2xl bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(241,245,249,0.9))] p-4 ring-1 ring-slate-200/70"
+                  >
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
                       Sin compromiso • Sin pago • Demo real
                     </p>
                     <p className="mt-1 text-sm text-slate-500">
                       En menos de 1 minuto puedes ver cómo funciona
                     </p>
-                  </div>
+                  </SurfaceCard>
 
                   <p className="mt-4 text-xs text-slate-500">
                     * Datos de ejemplo. La app real usa tu logo, tus servicios y
@@ -154,7 +174,12 @@ function DemoLanding() {
             </div>
 
             <div className="mt-8 grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="rounded-[28px] border border-amber-200/80 bg-[linear-gradient(180deg,#fff8eb_0%,#fff3db_100%)] p-5 shadow-[0_18px_40px_rgba(180,83,9,0.10)] sm:p-6">
+              <SurfaceCard
+                tone="default"
+                shadow="soft"
+                radius="xl"
+                className="rounded-[28px] border-amber-200/80 bg-[linear-gradient(180deg,#fff8eb_0%,#fff3db_100%)] p-5 shadow-[0_18px_40px_rgba(180,83,9,0.10)] sm:p-6"
+              >
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">
                   ¿Te pasa esto?
                 </p>
@@ -172,7 +197,7 @@ function DemoLanding() {
                 <p className="mt-4 text-base font-bold text-slate-900">
                   Esto se soluciona automáticamente 👇
                 </p>
-              </div>
+              </SurfaceCard>
 
               <div className="rounded-[28px] border border-slate-800/10 bg-[linear-gradient(145deg,#020617_0%,#0f172a_55%,#172554_100%)] p-5 text-white shadow-[0_24px_55px_rgba(15,23,42,0.28)] sm:p-6">
                 <div className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
@@ -207,7 +232,12 @@ function DemoLanding() {
               </div>
             </div>
 
-            <div className="mt-10 rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,245,249,0.92))] p-4 shadow-[0_18px_40px_rgba(15,23,42,0.10)] sm:p-6">
+            <SurfaceCard
+              tone="glass"
+              shadow="panel"
+              radius="xl"
+              className="mt-10 rounded-[28px] bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,245,249,0.92))] p-4 ring-1 ring-slate-200/70 sm:p-6"
+            >
               <p className="mb-4 text-sm font-bold uppercase tracking-[0.12em] text-slate-700">
                 Primero mira cómo funciona 👇
               </p>
@@ -217,7 +247,7 @@ function DemoLanding() {
               <p className="mt-4 text-xs text-slate-500">
                 Esto es opcional. Primero prueba la agenda.
               </p>
-            </div>
+            </SurfaceCard>
 
             <div className="mt-10">
               <div className="grid gap-3 sm:grid-cols-3">
@@ -235,9 +265,12 @@ function DemoLanding() {
                     text: "Así debería funcionar cualquier agenda online.",
                   },
                 ].map((t) => (
-                  <div
+                  <SurfaceCard
                     key={t.name}
-                    className="rounded-[24px] border border-white/70 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 shadow-[0_14px_32px_rgba(15,23,42,0.10)] ring-1 ring-slate-200/70"
+                    tone="glass"
+                    shadow="soft"
+                    radius="lg"
+                    className="rounded-[24px] bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 ring-1 ring-slate-200/70"
                   >
                     <div className="flex items-center gap-3">
                       <div className="grid h-10 w-10 place-items-center rounded-full bg-[linear-gradient(180deg,#0f172a_0%,#020617_100%)] text-xs font-extrabold text-white shadow-[0_10px_20px_rgba(15,23,42,0.25)]">
@@ -250,14 +283,14 @@ function DemoLanding() {
                     <p className="mt-4 text-sm leading-6 text-slate-700">
                       “{t.text}”
                     </p>
-                  </div>
+                  </SurfaceCard>
                 ))}
               </div>
             </div>
           </div>
-        </section>
-      </div>
-    </main>
+        </SurfaceCard>
+      </DemoContainer>
+    </DemoShell>
   );
 }
 
@@ -357,17 +390,23 @@ export default async function TenantHome({
     : `/reservar?tenant=${encodeURIComponent(tenant.slug)}`;
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <DemoShell className="bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.1),transparent_34%),linear-gradient(180deg,#ecf2f8_0%,#f8fafc_28%,#eef3f8_100%)]">
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl" />
         <div className="absolute -bottom-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/35 via-slate-100/20 to-emerald-100/25 blur-3xl" />
       </div>
 
-      <header className="border-b bg-white/85 backdrop-blur">
-        <div className="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-10">
+      <header className="pt-4 sm:pt-6">
+        <DemoContainer className="max-w-5xl px-4 sm:px-6">
+          <SurfaceCard
+            tone="glass"
+            shadow="panel"
+            radius="xl"
+            className="rounded-[32px] px-5 py-6 sm:px-8 sm:py-8"
+          >
           <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-slate-950 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em] text-slate-100 shadow-[0_10px_30px_rgba(15,23,42,0.22)]">
                 Reserva online
               </div>
 
@@ -376,11 +415,11 @@ export default async function TenantHome({
                   <img
                     src={tenant.logo_url}
                     alt={`${tenant.name} logo`}
-                    className="h-12 w-12 rounded-2xl object-contain border border-slate-200 bg-white p-1"
+                    className="h-12 w-12 rounded-2xl border border-slate-200 bg-white p-1 object-contain shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
                     loading="lazy"
                   />
                 ) : (
-                  <div className="h-12 w-12 rounded-2xl grid place-items-center border border-slate-200 bg-slate-50 text-slate-800 font-extrabold">
+                  <div className="grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] text-slate-800 font-extrabold shadow-[0_10px_24px_rgba(15,23,42,0.08)]">
                     {initialsFromName(tenant.name)}
                   </div>
                 )}
@@ -417,12 +456,13 @@ export default async function TenantHome({
               )}
 
               <div className="mt-6">
-                <Link
-                  href={ctaHref}
-                  className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-4 text-base font-extrabold text-white shadow-sm hover:opacity-90 active:scale-[0.99] sm:w-auto"
+                <Button
+                  asChild
+                  variant="hero"
+                  className="min-h-[56px] w-full px-6 py-4 text-base font-extrabold sm:w-auto"
                 >
-                  Reserva ahora
-                </Link>
+                  <Link href={ctaHref}>Reserva ahora</Link>
+                </Button>
                 <p className="mt-2 text-xs text-slate-500">
                   Confirmación inmediata · enlace privado para
                   modificar/cancelar
@@ -430,17 +470,29 @@ export default async function TenantHome({
               </div>
             </div>
 
-            <div className="w-full md:w-[360px]">
-              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-slate-100 to-white shadow-sm">
-                <div className="p-5">
-                  <div className="text-xs font-semibold text-slate-600">
-                    Atención profesional
-                  </div>
-                  <div className="mt-2 text-sm text-slate-700">
-                    Agenda sin llamadas y con horarios reales disponibles.
+            <div className="w-full md:max-w-[380px] md:self-stretch">
+              <SurfaceCard
+                tone="default"
+                shadow="panel"
+                radius="xl"
+                className="h-full overflow-hidden rounded-[30px] border-white/50 bg-[linear-gradient(180deg,#020617_0%,#0f172a_16%,#f8fafc_16%,#ffffff_100%)] shadow-[0_28px_60px_rgba(15,23,42,0.16)]"
+              >
+                <div className="flex h-full flex-col p-5 sm:p-6">
+                  <div className="-mx-5 -mt-5 bg-[linear-gradient(180deg,#020617_0%,#0f172a_100%)] px-5 pb-8 pt-5 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pb-9 sm:pt-6">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-300">
+                      Atención profesional
+                    </div>
+                    <div className="mt-2 max-w-[28ch] text-sm leading-6 text-slate-100 sm:text-[15px]">
+                      Agenda sin llamadas y con horarios reales disponibles.
+                    </div>
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <SurfaceCard
+                    tone="default"
+                    shadow="soft"
+                    radius="lg"
+                    className="mt-6 rounded-[24px] border-slate-200/80 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                  >
                     <div className="text-xs font-semibold text-slate-600">
                       Valoración
                     </div>
@@ -466,9 +518,14 @@ export default async function TenantHome({
                         )
                       </div>
                     </div>
-                  </div>
+                  </SurfaceCard>
 
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <SurfaceCard
+                    tone="default"
+                    shadow="soft"
+                    radius="lg"
+                    className="mt-4 rounded-[24px] border-slate-200/80 px-4 py-4 shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                  >
                     <div className="text-xs font-semibold text-slate-600">
                       Profesionales
                     </div>
@@ -509,16 +566,17 @@ export default async function TenantHome({
                         (Aún no hay profesionales activos configurados)
                       </p>
                     )}
-                  </div>
+                  </SurfaceCard>
                 </div>
-              </div>
+              </SurfaceCard>
             </div>
           </div>
-        </div>
+          </SurfaceCard>
+        </DemoContainer>
       </header>
 
-      <section className="mx-auto max-w-4xl px-4 sm:px-6 py-8 sm:py-10">
-        <div className="rounded-3xl bg-white shadow-sm border border-slate-200 p-5 sm:p-6">
+      <DemoContainer className="max-w-5xl px-4 py-8 sm:px-6 sm:py-10">
+        <Section className="p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-xl font-extrabold text-slate-900">
@@ -531,7 +589,12 @@ export default async function TenantHome({
           </div>
 
           {!services?.length ? (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <SurfaceCard
+              tone="default"
+              shadow="soft"
+              radius="lg"
+              className="mt-6 rounded-2xl bg-slate-50 p-4"
+            >
               <p className="text-slate-800 font-semibold">
                 No hay servicios configurados aún.
               </p>
@@ -539,7 +602,7 @@ export default async function TenantHome({
                 Crea al menos 1 registro en la tabla <b>services</b> para este
                 tenant.
               </p>
-            </div>
+            </SurfaceCard>
           ) : (
             <ul className="mt-6 grid gap-3">
               {services.map((s) => {
@@ -554,9 +617,12 @@ export default async function TenantHome({
                     : null;
 
                 return (
-                  <li
+                  <SurfaceCard
                     key={s.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                    tone="default"
+                    shadow="soft"
+                    radius="lg"
+                    className="flex flex-col gap-3 rounded-2xl p-4 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0">
                       <p className="font-extrabold text-slate-900">{s.name}</p>
@@ -570,27 +636,37 @@ export default async function TenantHome({
                       )}
                     </div>
 
-                    <Link
-                      href={`/reservar?tenant=${encodeURIComponent(
-                        tenant.slug,
-                      )}&service=${encodeURIComponent(s.id)}`}
-                      className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-extrabold text-white hover:opacity-90 sm:w-auto"
+                    <Button
+                      asChild
+                      variant="hero"
+                      className="min-h-[48px] w-full px-4 py-3 text-sm font-extrabold sm:w-auto"
                     >
-                      Ver horas
-                    </Link>
-                  </li>
+                      <Link
+                        href={`/reservar?tenant=${encodeURIComponent(
+                          tenant.slug,
+                        )}&service=${encodeURIComponent(s.id)}`}
+                      >
+                        Ver horas
+                      </Link>
+                    </Button>
+                  </SurfaceCard>
                 );
               })}
             </ul>
           )}
 
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-600">
+          <SurfaceCard
+            tone="default"
+            shadow="soft"
+            radius="lg"
+            className="mt-6 rounded-2xl bg-slate-50 p-4 text-xs text-slate-600"
+          >
             <b>Política:</b> puedes reagendar o cancelar con al menos{" "}
             <b>3 horas</b> de anticipación desde el enlace privado que llega al
             correo.
-          </div>
-        </div>
-      </section>
-    </main>
+          </SurfaceCard>
+        </Section>
+      </DemoContainer>
+    </DemoShell>
   );
 }
