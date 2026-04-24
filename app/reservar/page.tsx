@@ -53,6 +53,9 @@ type Service = {
   is_active?: boolean | null;
 };
 
+type TenantPaymentMode = "none" | "optional" | "required";
+type PaymentChoice = "pay_now" | "pay_later";
+
 const tz = "America/Santiago";
 const PAGE_SIZE = 7;
 const MAX_DAYS_AHEAD = 60;
@@ -295,6 +298,7 @@ function ReservarInner() {
   const serviceRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const contactRef = useRef<HTMLDivElement>(null);
+  const paymentRef = useRef<HTMLDivElement>(null);
 
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -335,6 +339,8 @@ function ReservarInner() {
 
   const [tenantId, setTenantId] = useState<string>("");
   const [tenantName, setTenantName] = useState<string>("");
+  const [tenantPaymentMode, setTenantPaymentMode] =
+    useState<TenantPaymentMode>("none");
 
   const [minLeadTimeMin, setMinLeadTimeMin] = useState<number>(
     DEFAULT_MIN_LEAD_TIME_MIN,
@@ -362,6 +368,7 @@ function ReservarInner() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [paymentChoice, setPaymentChoice] = useState<PaymentChoice>("pay_later");
 
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -374,6 +381,7 @@ function ReservarInner() {
       setTenantId("");
       setTenantName("");
       setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
+      setTenantPaymentMode("none");
       setLoadError("Falta tenant en la URL (subdominio o ?tenant=).");
     }
   }, [tenantSlug]);
@@ -398,6 +406,10 @@ function ReservarInner() {
         if (!cancelled) {
           setTenantId(json?.tenant?.id ?? "");
           setTenantName(json?.tenant?.name ?? "");
+          setTenantPaymentMode(
+            (json?.tenant?.payment_mode as TenantPaymentMode | undefined) ??
+              "none",
+          );
 
           setMinLeadTimeMin(
             typeof json?.tenant?.min_lead_time_min === "number"
@@ -411,6 +423,7 @@ function ReservarInner() {
           setTenantId("");
           setTenantName("");
           setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
+          setTenantPaymentMode("none");
           setLoadError(e?.message ?? "No se pudo cargar tenant");
         }
       }
@@ -520,6 +533,17 @@ function ReservarInner() {
   useEffect(() => {
     if (serviceId) setServiceAlert(null);
   }, [serviceId]);
+
+  useEffect(() => {
+    if (tenantPaymentMode === "required") {
+      setPaymentChoice("pay_now");
+      return;
+    }
+
+    if (tenantPaymentMode === "none") {
+      setPaymentChoice("pay_later");
+    }
+  }, [tenantPaymentMode]);
 
   const range = useMemo(() => {
     const now = new Date();
@@ -659,7 +683,17 @@ function ReservarInner() {
     fullName.trim().length >= 2 &&
     isPhoneValid &&
     isValidEmail(email) &&
+    (tenantPaymentMode !== "required" || paymentChoice === "pay_now") &&
     !saving;
+
+  const showPaymentOptions = tenantPaymentMode !== "none";
+  const isPaymentRequired = tenantPaymentMode === "required";
+  const isPayNowSelected = showPaymentOptions && paymentChoice === "pay_now";
+  const currentPaymentStatus = showPaymentOptions
+    ? isPayNowSelected
+      ? "pending"
+      : "not_required"
+    : "not_required";
 
   const handleReserve = async () => {
     if (!serviceId || !service) {
@@ -709,7 +743,16 @@ function ReservarInner() {
       return;
     }
 
+    if (isPaymentRequired && paymentChoice !== "pay_now") {
+      alert("Este servicio requiere pago online para reservar.");
+      scrollToRef(paymentRef);
+      return;
+    }
+
     setSaving(true);
+
+    let createdAppointmentId: string | null = null;
+    let createdManageToken: string | null = null;
 
     try {
       const payload = {
@@ -728,6 +771,8 @@ function ReservarInner() {
 
         status: "confirmed",
         currency: (service?.currency || "CLP").toUpperCase(),
+        paymentRequired: isPayNowSelected,
+        paymentStatus: currentPaymentStatus,
 
         notes: null,
       };
@@ -743,9 +788,34 @@ function ReservarInner() {
 
       const appointmentId = json?.appointmentId;
       const manageToken = json?.manageToken;
+      createdAppointmentId = appointmentId ?? null;
+      createdManageToken = manageToken ?? null;
 
       if (!appointmentId)
         throw new Error("Reserva creada pero falta id en respuesta.");
+
+      if (isPayNowSelected) {
+        const paymentRes = await fetch("/api/payments/create-preference", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            appointmentId,
+            tenantId,
+          }),
+        });
+
+        const paymentJson = await paymentRes.json().catch(() => null);
+
+        if (!paymentRes.ok || !paymentJson?.init_point) {
+          throw new Error(
+            paymentJson?.error ??
+              "La reserva fue creada, pero no se pudo iniciar el pago online.",
+          );
+        }
+
+        window.location.assign(String(paymentJson.init_point));
+        return;
+      }
 
       const qs = new URLSearchParams({ id: appointmentId }).toString();
 
@@ -761,6 +831,24 @@ function ReservarInner() {
       router.push(`/reservar/confirmacion?${qs}`);
     } catch (e: any) {
       console.error(e);
+      if (createdAppointmentId) {
+        if (createdManageToken) {
+          try {
+            sessionStorage.setItem(
+              `citaya_manage_token:${createdAppointmentId}`,
+              createdManageToken,
+            );
+          } catch {}
+        }
+
+        alert(
+          e?.message ??
+            "La reserva fue creada, pero hubo un problema iniciando el pago.",
+        );
+        router.push(`/reservar/confirmacion?id=${createdAppointmentId}`);
+        return;
+      }
+
       alert(e?.message ?? "Error reservando");
     } finally {
       setSaving(false);
@@ -820,8 +908,14 @@ function ReservarInner() {
       typeof service?.price === "number"
         ? moneyCLP(service.price, service.currency)
         : null;
-    return { svc, time, price };
-  }, [service, serviceId, selectedSlot]);
+    const payment =
+      tenantPaymentMode === "none"
+        ? "Sin pago online"
+        : paymentChoice === "pay_now"
+          ? "Pagar ahora"
+          : "Pagar después";
+    return { svc, time, price, payment };
+  }, [service, serviceId, selectedSlot, tenantPaymentMode, paymentChoice]);
 
   const lockSlots = !serviceId || !tenantId || !professionalId;
   const lockContact = !selectedSlot || !tenantId;
@@ -1544,6 +1638,117 @@ function ReservarInner() {
                 </SurfaceCard>
               </div>
             </Section>
+
+            {showPaymentOptions ? (
+              <>
+                <div ref={paymentRef} />
+                <Section className="mt-4 border-white/70 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
+                  <SectionHeader
+                    icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
+                    title="Pago de la reserva"
+                    subtitle={
+                      isPaymentRequired
+                        ? "Este negocio requiere pago online para reservar."
+                        : "Puedes decidir si prefieres pagar online ahora o pagar después."
+                    }
+                  />
+
+                  <div className="mt-4 grid gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentChoice("pay_now")}
+                      className={cn(
+                        "w-full rounded-[26px] border p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition",
+                        paymentChoice === "pay_now"
+                          ? "border-slate-900 bg-slate-900 text-white shadow-[0_16px_30px_rgba(15,23,42,0.16)]"
+                          : "border-slate-200/70 bg-white/88 hover:border-slate-300/80 hover:bg-white",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[12px] font-extrabold sm:text-sm">
+                            Pagar ahora
+                          </div>
+                          <div
+                            className={cn(
+                              "mt-1 text-[10.5px] sm:text-xs",
+                              paymentChoice === "pay_now"
+                                ? "text-white/85"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            Asegura tu hora pagando online.
+                          </div>
+                        </div>
+
+                        <div
+                          className={cn(
+                            "rounded-full px-3 py-1 text-[10px] font-extrabold",
+                            paymentChoice === "pay_now"
+                              ? "bg-white/15 text-white"
+                              : "bg-slate-900 text-white",
+                          )}
+                        >
+                          {typeof service?.price === "number"
+                            ? moneyCLP(service.price, service.currency)
+                            : "Online"}
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isPaymentRequired) setPaymentChoice("pay_later");
+                      }}
+                      disabled={isPaymentRequired}
+                      className={cn(
+                        "w-full rounded-[26px] border p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition",
+                        paymentChoice === "pay_later"
+                          ? "border-slate-900 bg-slate-900 text-white shadow-[0_16px_30px_rgba(15,23,42,0.16)]"
+                          : "border-slate-200/70 bg-white/88 hover:border-slate-300/80 hover:bg-white",
+                        isPaymentRequired ? "cursor-not-allowed opacity-60" : "",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[12px] font-extrabold sm:text-sm">
+                            Pagar después
+                          </div>
+                          <div
+                            className={cn(
+                              "mt-1 text-[10.5px] sm:text-xs",
+                              paymentChoice === "pay_later"
+                                ? "text-white/85"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            Reserva ahora y paga el día de la atención.
+                          </div>
+                        </div>
+
+                        <div
+                          className={cn(
+                            "rounded-full px-3 py-1 text-[10px] font-extrabold",
+                            paymentChoice === "pay_later"
+                              ? "bg-white/15 text-white"
+                              : "bg-slate-100 text-slate-700",
+                          )}
+                        >
+                          {isPaymentRequired ? "Bloqueado" : "Flexible"}
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs">
+                    {isPayNowSelected
+                      ? "Al confirmar te redirigiremos a Mercado Pago para completar el pago."
+                      : "La reserva se confirmará sin redirección a Mercado Pago."}
+                  </div>
+                </Section>
+              </>
+            ) : null}
           </div>
 
           <aside className="hidden lg:block">
@@ -1589,6 +1794,17 @@ function ReservarInner() {
                   </div>
                 ) : null}
 
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Pago:{" "}
+                  <span className="font-extrabold text-foreground">
+                    {tenantPaymentMode === "none"
+                      ? "Sin pago online"
+                      : paymentChoice === "pay_now"
+                        ? "Pagar ahora"
+                        : "Pagar después"}
+                  </span>
+                </div>
+
                 <div className="mt-3 text-sm text-muted-foreground">
                   Fecha y hora:
                 </div>
@@ -1622,15 +1838,16 @@ function ReservarInner() {
 
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-white/70 bg-background/80 p-2.5 backdrop-blur-2xl lg:hidden">
           <div className="mx-auto max-w-[460px] px-1">
-            <div className="mb-2 rounded-3xl border border-white/80 bg-white/84 px-3 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm">
-              <div className="truncate">
-                <span className="font-extrabold text-foreground">
-                  {mobileSummary.svc}
-                </span>
-                {mobileSummary.price ? <span> · {mobileSummary.price}</span> : null}
+              <div className="mb-2 rounded-3xl border border-white/80 bg-white/84 px-3 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur-sm">
+                <div className="truncate">
+                  <span className="font-extrabold text-foreground">
+                    {mobileSummary.svc}
+                  </span>
+                  {mobileSummary.price ? <span> · {mobileSummary.price}</span> : null}
+                </div>
+                <div className="truncate">🕒 {mobileSummary.time}</div>
+                <div className="truncate">💳 {mobileSummary.payment}</div>
               </div>
-              <div className="truncate">🕒 {mobileSummary.time}</div>
-            </div>
 
             <Button
               type="button"

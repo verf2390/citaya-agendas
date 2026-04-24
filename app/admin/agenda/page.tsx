@@ -85,6 +85,8 @@ type Service = {
   is_active: boolean | null;
 };
 
+type TenantPaymentMode = "none" | "optional" | "required";
+
 type CalendarEvent = {
   id: string;
   title: string;
@@ -373,6 +375,9 @@ export default function AgendaPage() {
   const [loadingTenant, setLoadingTenant] = useState(true);
   const [tenantLogoUrl, setTenantLogoUrl] = useState("");
   const [tenantName, setTenantName] = useState("");
+  const [tenantPaymentMode, setTenantPaymentMode] =
+    useState<TenantPaymentMode>("none");
+  const [savingPaymentMode, setSavingPaymentMode] = useState(false);
 
   // auth
   const [authChecked, setAuthChecked] = useState(false);
@@ -516,6 +521,32 @@ export default function AgendaPage() {
 
     run();
   }, [router, loadingTenant, tenantError, tenantId]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!authChecked || !tenantId) return;
+
+      try {
+        const res = await fetch(
+          `/api/admin/payment-settings?tenantId=${encodeURIComponent(tenantId)}`,
+          { cache: "no-store" },
+        );
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error ?? "No se pudo cargar payment settings");
+        }
+
+        setTenantPaymentMode(
+          (json.settings?.paymentMode as TenantPaymentMode | undefined) ?? "none",
+        );
+      } catch (error) {
+        console.error("[admin/agenda] payment settings error:", error);
+      }
+    };
+
+    void run();
+  }, [authChecked, tenantId]);
 
   /* =====================================================
      LOADERS
@@ -1408,6 +1439,48 @@ export default function AgendaPage() {
     setActionOpen(true);
   };
 
+  const saveTenantPaymentMode = async () => {
+    if (!tenantId || savingPaymentMode) return;
+
+    setSavingPaymentMode(true);
+
+    try {
+      const res = await fetch("/api/admin/payment-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          paymentMode: tenantPaymentMode,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error ?? "No se pudo guardar payment_mode");
+      }
+
+      toast({
+        title: "Cobros actualizados",
+        description:
+          tenantPaymentMode === "none"
+            ? "El tenant quedó sin pago online."
+            : tenantPaymentMode === "optional"
+              ? "El tenant quedó con pago online opcional."
+              : "El tenant quedó con pago online obligatorio.",
+      });
+    } catch (error: any) {
+      console.error("[admin/agenda] save payment settings error:", error);
+      toast({
+        title: "No se pudo guardar",
+        description: error?.message ?? "Error guardando payment_mode",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingPaymentMode(false);
+    }
+  };
+
   const handleDatesSet = (arg: DatesSetArg) => {
     const startStr = arg.startStr;
     const datePart = startStr.slice(0, 10);
@@ -1674,6 +1747,45 @@ export default function AgendaPage() {
       />
 
       <div className="mx-auto max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5">
+        <div className="mt-3">
+          <Card>
+            <CardBody>
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="min-w-[280px]">
+                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                    Cobros online
+                  </div>
+                  <select
+                    value={tenantPaymentMode}
+                    onChange={(e) =>
+                      setTenantPaymentMode(e.target.value as TenantPaymentMode)
+                    }
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+                  >
+                    <option value="none">Sin pago online</option>
+                    <option value="optional">Pago opcional</option>
+                    <option value="required">Pago obligatorio</option>
+                  </select>
+                </div>
+
+                <div className="max-w-[520px] text-sm text-muted-foreground">
+                  Configura el modo global del tenant. Hoy no existe `services.payment_mode`,
+                  así que el flujo público usa esta configuración general.
+                </div>
+
+                <div className="flex-1" />
+
+                <PrimaryButton
+                  onClick={saveTenantPaymentMode}
+                  disabled={savingPaymentMode || !tenantId}
+                >
+                  {savingPaymentMode ? "Guardando..." : "Guardar cobros"}
+                </PrimaryButton>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
         {/* Selector profesional + Horarios base */}
         <div className="mt-3">
           <Card>

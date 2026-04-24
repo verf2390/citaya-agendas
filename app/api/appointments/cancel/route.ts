@@ -4,10 +4,38 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
-    const token = body?.token;
+    const token = String(body?.token ?? "").trim();
 
-    if (!token) {
+    if (!token || token.length < 20) {
       return NextResponse.json({ ok: false, error: "Missing token" }, { status: 400 });
+    }
+
+    const { data: currentAppointment, error: currentAppointmentError } =
+      await supabaseAdmin
+        .from("appointments")
+        .select("id, tenant_id, customer_email, canceled_at, status")
+        .eq("manage_token", token)
+        .maybeSingle();
+
+    if (currentAppointmentError) {
+      console.error("[cancel] lookup error:", currentAppointmentError);
+      return NextResponse.json({ ok: false, error: "DB error" }, { status: 500 });
+    }
+
+    if (!currentAppointment) {
+      return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 404 });
+    }
+
+    if (String(currentAppointment.status ?? "").toLowerCase() === "canceled") {
+      return NextResponse.json({
+        ok: true,
+        appointment: currentAppointment,
+        n8n: {
+          called: false,
+          ok: true,
+          result: { ok: true, skipped: "already_canceled" },
+        },
+      });
     }
 
     // 1) Cancelar en DB (y guardar timestamp)

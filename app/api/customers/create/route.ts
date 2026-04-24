@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabaseServer } from "@/lib/supabaseServer";
 
@@ -62,8 +63,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "tenantId requerido" }, { status: 400 });
     }
 
+    if (!isUuid(tenantId)) {
+      return NextResponse.json({ ok: false, error: "tenantId inválido" }, { status: 400 });
+    }
+
     if (!full_name) {
       return NextResponse.json({ ok: false, error: "name requerido" }, { status: 400 });
+    }
+
+    if (professionalId && !isUuid(professionalId)) {
+      return NextResponse.json({ ok: false, error: "professionalId inválido" }, { status: 400 });
     }
 
     if (!phone && !email) {
@@ -72,6 +81,10 @@ export async function POST(req: Request) {
 
     // ✅ UPDATE directo por ID (edición desde modal)
     if (customerId) {
+      if (!isUuid(customerId)) {
+        return NextResponse.json({ ok: false, error: "customerId inválido" }, { status: 400 });
+      }
+
       const patch: Record<string, any> = {
         full_name,
         phone,

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -72,24 +73,39 @@ function StatusPill({ status }: { status: string }) {
 
 function ResultInner() {
   const sp = useSearchParams();
-  const status = (sp.get("status") || "").toLowerCase(); // "rescheduled" | "canceled"
+  const status = (sp.get("status") || "").toLowerCase();
   const start = sp.get("start");
   const end = sp.get("end");
 
   const isRescheduled = status === "rescheduled";
   const isCanceled = status === "canceled";
+  const isPaymentSuccess = status === "success";
+  const isPaymentFailure = status === "failure";
+  const isPaymentPending = status === "pending";
 
   const title = isRescheduled
     ? "¡Listo! Tu cita ha sido reagendada"
     : isCanceled
       ? "Listo: tu cita ha sido cancelada"
-      : "Listo";
+      : isPaymentSuccess
+        ? "Pago recibido"
+        : isPaymentPending
+          ? "Pago pendiente"
+          : isPaymentFailure
+            ? "No se pudo completar el pago"
+            : "Listo";
 
   const subtitle = isRescheduled
     ? "Te dejamos el nuevo horario abajo. Si necesitas revisar el detalle, puedes volver a reservar o abrir tu enlace privado."
     : isCanceled
       ? "Si quieres, puedes reservar una nueva hora cuando quieras."
-      : "Acción completada.";
+      : isPaymentSuccess
+        ? "Tu pago fue enviado correctamente. El estado final se confirma por webhook."
+        : isPaymentPending
+          ? "Mercado Pago dejó la operación pendiente. Revisa luego el estado final de la cita."
+          : isPaymentFailure
+            ? "Puedes intentar nuevamente desde el flujo de pago de la cita."
+            : "Acción completada.";
 
   const whenLabel = useMemo(() => {
     if (!isRescheduled || !start) return null;
@@ -152,20 +168,33 @@ function ResultInner() {
               </div>
             ) : null}
 
+            {(isPaymentSuccess || isPaymentPending || isPaymentFailure) ? (
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                <div className="text-sm font-extrabold text-slate-900">Estado del pago</div>
+                <div className="mt-2 text-sm text-slate-700">
+                  {isPaymentSuccess
+                    ? "El checkout volvió correctamente. Aun así, el backend toma como fuente de verdad el webhook de Mercado Pago."
+                    : isPaymentPending
+                      ? "La operación quedó pendiente en Mercado Pago. No marques la cita como pagada hasta recibir el webhook."
+                      : "El pago falló o fue rechazado. La cita debería seguir sin marcarse como pagada."}
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <a
+              <Link
                 href="/reservar"
                 className="rounded-xl px-4 py-3 text-sm font-extrabold shadow-sm transition bg-slate-900 text-white hover:opacity-95 text-center"
               >
                 Volver a reservar
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/"
                 className="rounded-xl px-4 py-3 text-sm font-extrabold shadow-sm transition bg-white border border-slate-200 text-slate-900 hover:bg-slate-50 text-center"
               >
                 Ir al inicio
-              </a>
+              </Link>
             </div>
 
             <div className="mt-4 text-xs text-slate-500">

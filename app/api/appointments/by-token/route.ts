@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const token = String(searchParams.get("token") ?? "").trim();
 
-    if (!token) {
+    if (!token || token.length < 20) {
       return NextResponse.json(
         { ok: false, error: "Missing token" },
         { status: 400 },

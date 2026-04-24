@@ -1,5 +1,6 @@
 // app/api/appointments/availability/route.ts
 import { NextResponse } from "next/server";
+import { isUuid } from "@/lib/api/validators";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
 
@@ -159,6 +160,20 @@ export async function GET(req: Request) {
 
       return NextResponse.json(
         { error: "Faltan parámetros: tenantId, professionalId, from, to" },
+        { status: 400 },
+      );
+    }
+
+    if (!isUuid(effectiveTenantId) || !isUuid(professionalId)) {
+      return NextResponse.json(
+        { error: "tenantId/professionalId inválidos" },
+        { status: 400 },
+      );
+    }
+
+    if (serviceId && !isUuid(serviceId)) {
+      return NextResponse.json(
+        { error: "serviceId inválido" },
         { status: 400 },
       );
     }

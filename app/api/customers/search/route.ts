@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function getBearerToken(req: Request): string {
@@ -25,8 +26,8 @@ export async function GET(req: Request) {
     const tenantId = searchParams.get("tenantId") || "";
     const q = (searchParams.get("q") || "").trim();
 
-    if (!tenantId) {
-      return NextResponse.json({ ok: false, error: "tenantId requerido" }, { status: 400 });
+    if (!tenantId || !isUuid(tenantId)) {
+      return NextResponse.json({ ok: false, error: "tenantId requerido o inválido" }, { status: 400 });
     }
     if (q.length < 2) {
       return NextResponse.json({ ok: true, customers: [] });

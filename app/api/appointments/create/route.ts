@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { parseJson } from "@/lib/api/parse";
 import { AppointmentCreateSchema } from "@/lib/api/schemas";
+import { parseIsoDate } from "@/lib/api/validators";
 import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
 
 /* =====================================================
@@ -132,13 +133,49 @@ export async function POST(req: Request) {
       notes,
       currency,
       status,
+      paymentRequired,
+      paymentStatus,
     } = parsed.data;
 
     const sb = supabaseServer;
+    const parsedStartAt = parseIsoDate(startAt);
+    const parsedEndAt = parseIsoDate(endAt);
+
+    if (!parsedStartAt || !parsedEndAt) {
+      return NextResponse.json(
+        { ok: false, error: "startAt/endAt deben ser fechas válidas" },
+        { status: 400 },
+      );
+    }
+
+    if (parsedStartAt >= parsedEndAt) {
+      return NextResponse.json(
+        { ok: false, error: "endAt debe ser mayor que startAt" },
+        { status: 400 },
+      );
+    }
 
     // ✅ Demo cookie override (subdominios)
     const demoTenantId = getDemoTenantIdFromCookieHeader(req.headers.get("cookie"));
     const effectiveTenantId = demoTenantId ?? tenantId;
+
+    // La cita pública puede venir de un slug demo o de tenant explícito. Antes
+    // de insertar validamos que profesional y servicio pertenezcan al tenant
+    // efectivo para no mezclar datos entre clientes.
+    const { data: professional, error: professionalError } = await sb
+      .from("professionals")
+      .select("id")
+      .eq("tenant_id", effectiveTenantId)
+      .eq("id", professionalId)
+      .maybeSingle();
+
+    if (professionalError) throw professionalError;
+    if (!professional?.id) {
+      return NextResponse.json(
+        { ok: false, error: "professionalId no pertenece al tenant" },
+        { status: 400 },
+      );
+    }
 
     const resolvedCustomerId = await resolveCustomerId({
       sb,
@@ -164,6 +201,13 @@ export async function POST(req: Request) {
 
       service_name = svc?.name ?? null;
       description = svc?.description ?? null;
+
+      if (!svc?.name) {
+        return NextResponse.json(
+          { ok: false, error: "serviceId no pertenece al tenant" },
+          { status: 400 },
+        );
+      }
     }
 
     // ✅ token privado SIEMPRE
@@ -189,6 +233,8 @@ export async function POST(req: Request) {
       notes: notes ?? null,
       currency: currency ?? "CLP",
       status: status ?? "confirmed",
+      payment_required: paymentRequired ?? null,
+      payment_status: paymentStatus ?? null,
 
       source: "admin",
 

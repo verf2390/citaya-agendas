@@ -3,6 +3,7 @@
 // Regla: máximo 2 reagendados por cita
 
 import { NextResponse } from "next/server";
+import { parseIsoDate } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
@@ -16,6 +17,23 @@ export async function POST(req: Request) {
     if (!token || !start_at || !end_at) {
       return NextResponse.json(
         { ok: false, error: "Missing token/start_at/end_at" },
+        { status: 400 }
+      );
+    }
+
+    const parsedStart = parseIsoDate(start_at);
+    const parsedEnd = parseIsoDate(end_at);
+
+    if (!parsedStart || !parsedEnd) {
+      return NextResponse.json(
+        { ok: false, error: "start_at/end_at inválidos" },
+        { status: 400 }
+      );
+    }
+
+    if (parsedStart >= parsedEnd) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid time range" },
         { status: 400 }
       );
     }
@@ -66,14 +84,37 @@ export async function POST(req: Request) {
       );
     }
 
+    const { data: conflicts, error: conflictErr } = await supabaseAdmin
+      .from("appointments")
+      .select("id")
+      .eq("tenant_id", oldAppt.tenant_id)
+      .eq("professional_id", oldAppt.professional_id)
+      .neq("status", "canceled")
+      .neq("id", oldAppt.id)
+      .lt("start_at", parsedEnd.toISOString())
+      .gt("end_at", parsedStart.toISOString())
+      .limit(1);
+
+    if (conflictErr) {
+      console.error("[reschedule] overlap error:", conflictErr);
+      return NextResponse.json({ ok: false, error: "DB error" }, { status: 500 });
+    }
+
+    if ((conflicts?.length ?? 0) > 0) {
+      return NextResponse.json(
+        { ok: false, error: "Time slot already booked" },
+        { status: 409 }
+      );
+    }
+
     // 3) Update (DESPUÉS)
     const rescheduled_at = new Date().toISOString();
 
     const { data: updated, error: upErr } = await supabaseAdmin
       .from("appointments")
       .update({
-        start_at,
-        end_at,
+        start_at: parsedStart.toISOString(),
+        end_at: parsedEnd.toISOString(),
         rescheduled_at,
         reschedule_count: rescheduleCount + 1, // 👈 incrementamos
       })
@@ -113,7 +154,7 @@ export async function POST(req: Request) {
     const secret = process.env.CITAYA_SECRET;
     const webhookUrl = process.env.N8N_RESCHEDULE_WEBHOOK_URL;
 
-    let n8n = {
+    const n8n = {
       called: false,
       ok: false as boolean,
       status: 0 as number,

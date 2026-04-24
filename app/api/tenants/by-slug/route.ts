@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 
 type TenantRow = {
   id: string;
@@ -83,6 +84,7 @@ export async function GET(req: Request) {
 
   const address_display =
     [data.address, data.city].filter(Boolean).join(" · ").trim() || null;
+  const paymentConfig = await getTenantPaymentConfig(data.id);
 
   const tenant = {
     id: data.id,
@@ -104,6 +106,8 @@ export async function GET(req: Request) {
     show_phone_after_booking: data.show_phone_after_booking,
 
     address_display,
+    payment_mode: paymentConfig.mode,
+    payment_enabled: paymentConfig.enabled,
   };
 
   return NextResponse.json({ tenant });
