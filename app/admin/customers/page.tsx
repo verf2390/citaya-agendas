@@ -30,6 +30,10 @@ type QuickFilter =
   | "recent";
 type ExportMenu = null | "open";
 
+function generateCustomerCode(id: string) {
+  return `CTY-${id.slice(-6).toUpperCase()}`;
+}
+
 export default function CustomersPage() {
   const router = useRouter();
 
@@ -850,6 +854,17 @@ export default function CustomersPage() {
                       }}
                     >
                       {c.full_name}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        fontWeight: 800,
+                        letterSpacing: "0.04em",
+                        color: "#64748b",
+                      }}
+                    >
+                      {generateCustomerCode(c.id)}
                     </div>
                     <div
                       title={c.notes ?? ""}
