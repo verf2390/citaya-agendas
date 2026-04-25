@@ -108,6 +108,10 @@ export async function GET(req: Request) {
     address_display,
     payment_mode: paymentConfig.mode,
     payment_enabled: paymentConfig.enabled,
+    payment_methods_enabled: paymentConfig.paymentMethodsEnabled,
+    payment_collection_mode: paymentConfig.collectionMode,
+    deposit_type: paymentConfig.depositType,
+    deposit_value: paymentConfig.depositValue,
   };
 
   return NextResponse.json({ tenant });

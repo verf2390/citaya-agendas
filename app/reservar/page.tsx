@@ -55,12 +55,21 @@ type Service = {
 
 type TenantPaymentMode = "none" | "optional" | "required";
 type PaymentChoice = "pay_now" | "pay_later";
+type PaymentProviderId = "mercadopago" | "webpay" | "khipu" | "manual";
+type PaymentCollectionMode = "none" | "full" | "deposit";
+type TenantDepositType = "fixed" | "percentage" | null;
 
 const tz = "America/Santiago";
 const PAGE_SIZE = 7;
 const MAX_DAYS_AHEAD = 60;
 
 const DEFAULT_MIN_LEAD_TIME_MIN = 120; // 2 horas
+const PAYMENT_PROVIDER_LABELS: Record<PaymentProviderId, string> = {
+  mercadopago: "Mercado Pago",
+  webpay: "Webpay Plus",
+  khipu: "Khipu",
+  manual: "Transferencia/manual",
+};
 
 function formatCL(dateISO: string) {
   return new Intl.DateTimeFormat("es-CL", {
@@ -369,6 +378,18 @@ function ReservarInner() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [paymentChoice, setPaymentChoice] = useState<PaymentChoice>("pay_later");
+  const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState<
+    PaymentProviderId[]
+  >(["mercadopago"]);
+  const [selectedPaymentProvider, setSelectedPaymentProvider] =
+    useState<PaymentProviderId>("mercadopago");
+  const [tenantPaymentCollectionMode, setTenantPaymentCollectionMode] =
+    useState<PaymentCollectionMode>("full");
+  const [tenantDepositType, setTenantDepositType] =
+    useState<TenantDepositType>(null);
+  const [tenantDepositValue, setTenantDepositValue] = useState<number | null>(
+    null,
+  );
 
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -382,6 +403,11 @@ function ReservarInner() {
       setTenantName("");
       setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
       setTenantPaymentMode("none");
+      setPaymentMethodsEnabled(["mercadopago"]);
+      setSelectedPaymentProvider("mercadopago");
+      setTenantPaymentCollectionMode("full");
+      setTenantDepositType(null);
+      setTenantDepositValue(null);
       setLoadError("Falta tenant en la URL (subdominio o ?tenant=).");
     }
   }, [tenantSlug]);
@@ -410,6 +436,35 @@ function ReservarInner() {
             (json?.tenant?.payment_mode as TenantPaymentMode | undefined) ??
               "none",
           );
+          const methods = Array.isArray(json?.tenant?.payment_methods_enabled)
+            ? json.tenant.payment_methods_enabled.filter(
+                (method: unknown): method is PaymentProviderId =>
+                  method === "mercadopago" ||
+                  method === "webpay" ||
+                  method === "khipu" ||
+                  method === "manual",
+              )
+            : [];
+          const nextMethods = methods.length > 0 ? methods : ["mercadopago"];
+
+          setPaymentMethodsEnabled(nextMethods);
+          setSelectedPaymentProvider((prev) =>
+            nextMethods.includes(prev) ? prev : nextMethods[0],
+          );
+          setTenantPaymentCollectionMode(
+            (json?.tenant?.payment_collection_mode as
+              | PaymentCollectionMode
+              | undefined) ?? "full",
+          );
+          setTenantDepositType(
+            (json?.tenant?.deposit_type as TenantDepositType | undefined) ??
+              null,
+          );
+          setTenantDepositValue(
+            typeof json?.tenant?.deposit_value === "number"
+              ? json.tenant.deposit_value
+              : null,
+          );
 
           setMinLeadTimeMin(
             typeof json?.tenant?.min_lead_time_min === "number"
@@ -424,6 +479,11 @@ function ReservarInner() {
           setTenantName("");
           setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
           setTenantPaymentMode("none");
+          setPaymentMethodsEnabled(["mercadopago"]);
+          setSelectedPaymentProvider("mercadopago");
+          setTenantPaymentCollectionMode("full");
+          setTenantDepositType(null);
+          setTenantDepositValue(null);
           setLoadError(e?.message ?? "No se pudo cargar tenant");
         }
       }
@@ -795,25 +855,51 @@ function ReservarInner() {
         throw new Error("Reserva creada pero falta id en respuesta.");
 
       if (isPayNowSelected) {
-        const paymentRes = await fetch("/api/payments/create-preference", {
+        const paymentRes = await fetch("/api/payments/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             appointmentId,
             tenantId,
+            provider: selectedPaymentProvider,
           }),
         });
 
         const paymentJson = await paymentRes.json().catch(() => null);
+        const paymentUrl = paymentJson?.payment_url ?? paymentJson?.init_point;
 
-        if (!paymentRes.ok || !paymentJson?.init_point) {
+        if (!paymentRes.ok || !paymentUrl) {
           throw new Error(
             paymentJson?.error ??
               "La reserva fue creada, pero no se pudo iniciar el pago online.",
           );
         }
 
-        window.location.assign(String(paymentJson.init_point));
+        if (
+          paymentJson?.redirect_method === "POST" &&
+          paymentJson?.redirect_payload &&
+          typeof paymentJson.redirect_payload === "object"
+        ) {
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = String(paymentUrl);
+
+          for (const [key, value] of Object.entries(
+            paymentJson.redirect_payload as Record<string, unknown>,
+          )) {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = key;
+            input.value = String(value);
+            form.appendChild(input);
+          }
+
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
+
+        window.location.assign(String(paymentUrl));
         return;
       }
 
@@ -916,6 +1002,41 @@ function ReservarInner() {
           : "Pagar después";
     return { svc, time, price, payment };
   }, [service, serviceId, selectedSlot, tenantPaymentMode, paymentChoice]);
+
+  const paymentBreakdown = useMemo(() => {
+    const total =
+      typeof service?.price === "number" && Number.isFinite(service.price)
+        ? Math.max(Math.round(service.price), 0)
+        : 0;
+
+    if (tenantPaymentCollectionMode === "none" || total <= 0) {
+      return { total, requiredNow: 0, remaining: total };
+    }
+
+    if (tenantPaymentCollectionMode === "deposit") {
+      const value = Number(tenantDepositValue ?? 0);
+      const requiredNow =
+        tenantDepositType === "percentage"
+          ? Math.round(total * (value / 100))
+          : tenantDepositType === "fixed"
+            ? Math.round(value)
+            : total;
+      const boundedRequiredNow = Math.min(Math.max(requiredNow, 0), total);
+
+      return {
+        total,
+        requiredNow: boundedRequiredNow,
+        remaining: Math.max(total - boundedRequiredNow, 0),
+      };
+    }
+
+    return { total, requiredNow: total, remaining: 0 };
+  }, [
+    service?.price,
+    tenantDepositType,
+    tenantDepositValue,
+    tenantPaymentCollectionMode,
+  ]);
 
   const lockSlots = !serviceId || !tenantId || !professionalId;
   const lockContact = !selectedSlot || !tenantId;
@@ -1689,12 +1810,37 @@ function ReservarInner() {
                               : "bg-slate-900 text-white",
                           )}
                         >
-                          {typeof service?.price === "number"
-                            ? moneyCLP(service.price, service.currency)
+                          {paymentBreakdown.requiredNow > 0
+                            ? moneyCLP(paymentBreakdown.requiredNow, service?.currency)
                             : "Online"}
                         </div>
                       </div>
                     </button>
+
+                    {paymentChoice === "pay_now" ? (
+                      <div className="rounded-[24px] border border-slate-200/70 bg-white/78 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
+                        <div className="text-[11px] font-extrabold text-slate-700">
+                          Método de pago
+                        </div>
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {paymentMethodsEnabled.map((method) => (
+                            <button
+                              key={method}
+                              type="button"
+                              onClick={() => setSelectedPaymentProvider(method)}
+                              className={cn(
+                                "min-h-10 rounded-2xl border px-3 py-2 text-left text-[11px] font-extrabold transition",
+                                selectedPaymentProvider === method
+                                  ? "border-slate-900 bg-slate-900 text-white"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                              )}
+                            >
+                              {PAYMENT_PROVIDER_LABELS[method]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <button
                       type="button"
@@ -1743,7 +1889,9 @@ function ReservarInner() {
 
                   <div className="mt-4 rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs">
                     {isPayNowSelected
-                      ? "Al confirmar te redirigiremos a Mercado Pago para completar el pago."
+                      ? paymentBreakdown.remaining > 0
+                        ? `Pagas ahora ${moneyCLP(paymentBreakdown.requiredNow, service?.currency)} como abono. El saldo de ${moneyCLP(paymentBreakdown.remaining, service?.currency)} se paga en el local.`
+                        : `Pagas el total ahora (${moneyCLP(paymentBreakdown.requiredNow, service?.currency)}) para confirmar tu reserva.`
                       : "La reserva se confirmará sin redirección a Mercado Pago."}
                   </div>
                 </Section>

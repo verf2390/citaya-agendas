@@ -23,6 +23,10 @@ export async function GET(req: Request) {
         tenant_id,
         service_name,
         description,
+        payment_provider,
+        payment_status,
+        payment_reference,
+        payment_url,
         manage_token,
         tenants (
           id,
@@ -35,7 +39,15 @@ export async function GET(req: Request) {
           phone_display,
           logo_url,
           show_address_after_booking,
-          show_phone_after_booking
+          show_phone_after_booking,
+          tenant_payment_settings (
+            bank_name,
+            bank_account_type,
+            bank_account_number,
+            bank_account_holder,
+            bank_rut,
+            bank_email
+          )
         ),
         professionals (
           id,

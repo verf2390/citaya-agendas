@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { Suspense, useMemo } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 const tz = "America/Santiago";
@@ -41,6 +41,29 @@ const fmtDateTimeShort = (iso: string) =>
     hour12: false,
   }).format(parseTimestamptz(iso));
 
+type BankDetails = {
+  bank_name?: string | null;
+  bank_account_type?: string | null;
+  bank_account_number?: string | null;
+  bank_account_holder?: string | null;
+  bank_rut?: string | null;
+  bank_email?: string | null;
+};
+
+type AppointmentResult = {
+  id?: string;
+  payment_provider?: string | null;
+  tenants?: {
+    tenant_payment_settings?: BankDetails | BankDetails[] | null;
+  } | null;
+};
+
+function getBankDetails(appointment: AppointmentResult | null): BankDetails | null {
+  const settings = appointment?.tenants?.tenant_payment_settings ?? null;
+  if (Array.isArray(settings)) return settings[0] ?? null;
+  return settings;
+}
+
 function StatusPill({ status }: { status: string }) {
   const s = (status || "").toLowerCase();
 
@@ -74,20 +97,56 @@ function StatusPill({ status }: { status: string }) {
 function ResultInner() {
   const sp = useSearchParams();
   const status = (sp.get("status") || "").toLowerCase();
+  const appointmentId = sp.get("id");
   const start = sp.get("start");
   const end = sp.get("end");
+  const [appointment, setAppointment] = useState<AppointmentResult | null>(null);
+  const [copyStatus, setCopyStatus] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
 
   const isRescheduled = status === "rescheduled";
   const isCanceled = status === "canceled";
   const isPaymentSuccess = status === "success";
   const isPaymentFailure = status === "failure";
   const isPaymentPending = status === "pending";
+  const paymentProvider = String(
+    appointment?.payment_provider ?? sp.get("provider") ?? "",
+  ).toLowerCase();
+  const isManualPayment = paymentProvider === "manual";
+  const bankDetails = useMemo(() => getBankDetails(appointment), [appointment]);
+
+  useEffect(() => {
+    if (!appointmentId) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/appointments/by-id?id=${encodeURIComponent(appointmentId)}`,
+          { cache: "no-store" },
+        );
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.appointment) return;
+        if (!cancelled) setAppointment(json.appointment);
+      } catch (error) {
+        console.error("[resultado] error cargando cita:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appointmentId]);
 
   const title = isRescheduled
     ? "¡Listo! Tu cita ha sido reagendada"
     : isCanceled
       ? "Listo: tu cita ha sido cancelada"
-      : isPaymentSuccess
+      : isManualPayment
+        ? "Pago pendiente"
+        : isPaymentSuccess
         ? "Pago recibido"
         : isPaymentPending
           ? "Pago pendiente"
@@ -99,7 +158,9 @@ function ResultInner() {
     ? "Te dejamos el nuevo horario abajo. Si necesitas revisar el detalle, puedes volver a reservar o abrir tu enlace privado."
     : isCanceled
       ? "Si quieres, puedes reservar una nueva hora cuando quieras."
-      : isPaymentSuccess
+      : isManualPayment
+        ? "Completa el pago por transferencia para confirmar tu reserva."
+        : isPaymentSuccess
         ? "Tu pago fue enviado correctamente. El estado final se confirma por webhook."
         : isPaymentPending
           ? "Mercado Pago dejó la operación pendiente. Revisa luego el estado final de la cita."
@@ -115,6 +176,33 @@ function ResultInner() {
       return fmtDateTimeShort(start);
     }
   }, [isRescheduled, start]);
+
+  const transferText = useMemo(
+    () =>
+      [
+        "Datos para transferencia:",
+        `Banco: ${bankDetails?.bank_name ?? "No configurado"}`,
+        `Tipo de cuenta: ${bankDetails?.bank_account_type ?? "No configurado"}`,
+        `Número de cuenta: ${bankDetails?.bank_account_number ?? "No configurado"}`,
+        `Titular: ${bankDetails?.bank_account_holder ?? "No configurado"}`,
+        `RUT: ${bankDetails?.bank_rut ?? "No configurado"}`,
+        `Email: ${bankDetails?.bank_email ?? "No configurado"}`,
+        "",
+        "Envía el comprobante al negocio para validar tu reserva.",
+      ].join("\n"),
+    [bankDetails],
+  );
+
+  const copyTransferDetails = async () => {
+    try {
+      await navigator.clipboard.writeText(transferText);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
+
+    window.setTimeout(() => setCopyStatus("idle"), 2200);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 sm:p-6">
@@ -188,11 +276,63 @@ function ResultInner() {
           <div className="space-y-2 rounded-2xl border border-gray-200 bg-gray-50 p-4">
             <div className="text-sm text-gray-500">Estado del pago</div>
             <div className="font-medium text-gray-800">
-              {isPaymentSuccess
+              {isManualPayment
+                ? "Tu reserva está pendiente hasta que el negocio confirme el pago."
+                : isPaymentSuccess
                 ? "El checkout volvió correctamente. Aun así, el backend toma como fuente de verdad el webhook de Mercado Pago."
                 : isPaymentPending
                   ? "La operación quedó pendiente en Mercado Pago. No marques la cita como pagada hasta recibir el webhook."
                   : "El pago falló o fue rechazado. La cita debería seguir sin marcarse como pagada."}
+            </div>
+          </div>
+        ) : null}
+
+        {isManualPayment ? (
+          <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+            <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="text-sm font-extrabold text-gray-900">
+                    Datos para transferencia
+                  </div>
+                  <div className="mt-1 text-sm text-gray-600">
+                    Envía el comprobante al negocio para validar tu reserva.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={copyTransferDetails}
+                  className="inline-flex min-h-10 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-900 transition hover:bg-gray-50"
+                >
+                  {copyStatus === "copied"
+                    ? "Datos copiados"
+                    : copyStatus === "error"
+                      ? "No se pudo copiar"
+                      : "Copiar datos"}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-2 text-sm">
+              {[
+                ["Banco", bankDetails?.bank_name],
+                ["Tipo", bankDetails?.bank_account_type],
+                ["Número", bankDetails?.bank_account_number],
+                ["Titular", bankDetails?.bank_account_holder],
+                ["RUT", bankDetails?.bank_rut],
+                ["Email", bankDetails?.bank_email],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <span className="text-gray-500">{label}</span>
+                  <span className="font-semibold text-gray-900">
+                    {value || "No configurado"}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         ) : null}

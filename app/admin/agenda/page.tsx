@@ -88,6 +88,14 @@ type Service = {
 type TenantPaymentMode = "none" | "optional" | "required";
 type TenantDepositType = "fixed" | "percentage" | null;
 type TenantChargeType = "none" | "full" | "fixed" | "percentage";
+type PaymentProviderId = "mercadopago" | "webpay" | "khipu" | "manual";
+
+const PAYMENT_PROVIDER_LABELS: Record<PaymentProviderId, string> = {
+  mercadopago: "Mercado Pago",
+  webpay: "Webpay Plus",
+  khipu: "Khipu",
+  manual: "Transferencia/manual",
+};
 
 type CalendarEvent = {
   id: string;
@@ -382,6 +390,27 @@ export default function AgendaPage() {
   const [tenantChargeType, setTenantChargeType] =
     useState<TenantChargeType>("none");
   const [tenantDepositValue, setTenantDepositValue] = useState("");
+  const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState<
+    PaymentProviderId[]
+  >(["mercadopago"]);
+  const [webpayCommerceCode, setWebpayCommerceCode] = useState("");
+  const [webpayApiKey, setWebpayApiKey] = useState("");
+  const [webpayApiKeyPreview, setWebpayApiKeyPreview] = useState("");
+  const [webpayEnvironment, setWebpayEnvironment] = useState<
+    "integration" | "production"
+  >("integration");
+  const [khipuReceiverId, setKhipuReceiverId] = useState("");
+  const [khipuSecret, setKhipuSecret] = useState("");
+  const [khipuSecretPreview, setKhipuSecretPreview] = useState("");
+  const [khipuEnvironment, setKhipuEnvironment] = useState<
+    "development" | "production"
+  >("development");
+  const [bankName, setBankName] = useState("");
+  const [bankAccountType, setBankAccountType] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankAccountHolder, setBankAccountHolder] = useState("");
+  const [bankRut, setBankRut] = useState("");
+  const [bankEmail, setBankEmail] = useState("");
   const [savingPaymentMode, setSavingPaymentMode] = useState(false);
 
   // auth
@@ -565,6 +594,38 @@ export default function AgendaPage() {
             ? String(depositValue)
             : "",
         );
+        const methods = Array.isArray(json.settings?.paymentMethodsEnabled)
+          ? json.settings.paymentMethodsEnabled.filter(
+              (method: unknown): method is PaymentProviderId =>
+                method === "mercadopago" ||
+                method === "webpay" ||
+                method === "khipu" ||
+                method === "manual",
+            )
+          : [];
+        setPaymentMethodsEnabled(methods.length > 0 ? methods : ["mercadopago"]);
+        setWebpayCommerceCode(json.settings?.webpayCommerceCode ?? "");
+        setWebpayApiKey("");
+        setWebpayApiKeyPreview(json.settings?.webpayApiKeyPreview ?? "");
+        setWebpayEnvironment(
+          json.settings?.webpayEnvironment === "production"
+            ? "production"
+            : "integration",
+        );
+        setKhipuReceiverId(json.settings?.khipuReceiverId ?? "");
+        setKhipuSecret("");
+        setKhipuSecretPreview(json.settings?.khipuSecretPreview ?? "");
+        setKhipuEnvironment(
+          json.settings?.khipuEnvironment === "production"
+            ? "production"
+            : "development",
+        );
+        setBankName(json.settings?.bankName ?? "");
+        setBankAccountType(json.settings?.bankAccountType ?? "");
+        setBankAccountNumber(json.settings?.bankAccountNumber ?? "");
+        setBankAccountHolder(json.settings?.bankAccountHolder ?? "");
+        setBankRut(json.settings?.bankRut ?? "");
+        setBankEmail(json.settings?.bankEmail ?? "");
       } catch (error) {
         console.error("[admin/agenda] payment settings error:", error);
       }
@@ -1482,9 +1543,26 @@ export default function AgendaPage() {
     const rawDepositValue = tenantDepositValue.trim();
     const nextDepositValue =
       nextDepositType && rawDepositValue ? Number(rawDepositValue) : null;
+    const paymentCollectionMode =
+      tenantChargeType === "none"
+        ? "none"
+        : tenantChargeType === "full"
+          ? "full"
+          : "deposit";
+
+    if (paymentMethodsEnabled.length === 0) {
+      toast({
+        title: "Método de pago requerido",
+        description: "Selecciona al menos un método de pago.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (nextDepositType) {
-      if (!Number.isFinite(nextDepositValue) || Number(nextDepositValue) <= 0) {
+      const numericDepositValue = Number(nextDepositValue);
+
+      if (!Number.isFinite(numericDepositValue) || numericDepositValue <= 0) {
         toast({
           title: "Monto inválido",
           description:
@@ -1496,7 +1574,7 @@ export default function AgendaPage() {
         return;
       }
 
-      if (nextDepositType === "percentage" && Number(nextDepositValue) > 100) {
+      if (nextDepositType === "percentage" && numericDepositValue > 100) {
         toast({
           title: "Porcentaje inválido",
           description: "La seña por porcentaje no puede ser mayor a 100%.",
@@ -1517,6 +1595,20 @@ export default function AgendaPage() {
           paymentMode: nextPaymentMode,
           depositType: nextDepositType,
           depositValue: nextDepositValue,
+          paymentMethodsEnabled,
+          paymentCollectionMode,
+          webpayCommerceCode,
+          webpayApiKey,
+          webpayEnvironment,
+          khipuReceiverId,
+          khipuSecret,
+          khipuEnvironment,
+          bankName,
+          bankAccountType,
+          bankAccountNumber,
+          bankAccountHolder,
+          bankRut,
+          bankEmail,
         }),
       });
 
@@ -1536,11 +1628,12 @@ export default function AgendaPage() {
               : "El tenant quedó con pago online obligatorio.",
       });
       setTenantPaymentMode(nextPaymentMode);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[admin/agenda] save payment settings error:", error);
       toast({
         title: "No se pudo guardar",
-        description: error?.message ?? "Error guardando payment_mode",
+        description:
+          error instanceof Error ? error.message : "Error guardando payment_mode",
         variant: "destructive",
       });
     } finally {
@@ -1817,16 +1910,52 @@ export default function AgendaPage() {
         <div className="mt-3">
           <Card>
             <CardBody>
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="min-w-[280px]">
+              <div className="mb-4">
+                <div className="text-base font-extrabold text-slate-900">
+                  Configuración de pago
+                </div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Define si se cobra online y qué monto se enviará a Mercado Pago.
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_minmax(180px,0.8fr)_auto] lg:items-end">
+                <div>
                   <div className="mb-2 text-xs font-extrabold text-muted-foreground">
-                    Cobros online
+                    Tipo de cobro
+                  </div>
+                  <select
+                    value={tenantChargeType}
+                    onChange={(e) => {
+                      const value = e.target.value as TenantChargeType;
+                      setTenantChargeType(value);
+
+                      if (value === "none") {
+                        setTenantPaymentMode("none");
+                        setTenantDepositValue("");
+                      } else if (tenantPaymentMode === "none") {
+                        setTenantPaymentMode("required");
+                      }
+                    }}
+                    className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+                  >
+                    <option value="none">Sin pago</option>
+                    <option value="full">Pago completo</option>
+                    <option value="fixed">Seña fija</option>
+                    <option value="percentage">Seña porcentaje</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                    Modo de pago
                   </div>
                   <select
                     value={tenantPaymentMode}
                     onChange={(e) =>
                       setTenantPaymentMode(e.target.value as TenantPaymentMode)
                     }
+                    disabled={tenantChargeType === "none"}
                     className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
                   >
                     <option value="none">Sin pago online</option>
@@ -1835,12 +1964,40 @@ export default function AgendaPage() {
                   </select>
                 </div>
 
-                <div className="max-w-[520px] text-sm text-muted-foreground">
-                  Configura el modo global del tenant. Hoy no existe `services.payment_mode`,
-                  así que el flujo público usa esta configuración general.
-                </div>
+                {tenantChargeType === "fixed" ? (
+                  <div>
+                    <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                      Monto seña CLP
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={tenantDepositValue}
+                      onChange={(e) => setTenantDepositValue(e.target.value)}
+                      placeholder="Ej: 5000"
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+                    />
+                  </div>
+                ) : null}
 
-                <div className="flex-1" />
+                {tenantChargeType === "percentage" ? (
+                  <div>
+                    <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                      Porcentaje seña
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={tenantDepositValue}
+                      onChange={(e) => setTenantDepositValue(e.target.value)}
+                      placeholder="Ej: 50"
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+                    />
+                  </div>
+                ) : null}
 
                 <PrimaryButton
                   onClick={saveTenantPaymentMode}
@@ -1848,6 +2005,201 @@ export default function AgendaPage() {
                 >
                   {savingPaymentMode ? "Guardando..." : "Guardar cobros"}
                 </PrimaryButton>
+              </div>
+
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div>
+                  <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                    Métodos activos
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(
+                      ["mercadopago", "webpay", "khipu", "manual"] as PaymentProviderId[]
+                    ).map((method) => (
+                      <label
+                        key={method}
+                        className="flex min-h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={paymentMethodsEnabled.includes(method)}
+                          onChange={(e) => {
+                            setPaymentMethodsEnabled((prev) => {
+                              if (e.target.checked) {
+                                return prev.includes(method)
+                                  ? prev
+                                  : [...prev, method];
+                              }
+
+                              return prev.filter((item) => item !== method);
+                            });
+                          }}
+                        />
+                        {PAYMENT_PROVIDER_LABELS[method]}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {paymentMethodsEnabled.includes("webpay") ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white/76 p-3">
+                    <div className="text-xs font-extrabold text-muted-foreground">
+                      Webpay Plus
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <input
+                        value={webpayCommerceCode}
+                        onChange={(e) => setWebpayCommerceCode(e.target.value)}
+                        placeholder="Código comercio"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      />
+                      <select
+                        value={webpayEnvironment}
+                        onChange={(e) =>
+                          setWebpayEnvironment(
+                            e.target.value === "production"
+                              ? "production"
+                              : "integration",
+                          )
+                        }
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        <option value="integration">Integración</option>
+                        <option value="production">Producción</option>
+                      </select>
+                      <input
+                        value={webpayApiKey}
+                        onChange={(e) => setWebpayApiKey(e.target.value)}
+                        placeholder={
+                          webpayApiKeyPreview
+                            ? `API key (${webpayApiKeyPreview})`
+                            : "API key"
+                        }
+                        type="password"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm sm:col-span-2"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {paymentMethodsEnabled.includes("khipu") ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white/76 p-3">
+                    <div className="text-xs font-extrabold text-muted-foreground">
+                      Khipu
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <input
+                        value={khipuReceiverId}
+                        onChange={(e) => setKhipuReceiverId(e.target.value)}
+                        placeholder="Receiver ID"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      />
+                      <select
+                        value={khipuEnvironment}
+                        onChange={(e) =>
+                          setKhipuEnvironment(
+                            e.target.value === "production"
+                              ? "production"
+                              : "development",
+                          )
+                        }
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        <option value="development">Desarrollo</option>
+                        <option value="production">Producción</option>
+                      </select>
+                      <input
+                        value={khipuSecret}
+                        onChange={(e) => setKhipuSecret(e.target.value)}
+                        placeholder={
+                          khipuSecretPreview
+                            ? `Secret (${khipuSecretPreview})`
+                            : "Secret"
+                        }
+                        type="password"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm sm:col-span-2"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {paymentMethodsEnabled.includes("manual") ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white/76 p-3 lg:col-span-2">
+                    <div className="text-xs font-extrabold text-muted-foreground">
+                      Datos de transferencia
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      <select
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        <option value="">Banco</option>
+                        <option value="BancoEstado">BancoEstado</option>
+                        <option value="Banco de Chile">Banco de Chile</option>
+                        <option value="Santander">Santander</option>
+                        <option value="BCI">BCI</option>
+                        <option value="Scotiabank">Scotiabank</option>
+                        <option value="Itaú">Itaú</option>
+                        <option value="Banco Falabella">Banco Falabella</option>
+                        <option value="Banco Ripley">Banco Ripley</option>
+                        <option value="Banco Security">Banco Security</option>
+                        <option value="Consorcio">Consorcio</option>
+                        <option value="BICE">BICE</option>
+                        <option value="Coopeuch">Coopeuch</option>
+                        <option value="Tenpo">Tenpo</option>
+                        <option value="Mercado Pago">Mercado Pago</option>
+                        <option value="MACH">MACH</option>
+                        <option value="Otro banco">Otro banco</option>
+                      </select>
+                      <select
+                        value={bankAccountType}
+                        onChange={(e) => setBankAccountType(e.target.value)}
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        <option value="">Tipo de cuenta</option>
+                        <option value="Cuenta Corriente">Cuenta Corriente</option>
+                        <option value="Cuenta Vista">Cuenta Vista</option>
+                        <option value="Cuenta RUT">Cuenta RUT</option>
+                        <option value="Cuenta de Ahorro">Cuenta de Ahorro</option>
+                        <option value="Chequera Electrónica">
+                          Chequera Electrónica
+                        </option>
+                        <option value="Otro">Otro</option>
+                      </select>
+                      <input
+                        value={bankAccountNumber}
+                        onChange={(e) => setBankAccountNumber(e.target.value)}
+                        placeholder="Número de cuenta"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      />
+                      <input
+                        value={bankAccountHolder}
+                        onChange={(e) => setBankAccountHolder(e.target.value)}
+                        placeholder="Titular"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      />
+                      <input
+                        value={bankRut}
+                        onChange={(e) => setBankRut(e.target.value)}
+                        placeholder="RUT"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      />
+                      <input
+                        value={bankEmail}
+                        onChange={(e) => setBankEmail(e.target.value)}
+                        placeholder="Email"
+                        className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-3 text-sm text-muted-foreground">
+                Esta configuración se aplica a las reservas online de este negocio.
+                Puedes definir si cobrar el total, pedir una seña o permitir pago
+                manual.
               </div>
             </CardBody>
           </Card>
