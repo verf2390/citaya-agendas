@@ -115,6 +115,82 @@ function generateManageToken(): string {
   return crypto.randomUUID();
 }
 
+function shouldSendConfirmation(args: {
+  status: string | null;
+  paymentRequired: boolean | null;
+  paymentStatus: string | null;
+}) {
+  if (args.status !== "confirmed") return false;
+  if (args.paymentRequired === true && args.paymentStatus !== "paid") return false;
+  return true;
+}
+
+async function sendConfirmationWebhook(args: {
+  appointmentId: string;
+  tenantId: string;
+  professionalId: string;
+  startAt: string;
+  endAt: string;
+  customerName: string;
+  customerPhone?: string | null;
+  customerEmail?: string | null;
+  customerId?: string | null;
+  serviceId?: string | null;
+  serviceName?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  currency?: string | null;
+  status: string;
+  manageToken: string;
+}) {
+  const webhookBase = process.env.N8N_CONFIRMATION_WEBHOOK_URL;
+  const secret = process.env.CITAYA_SECRET;
+
+  if (!webhookBase) {
+    console.warn("[appointments/create] N8N_CONFIRMATION_WEBHOOK_URL no seteada");
+    return;
+  }
+
+  try {
+    const url = new URL(webhookBase);
+    if (secret) url.searchParams.set("secret", secret);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    await fetch(url.toString(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event: "appointment.created",
+        appointmentId: args.appointmentId,
+        tenantId: args.tenantId,
+        professionalId: args.professionalId,
+        startAt: args.startAt,
+        endAt: args.endAt,
+        customerName: args.customerName,
+        customerPhone: args.customerPhone ?? null,
+        customerEmail: args.customerEmail ?? null,
+        customerId: args.customerId ?? null,
+        serviceId: args.serviceId ?? null,
+        service_name: args.serviceName ?? null,
+        description: args.description ?? null,
+        notes: args.notes ?? null,
+        currency: args.currency ?? "CLP",
+        status: args.status,
+        manage_token: args.manageToken,
+        source: "citaya-api",
+        createdAt: new Date().toISOString(),
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+  } catch (err: any) {
+    console.error("[appointments/create] n8n webhook error:", err?.message || err);
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const parsed = await parseJson(req, AppointmentCreateSchema);
@@ -132,7 +208,6 @@ export async function POST(req: Request) {
       serviceId,
       notes,
       currency,
-      status,
       paymentRequired,
       paymentStatus,
     } = parsed.data;
@@ -212,6 +287,17 @@ export async function POST(req: Request) {
 
     // ✅ token privado SIEMPRE
     const manage_token = generateManageToken();
+    const normalizedPaymentRequired = paymentRequired === true;
+    const normalizedStatus = normalizedPaymentRequired
+      ? "pending_payment"
+      : "confirmed";
+    const normalizedBookingStatus =
+      normalizedStatus === "confirmed" ? "confirmed" : "pending_payment";
+    const normalizedPaymentStatus = normalizedPaymentRequired
+      ? "pending"
+      : String(paymentStatus ?? "") === "pay_later"
+        ? "pay_later"
+        : "not_required";
 
     const payload = {
       tenant_id: effectiveTenantId,
@@ -232,9 +318,10 @@ export async function POST(req: Request) {
 
       notes: notes ?? null,
       currency: currency ?? "CLP",
-      status: status ?? "confirmed",
-      payment_required: paymentRequired ?? null,
-      payment_status: paymentStatus ?? null,
+      status: normalizedStatus,
+      booking_status: normalizedBookingStatus,
+      payment_required: normalizedPaymentRequired,
+      payment_status: normalizedPaymentStatus,
 
       source: "admin",
 
@@ -249,57 +336,38 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
-    const webhookBase = process.env.N8N_CONFIRMATION_WEBHOOK_URL;
-    const secret = process.env.CITAYA_SECRET;
-
-    if (!webhookBase) {
-      console.warn("[appointments/create] N8N_CONFIRMATION_WEBHOOK_URL no seteada");
+    if (
+      !shouldSendConfirmation({
+        status: normalizedStatus,
+        paymentRequired: normalizedPaymentRequired,
+        paymentStatus: normalizedPaymentStatus,
+      })
+    ) {
+      console.info("[appointments/create] confirmación omitida por pago pendiente", {
+        appointmentId: data.id,
+        status: normalizedStatus,
+        payment_required: normalizedPaymentRequired,
+        payment_status: normalizedPaymentStatus,
+      });
     } else {
-      try {
-        const url = new URL(webhookBase);
-        if (secret) url.searchParams.set("secret", secret);
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-
-        await fetch(url.toString(), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            event: "appointment.created",
-            appointmentId: data.id,
-
-            // ✅ manda tenant efectivo
-            tenantId: effectiveTenantId,
-            professionalId,
-            startAt,
-            endAt,
-
-            customerName,
-            customerPhone: customerPhone ?? null,
-            customerEmail: customerEmail ?? null,
-            customerId: resolvedCustomerId ?? null,
-
-            serviceId: serviceId ?? null,
-            service_name,
-            description,
-
-            notes: notes ?? null,
-            currency: currency ?? "CLP",
-            status: status ?? "confirmed",
-
-            manage_token: data.manage_token,
-
-            source: "citaya-api",
-            createdAt: new Date().toISOString(),
-          }),
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeout);
-      } catch (err: any) {
-        console.error("[appointments/create] n8n webhook error:", err?.message || err);
-      }
+      await sendConfirmationWebhook({
+        appointmentId: data.id,
+        tenantId: effectiveTenantId,
+        professionalId,
+        startAt,
+        endAt,
+        customerName,
+        customerPhone: customerPhone ?? null,
+        customerEmail: customerEmail ?? null,
+        customerId: resolvedCustomerId ?? null,
+        serviceId: serviceId ?? null,
+        serviceName: service_name,
+        description,
+        notes: notes ?? null,
+        currency: currency ?? "CLP",
+        status: normalizedStatus,
+        manageToken: data.manage_token,
+      });
     }
 
     return NextResponse.json({
