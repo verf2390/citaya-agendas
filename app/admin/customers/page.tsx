@@ -50,6 +50,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [query, setQuery] = useState("");
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
 
   // Modal states
   const [upsertOpen, setUpsertOpen] = useState(false);
@@ -59,7 +60,10 @@ export default function CustomersPage() {
   const [bulkAudience, setBulkAudience] = useState<BulkAudience>("all");
   const [bulkSubject, setBulkSubject] = useState("");
   const [bulkMessage, setBulkMessage] = useState("");
+  const [campaignImageUrl, setCampaignImageUrl] = useState("");
   const [bulkError, setBulkError] = useState("");
+  const [bulkSuccess, setBulkSuccess] = useState("");
+  const [bulkSending, setBulkSending] = useState(false);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   const [exportMenu, setExportMenu] = useState<ExportMenu>(null);
 
@@ -234,9 +238,27 @@ export default function CustomersPage() {
     };
   }, [customers]);
 
+  useEffect(() => {
+    setSelectedCustomerIds((prev) => {
+      const availableIds = new Set(customers.map((c) => c.id));
+      return prev.filter((id) => availableIds.has(id));
+    });
+  }, [customers]);
+
+  const selectedCustomers = useMemo(() => {
+    if (selectedCustomerIds.length === 0) return [];
+
+    const selectedIds = new Set(selectedCustomerIds);
+    return customers.filter((c) => selectedIds.has(c.id));
+  }, [customers, selectedCustomerIds]);
+
   const bulkRecipients = useMemo(() => {
-    return customers
+    const source =
+      selectedCustomers.length > 0 ? selectedCustomers : customers;
+
+    return source
       .filter((c) => {
+        if (selectedCustomers.length > 0) return true;
         if (bulkAudience === "email") return !!c.email?.trim();
         if (bulkAudience === "phone") return !!c.phone?.trim();
         return true;
@@ -247,7 +269,38 @@ export default function CustomersPage() {
         email: c.email ?? null,
         phone: c.phone ?? null,
       }));
-  }, [customers, bulkAudience]);
+  }, [customers, selectedCustomers, bulkAudience]);
+
+  const selectedVisibleCount = useMemo(() => {
+    const selectedIds = new Set(selectedCustomerIds);
+    return filtered.filter((c) => selectedIds.has(c.id)).length;
+  }, [filtered, selectedCustomerIds]);
+
+  const allVisibleSelected =
+    filtered.length > 0 && selectedVisibleCount === filtered.length;
+
+  const toggleCustomerSelection = (customerId: string) => {
+    setSelectedCustomerIds((prev) =>
+      prev.includes(customerId)
+        ? prev.filter((id) => id !== customerId)
+        : [...prev, customerId],
+    );
+    setBulkSuccess("");
+  };
+
+  const handleSelectVisible = () => {
+    setSelectedCustomerIds((prev) => {
+      const next = new Set(prev);
+      filtered.forEach((c) => next.add(c.id));
+      return Array.from(next);
+    });
+    setBulkSuccess("");
+  };
+
+  const handleClearSelection = () => {
+    setSelectedCustomerIds([]);
+    setBulkSuccess("");
+  };
 
   const bulkPayload = useMemo(
     () => ({
@@ -256,6 +309,7 @@ export default function CustomersPage() {
       channel: bulkChannel,
       subject: bulkSubject.trim(),
       message: bulkMessage.trim(),
+      campaign_image_url: campaignImageUrl.trim(),
       recipients: bulkRecipients,
     }),
     [
@@ -264,6 +318,7 @@ export default function CustomersPage() {
       bulkChannel,
       bulkSubject,
       bulkMessage,
+      campaignImageUrl,
       bulkRecipients,
     ],
   );
@@ -390,8 +445,12 @@ export default function CustomersPage() {
     setExportMenu(null);
   };
 
-  const handlePrepareBulkMessage = () => {
+  const handleSendBulkMessage = async () => {
+    if (bulkSending) return;
+
     const subjectRequired = bulkChannel === "email";
+
+    setBulkSuccess("");
 
     if (subjectRequired && !bulkSubject.trim()) {
       setBulkError("El asunto es obligatorio para mensajes por email.");
@@ -409,7 +468,42 @@ export default function CustomersPage() {
     }
 
     setBulkError("");
-    console.log("[bulk-message-preview]", bulkPayload);
+
+    try {
+      setBulkSending(true);
+
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+
+      const res = await fetch("/api/admin/messages/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(bulkPayload),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        setBulkError(
+          json?.error || "No se pudo enviar la campaña a automatización.",
+        );
+        return;
+      }
+
+      setBulkSuccess(
+        json.message ||
+          `Campaña enviada a automatización (${bulkRecipients.length} destinatarios).`,
+      );
+    } catch (e: any) {
+      setBulkError(
+        e?.message || "No se pudo enviar la campaña a automatización.",
+      );
+    } finally {
+      setBulkSending(false);
+    }
   };
 
   /* =====================================================
@@ -529,6 +623,7 @@ export default function CustomersPage() {
           <button
             onClick={() => {
               setBulkError("");
+              setBulkSuccess("");
               setBulkOpen(true);
             }}
             style={{
@@ -748,7 +843,9 @@ export default function CustomersPage() {
         </button>
 
         <div style={{ fontSize: 12, opacity: 0.7 }}>
-          {loading ? "Cargando..." : `${filtered.length} clientes`}
+          {loading
+            ? "Cargando..."
+            : `${filtered.length} clientes · ${selectedCustomerIds.length} seleccionados`}
         </div>
       </div>
 
@@ -791,6 +888,46 @@ export default function CustomersPage() {
             </button>
           );
         })}
+
+        <button
+          onClick={handleSelectVisible}
+          disabled={filtered.length === 0 || allVisibleSelected}
+          style={{
+            padding: "9px 12px",
+            borderRadius: 999,
+            border: "1px solid rgba(148,163,184,0.34)",
+            background: allVisibleSelected ? "#e2e8f0" : "rgba(255,255,255,0.82)",
+            color: "#334155",
+            cursor:
+              filtered.length === 0 || allVisibleSelected
+                ? "not-allowed"
+                : "pointer",
+            fontSize: 13,
+            fontWeight: 700,
+            opacity: filtered.length === 0 ? 0.62 : 1,
+          }}
+        >
+          Seleccionar visibles
+        </button>
+
+        <button
+          onClick={handleClearSelection}
+          disabled={selectedCustomerIds.length === 0}
+          style={{
+            padding: "9px 12px",
+            borderRadius: 999,
+            border: "1px solid rgba(148,163,184,0.34)",
+            background: "rgba(255,255,255,0.82)",
+            color: "#334155",
+            cursor:
+              selectedCustomerIds.length === 0 ? "not-allowed" : "pointer",
+            fontSize: 13,
+            fontWeight: 700,
+            opacity: selectedCustomerIds.length === 0 ? 0.62 : 1,
+          }}
+        >
+          Limpiar selección
+        </button>
       </div>
 
       <div
@@ -808,7 +945,7 @@ export default function CustomersPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "2fr 1.5fr 1fr 1fr 128px",
+                gridTemplateColumns: "44px 2fr 1.5fr 1fr 1fr 128px",
                 padding: 14,
                 fontSize: 12,
                 fontWeight: 800,
@@ -816,6 +953,7 @@ export default function CustomersPage() {
                 background: "#f8fafc",
               }}
             >
+              <div>Sel.</div>
               <div>Cliente</div>
               <div>Contacto</div>
               <div>Actividad</div>
@@ -827,6 +965,7 @@ export default function CustomersPage() {
               const hasEmail = !!c.email?.trim();
               const hasPhone = !!c.phone?.trim();
               const statusLabel = c.created_at ? "Nuevo" : "No disponible";
+              const isSelected = selectedCustomerIds.includes(c.id);
 
               return (
                 <div
@@ -834,15 +973,43 @@ export default function CustomersPage() {
                   onClick={() => router.push(`/admin/customers/${c.id}`)}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "2fr 1.5fr 1fr 1fr 128px",
+                    gridTemplateColumns: "44px 2fr 1.5fr 1fr 1fr 128px",
                     padding: 14,
                     borderTop: "1px solid #e2e8f0",
                     alignItems: "center",
                     gap: 12,
                     cursor: "pointer",
+                    background: isSelected ? "#f8fafc" : "transparent",
                     transition: "background 120ms ease",
                   }}
                 >
+                  <label
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    title={
+                      isSelected
+                        ? "Quitar de la campaña"
+                        : "Agregar a la campaña"
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleCustomerSelection(c.id)}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        accentColor: "#0f172a",
+                        cursor: "pointer",
+                      }}
+                    />
+                  </label>
+
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
@@ -1029,7 +1196,7 @@ export default function CustomersPage() {
                   Nuevo mensaje
                 </div>
                 <div style={{ marginTop: 6, fontSize: 14, color: "#64748b" }}>
-                  Esta función está en preparación. Aún no envía mensajes reales.
+                  La campaña se enviará a automatización para procesar el canal seleccionado.
                 </div>
               </div>
 
@@ -1068,7 +1235,10 @@ export default function CustomersPage() {
                   </span>
                   <select
                     value={bulkChannel}
-                    onChange={(e) => setBulkChannel(e.target.value as BulkChannel)}
+                    onChange={(e) => {
+                      setBulkChannel(e.target.value as BulkChannel);
+                      setBulkSuccess("");
+                    }}
                     style={{
                       padding: "12px 14px",
                       borderRadius: 14,
@@ -1088,7 +1258,10 @@ export default function CustomersPage() {
                   </span>
                   <select
                     value={bulkAudience}
-                    onChange={(e) => setBulkAudience(e.target.value as BulkAudience)}
+                    onChange={(e) => {
+                      setBulkAudience(e.target.value as BulkAudience);
+                      setBulkSuccess("");
+                    }}
                     style={{
                       padding: "12px 14px",
                       borderRadius: 14,
@@ -1100,6 +1273,11 @@ export default function CustomersPage() {
                     <option value="email">Solo clientes con email</option>
                     <option value="phone">Solo clientes con teléfono</option>
                   </select>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>
+                    {selectedCustomerIds.length > 0
+                      ? `Seleccionados (${selectedCustomerIds.length})`
+                      : "Todos los clientes"}
+                  </span>
                 </label>
               </div>
 
@@ -1109,8 +1287,30 @@ export default function CustomersPage() {
                 </span>
                 <input
                   value={bulkSubject}
-                  onChange={(e) => setBulkSubject(e.target.value)}
+                  onChange={(e) => {
+                    setBulkSubject(e.target.value);
+                    setBulkSuccess("");
+                  }}
                   placeholder="Ej: Novedades, promoción o recordatorio"
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    border: "1px solid #cbd5e1",
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                  Imagen / banner opcional
+                </span>
+                <input
+                  value={campaignImageUrl}
+                  onChange={(e) => {
+                    setCampaignImageUrl(e.target.value);
+                    setBulkSuccess("");
+                  }}
+                  placeholder="https://..."
                   style={{
                     padding: "12px 14px",
                     borderRadius: 14,
@@ -1125,7 +1325,10 @@ export default function CustomersPage() {
                 </span>
                 <textarea
                   value={bulkMessage}
-                  onChange={(e) => setBulkMessage(e.target.value)}
+                  onChange={(e) => {
+                    setBulkMessage(e.target.value);
+                    setBulkSuccess("");
+                  }}
                   placeholder="Escribe aquí el contenido del mensaje..."
                   style={{
                     minHeight: 140,
@@ -1153,7 +1356,9 @@ export default function CustomersPage() {
                   }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>
-                    Destinatarios estimados
+                    {selectedCustomerIds.length > 0
+                      ? `Seleccionados (${selectedCustomerIds.length})`
+                      : "Todos los clientes"}
                   </div>
                   <div style={{ marginTop: 8, fontSize: 28, fontWeight: 800 }}>
                     {bulkRecipients.length}
@@ -1191,7 +1396,7 @@ export default function CustomersPage() {
                   color: "#475569",
                 }}
               >
-                Preview payload listo para futura integración:
+                Preview payload:
                 <pre
                   style={{
                     margin: "10px 0 0 0",
@@ -1228,6 +1433,22 @@ export default function CustomersPage() {
                 </div>
               ) : null}
 
+              {bulkSuccess ? (
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    border: "1px solid #bbf7d0",
+                    background: "#f0fdf4",
+                    color: "#15803d",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  {bulkSuccess}
+                </div>
+              ) : null}
+
               <div
                 style={{
                   display: "flex",
@@ -1251,18 +1472,20 @@ export default function CustomersPage() {
                 </button>
 
                 <button
-                  onClick={handlePrepareBulkMessage}
+                  onClick={() => void handleSendBulkMessage()}
+                  disabled={bulkSending}
                   style={{
                     padding: "12px 16px",
                     borderRadius: 14,
                     border: "1px solid #111827",
-                    background: "#111827",
+                    background: bulkSending ? "#475569" : "#111827",
                     color: "white",
-                    cursor: "pointer",
+                    cursor: bulkSending ? "not-allowed" : "pointer",
                     fontWeight: 700,
+                    opacity: bulkSending ? 0.82 : 1,
                   }}
                 >
-                  Preparar mensaje
+                  {bulkSending ? "Enviando..." : "Enviar campaña"}
                 </button>
               </div>
             </div>
