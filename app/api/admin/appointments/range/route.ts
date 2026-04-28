@@ -84,10 +84,22 @@ export async function GET(req: Request) {
         service_id,
         customer_id,
         customer_name,
+        customer_email,
         customer_phone,
+        service_name,
         start_at,
         end_at,
-        status
+        status,
+        booking_status,
+        payment_status,
+        payment_provider,
+        payment_required,
+        payment_required_amount,
+        payment_paid_amount,
+        payment_remaining_amount,
+        payment_reference,
+        payment_url,
+        manage_token
       `,
       )
       .eq("tenant_id", tenantId)

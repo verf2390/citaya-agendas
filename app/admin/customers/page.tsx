@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { digitsOnly } from "@/app/lib/phone";
 
 import CustomerUpsertModal from "./components/CustomerUpsertModal";
+import AdminNav from "@/components/admin/AdminNav";
 
 type CustomerRow = {
   id: string;
@@ -18,6 +19,12 @@ type CustomerRow = {
   email: string | null;
   notes?: string | null;
   created_at?: string;
+  stats?: {
+    appointment_count: number;
+    last_appointment_at: string | null;
+    total_paid: number;
+    pending_payments: number;
+  };
 };
 
 type BulkChannel = "email" | "whatsapp" | "both";
@@ -32,6 +39,16 @@ type ExportMenu = null | "open";
 
 function generateCustomerCode(id: string) {
   return `CTY-${id.slice(-6).toUpperCase()}`;
+}
+
+function formatMoney(value: number | null | undefined) {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return "$0";
+  return amount.toLocaleString("es-CL", {
+    style: "currency",
+    currency: "CLP",
+    maximumFractionDigits: 0,
+  });
 }
 
 export default function CustomersPage() {
@@ -235,6 +252,14 @@ export default function CustomersPage() {
         const ts = new Date(c.created_at).getTime();
         return Number.isFinite(ts) && now - ts <= recentWindowMs;
       }).length,
+      totalPaid: customers.reduce(
+        (sum, c) => sum + Number(c.stats?.total_paid ?? 0),
+        0,
+      ),
+      pendingPayments: customers.reduce(
+        (sum, c) => sum + Number(c.stats?.pending_payments ?? 0),
+        0,
+      ),
     };
   }, [customers]);
 
@@ -566,6 +591,7 @@ export default function CustomersPage() {
       }}
     >
       <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+      <AdminNav />
       <div
         style={{
           display: "flex",
@@ -772,8 +798,13 @@ export default function CustomersPage() {
             tone: "linear-gradient(180deg,#f0fdf4 0%,#dcfce7 100%)",
           },
           {
-            label: "Recientes (30 días)",
-            value: metrics.recent,
+            label: "Total pagado",
+            value: formatMoney(metrics.totalPaid),
+            tone: "linear-gradient(180deg,#f0fdf4 0%,#dcfce7 100%)",
+          },
+          {
+            label: "Pagos pendientes",
+            value: metrics.pendingPayments,
             tone: "linear-gradient(180deg,#fff7ed 0%,#ffedd5 100%)",
           },
         ].map((item) => (
@@ -941,11 +972,11 @@ export default function CustomersPage() {
         }}
       >
         <div style={{ overflowX: "auto" }}>
-          <div style={{ minWidth: 860 }}>
+          <div style={{ minWidth: 1180 }}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "44px 2fr 1.5fr 1fr 1fr 128px",
+                gridTemplateColumns: "44px 2fr 1.5fr 0.7fr 1fr 1fr 0.8fr 1fr 128px",
                 padding: 14,
                 fontSize: 12,
                 fontWeight: 800,
@@ -956,7 +987,10 @@ export default function CustomersPage() {
               <div>Sel.</div>
               <div>Cliente</div>
               <div>Contacto</div>
-              <div>Actividad</div>
+              <div>Citas</div>
+              <div>Última cita</div>
+              <div>Total pagado</div>
+              <div>Pendientes</div>
               <div>Estado</div>
               <div>Acciones</div>
             </div>
@@ -966,6 +1000,9 @@ export default function CustomersPage() {
               const hasPhone = !!c.phone?.trim();
               const statusLabel = c.created_at ? "Nuevo" : "No disponible";
               const isSelected = selectedCustomerIds.includes(c.id);
+              const lastAppointment = c.stats?.last_appointment_at
+                ? formatCreatedAt(c.stats.last_appointment_at)
+                : "Sin citas";
 
               return (
                 <div
@@ -973,7 +1010,7 @@ export default function CustomersPage() {
                   onClick={() => router.push(`/admin/customers/${c.id}`)}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "44px 2fr 1.5fr 1fr 1fr 128px",
+                    gridTemplateColumns: "44px 2fr 1.5fr 0.7fr 1fr 1fr 0.8fr 1fr 128px",
                     padding: 14,
                     borderTop: "1px solid #e2e8f0",
                     alignItems: "center",
@@ -1070,7 +1107,19 @@ export default function CustomersPage() {
                       color: "#334155",
                     }}
                   >
-                    Ver detalle
+                    {c.stats?.appointment_count ?? 0}
+                  </div>
+
+                  <div style={{ fontSize: 13, color: "#334155" }}>
+                    {lastAppointment}
+                  </div>
+
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+                    {formatMoney(c.stats?.total_paid)}
+                  </div>
+
+                  <div style={{ fontSize: 13, fontWeight: 800, color: (c.stats?.pending_payments ?? 0) > 0 ? "#92400e" : "#64748b" }}>
+                    {c.stats?.pending_payments ?? 0}
                   </div>
 
                   <div>

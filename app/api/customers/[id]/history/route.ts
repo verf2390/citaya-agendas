@@ -81,7 +81,7 @@ export async function GET(
     const { data: appointments, error: apptErr } = await supabaseAdmin
       .from("appointments")
       .select(
-        "id, start_at, end_at, status, service_name, service_id, professional_id, notes",
+        "id, start_at, end_at, status, booking_status, payment_status, payment_required_amount, payment_paid_amount, payment_provider, service_name, service_id, professional_id, notes",
       )
       .eq("tenant_id", tenantId)
       .eq("customer_id", id)

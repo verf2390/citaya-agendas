@@ -45,6 +45,7 @@ import { toast } from "@/components/ui/use-toast";
 import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
 
 import AdminAgendaHeader from "@/components/admin/AdminAgendaHeader";
+import AdminNav from "@/components/admin/AdminNav";
 import WeeklyAvailabilityCalendar from "@/components/admin/availability/WeeklyAvailabilityCalendar";
 
 import AppointmentCreateModal, {
@@ -1874,21 +1875,13 @@ export default function AgendaPage() {
         onNextDay={() => calendarRef.current?.getApi()?.next()}
         onNewAppointment={() => router.push("/admin/customers/new")}
         rightSlot={
-          <>
-            <Link
-              href="/admin/customers"
-              className="h-8 rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
-            >
-              Clientes
-            </Link>
-            <button
-              type="button"
-              onClick={onLogout}
-              className="h-8 rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
-            >
-              Cerrar sesión
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="h-8 rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
+          >
+            Cerrar sesión
+          </button>
         }
         subSlot={
           <>
@@ -1907,6 +1900,7 @@ export default function AgendaPage() {
       />
 
       <div className="mx-auto max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5">
+        <AdminNav />
         <div className="mt-3">
           <Card>
             <CardBody>

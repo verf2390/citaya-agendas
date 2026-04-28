@@ -21,6 +21,11 @@ type HistoryAppointment = {
   start_at: string;
   end_at: string;
   status: string;
+  booking_status: string | null;
+  payment_status: string | null;
+  payment_required_amount: number | null;
+  payment_paid_amount: number | null;
+  payment_provider: string | null;
   service_name: string | null;
   service_id: string | null;
   professional_id: string | null;
@@ -59,6 +64,16 @@ function formatTime(value?: string | null) {
   });
 }
 
+function formatMoney(value: number | null | undefined) {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount) || amount <= 0) return "$0";
+  return amount.toLocaleString("es-CL", {
+    style: "currency",
+    currency: "CLP",
+    maximumFractionDigits: 0,
+  });
+}
+
 export default function EditCustomerPage() {
   const router = useRouter();
   const params = useParams();
@@ -81,6 +96,18 @@ export default function EditCustomerPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [summary, setSummary] = useState<HistorySummary | null>(null);
   const [appointments, setAppointments] = useState<HistoryAppointment[]>([]);
+  const totalPaid = appointments.reduce(
+    (sum, a) => sum + Number(a.payment_paid_amount ?? 0),
+    0,
+  );
+  const pendingPayments = appointments.filter((a) => {
+    const status = String(a.payment_status ?? "").toLowerCase();
+    return status === "pending" || status === "pending_payment";
+  }).length;
+  const cancellations = appointments.filter((a) => {
+    const status = String(a.booking_status ?? a.status ?? "").toLowerCase();
+    return status === "canceled" || status === "cancelled";
+  }).length;
 
   useEffect(() => {
     const run = async () => {
@@ -337,6 +364,18 @@ export default function EditCustomerPage() {
               ? `${formatDate(summary.upcoming.start_at)} ${formatTime(summary.upcoming.start_at)}`
               : "No disponible",
           },
+          {
+            label: "Total pagado",
+            value: formatMoney(totalPaid),
+          },
+          {
+            label: "Pagos pendientes",
+            value: String(pendingPayments),
+          },
+          {
+            label: "Cancelaciones",
+            value: String(cancellations),
+          },
         ].map((item) => (
           <div
             key={item.label}
@@ -387,7 +426,7 @@ export default function EditCustomerPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1.1fr 0.8fr 1.4fr 1.2fr 0.8fr 1.4fr",
+                  gridTemplateColumns: "1.1fr 0.8fr 1.4fr 1fr 0.9fr 0.9fr 0.9fr 1.2fr",
                   gap: 12,
                   padding: 14,
                   fontSize: 12,
@@ -399,8 +438,10 @@ export default function EditCustomerPage() {
                 <div>Fecha</div>
                 <div>Hora</div>
                 <div>Servicio</div>
+                <div>Monto</div>
+                <div>Pago</div>
+                <div>Reserva</div>
                 <div>Profesional</div>
-                <div>Estado</div>
                 <div>Notas</div>
               </div>
 
@@ -409,7 +450,7 @@ export default function EditCustomerPage() {
                   key={appt.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.1fr 0.8fr 1.4fr 1.2fr 0.8fr 1.4fr",
+                    gridTemplateColumns: "1.1fr 0.8fr 1.4fr 1fr 0.9fr 0.9fr 0.9fr 1.2fr",
                     gap: 12,
                     padding: 14,
                     borderTop: "1px solid #e2e8f0",
@@ -422,8 +463,15 @@ export default function EditCustomerPage() {
                     {formatTime(appt.start_at)} - {formatTime(appt.end_at)}
                   </div>
                   <div>{appt.service_name || "Servicio"}</div>
+                  <div>
+                    <div>{formatMoney(appt.payment_paid_amount)}</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>
+                      Req. {formatMoney(appt.payment_required_amount)}
+                    </div>
+                  </div>
+                  <div>{appt.payment_status || "Sin estado"}</div>
+                  <div>{appt.booking_status || appt.status || "Sin estado"}</div>
                   <div>{appt.professional_name || "—"}</div>
-                  <div>{appt.status}</div>
                   <div>{appt.notes?.trim() || "—"}</div>
                 </div>
               ))}

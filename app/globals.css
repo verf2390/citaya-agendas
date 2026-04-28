@@ -4,6 +4,10 @@
 
 @import "./fullcalendar.css";
 
+@source "../app";
+@source "../components";
+@source "../lib";
+
 
 
 /* ✅ luego recién variantes / theme */
