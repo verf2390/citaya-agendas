@@ -1109,7 +1109,7 @@ export default function AgendaPage() {
       .select("id")
       .eq("tenant_id", tenantId)
       .eq("professional_id", professionalId)
-      .neq("status", "canceled")
+      .eq("booking_status", "confirmed")
       .lt("start_at", endISO)
       .gt("end_at", startISO);
 

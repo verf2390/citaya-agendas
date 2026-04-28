@@ -215,6 +215,8 @@ export async function POST(req: Request) {
         : `${appUrl}/reservar/resultado?status=success`;
 
     const provider = getPaymentProvider(providerId);
+    // TODO(manual): when an admin validation route marks a manual transfer as
+    // paid, call notifyPaymentConfirmed after the pending -> paid transition.
     const payment = await provider.createPayment({
       appointmentId: appointment.id,
       tenantId: appointment.tenant_id,

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 export async function POST(req: Request) {
   try {
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
     const { data: currentAppointment, error: currentAppointmentError } =
       await supabaseAdmin
         .from("appointments")
-        .select("id, tenant_id, customer_email, canceled_at, status")
+        .select("id, tenant_id, customer_email, canceled_at, status, booking_status, service_id, start_at")
         .eq("manage_token", token)
         .maybeSingle();
 
@@ -45,10 +46,11 @@ export async function POST(req: Request) {
       .from("appointments")
       .update({
         status: "canceled",
+        booking_status: "cancelled",
         canceled_at: nowIso,
       })
       .eq("manage_token", token)
-      .select("id, tenant_id, customer_email, canceled_at, status")
+      .select("id, tenant_id, customer_email, canceled_at, status, booking_status, service_id, start_at")
       .maybeSingle();
 
     if (error) {
@@ -58,6 +60,14 @@ export async function POST(req: Request) {
 
     if (!data) {
       return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 404 });
+    }
+
+    if (currentAppointment.booking_status === "confirmed") {
+      await notifyWaitlistSlotReleased({
+        tenantId: currentAppointment.tenant_id,
+        serviceId: currentAppointment.service_id,
+        startAt: currentAppointment.start_at,
+      });
     }
 
     // 2) Llamar a n8n para enviar correo + escribir notifications_log

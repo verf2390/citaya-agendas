@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
+import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
+import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function webpayBaseUrl(environment?: string | null) {
   return environment === "production"
@@ -70,6 +72,27 @@ async function handleWebpayReturn(req: Request) {
       Number(json?.response_code ?? -1) === 0;
     const status = approved ? "paid" : "failed";
     const appointmentStatus = approved ? "confirmed" : "pending_payment";
+    const [{ data: currentAppointment }, { data: existingPayments }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("appointments")
+          .select("payment_status, booking_status, service_id, start_at")
+          .eq("id", appointmentId)
+          .eq("tenant_id", tenantId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("payments")
+          .select("status")
+          .eq("tenant_id", tenantId)
+          .eq("appointment_id", appointmentId)
+          .limit(1),
+      ]);
+    const previousAppointmentPaymentStatus = String(
+      currentAppointment?.payment_status ?? "",
+    ).toLowerCase();
+    const previousPaymentStatus = String(
+      existingPayments?.[0]?.status ?? "",
+    ).toLowerCase();
 
     await supabaseAdmin
       .from("payments")
@@ -95,6 +118,30 @@ async function handleWebpayReturn(req: Request) {
       })
       .eq("id", appointmentId)
       .eq("tenant_id", tenantId);
+
+    if (
+      approved &&
+      previousAppointmentPaymentStatus !== "paid" &&
+      previousPaymentStatus !== "paid"
+    ) {
+      await notifyPaymentConfirmed({
+        appointmentId,
+        provider: "webpay",
+        externalPaymentId:
+          json?.buy_order ?? json?.authorization_code ?? token,
+      });
+    } else if (approved) {
+      console.info("[payments/webpay/return] notificación paid omitida", {
+        appointmentId,
+        reason: "already_paid",
+      });
+    } else if (!approved && currentAppointment?.booking_status === "confirmed") {
+      await notifyWaitlistSlotReleased({
+        tenantId,
+        serviceId: currentAppointment.service_id ?? null,
+        startAt: currentAppointment.start_at ?? null,
+      });
+    }
 
     return redirectResult(req, approved ? "success" : "failure");
   } catch (error) {

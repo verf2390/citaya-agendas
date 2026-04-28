@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { parseIsoDate } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 export async function POST(req: Request) {
   try {
@@ -89,7 +90,7 @@ export async function POST(req: Request) {
       .select("id")
       .eq("tenant_id", oldAppt.tenant_id)
       .eq("professional_id", oldAppt.professional_id)
-      .neq("status", "canceled")
+      .eq("booking_status", "confirmed")
       .neq("id", oldAppt.id)
       .lt("start_at", parsedEnd.toISOString())
       .gt("end_at", parsedStart.toISOString())
@@ -133,6 +134,17 @@ export async function POST(req: Request) {
         { ok: false, error: "Invalid token or canceled" },
         { status: 404 }
       );
+    }
+
+    if (
+      oldAppt.booking_status === "confirmed" &&
+      oldAppt.start_at !== updated.start_at
+    ) {
+      await notifyWaitlistSlotReleased({
+        tenantId: oldAppt.tenant_id,
+        serviceId: oldAppt.service_id,
+        startAt: oldAppt.start_at,
+      });
     }
 
     // 4) Traer admin_email del tenant (MULTI-TENANT)

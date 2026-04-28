@@ -3,6 +3,7 @@
 ## Preparación
 
 - Tener `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` válidos en entorno local.
+- Configurar `N8N_PAYMENT_CONFIRMED_WEBHOOK_URL` si se quiere probar el evento estándar de pago confirmado.
 - Usar tenant y citas de prueba.
 - No usar credenciales reales de cobro.
 
@@ -70,6 +71,7 @@ curl -X POST "http://localhost:3000/api/webhooks/mercadopago?tenantId=UUID_TENAN
 
 - Probar un pago sandbox aprobado.
 - Confirmar que el webhook deja el registro en `paid`.
+- Confirmar que n8n recibe `source = "payment_confirmed"` si `N8N_PAYMENT_CONFIRMED_WEBHOOK_URL` está configurada.
 - Reenviar el mismo webhook y confirmar que no reprocesa doble aprobación.
 
 ## Revisar multi-tenant

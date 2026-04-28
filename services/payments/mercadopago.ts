@@ -89,11 +89,10 @@ export function mapMercadoPagoStatus(status?: string | null): InternalPaymentSta
   switch ((status ?? "").toLowerCase()) {
     case "approved":
       return "paid";
+    case "rejected":
     case "cancelled":
     case "cancelled_by_user":
     case "expired":
-      return "cancelled";
-    case "rejected":
     case "charged_back":
     case "refunded":
       return "failed";

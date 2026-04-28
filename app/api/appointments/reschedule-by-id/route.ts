@@ -1,6 +1,7 @@
 // app/api/appointments/reschedule-by-id/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
     // 1) Leer cita actual (ANTES)
     const { data: oldAppt, error: oldErr } = await supabaseAdmin
       .from("appointments")
-      .select("id, tenant_id, professional_id, start_at, end_at, status")
+      .select("id, tenant_id, professional_id, service_id, start_at, end_at, status, booking_status")
       .eq("id", appointment_id)
       .maybeSingle();
 
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
       .select("id")
       .eq("tenant_id", tenant_id)
       .eq("professional_id", oldAppt.professional_id)
-      .neq("status", "canceled")
+      .eq("booking_status", "confirmed")
       .neq("id", appointment_id)
       .lt("start_at", new_end_at)
       .gt("end_at", new_start_at)
@@ -121,7 +122,7 @@ export async function POST(req: Request) {
         rescheduled_at,
       })
       .eq("id", appointment_id)
-      .select("id, tenant_id, professional_id, start_at, end_at, status, rescheduled_at")
+      .select("id, tenant_id, professional_id, start_at, end_at, status, booking_status, rescheduled_at")
       .single();
 
     if (upErr || !updated) {
@@ -129,6 +130,17 @@ export async function POST(req: Request) {
         { ok: false, error: "Failed to update appointment", details: upErr?.message },
         { status: 500 },
       );
+    }
+
+    if (
+      oldAppt.booking_status === "confirmed" &&
+      oldAppt.start_at !== updated.start_at
+    ) {
+      await notifyWaitlistSlotReleased({
+        tenantId: oldAppt.tenant_id,
+        serviceId: oldAppt.service_id,
+        startAt: oldAppt.start_at,
+      });
     }
 
     // 2.5) Traer admin_email del tenant (MULTI-TENANT)

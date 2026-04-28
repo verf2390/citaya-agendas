@@ -7,7 +7,7 @@ import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
 type AppointmentRangeRow = {
   start_at: string;
   end_at: string;
-  status: string | null;
+  booking_status: string | null;
 };
 
 type AvailabilityRow = {
@@ -267,13 +267,14 @@ export async function GET(req: Request) {
       );
     });
 
-    // 1) citas existentes
+    // 1) citas existentes: solo las confirmadas bloquean agenda.
+    // Pendientes de pago, fallidas o canceladas no deben ocupar el slot.
     const { data: appts, error: apptErr } = await supabaseServer
       .from("appointments")
-      .select("start_at,end_at,status")
+      .select("start_at,end_at,booking_status")
       .eq("tenant_id", effectiveTenantId)
       .eq("professional_id", professionalId)
-      .neq("status", "canceled")
+      .eq("booking_status", "confirmed")
       .lt("start_at", rangeEnd.toISOString())
       .gt("end_at", rangeStart.toISOString());
 
@@ -285,12 +286,35 @@ export async function GET(req: Request) {
       );
     }
 
+    console.log("[availability] appointments found", {
+      tenantId: effectiveTenantId,
+      professionalId,
+      from: rangeStart.toISOString(),
+      to: rangeEnd.toISOString(),
+      count: appts?.length ?? 0,
+      appointments: appts ?? [],
+    });
+
     const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map(
       (a) => ({
         start: new Date(a.start_at),
         end: new Date(a.end_at),
       }),
     );
+    const unavailableSlots: Slot[] = ((appts ?? []) as AppointmentRangeRow[])
+      .map((a) => ({
+        start_at: new Date(a.start_at).toISOString(),
+        end_at: new Date(a.end_at).toISOString(),
+      }))
+      .sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
+
+    console.log("[availability] blocking appointments", {
+      tenantId: effectiveTenantId,
+      professionalId,
+      count: unavailableSlots.length,
+      appointments: unavailableSlots,
+      rule: 'booking_status = "confirmed"',
+    });
 
     // 2) generar slots
     const nowUTC = new Date();
@@ -469,6 +493,7 @@ export async function GET(req: Request) {
       from,
       to,
       slots,
+      unavailable_slots: unavailableSlots,
       ...(debug
         ? {
             debug: {

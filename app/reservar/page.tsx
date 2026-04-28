@@ -115,6 +115,20 @@ function dayKeyCL(iso: string) {
   return `${y}-${m}-${da}`;
 }
 
+function waitlistTimeCL(iso: string) {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+
+  const hh = parts.find((p) => p.type === "hour")?.value ?? "";
+  const mm = parts.find((p) => p.type === "minute")?.value ?? "";
+  return `${hh}:${mm}`;
+}
+
 function slotBucketLabel(iso: string): "Mañana" | "Tarde" | "Noche" {
   const hour = Number(
     new Intl.DateTimeFormat("en-US", {
@@ -369,6 +383,7 @@ function ReservarInner() {
   const [loadingServices, setLoadingServices] = useState(false);
 
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [unavailableSlots, setUnavailableSlots] = useState<Slot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
 
   const [selectedDayKey, setSelectedDayKey] = useState<string>("");
@@ -392,6 +407,7 @@ function ReservarInner() {
   );
 
   const [saving, setSaving] = useState(false);
+  const [waitlistSavingSlot, setWaitlistSavingSlot] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const phoneNorm = useMemo(() => normalizeCLPhone(phone), [phone]);
@@ -642,6 +658,7 @@ function ReservarInner() {
 
     if (!availabilityUrl) {
       setSlots([]);
+      setUnavailableSlots([]);
       setSelectedSlot(null);
       const pageDays = buildPageDays(pageStart);
       setSelectedDayKey(pageDays[0]?.dayKey ?? "");
@@ -658,13 +675,18 @@ function ReservarInner() {
       if (!res.ok) throw new Error(json?.error ?? "Error cargando slots");
 
       const list = Array.isArray(json?.slots) ? (json.slots as Slot[]) : [];
+      const unavailable = Array.isArray(json?.unavailable_slots)
+        ? (json.unavailable_slots as Slot[])
+        : [];
       setSlots(list);
+      setUnavailableSlots(unavailable);
 
       const pageDays = buildPageDays(pageStart);
       setSelectedDayKey(pageDays[0]?.dayKey ?? "");
     } catch (e: any) {
       console.error(e);
       setSlots([]);
+      setUnavailableSlots([]);
       setLoadError(e?.message ?? "No se pudo cargar disponibilidad");
       const pageDays = buildPageDays(pageStart);
       setSelectedDayKey(pageDays[0]?.dayKey ?? "");
@@ -714,6 +736,15 @@ function ReservarInner() {
     const minTs = Date.now() + (minLeadTimeMin || 0) * 60_000;
     return list.filter((slot) => new Date(slot.start_at).getTime() >= minTs);
   }, [slotsByDayKey, selectedDayKey, minLeadTimeMin]);
+
+  const activeUnavailableSlots: Slot[] = useMemo(() => {
+    if (!selectedDayKey) return [];
+    const minTs = Date.now() + (minLeadTimeMin || 0) * 60_000;
+    return unavailableSlots
+      .filter((slot) => dayKeyCL(slot.start_at) === selectedDayKey)
+      .filter((slot) => new Date(slot.start_at).getTime() >= minTs)
+      .sort((a, b) => (a.start_at < b.start_at ? -1 : 1));
+  }, [unavailableSlots, selectedDayKey, minLeadTimeMin]);
 
   const buckets = useMemo(() => {
     const b: Record<"Mañana" | "Tarde" | "Noche", Slot[]> = {
@@ -938,6 +969,58 @@ function ReservarInner() {
       alert(e?.message ?? "Error reservando");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleJoinWaitlist = async (slot: Slot) => {
+    if (!tenantId || !serviceId) {
+      alert("Selecciona un servicio antes de unirte a la lista de espera.");
+      return;
+    }
+
+    const name = window.prompt("Nombre para lista de espera", fullName)?.trim();
+    if (!name) return;
+
+    const contactEmail = window
+      .prompt("Email para avisarte cuando se libere", email)
+      ?.trim()
+      .toLowerCase();
+    if (!contactEmail || !isValidEmail(contactEmail)) {
+      alert("Ingresa un email válido.");
+      return;
+    }
+
+    const contactPhone = window.prompt("Teléfono opcional", phone)?.trim() ?? "";
+
+    setWaitlistSavingSlot(slot.start_at);
+    try {
+      const res = await fetch("/api/waitlist/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          serviceId,
+          date: dayKeyCL(slot.start_at),
+          time: waitlistTimeCL(slot.start_at),
+          customerName: name,
+          customerEmail: contactEmail,
+          customerPhone: contactPhone,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error ?? "No se pudo registrar la lista de espera");
+      }
+
+      alert(
+        json.duplicate
+          ? "Ya estabas en la lista de espera para ese horario."
+          : "Te agregamos a la lista de espera para ese horario.",
+      );
+    } catch (e: any) {
+      alert(e?.message ?? "No se pudo registrar la lista de espera");
+    } finally {
+      setWaitlistSavingSlot(null);
     }
   };
 
@@ -1625,6 +1708,32 @@ function ReservarInner() {
                         })}
                       </div>
                     )}
+
+                    {activeUnavailableSlots.length > 0 ? (
+                      <div className="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-3">
+                        <div className="text-[11px] font-extrabold text-amber-900 sm:text-sm">
+                          Horarios ocupados
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                          {activeUnavailableSlots.map((s) => (
+                            <button
+                              key={s.start_at}
+                              type="button"
+                              disabled={waitlistSavingSlot === s.start_at}
+                              onClick={() => handleJoinWaitlist(s)}
+                              className="min-h-[52px] rounded-2xl border border-amber-200 bg-white/85 px-3 py-2 text-left text-amber-950 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
+                            >
+                              <div className="text-[14px] font-extrabold leading-none sm:text-sm">
+                                {onlyTimeCL(s.start_at)}
+                              </div>
+                              <div className="mt-1 text-[10px] leading-none text-amber-700">
+                                Unirme a lista de espera
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <SurfaceCard
                       tone="default"

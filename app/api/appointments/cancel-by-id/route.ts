@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
     // 0) Verificar que la cita exista y pertenezca al tenant
     const { data: appt, error: apptErr } = await supabaseAdmin
       .from("appointments")
-      .select("id, tenant_id, status, customer_email, professional_id, start_at, end_at")
+      .select("id, tenant_id, status, booking_status, customer_email, professional_id, service_id, start_at, end_at")
       .eq("id", appointment_id)
       .maybeSingle();
 
@@ -84,11 +85,12 @@ export async function POST(req: Request) {
       .from("appointments")
       .update({
         status: "canceled",
+        booking_status: "cancelled",
         canceled_at: nowIso,
       })
       .eq("id", appointment_id)
       .eq("tenant_id", tenant_id)
-      .select("id, tenant_id, customer_email, canceled_at, status, professional_id, start_at, end_at")
+      .select("id, tenant_id, customer_email, canceled_at, status, booking_status, professional_id, service_id, start_at, end_at")
       .maybeSingle();
 
     if (upErr) {
@@ -98,6 +100,14 @@ export async function POST(req: Request) {
 
     if (!updated) {
       return NextResponse.json({ ok: false, error: "Appointment not found for tenant" }, { status: 404 });
+    }
+
+    if (appt.booking_status === "confirmed") {
+      await notifyWaitlistSlotReleased({
+        tenantId: appt.tenant_id,
+        serviceId: appt.service_id,
+        startAt: appt.start_at,
+      });
     }
 
     // 2) Llamar a n8n (correo + log) SIN romper la cancelación

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isUuid } from "@/lib/api/validators";
+import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
+import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 export async function POST(req: Request) {
   try {
@@ -27,6 +29,27 @@ export async function POST(req: Request) {
           : "pending";
     const appointmentStatus =
       paymentStatus === "paid" ? "confirmed" : "pending_payment";
+    const [{ data: currentAppointment }, { data: existingPayments }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("appointments")
+          .select("payment_status, booking_status, service_id, start_at")
+          .eq("id", appointmentId)
+          .eq("tenant_id", tenantId)
+          .maybeSingle(),
+        supabaseAdmin
+          .from("payments")
+          .select("status")
+          .eq("tenant_id", tenantId)
+          .eq("appointment_id", appointmentId)
+          .limit(1),
+      ]);
+    const previousAppointmentPaymentStatus = String(
+      currentAppointment?.payment_status ?? "",
+    ).toLowerCase();
+    const previousPaymentStatus = String(
+      existingPayments?.[0]?.status ?? "",
+    ).toLowerCase();
 
     await supabaseAdmin
       .from("payments")
@@ -53,6 +76,29 @@ export async function POST(req: Request) {
         })
         .eq("id", appointmentId)
         .eq("tenant_id", tenantId);
+
+      if (
+        previousAppointmentPaymentStatus !== "paid" &&
+        previousPaymentStatus !== "paid"
+      ) {
+        await notifyPaymentConfirmed({
+          appointmentId,
+          provider: "khipu",
+          externalPaymentId:
+            body?.payment_id ?? body?.notification_id ?? body?.id ?? null,
+        });
+      } else {
+        console.info("[webhooks/khipu] notificación paid omitida", {
+          appointmentId,
+          reason: "already_paid",
+        });
+      }
+    } else if (currentAppointment?.booking_status === "confirmed") {
+      await notifyWaitlistSlotReleased({
+        tenantId,
+        serviceId: currentAppointment.service_id ?? null,
+        startAt: currentAppointment.start_at ?? null,
+      });
     }
 
     return NextResponse.json({ ok: true, status: paymentStatus });
