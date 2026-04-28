@@ -19,10 +19,18 @@ type AppointmentRow = {
   customer_phone: string | null;
   service_id: string | null;
   service_name: string | null;
+  description: string | null;
   currency: string | null;
+  status: string | null;
+  booking_status: string | null;
+  payment_required: boolean | null;
+  payment_status: string | null;
+  payment_provider: PaymentProviderId | null;
   payment_paid_amount: number | null;
   payment_required_amount: number | null;
+  payment_remaining_amount: number | null;
   payment_reference: string | null;
+  payment_url: string | null;
   manage_token: string | null;
 };
 
@@ -31,22 +39,13 @@ type TenantRow = {
   slug: string | null;
   name: string | null;
   base_url: string | null;
+  public_base_url: string | null;
 };
 
 type ProfessionalRow = {
   id: string;
   name: string | null;
 };
-
-function splitAppointmentDateTime(startAt: string | null) {
-  if (!startAt) return { appointment_date: null, appointment_time: null };
-
-  const [datePart, timePart = ""] = startAt.split("T");
-  return {
-    appointment_date: datePart || null,
-    appointment_time: timePart.slice(0, 5) || null,
-  };
-}
 
 function buildManageUrl(args: {
   baseUrl: string | null;
@@ -115,10 +114,18 @@ export async function notifyPaymentConfirmed(
           "customer_phone",
           "service_id",
           "service_name",
+          "description",
           "currency",
+          "status",
+          "booking_status",
+          "payment_required",
+          "payment_status",
+          "payment_provider",
           "payment_paid_amount",
           "payment_required_amount",
+          "payment_remaining_amount",
           "payment_reference",
+          "payment_url",
           "manage_token",
         ].join(","),
       )
@@ -139,7 +146,7 @@ export async function notifyPaymentConfirmed(
     const [{ data: tenant }, { data: professional }] = await Promise.all([
       supabaseAdmin
         .from("tenants")
-        .select("id, slug, name, base_url")
+        .select("id, slug, name, base_url, public_base_url")
         .eq("id", appointmentRow.tenant_id)
         .maybeSingle(),
       appointmentRow.professional_id
@@ -155,6 +162,7 @@ export async function notifyPaymentConfirmed(
     const tenantRow = (tenant ?? null) as TenantRow | null;
     const professionalRow = (professional ?? null) as ProfessionalRow | null;
     const baseUrl =
+      String(tenantRow?.public_base_url ?? "").trim() ||
       String(tenantRow?.base_url ?? "").trim() ||
       process.env.NEXT_PUBLIC_APP_URL?.trim() ||
       null;
@@ -162,43 +170,51 @@ export async function notifyPaymentConfirmed(
       baseUrl,
       manageToken: appointmentRow.manage_token,
     });
-    const { appointment_date, appointment_time } = splitAppointmentDateTime(
-      appointmentRow.start_at,
-    );
 
     await postToN8n({
+      source: "payment_confirmed",
+      payment_status: appointmentRow.payment_status ?? "paid",
+      payment_provider: appointmentRow.payment_provider ?? args.provider ?? null,
+      payment_reference: appointmentRow.payment_reference ?? null,
       tenant_id: appointmentRow.tenant_id,
-      tenant_slug: tenantRow?.slug ?? null,
-      tenant_name: tenantRow?.name ?? null,
+      tenant_slug: tenantRow?.slug ?? "",
+      tenant_name: tenantRow?.name ?? "",
       appointment_id: appointmentRow.id,
       customer_id: appointmentRow.customer_id ?? null,
-      customer_name: appointmentRow.customer_name ?? null,
-      customer_email: appointmentRow.customer_email ?? null,
-      customer_phone: appointmentRow.customer_phone ?? null,
+      customer_name: appointmentRow.customer_name ?? "",
+      customer_email: appointmentRow.customer_email ?? "",
+      customer_phone: appointmentRow.customer_phone ?? "",
       service_id: appointmentRow.service_id ?? null,
-      service_name: appointmentRow.service_name ?? null,
+      service_name: appointmentRow.service_name ?? "",
+      description: appointmentRow.description ?? "",
+      professional_id: appointmentRow.professional_id ?? null,
       staff_id: appointmentRow.professional_id ?? null,
       staff_name: professionalRow?.name ?? null,
-      appointment_date,
-      appointment_time,
+      start_at: appointmentRow.start_at ?? null,
+      end_at: appointmentRow.end_at ?? null,
       starts_at: appointmentRow.start_at ?? null,
       ends_at: appointmentRow.end_at ?? null,
+      status: appointmentRow.status ?? "",
+      booking_status: appointmentRow.booking_status ?? "",
+      payment_required: appointmentRow.payment_required ?? false,
+      payment_required_amount: appointmentRow.payment_required_amount ?? null,
+      payment_paid_amount: appointmentRow.payment_paid_amount ?? null,
+      payment_remaining_amount: appointmentRow.payment_remaining_amount ?? null,
+      payment_url: appointmentRow.payment_url ?? null,
       amount_paid:
         appointmentRow.payment_paid_amount ??
         appointmentRow.payment_required_amount ??
         null,
       currency: appointmentRow.currency ?? "CLP",
-      payment_provider: args.provider,
-      payment_status: "paid",
       external_payment_id:
         args.externalPaymentId != null
           ? String(args.externalPaymentId)
           : appointmentRow.payment_reference,
       confirmation_token: appointmentRow.manage_token ?? null,
+      manage_token: appointmentRow.manage_token ?? null,
       manage_url: manageUrl,
       cancel_url: manageUrl,
       reschedule_url: manageUrl,
-      source: "payment_confirmed",
     });
   } catch (error) {
     console.error("[automations/payment-confirmed] notification failed", {

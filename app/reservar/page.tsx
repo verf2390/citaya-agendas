@@ -64,6 +64,8 @@ const PAGE_SIZE = 7;
 const MAX_DAYS_AHEAD = 60;
 
 const DEFAULT_MIN_LEAD_TIME_MIN = 120; // 2 horas
+// TODO: reactivar waitlist cuando backend + n8n estén completos
+const ENABLE_WAITLIST: boolean = false;
 const PAYMENT_PROVIDER_LABELS: Record<PaymentProviderId, string> = {
   mercadopago: "Mercado Pago",
   webpay: "Webpay Plus",
@@ -973,6 +975,8 @@ function ReservarInner() {
   };
 
   const handleJoinWaitlist = async (slot: Slot) => {
+    if (!ENABLE_WAITLIST) return;
+
     if (!tenantId || !serviceId) {
       alert("Selecciona un servicio antes de unirte a la lista de espera.");
       return;
@@ -1709,7 +1713,7 @@ function ReservarInner() {
                       </div>
                     )}
 
-                    {activeUnavailableSlots.length > 0 ? (
+                    {ENABLE_WAITLIST && activeUnavailableSlots.length > 0 ? (
                       <div className="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-3">
                         <div className="text-[11px] font-extrabold text-amber-900 sm:text-sm">
                           Horarios ocupados
