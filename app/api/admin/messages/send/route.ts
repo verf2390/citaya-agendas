@@ -16,6 +16,9 @@ type CampaignPayload = {
   channel?: string;
   subject?: string;
   message?: string;
+  campaign_image_url?: string;
+  image_url?: string;
+  banner_url?: string;
   recipients?: CampaignRecipient[];
 };
 
@@ -56,12 +59,22 @@ export async function POST(req: Request) {
       return badRequest("JSON inválido");
     }
 
+    const campaignImageUrl = String(
+      body.campaign_image_url ||
+        body.image_url ||
+        body.banner_url ||
+        "",
+    )
+      .trim()
+      .replace(/\s/g, "");
+
     const payload = {
       tenant_id: body.tenant_id?.trim() || "",
       tenant_slug: body.tenant_slug?.trim() || "",
       channel: body.channel?.trim() || "",
       subject: body.subject?.trim() || "",
       message: body.message?.trim() || "",
+      campaign_image_url: campaignImageUrl,
       recipients: Array.isArray(body.recipients) ? body.recipients : [],
     };
 
@@ -118,6 +131,7 @@ export async function POST(req: Request) {
       ok: true,
       message: "Campaña enviada a automatización",
       recipients_count: payload.recipients.length,
+      has_image: Boolean(payload.campaign_image_url),
     });
   } catch (e: any) {
     console.error("[api/admin/messages/send] error:", e?.message || e);
