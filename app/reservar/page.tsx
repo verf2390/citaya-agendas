@@ -34,6 +34,9 @@ import { SurfaceCard } from "@/components/ui/card";
 import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 
 type Slot = { start_at: string; end_at: string };
+type WaitlistTarget =
+  | { type: "exact"; slot: Slot }
+  | { type: "flexible"; dayKey: string };
 
 type Professional = {
   id: string;
@@ -64,8 +67,7 @@ const PAGE_SIZE = 7;
 const MAX_DAYS_AHEAD = 60;
 
 const DEFAULT_MIN_LEAD_TIME_MIN = 120; // 2 horas
-// TODO: reactivar waitlist cuando backend + n8n estén completos
-const ENABLE_WAITLIST: boolean = false;
+const ENABLE_WAITLIST: boolean = true;
 const PAYMENT_PROVIDER_LABELS: Record<PaymentProviderId, string> = {
   mercadopago: "Mercado Pago",
   webpay: "Webpay Plus",
@@ -410,6 +412,17 @@ function ReservarInner() {
 
   const [saving, setSaving] = useState(false);
   const [waitlistSavingSlot, setWaitlistSavingSlot] = useState<string | null>(null);
+  const [waitlistTarget, setWaitlistTarget] = useState<WaitlistTarget | null>(
+    null,
+  );
+  const [waitlistName, setWaitlistName] = useState("");
+  const [waitlistEmail, setWaitlistEmail] = useState("");
+  const [waitlistPhone, setWaitlistPhone] = useState("");
+  const [waitlistNote, setWaitlistNote] = useState("");
+  const [waitlistFeedback, setWaitlistFeedback] = useState<{
+    tone: "success" | "error";
+    text: string;
+  } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const phoneNorm = useMemo(() => normalizeCLPhone(phone), [phone]);
@@ -974,41 +987,102 @@ function ReservarInner() {
     }
   };
 
-  const handleJoinWaitlist = async (slot: Slot) => {
-    if (!ENABLE_WAITLIST) return;
+  const openWaitlist = (target: WaitlistTarget) => {
+    setWaitlistTarget(target);
+    setWaitlistName((prev) => prev || fullName);
+    setWaitlistEmail((prev) => prev || email);
+    setWaitlistPhone((prev) => prev || phone);
+    setWaitlistFeedback(null);
+  };
+
+  const closeWaitlist = () => {
+    setWaitlistTarget(null);
+    setWaitlistFeedback(null);
+  };
+
+  const getWaitlistSlotPayload = (target: WaitlistTarget) => {
+    if (target.type === "exact") {
+      return {
+        date: dayKeyCL(target.slot.start_at),
+        time: waitlistTimeCL(target.slot.start_at),
+        desiredFromAt: target.slot.start_at,
+        desiredToAt: target.slot.end_at,
+        savingKey: target.slot.start_at,
+        label: formatCL(target.slot.start_at),
+      };
+    }
+
+    const from = new Date(`${target.dayKey}T00:00:00`);
+    const to = new Date(`${target.dayKey}T23:59:59`);
+    return {
+      date: target.dayKey,
+      time: "00:00",
+      desiredFromAt: Number.isNaN(from.getTime()) ? null : from.toISOString(),
+      desiredToAt: Number.isNaN(to.getTime()) ? null : to.toISOString(),
+      savingKey: `flexible:${target.dayKey}`,
+      label: dayLabelCL(target.dayKey),
+    };
+  };
+
+  const submitWaitlist = async () => {
+    if (!ENABLE_WAITLIST || !waitlistTarget) return;
 
     if (!tenantId || !serviceId) {
-      alert("Selecciona un servicio antes de unirte a la lista de espera.");
+      setWaitlistFeedback({
+        tone: "error",
+        text: "Selecciona un servicio antes de unirte a la lista de espera.",
+      });
       return;
     }
 
-    const name = window.prompt("Nombre para lista de espera", fullName)?.trim();
-    if (!name) return;
+    const name = waitlistName.trim();
+    const contactEmail = waitlistEmail.trim().toLowerCase();
+    const contactPhone = waitlistPhone.trim();
 
-    const contactEmail = window
-      .prompt("Email para avisarte cuando se libere", email)
-      ?.trim()
-      .toLowerCase();
+    if (!name) {
+      setWaitlistFeedback({
+        tone: "error",
+        text: "Ingresa tu nombre para avisarte correctamente.",
+      });
+      return;
+    }
     if (!contactEmail || !isValidEmail(contactEmail)) {
-      alert("Ingresa un email válido.");
+      setWaitlistFeedback({
+        tone: "error",
+        text: "Ingresa un email válido.",
+      });
       return;
     }
 
-    const contactPhone = window.prompt("Teléfono opcional", phone)?.trim() ?? "";
+    const slotPayload = getWaitlistSlotPayload(waitlistTarget);
 
-    setWaitlistSavingSlot(slot.start_at);
+    setWaitlistSavingSlot(slotPayload.savingKey);
+    setWaitlistFeedback(null);
     try {
       const res = await fetch("/api/waitlist/create", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           tenantId,
+          tenantSlug,
           serviceId,
-          date: dayKeyCL(slot.start_at),
-          time: waitlistTimeCL(slot.start_at),
+          professionalId: professionalId || undefined,
+          date: slotPayload.date,
+          time: slotPayload.time,
+          desiredFromAt: slotPayload.desiredFromAt,
+          desiredToAt: slotPayload.desiredToAt,
           customerName: name,
           customerEmail: contactEmail,
           customerPhone: contactPhone,
+          notes:
+            waitlistNote.trim() ||
+            (waitlistTarget.type === "flexible"
+              ? "Cliente acepta cualquier cupo disponible para el día seleccionado."
+              : null),
+          source:
+            waitlistTarget.type === "exact"
+              ? "booking_flow_exact_slot"
+              : "booking_flow_no_slots",
         }),
       });
       const json = await res.json().catch(() => null);
@@ -1016,13 +1090,17 @@ function ReservarInner() {
         throw new Error(json?.error ?? "No se pudo registrar la lista de espera");
       }
 
-      alert(
-        json.duplicate
-          ? "Ya estabas en la lista de espera para ese horario."
-          : "Te agregamos a la lista de espera para ese horario.",
-      );
+      setWaitlistFeedback({
+        tone: "success",
+        text: json.duplicate
+          ? "Ya estabas en la lista de espera para esa solicitud."
+          : "Te agregamos a la lista de espera. Te avisaremos si se libera un cupo.",
+      });
     } catch (e: any) {
-      alert(e?.message ?? "No se pudo registrar la lista de espera");
+      setWaitlistFeedback({
+        tone: "error",
+        text: e?.message ?? "No se pudo registrar la lista de espera",
+      });
     } finally {
       setWaitlistSavingSlot(null);
     }
@@ -1608,8 +1686,32 @@ function ReservarInner() {
                     </div>
 
                     {activeSlots.length === 0 ? (
-                      <div className="mt-3 rounded-2xl border bg-white p-3 text-[11px] text-muted-foreground sm:text-sm">
-                        No hay horarios disponibles para este día.
+                      <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50/75 p-3 sm:p-4">
+                        <div className="text-[12px] font-extrabold text-amber-950 sm:text-sm">
+                          No hay horarios disponibles para este día.
+                        </div>
+                        {ENABLE_WAITLIST ? (
+                          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-[11px] leading-relaxed text-amber-800 sm:text-sm">
+                              ¿No encontraste una hora disponible? Déjanos tus datos y te avisaremos cuando se libere un cupo.
+                            </p>
+                            <Button
+                              type="button"
+                              onClick={() =>
+                                selectedDayKey &&
+                                openWaitlist({
+                                  type: "flexible",
+                                  dayKey: selectedDayKey,
+                                })
+                              }
+                              disabled={!selectedDayKey || waitlistSavingSlot !== null}
+                              variant="pill"
+                              className="h-10 shrink-0 bg-slate-900 px-4 text-[11px] font-extrabold text-white hover:bg-slate-800 sm:text-sm"
+                            >
+                              Unirme a lista de espera
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <div className="mt-3 grid gap-3 sm:gap-4">
@@ -1724,7 +1826,7 @@ function ReservarInner() {
                               key={s.start_at}
                               type="button"
                               disabled={waitlistSavingSlot === s.start_at}
-                              onClick={() => handleJoinWaitlist(s)}
+                              onClick={() => openWaitlist({ type: "exact", slot: s })}
                               className="min-h-[52px] rounded-2xl border border-amber-200 bg-white/85 px-3 py-2 text-left text-amber-950 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
                             >
                               <div className="text-[14px] font-extrabold leading-none sm:text-sm">
@@ -1735,6 +1837,108 @@ function ReservarInner() {
                               </div>
                             </button>
                           ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {ENABLE_WAITLIST && waitlistTarget ? (
+                      <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.06)] sm:p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[12px] font-black text-slate-950 sm:text-base">
+                              Lista de espera
+                            </div>
+                            <p className="mt-1 text-[11px] leading-relaxed text-slate-500 sm:text-sm">
+                              {waitlistTarget.type === "exact"
+                                ? `Te avisaremos si se libera ${getWaitlistSlotPayload(waitlistTarget).label}.`
+                                : `Te avisaremos si aparece un cupo para ${getWaitlistSlotPayload(waitlistTarget).label}.`}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={closeWaitlist}
+                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50"
+                            aria-label="Cerrar lista de espera"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                          <label className="grid gap-1 text-[11px] font-bold text-slate-700 sm:text-sm">
+                            Nombre
+                            <input
+                              value={waitlistName}
+                              onChange={(e) => setWaitlistName(e.target.value)}
+                              className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400"
+                              placeholder="Tu nombre"
+                            />
+                          </label>
+                          <label className="grid gap-1 text-[11px] font-bold text-slate-700 sm:text-sm">
+                            Email
+                            <input
+                              value={waitlistEmail}
+                              onChange={(e) => setWaitlistEmail(e.target.value)}
+                              className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400"
+                              placeholder="correo@dominio.cl"
+                              inputMode="email"
+                              autoComplete="email"
+                            />
+                          </label>
+                          <label className="grid gap-1 text-[11px] font-bold text-slate-700 sm:text-sm">
+                            Teléfono opcional
+                            <input
+                              value={waitlistPhone}
+                              onChange={(e) => setWaitlistPhone(e.target.value)}
+                              className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400"
+                              placeholder="+56 9..."
+                              inputMode="tel"
+                              autoComplete="tel"
+                            />
+                          </label>
+                        </div>
+
+                        <label className="mt-3 grid gap-1 text-[11px] font-bold text-slate-700 sm:text-sm">
+                          Comentario opcional
+                          <input
+                            value={waitlistNote}
+                            onChange={(e) => setWaitlistNote(e.target.value)}
+                            className="h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold outline-none focus:border-slate-400"
+                            placeholder="Ej: prefiero la mañana, puedo moverme de día"
+                          />
+                        </label>
+
+                        {waitlistFeedback ? (
+                          <div
+                            className={cn(
+                              "mt-3 rounded-xl border p-3 text-[11px] font-semibold sm:text-sm",
+                              waitlistFeedback.tone === "success"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                                : "border-red-200 bg-red-50 text-red-700",
+                            )}
+                          >
+                            {waitlistFeedback.text}
+                          </div>
+                        ) : null}
+
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                          <Button
+                            type="button"
+                            onClick={closeWaitlist}
+                            variant="pill"
+                            className="h-10 border-slate-200 bg-white px-4 text-[11px] font-bold text-slate-700 hover:bg-slate-50 sm:text-sm"
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={submitWaitlist}
+                            disabled={waitlistSavingSlot !== null}
+                            variant="pill"
+                            className="h-10 bg-slate-900 px-4 text-[11px] font-extrabold text-white hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60 sm:text-sm"
+                          >
+                            {waitlistSavingSlot ? "Guardando..." : "Guardar solicitud"}
+                          </Button>
                         </div>
                       </div>
                     ) : null}

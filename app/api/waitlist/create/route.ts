@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { isUuid } from "@/lib/api/validators";
+import { isUuid, isValidEmail } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 function cleanText(value: unknown) {
   if (typeof value !== "string") return "";
@@ -15,17 +16,57 @@ function isValidTime(value: string) {
   return /^\d{2}:\d{2}$/.test(value);
 }
 
+function getHostnameFromReq(req: Request) {
+  const host =
+    req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+  return host.split(",")[0]?.trim().split(":")[0] ?? "";
+}
+
+function isValidIsoDateTime(value: string) {
+  if (!value) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime());
+}
+
+async function resolveTenantId(req: Request, body: Record<string, unknown> | null) {
+  const url = new URL(req.url);
+  const tenantSlug =
+    cleanText(body?.tenantSlug) ||
+    cleanText(url.searchParams.get("tenantSlug")) ||
+    cleanText(url.searchParams.get("tenant")) ||
+    getTenantSlugFromHostname(getHostnameFromReq(req));
+
+  if (tenantSlug) {
+    const { data, error } = await supabaseAdmin
+      .from("tenants")
+      .select("id")
+      .eq("slug", tenantSlug)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data?.id) return String(data.id);
+  }
+
+  // Backward compatibility: existing callers send tenantId.
+  // Safety is enforced by validating service_id/professional_id ownership below.
+  return cleanText(body?.tenantId);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
-    const tenantId = cleanText(body?.tenantId);
+    const tenantId = await resolveTenantId(req, body);
     const serviceId = cleanText(body?.serviceId);
+    const professionalId = cleanText(body?.professionalId);
     const date = cleanText(body?.date);
     const time = cleanText(body?.time);
+    const desiredFromAt = cleanText(body?.desiredFromAt);
+    const desiredToAt = cleanText(body?.desiredToAt);
     const customerName = cleanText(body?.customerName);
     const customerEmail = cleanText(body?.customerEmail).toLowerCase();
     const customerPhone = cleanText(body?.customerPhone);
     const notes = cleanText(body?.notes) || null;
+    const source = cleanText(body?.source) || "booking_flow";
 
     if (!tenantId || !isUuid(tenantId)) {
       return NextResponse.json(
@@ -48,9 +89,30 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!customerName || !customerEmail) {
+    if (!customerName || !isValidEmail(customerEmail)) {
       return NextResponse.json(
-        { ok: false, error: "customerName/customerEmail requeridos" },
+        { ok: false, error: "Nombre y email válido son requeridos" },
+        { status: 400 },
+      );
+    }
+
+    if (professionalId && !isUuid(professionalId)) {
+      return NextResponse.json(
+        { ok: false, error: "professionalId inválido" },
+        { status: 400 },
+      );
+    }
+
+    if (desiredFromAt && !isValidIsoDateTime(desiredFromAt)) {
+      return NextResponse.json(
+        { ok: false, error: "desiredFromAt inválido" },
+        { status: 400 },
+      );
+    }
+
+    if (desiredToAt && !isValidIsoDateTime(desiredToAt)) {
+      return NextResponse.json(
+        { ok: false, error: "desiredToAt inválido" },
         { status: 400 },
       );
     }
@@ -68,6 +130,24 @@ export async function POST(req: Request) {
         { ok: false, error: "serviceId no pertenece al tenant" },
         { status: 400 },
       );
+    }
+
+    if (professionalId) {
+      const { data: professional, error: professionalError } =
+        await supabaseAdmin
+          .from("professionals")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("id", professionalId)
+          .maybeSingle();
+
+      if (professionalError) throw professionalError;
+      if (!professional) {
+        return NextResponse.json(
+          { ok: false, error: "professionalId no pertenece al tenant" },
+          { status: 400 },
+        );
+      }
     }
 
     const { data: existing, error: existingError } = await supabaseAdmin
@@ -95,17 +175,33 @@ export async function POST(req: Request) {
       .insert({
         tenant_id: tenantId,
         service_id: serviceId,
+        professional_id: professionalId || null,
         date,
         time,
+        desired_from_at: desiredFromAt
+          ? new Date(desiredFromAt).toISOString()
+          : null,
+        desired_to_at: desiredToAt ? new Date(desiredToAt).toISOString() : null,
         customer_name: customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone || null,
         notes,
+        source,
         status: "active",
       })
       .select("id")
       .single();
 
+    if (
+      insertError &&
+      "code" in insertError &&
+      insertError.code === "23505"
+    ) {
+      return NextResponse.json({
+        ok: true,
+        duplicate: true,
+      });
+    }
     if (insertError) throw insertError;
 
     return NextResponse.json({

@@ -89,6 +89,8 @@ type Service = {
 type TenantPaymentMode = "none" | "optional" | "required";
 type TenantDepositType = "fixed" | "percentage" | null;
 type TenantChargeType = "none" | "full" | "fixed" | "percentage";
+type TenantChargeUiType = "none" | "full" | "deposit";
+type TenantDepositUiType = "fixed" | "percentage";
 type PaymentProviderId = "mercadopago" | "webpay" | "khipu" | "manual";
 
 const PAYMENT_PROVIDER_LABELS: Record<PaymentProviderId, string> = {
@@ -479,6 +481,13 @@ export default function AgendaPage() {
   const isDebug =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("debug") === "1";
+
+  const tenantChargeUiType: TenantChargeUiType =
+    tenantChargeType === "fixed" || tenantChargeType === "percentage"
+      ? "deposit"
+      : tenantChargeType;
+  const tenantDepositUiType: TenantDepositUiType =
+    tenantChargeType === "percentage" ? "percentage" : "fixed";
 
   const apptAbortRef = useRef<AbortController | null>(null);
 
@@ -1568,7 +1577,7 @@ export default function AgendaPage() {
           title: "Monto inválido",
           description:
             nextDepositType === "fixed"
-              ? "Ingresa una seña fija mayor a 0."
+              ? "Ingresa un abono fijo mayor a 0."
               : "Ingresa un porcentaje mayor a 0.",
           variant: "destructive",
         });
@@ -1578,7 +1587,7 @@ export default function AgendaPage() {
       if (nextDepositType === "percentage" && numericDepositValue > 100) {
         toast({
           title: "Porcentaje inválido",
-          description: "La seña por porcentaje no puede ser mayor a 100%.",
+          description: "El abono por porcentaje no puede ser mayor a 100%.",
           variant: "destructive",
         });
         return;
@@ -1913,16 +1922,23 @@ export default function AgendaPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_minmax(180px,0.8fr)_auto] lg:items-end">
+              <div className="grid gap-4 lg:grid-cols-[minmax(220px,1fr)_minmax(200px,0.9fr)_minmax(220px,1fr)_minmax(180px,0.8fr)_auto] lg:items-end">
                 <div>
                   <div className="mb-2 text-xs font-extrabold text-muted-foreground">
                     Tipo de cobro
                   </div>
                   <select
-                    value={tenantChargeType}
+                    value={tenantChargeUiType}
                     onChange={(e) => {
-                      const value = e.target.value as TenantChargeType;
-                      setTenantChargeType(value);
+                      const value = e.target.value as TenantChargeUiType;
+                      const nextChargeType: TenantChargeType =
+                        value === "deposit"
+                          ? tenantChargeType === "percentage"
+                            ? "percentage"
+                            : "fixed"
+                          : value;
+
+                      setTenantChargeType(nextChargeType);
 
                       if (value === "none") {
                         setTenantPaymentMode("none");
@@ -1935,10 +1951,27 @@ export default function AgendaPage() {
                   >
                     <option value="none">Sin pago</option>
                     <option value="full">Pago completo</option>
-                    <option value="fixed">Seña fija</option>
-                    <option value="percentage">Seña porcentaje</option>
+                    <option value="deposit">Abono</option>
                   </select>
                 </div>
+
+                {tenantChargeUiType === "deposit" ? (
+                  <div>
+                    <div className="mb-2 text-xs font-extrabold text-muted-foreground">
+                      Tipo de abono
+                    </div>
+                    <select
+                      value={tenantDepositUiType}
+                      onChange={(e) =>
+                        setTenantChargeType(e.target.value as TenantDepositUiType)
+                      }
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white/92 px-3 text-sm font-semibold shadow-[0_8px_18px_rgba(15,23,42,0.05)]"
+                    >
+                      <option value="fixed">Monto fijo</option>
+                      <option value="percentage">Porcentaje</option>
+                    </select>
+                  </div>
+                ) : null}
 
                 <div>
                   <div className="mb-2 text-xs font-extrabold text-muted-foreground">
@@ -1961,7 +1994,7 @@ export default function AgendaPage() {
                 {tenantChargeType === "fixed" ? (
                   <div>
                     <div className="mb-2 text-xs font-extrabold text-muted-foreground">
-                      Monto seña CLP
+                      Monto del abono
                     </div>
                     <input
                       type="number"
@@ -1978,7 +2011,7 @@ export default function AgendaPage() {
                 {tenantChargeType === "percentage" ? (
                   <div>
                     <div className="mb-2 text-xs font-extrabold text-muted-foreground">
-                      Porcentaje seña
+                      Porcentaje del abono
                     </div>
                     <input
                       type="number"
@@ -2192,7 +2225,7 @@ export default function AgendaPage() {
 
               <div className="mt-3 text-sm text-muted-foreground">
                 Esta configuración se aplica a las reservas online de este negocio.
-                Puedes definir si cobrar el total, pedir una seña o permitir pago
+                Puedes definir si cobrar el total, pedir un abono o permitir pago
                 manual.
               </div>
             </CardBody>
