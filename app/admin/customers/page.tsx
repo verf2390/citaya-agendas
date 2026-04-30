@@ -10,6 +10,11 @@ import { digitsOnly } from "@/app/lib/phone";
 
 import CustomerUpsertModal from "./components/CustomerUpsertModal";
 import AdminNav from "@/components/admin/AdminNav";
+import {
+  CustomerStatusBadge,
+  StatusBadge,
+  getCustomerVisualStatus,
+} from "@/components/admin/admin-ui";
 
 type CustomerRow = {
   id: string;
@@ -34,7 +39,10 @@ type QuickFilter =
   | "with_email"
   | "with_phone"
   | "without_email"
-  | "recent";
+  | "recent"
+  | "recurring"
+  | "inactive"
+  | "pending_payment";
 type ExportMenu = null | "open";
 
 function generateCustomerCode(id: string) {
@@ -226,6 +234,9 @@ export default function CustomersPage() {
         const ts = new Date(c.created_at).getTime();
         if (!Number.isFinite(ts) || now - ts > recentWindowMs) return false;
       }
+      if (quickFilter === "recurring" && getCustomerVisualStatus(c) !== "recurring") return false;
+      if (quickFilter === "inactive" && getCustomerVisualStatus(c) !== "inactive") return false;
+      if (quickFilter === "pending_payment" && Number(c.stats?.pending_payments ?? 0) <= 0) return false;
 
       if (!q) return true;
 
@@ -667,6 +678,23 @@ export default function CustomersPage() {
             Nuevo mensaje
           </button>
 
+          <Link
+            href="/admin/campanas"
+            style={{
+              display: "inline-block",
+              padding: "10px 14px",
+              borderRadius: 12,
+              border: "1px solid #cbd5e1",
+              background: "rgba(255,255,255,0.82)",
+              textDecoration: "none",
+              color: "#0f172a",
+              fontSize: 14,
+              fontWeight: 700,
+            }}
+          >
+            Campañas
+          </Link>
+
           <div style={{ position: "relative" }}>
             <button
               onClick={() =>
@@ -895,6 +923,9 @@ export default function CustomersPage() {
           { id: "with_phone", label: "Con teléfono" },
           { id: "without_email", label: "Sin email" },
           { id: "recent", label: "Recientes" },
+          { id: "recurring", label: "Recurrentes" },
+          { id: "inactive", label: "Inactivos" },
+          { id: "pending_payment", label: "Pago pendiente" },
         ].map((item) => {
           const active = quickFilter === item.id;
 
@@ -998,7 +1029,8 @@ export default function CustomersPage() {
             {filtered.map((c) => {
               const hasEmail = !!c.email?.trim();
               const hasPhone = !!c.phone?.trim();
-              const statusLabel = c.created_at ? "Nuevo" : "No disponible";
+              const customerStatus = getCustomerVisualStatus(c);
+              const hasPendingPayments = Number(c.stats?.pending_payments ?? 0) > 0;
               const isSelected = selectedCustomerIds.includes(c.id);
               const lastAppointment = c.stats?.last_appointment_at
                 ? formatCreatedAt(c.stats.last_appointment_at)
@@ -1123,22 +1155,12 @@ export default function CustomersPage() {
                   </div>
 
                   <div>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        fontSize: 12,
-                        fontWeight: 800,
-                        background: hasEmail || hasPhone ? "#ecfeff" : "#f1f5f9",
-                        color: hasEmail || hasPhone ? "#155e75" : "#64748b",
-                        border: "1px solid rgba(148,163,184,0.18)",
-                      }}
-                    >
-                      {statusLabel}
-                    </span>
+                    <CustomerStatusBadge status={customerStatus} />
+                    {hasPendingPayments ? (
+                      <div style={{ marginTop: 6 }}>
+                        <StatusBadge tone="amber">Tiene pagos pendientes</StatusBadge>
+                      </div>
+                    ) : null}
                     <div style={{ marginTop: 4, fontSize: 12, color: "#94a3b8" }}>
                       Alta: {formatCreatedAt(c.created_at)}
                     </div>

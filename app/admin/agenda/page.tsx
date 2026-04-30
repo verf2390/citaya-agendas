@@ -1136,7 +1136,7 @@ export default function AgendaPage() {
 
   const handleSelect = async (selectInfo: DateSelectArg) => {
     if (!selectedProfessionalId) {
-      alert("Selecciona un profesional primero");
+      toast({ title: "Selecciona un profesional primero", variant: "destructive" });
       return;
     }
 
@@ -1163,7 +1163,7 @@ export default function AgendaPage() {
     });
 
     if (!okByBase) {
-      alert("❌ Fuera de disponibilidad del profesional.");
+      toast({ title: "Fuera de disponibilidad", description: "El horario esta fuera de disponibilidad del profesional.", variant: "destructive" });
       return;
     }
 
@@ -1177,17 +1177,20 @@ export default function AgendaPage() {
     if (!okByRules) {
       const hasServiceRules = serviceRulesBlocks.some((b) => b.is_active);
 
-      alert(
-        hasServiceRules && selectedServiceId
-          ? "❌ Fuera del horario permitido por este servicio (base ∩ reglas)."
-          : "❌ Fuera de disponibilidad del profesional.",
-      );
+      toast({
+        title: "Fuera de disponibilidad",
+        description:
+          hasServiceRules && selectedServiceId
+            ? "Fuera del horario permitido por este servicio."
+            : "Fuera de disponibilidad del profesional.",
+        variant: "destructive",
+      });
       return;
     }
 
     const overlap = await hasOverlap(start_at, end_at, selectedProfessionalId);
     if (overlap) {
-      alert("❌ Ya existe una cita en ese horario (no se permiten traslapes).");
+      toast({ title: "Horario ocupado", description: "Ya existe una cita en ese horario.", variant: "destructive" });
       return;
     }
 
@@ -2556,7 +2559,7 @@ export default function AgendaPage() {
                 <PrimaryButton
                   onClick={() => {
                     if (!selectedEvent.customerPhone) {
-                      alert("Esta cita no tiene teléfono.");
+                      toast({ title: "Esta cita no tiene telefono", variant: "destructive" });
                       return;
                     }
                     const p = normalizePhoneToWhatsApp(
@@ -2590,7 +2593,7 @@ export default function AgendaPage() {
                     });
 
                     navigator.clipboard.writeText(msg);
-                    alert("✅ Mensaje copiado al portapapeles");
+                    toast({ title: "Mensaje copiado al portapapeles" });
                   }}
                 >
                   Copiar mensaje confirmación

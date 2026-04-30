@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { toast } from "@/components/ui/use-toast";
 
 // ⚠️ MVP: tenant hardcodeado. Luego lo sacamos desde profiles/slug.
 const TENANT_ID = "04d6c088-338d-44b2-b27b-b4709f48d31b";
@@ -35,7 +36,7 @@ export default function NewCustomerPage() {
   const onSave = async () => {
     const name = fullName.trim();
     if (!name) {
-      alert("El nombre es obligatorio");
+      toast({ title: "El nombre es obligatorio", variant: "destructive" });
       return;
     }
 
@@ -66,14 +67,14 @@ export default function NewCustomerPage() {
 
       if (!res.ok || !json?.ok) {
         console.error("Error creando cliente (API):", json);
-        alert(json?.error ?? "Error creando cliente");
+        toast({ title: "Error creando cliente", description: json?.error, variant: "destructive" });
         return;
       }
 
       router.push("/admin/customers");
     } catch (err: any) {
       console.error("Error creando cliente (fetch):", err?.message || err);
-      alert("Error creando cliente");
+      toast({ title: "Error creando cliente", variant: "destructive" });
     } finally {
       setSaving(false);
     }

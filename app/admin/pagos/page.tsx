@@ -5,6 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
+import {
+  AdminKpiCard,
+  AdminPageHeader,
+  AdminPageShell,
+  EmptyState,
+  StatusBadge,
+} from "@/components/admin/admin-ui";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
@@ -85,21 +93,23 @@ function isPendingPayment(row: AppointmentPayment) {
   );
 }
 
-function paymentBadge(status: string | null | undefined) {
+function paymentBadge(
+  status: string | null | undefined,
+): "slate" | "green" | "amber" | "red" | "blue" {
   const normalized = normalizedStatus(status);
-  if (normalized === "paid") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (normalized === "failed") return "border-red-200 bg-red-50 text-red-700";
-  if (normalized === "pending" || normalized === "pending_payment") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (normalized === "not_required" || normalized === "pay_later") return "border-sky-200 bg-sky-50 text-sky-700";
-  return "border-slate-200 bg-slate-50 text-slate-600";
+  if (normalized === "paid") return "green";
+  if (normalized === "failed") return "red";
+  if (normalized === "pending" || normalized === "pending_payment") return "amber";
+  if (normalized === "not_required" || normalized === "pay_later") return "blue";
+  return "slate";
 }
 
 function paymentLabel(status: string | null | undefined) {
   const normalized = normalizedStatus(status);
   if (normalized === "paid") return "Pagado";
-  if (normalized === "failed") return "Pago fallido";
-  if (normalized === "pending" || normalized === "pending_payment") return "Pago pendiente";
-  if (normalized === "not_required" || normalized === "pay_later") return "Sin pago requerido";
+  if (normalized === "failed") return "Fallido";
+  if (normalized === "pending" || normalized === "pending_payment") return "Pendiente";
+  if (normalized === "not_required" || normalized === "pay_later") return "No requerido";
   return "Sin estado";
 }
 
@@ -113,6 +123,11 @@ export default function AdminPagosPage() {
   const [rows, setRows] = useState<AppointmentPayment[]>([]);
   const [filter, setFilter] = useState<PaymentFilter>("all");
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [resendMessage, setResendMessage] = useState<{
+    type: "success" | "placeholder" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -257,12 +272,77 @@ export default function AdminPagosPage() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
-        alert(json?.error ?? "No se pudo marcar como pagado");
+        toast({
+          title: "No se pudo marcar como pagado",
+          description: json?.error ?? "Intenta nuevamente en unos segundos.",
+          variant: "destructive",
+        });
         return;
       }
+      toast({ title: "Pago marcado correctamente" });
       await loadRows();
     } finally {
       setMarkingId(null);
+    }
+  };
+
+  const copyPaymentLink = async (url: string | null) => {
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    toast({ title: "Link de pago copiado" });
+  };
+
+  const resendPayment = async (row: AppointmentPayment) => {
+    if (!row.payment_url || !row.customer_email) return;
+
+    setResendMessage(null);
+    setResendingId(row.id);
+
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+
+      const res = await fetch("/api/admin/payments/resend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          appointmentId: row.id,
+          customerEmail: row.customer_email,
+          customerName: row.customer_name,
+          paymentLink: row.payment_url,
+          amount: moneyNumber(row.payment_remaining_amount) || moneyNumber(row.payment_required_amount),
+          tenantSlug,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (json?.placeholder) {
+        const text = "Webhook n8n pendiente de configurar";
+        setResendMessage({ type: "placeholder", text });
+        toast({ title: text, description: json?.message });
+        return;
+      }
+
+      if (!res.ok || !json?.ok) {
+        const text = json?.error ?? "No se pudo reenviar el correo de pago";
+        setResendMessage({ type: "error", text });
+        toast({ title: "Error reenviando pago", description: text, variant: "destructive" });
+        return;
+      }
+
+      const text = "Correo de pago reenviado correctamente";
+      setResendMessage({ type: "success", text });
+      toast({ title: text });
+    } catch (e: any) {
+      const text = e?.message ?? "No se pudo conectar con el endpoint de reenvio";
+      setResendMessage({ type: "error", text });
+      toast({ title: "Error reenviando pago", description: text, variant: "destructive" });
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -271,31 +351,24 @@ export default function AdminPagosPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f7fb] p-4 sm:p-6">
-      <div className="mx-auto max-w-7xl">
+    <AdminPageShell width="wide">
         <AdminNav />
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-black text-slate-950">Pagos</h1>
-            <p className="mt-1 text-sm text-slate-500">Tenant: {tenantSlug || "..."}</p>
-          </div>
+        <AdminPageHeader
+          eyebrow="Abonos y pagos"
+          title="Pagos"
+          description={`Seguimiento de abonos, saldos y pagos asociados a ${tenantSlug || "..."}.`}
+          actions={
           <Link className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold" href="/admin/agenda">
             Volver a agenda
           </Link>
-        </div>
+          }
+        />
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["Ingresos hoy", kpis.today],
-            ["Ingresos mes", kpis.month],
-            ["Total generado", kpis.total],
-            ["Pagos pendientes", kpis.pending],
-          ].map(([label, value]) => (
-            <div key={String(label)} className="rounded-2xl border bg-white p-4 shadow-sm">
-              <div className="text-xs font-bold text-slate-500">{label}</div>
-              <div className="mt-2 text-2xl font-black text-slate-950">{formatCLP(Number(value))}</div>
-            </div>
-          ))}
+          <AdminKpiCard label="Ingresos hoy" value={formatCLP(kpis.today)} tone="green" />
+          <AdminKpiCard label="Ingresos mes" value={formatCLP(kpis.month)} tone="blue" />
+          <AdminKpiCard label="Total generado" value={formatCLP(kpis.total)} />
+          <AdminKpiCard label="Abonos pendientes" value={formatCLP(kpis.pending)} tone="amber" />
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
@@ -321,6 +394,20 @@ export default function AdminPagosPage() {
           </button>
         </div>
 
+        {resendMessage ? (
+          <div
+            className={`mt-4 rounded-2xl border p-3 text-sm font-bold ${
+              resendMessage.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : resendMessage.type === "placeholder"
+                  ? "border-amber-200 bg-amber-50 text-amber-900"
+                  : "border-red-200 bg-red-50 text-red-800"
+            }`}
+          >
+            {resendMessage.text}
+          </div>
+        ) : null}
+
         <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm">
           <div className="overflow-x-auto">
             <div className="min-w-[980px]">
@@ -336,7 +423,12 @@ export default function AdminPagosPage() {
               {loading ? (
                 <div className="p-4 text-sm text-slate-500">Cargando pagos...</div>
               ) : filteredRows.length === 0 ? (
-                <div className="p-4 text-sm text-slate-500">No hay pagos para este filtro.</div>
+                <div className="p-4">
+                  <EmptyState
+                    title="No hay abonos para este filtro"
+                    description="Cuando una reserva tenga pago requerido, pendiente o pagado, aparecerá en este tablero."
+                  />
+                </div>
               ) : (
                 filteredRows.map((row) => (
                   <div key={row.id} className="grid grid-cols-[1.4fr_1.2fr_1.2fr_1fr_1fr_1fr_1.6fr] gap-3 border-t p-3 text-sm">
@@ -347,14 +439,15 @@ export default function AdminPagosPage() {
                     <div>{row.service_name || "Servicio"}</div>
                     <div>{formatDateTime(row.start_at)}</div>
                     <div>
-                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-bold ${paymentBadge(row.payment_status)}`}>
+                      <StatusBadge tone={paymentBadge(row.payment_status)}>
                         {paymentLabel(row.payment_status)}
-                      </span>
+                      </StatusBadge>
                       <div className="mt-1 text-xs text-slate-500">{row.payment_provider || "Sin proveedor"}</div>
                     </div>
                     <div>
                       <div className="font-bold">{formatCLP(row.payment_required_amount)}</div>
                       <div className="text-xs text-slate-500">Pagado {formatCLP(row.payment_paid_amount)}</div>
+                      <div className="text-xs text-slate-500">Saldo {formatCLP(row.payment_remaining_amount)}</div>
                     </div>
                     <div>
                       <div>{row.booking_status || row.status || "Sin estado"}</div>
@@ -381,6 +474,23 @@ export default function AdminPagosPage() {
                       >
                         Abrir link de pago
                       </button>
+                      <button
+                        type="button"
+                        disabled={!row.payment_url}
+                        onClick={() => void copyPaymentLink(row.payment_url)}
+                        className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                      >
+                        Copiar link
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!row.payment_url || !row.customer_email || resendingId === row.id}
+                        onClick={() => void resendPayment(row)}
+                        className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                        title={!row.payment_url || !row.customer_email ? "Requiere link de pago y email del cliente" : "Reenviar correo de pago"}
+                      >
+                        {resendingId === row.id ? "Reenviando..." : "Reenviar pago"}
+                      </button>
                     </div>
                   </div>
                 ))
@@ -388,7 +498,6 @@ export default function AdminPagosPage() {
             </div>
           </div>
         </div>
-      </div>
-    </main>
+    </AdminPageShell>
   );
 }

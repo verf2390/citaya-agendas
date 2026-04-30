@@ -4,6 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
+import {
+  AdminPageHeader,
+  AdminPageShell,
+  AdminSectionCard,
+} from "@/components/admin/admin-ui";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
@@ -89,7 +95,7 @@ export default function ConfiguracionPage() {
   const save = async () => {
     if (!tenantId) return;
     if (!form.name.trim()) {
-      alert("El nombre del negocio es obligatorio.");
+      toast({ title: "El nombre del negocio es obligatorio", variant: "destructive" });
       return;
     }
 
@@ -111,11 +117,11 @@ export default function ConfiguracionPage() {
 
     if (error) {
       console.error("[admin/configuracion] save error:", error);
-      alert("No se pudo guardar la configuración.");
+      toast({ title: "No se pudo guardar la configuracion", description: error.message, variant: "destructive" });
       return;
     }
 
-    alert("Configuración guardada.");
+    toast({ title: "Configuracion guardada" });
   };
 
   if (tenantError) {
@@ -123,15 +129,15 @@ export default function ConfiguracionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f7fb] p-4 sm:p-6">
-      <div className="mx-auto max-w-4xl">
+    <AdminPageShell width="narrow">
         <AdminNav />
-        <div>
-          <h1 className="text-2xl font-black text-slate-950">Configuración</h1>
-          <p className="mt-1 text-sm text-slate-500">Datos públicos básicos para {tenantSlug || "..."}.</p>
-        </div>
+        <AdminPageHeader
+          eyebrow="Negocio"
+          title="Configuración"
+          description={`Datos publicos basicos para ${tenantSlug || "..."}.`}
+        />
 
-        <section className="mt-5 rounded-2xl border bg-white p-4 shadow-sm">
+        <AdminSectionCard className="mt-5" title="Perfil publico" description="Cambios seguros sobre datos del tenant actual.">
           {loading || !authChecked ? (
             <div className="text-sm text-slate-500">Cargando configuración...</div>
           ) : (
@@ -173,8 +179,7 @@ export default function ConfiguracionPage() {
               </button>
             </div>
           )}
-        </section>
-      </div>
-    </main>
+        </AdminSectionCard>
+    </AdminPageShell>
   );
 }

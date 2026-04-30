@@ -6,6 +6,7 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import esLocale from "@fullcalendar/core/locales/es";
 import type { DateSelectArg, EventClickArg } from "@fullcalendar/core";
+import { toast } from "@/components/ui/use-toast";
 
 type Block = {
   id?: string;
@@ -251,7 +252,7 @@ export default function WeeklyAvailabilityCalendar({
 
     // 🚫 No permitir solapes
     if (wouldOverlap(candidate)) {
-      alert("Ese bloque se cruza con otro horario. Ajusta la selección.");
+      toast({ title: "Horario superpuesto", description: "Ese bloque se cruza con otro horario. Ajusta la seleccion." });
       return;
     }
 
@@ -273,7 +274,7 @@ export default function WeeklyAvailabilityCalendar({
     const updated = eventToBlockFromStr(startStr, endStr, normalizedBlocks[idx]);
 
     if (wouldOverlap(updated, key)) {
-      alert("Ese cambio cruza con otro horario. Ajusta el bloque.");
+      toast({ title: "Horario superpuesto", description: "Ese cambio cruza con otro horario. Ajusta el bloque." });
       arg.revert?.();
       return;
     }

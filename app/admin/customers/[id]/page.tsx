@@ -5,6 +5,18 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
+import AdminNav from "@/components/admin/AdminNav";
+import {
+  AdminKpiCard,
+  AdminPageHeader,
+  AdminPageShell,
+  AdminSectionCard,
+  CustomerStatusBadge,
+  EmptyState,
+  StatusBadge,
+  getCustomerVisualStatus,
+} from "@/components/admin/admin-ui";
+import { toast } from "@/components/ui/use-toast";
 
 type Customer = {
   id: string;
@@ -72,6 +84,27 @@ function formatMoney(value: number | null | undefined) {
     currency: "CLP",
     maximumFractionDigits: 0,
   });
+}
+
+function statusTone(
+  value: string | null | undefined,
+): "slate" | "green" | "amber" | "red" {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "paid" || status === "confirmed" || status === "completed") return "green";
+  if (status === "pending" || status === "pending_payment") return "amber";
+  if (status === "failed" || status === "canceled" || status === "cancelled") return "red";
+  return "slate";
+}
+
+function statusLabel(value: string | null | undefined) {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "paid") return "Pago aprobado";
+  if (status === "pending" || status === "pending_payment") return "Pago pendiente";
+  if (status === "failed") return "Pago fallido";
+  if (status === "confirmed") return "Cita confirmada";
+  if (status === "completed") return "Cita completada";
+  if (status === "canceled" || status === "cancelled") return "Cita cancelada";
+  return value || "Sin estado";
 }
 
 export default function EditCustomerPage() {
@@ -189,7 +222,7 @@ export default function EditCustomerPage() {
 
     if (!res.ok || !json?.ok) {
       console.error("Error loading customer history:", json);
-      alert("No se pudo cargar el cliente");
+      toast({ title: "No se pudo cargar el cliente", variant: "destructive" });
       router.push("/admin/customers");
       return;
     }
@@ -217,7 +250,7 @@ export default function EditCustomerPage() {
   const onSave = async () => {
     const name = fullName.trim();
     if (!name) {
-      alert("El nombre es obligatorio");
+      toast({ title: "El nombre es obligatorio", variant: "destructive" });
       return;
     }
 
@@ -244,7 +277,7 @@ export default function EditCustomerPage() {
 
     if (error) {
       console.error("Error updating customer:", error);
-      alert("Error guardando cambios");
+      toast({ title: "Error guardando cambios", description: error.message, variant: "destructive" });
       return;
     }
 
@@ -267,7 +300,7 @@ export default function EditCustomerPage() {
 
     if (error) {
       console.error("Error deleting customer:", error);
-      alert("Error eliminando cliente");
+      toast({ title: "Error eliminando cliente", description: error.message, variant: "destructive" });
       return;
     }
 
@@ -300,260 +333,156 @@ export default function EditCustomerPage() {
 
   if (loading) {
     return (
-      <main style={{ padding: 20, fontFamily: "system-ui" }}>
+      <main className="p-6 text-sm text-slate-500">
         <p>Cargando cliente...</p>
       </main>
     );
   }
 
+  const customerVisualStatus = getCustomerVisualStatus({
+    created_at: customer?.created_at,
+    stats: {
+      appointment_count: summary?.totalAppointments ?? appointments.length,
+      last_appointment_at: summary?.lastVisit?.start_at ?? null,
+    },
+  });
+
   return (
-    <main
-      style={{
-        padding: 20,
-        fontFamily: "system-ui",
-        maxWidth: 1120,
-        margin: "0 auto",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0 }}>{customer?.full_name ?? "Cliente"}</h1>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 12,
-              fontWeight: 800,
-              color: "#64748b",
-              letterSpacing: "0.05em",
-            }}
-          >
-            {customer ? generateCustomerCode(customer.id) : "—"}
-          </div>
-          <div style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>
-            {customer?.email || "Sin email"} · {customer?.phone || "Sin teléfono"} · Alta:{" "}
-            {formatDate(customer?.created_at)}
-          </div>
-        </div>
-        <Link href="/admin/customers" style={{ textDecoration: "none" }}>
-          ← Volver
-        </Link>
+    <AdminPageShell width="wide">
+      <AdminNav />
+      <AdminPageHeader
+        eyebrow={customer ? generateCustomerCode(customer.id) : "Ficha cliente"}
+        title={customer?.full_name ?? "Cliente"}
+        description={`${customer?.email || "Sin email"} · ${customer?.phone || "Sin teléfono"} · Alta: ${formatDate(customer?.created_at)}`}
+        actions={
+          <Link href="/admin/customers" className="rounded-xl border bg-white px-3 py-2 text-sm font-bold text-slate-700">
+            Volver
+          </Link>
+        }
+      />
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <CustomerStatusBadge status={customerVisualStatus} />
+        {pendingPayments > 0 ? <StatusBadge tone="amber">Tiene pagos pendientes</StatusBadge> : null}
       </div>
 
-      <div
-        style={{
-          marginTop: 18,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 12,
-        }}
-      >
-        {[
-          {
-            label: "Total citas",
-            value: String(summary?.totalAppointments ?? 0),
-          },
-          {
-            label: "Última visita",
-            value: summary?.lastVisit
-              ? `${formatDate(summary.lastVisit.start_at)} ${formatTime(summary.lastVisit.start_at)}`
-              : "No disponible",
-          },
-          {
-            label: "Próxima cita",
-            value: summary?.upcoming
-              ? `${formatDate(summary.upcoming.start_at)} ${formatTime(summary.upcoming.start_at)}`
-              : "No disponible",
-          },
-          {
-            label: "Total pagado",
-            value: formatMoney(totalPaid),
-          },
-          {
-            label: "Pagos pendientes",
-            value: String(pendingPayments),
-          },
-          {
-            label: "Cancelaciones",
-            value: String(cancellations),
-          },
-        ].map((item) => (
-          <div
-            key={item.label}
-            style={{
-              border: "1px solid #e2e8f0",
-              borderRadius: 16,
-              padding: 16,
-              background: "#f8fafc",
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>
-              {item.label}
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#0f172a",
-              }}
-            >
-              {item.value}
-            </div>
-          </div>
-        ))}
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <AdminKpiCard label="Total citas" value={summary?.totalAppointments ?? 0} />
+        <AdminKpiCard
+          label="Ultima cita"
+          value={summary?.lastVisit ? formatDate(summary.lastVisit.start_at) : "No disponible"}
+          hint={summary?.lastVisit ? formatTime(summary.lastVisit.start_at) : undefined}
+          tone="blue"
+        />
+        <AdminKpiCard
+          label="Proxima cita"
+          value={summary?.upcoming ? formatDate(summary.upcoming.start_at) : "No disponible"}
+          hint={summary?.upcoming ? formatTime(summary.upcoming.start_at) : undefined}
+        />
+        <AdminKpiCard label="Total pagado" value={formatMoney(totalPaid)} tone="green" />
+        <AdminKpiCard label="Pagos pendientes" value={pendingPayments} tone="amber" />
+        <AdminKpiCard label="Fallidas/canceladas" value={cancellations} tone={cancellations > 0 ? "red" : "default"} />
       </div>
 
-      <div
-        style={{
-          marginTop: 18,
-          border: "1px solid #e2e8f0",
-          borderRadius: 16,
-          overflow: "hidden",
-          background: "white",
-        }}
-      >
-        <div style={{ padding: 14, borderBottom: "1px solid #e2e8f0", fontWeight: 800 }}>
-          Historial de servicios
-        </div>
-
-        {appointments.length === 0 ? (
-          <div style={{ padding: 18, color: "#64748b" }}>
-            Este cliente aún no tiene historial de servicios.
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <div style={{ minWidth: 860 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.1fr 0.8fr 1.4fr 1fr 0.9fr 0.9fr 0.9fr 1.2fr",
-                  gap: 12,
-                  padding: 14,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  color: "#64748b",
-                  background: "#f8fafc",
-                }}
-              >
-                <div>Fecha</div>
-                <div>Hora</div>
-                <div>Servicio</div>
-                <div>Monto</div>
-                <div>Pago</div>
-                <div>Reserva</div>
-                <div>Profesional</div>
-                <div>Notas</div>
-              </div>
-
-              {appointments.map((appt) => (
-                <div
-                  key={appt.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.1fr 0.8fr 1.4fr 1fr 0.9fr 0.9fr 0.9fr 1.2fr",
-                    gap: 12,
-                    padding: 14,
-                    borderTop: "1px solid #e2e8f0",
-                    alignItems: "center",
-                    fontSize: 13,
-                  }}
-                >
-                  <div>{formatDate(appt.start_at)}</div>
-                  <div>
-                    {formatTime(appt.start_at)} - {formatTime(appt.end_at)}
-                  </div>
-                  <div>{appt.service_name || "Servicio"}</div>
-                  <div>
-                    <div>{formatMoney(appt.payment_paid_amount)}</div>
-                    <div style={{ fontSize: 11, color: "#64748b" }}>
-                      Req. {formatMoney(appt.payment_required_amount)}
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <AdminSectionCard title="Timeline del historial">
+          {appointments.length === 0 ? (
+            <EmptyState title="Sin historial" description="Este cliente aun no tiene citas asociadas." />
+          ) : (
+            <div className="space-y-3">
+              {appointments.map((appt) => {
+                const booking = appt.booking_status || appt.status;
+                return (
+                  <div key={appt.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="font-black text-slate-950">{appt.service_name || "Servicio"}</div>
+                        <div className="mt-1 text-sm font-medium text-slate-500">
+                          {formatDate(appt.start_at)} · {formatTime(appt.start_at)} - {formatTime(appt.end_at)}
+                        </div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">
+                          {appt.professional_name || "Sin profesional asignado"}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <StatusBadge tone={statusTone(booking)}>{statusLabel(booking)}</StatusBadge>
+                        <StatusBadge tone={statusTone(appt.payment_status)}>{statusLabel(appt.payment_status)}</StatusBadge>
+                      </div>
                     </div>
+                    <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
+                      <div>
+                        <span className="font-bold text-slate-800">Pagado:</span> {formatMoney(appt.payment_paid_amount)}
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-800">Requerido:</span> {formatMoney(appt.payment_required_amount)}
+                      </div>
+                      <div>
+                        <span className="font-bold text-slate-800">Proveedor:</span> {appt.payment_provider || "Sin proveedor"}
+                      </div>
+                    </div>
+                    {appt.notes?.trim() ? (
+                      <div className="mt-3 rounded-xl bg-white p-3 text-sm text-slate-600">{appt.notes}</div>
+                    ) : null}
                   </div>
-                  <div>{appt.payment_status || "Sin estado"}</div>
-                  <div>{appt.booking_status || appt.status || "Sin estado"}</div>
-                  <div>{appt.professional_name || "—"}</div>
-                  <div>{appt.notes?.trim() || "—"}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </AdminSectionCard>
 
-      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-        {/* TODO: mostrar historial de citas/servicios aquí con más detalle si se amplía la ficha */}
-        <div style={{ fontWeight: 800 }}>Editar ficha</div>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.7 }}>Nombre *</span>
-          <input
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-          />
-        </label>
+        <div className="grid gap-4">
+          <AdminSectionCard title="Notas internas" description="Placeholder visual">
+            {/* TODO: crear tabla customer_notes con tenant_id, customer_id, body, created_by y created_at. */}
+            <EmptyState
+              title="Sin notas internas"
+              description="Aqui se podran registrar preferencias, restricciones y contexto privado del cliente."
+            />
+          </AdminSectionCard>
 
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.7 }}>Teléfono (opcional)</span>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Ej: 956655664 (o +56 9 5665 5664)"
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.7 }}>Correo (opcional)</span>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd" }}
-          />
-        </label>
-
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 12, opacity: 0.7 }}>Notas (opcional)</span>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", minHeight: 90 }}
-          />
-        </label>
-
-        <div style={{ display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }}>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: saving ? "#f5f5f5" : "white",
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
-          >
-            {saving ? "Guardando..." : "Guardar cambios"}
-          </button>
-
-          <button
-            onClick={onDelete}
-            disabled={deleting}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #f2c2c2",
-              background: deleting ? "#fdf2f2" : "white",
-              cursor: deleting ? "not-allowed" : "pointer",
-            }}
-          >
-            {deleting ? "Eliminando..." : "Eliminar"}
-          </button>
+          <AdminSectionCard title="Campañas / etiquetas" description="Placeholder visual">
+            {/* TODO: crear tablas customer_tags y campaign_audiences para segmentacion CRM multi-tenant. */}
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge tone="blue">Promo futura</StatusBadge>
+              <StatusBadge tone="green">Cliente frecuente</StatusBadge>
+              <StatusBadge tone="amber">Reactivar</StatusBadge>
+            </div>
+          </AdminSectionCard>
         </div>
-
-        <p style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-          Nota: si el cliente tiene citas relacionadas, como tu FK es <code>ON DELETE SET NULL</code>, las citas quedan pero el <code>customer_id</code> se limpia.
-        </p>
       </div>
-    </main>
+
+      <AdminSectionCard className="mt-5" title="Editar ficha">
+        <div className="grid gap-3">
+          <label className="grid gap-1 text-sm font-bold text-slate-700">
+            Nombre *
+            <input className="rounded-xl border border-slate-200 px-3 py-2" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm font-bold text-slate-700">
+              Telefono
+              <input className="rounded-xl border border-slate-200 px-3 py-2" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Ej: 956655664" />
+            </label>
+            <label className="grid gap-1 text-sm font-bold text-slate-700">
+              Correo
+              <input className="rounded-xl border border-slate-200 px-3 py-2" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </label>
+          </div>
+          <label className="grid gap-1 text-sm font-bold text-slate-700">
+            Notas
+            <textarea className="min-h-24 rounded-xl border border-slate-200 px-3 py-2" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={onSave} disabled={saving} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-60">
+              {saving ? "Guardando..." : "Guardar cambios"}
+            </button>
+            <button onClick={onDelete} disabled={deleting} className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-black text-red-700 disabled:opacity-60">
+              {deleting ? "Eliminando..." : "Eliminar"}
+            </button>
+          </div>
+          <p className="text-xs font-medium text-slate-500">
+            Nota: si el cliente tiene citas relacionadas, las citas quedan y el customer_id se limpia por la FK actual.
+          </p>
+        </div>
+      </AdminSectionCard>
+    </AdminPageShell>
   );
 }

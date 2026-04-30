@@ -4,6 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
+import {
+  AdminKpiCard,
+  AdminPageHeader,
+  AdminPageShell,
+  AdminSectionCard,
+  EmptyState,
+  StatusBadge,
+} from "@/components/admin/admin-ui";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
@@ -30,19 +39,19 @@ type WaitlistRow = {
 };
 
 const STATUS_OPTIONS: Array<{ value: WaitlistStatus | "all"; label: string }> = [
-  { value: "active", label: "Activas" },
-  { value: "notified", label: "Contactadas" },
-  { value: "booked", label: "Reservadas" },
-  { value: "expired", label: "Expiradas" },
+  { value: "active", label: "Pendientes" },
+  { value: "notified", label: "Notificadas" },
+  { value: "booked", label: "Convertidas" },
+  { value: "expired", label: "Cerradas" },
   { value: "all", label: "Todas" },
 ];
 
 const STATUS_LABEL: Record<WaitlistStatus, string> = {
-  active: "Activa",
-  notified: "Contactada",
-  booked: "Reservada",
-  expired: "Expirada",
-  deleted: "Eliminada",
+  active: "Pendiente",
+  notified: "Notificado",
+  booked: "Convertido",
+  expired: "Cerrado",
+  deleted: "Cerrado",
 };
 
 function formatDate(value?: string | null) {
@@ -73,12 +82,12 @@ function formatTime(value?: string | null) {
   return value.slice(0, 5) === "00:00" ? "Flexible" : value.slice(0, 5);
 }
 
-function statusClass(status: WaitlistStatus) {
-  if (status === "active") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "notified") return "border-sky-200 bg-sky-50 text-sky-700";
-  if (status === "booked") return "border-slate-200 bg-slate-900 text-white";
-  if (status === "expired") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-slate-200 bg-slate-100 text-slate-500";
+function statusTone(status: WaitlistStatus): "slate" | "green" | "amber" | "blue" {
+  if (status === "active") return "amber";
+  if (status === "notified") return "blue";
+  if (status === "booked") return "green";
+  if (status === "expired") return "slate";
+  return "slate";
 }
 
 export default function AdminWaitlistPage() {
@@ -194,7 +203,7 @@ export default function AdminWaitlistPage() {
 
     setActionId("");
     if (!res.ok) {
-      alert("No se pudo actualizar la solicitud.");
+      toast({ title: "No se pudo actualizar la solicitud", variant: "destructive" });
       return;
     }
 
@@ -215,7 +224,7 @@ export default function AdminWaitlistPage() {
 
     setActionId("");
     if (!res.ok) {
-      alert("No se pudo eliminar la solicitud.");
+      toast({ title: "No se pudo eliminar la solicitud", variant: "destructive" });
       return;
     }
 
@@ -241,22 +250,29 @@ export default function AdminWaitlistPage() {
     );
   }, [items, query]);
 
+  const kpis = useMemo(
+    () => ({
+      pending: items.filter((item) => item.status === "active").length,
+      notified: items.filter((item) => item.status === "notified").length,
+      converted: items.filter((item) => item.status === "booked").length,
+      closed: items.filter((item) => item.status === "expired").length,
+    }),
+    [items],
+  );
+
   if (tenantError) {
     return <main className="p-6 text-sm text-red-700">{tenantError}</main>;
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f7fb] p-4 sm:p-6">
-      <div className="mx-auto max-w-6xl">
+    <AdminPageShell width="normal">
         <AdminNav />
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-black text-slate-950">Lista de espera</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Solicitudes de cupos para {tenantSlug || "..."}.
-            </p>
-          </div>
+        <AdminPageHeader
+          eyebrow="Demanda no capturada"
+          title="Waitlist"
+          description={`Solicitudes de cupos para ${tenantSlug || "..."}, listas para contactar o convertir en reserva.`}
+          actions={
           <button
             type="button"
             onClick={() => void load()}
@@ -265,9 +281,17 @@ export default function AdminWaitlistPage() {
           >
             {loading ? "Cargando..." : "Recargar"}
           </button>
+          }
+        />
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <AdminKpiCard label="Pendientes" value={kpis.pending} tone="amber" />
+          <AdminKpiCard label="Notificados" value={kpis.notified} tone="blue" />
+          <AdminKpiCard label="Convertidos" value={kpis.converted} tone="green" />
+          <AdminKpiCard label="Cerrados" value={kpis.closed} />
         </div>
 
-        <section className="mt-5 rounded-2xl border bg-white p-4 shadow-sm">
+        <AdminSectionCard className="mt-5" title="Solicitudes" description="No se cambia el webhook actual a n8n; solo se ordena el trabajo operativo.">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap gap-2">
               {STATUS_OPTIONS.map((option) => (
@@ -315,8 +339,11 @@ export default function AdminWaitlistPage() {
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="rounded-xl bg-slate-50 px-3 py-6 text-center text-slate-500">
-                      No hay solicitudes para este filtro.
+                    <td colSpan={6} className="rounded-xl px-3 py-4">
+                      <EmptyState
+                        title="No hay solicitudes para este filtro"
+                        description="Cuando una persona solicite un horario no disponible, aparecerá aquí con servicio, contacto y flexibilidad."
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -340,6 +367,9 @@ export default function AdminWaitlistPage() {
                         <div className="font-bold text-slate-800">
                           {formatDate(item.date)} · {formatTime(item.time)}
                         </div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">
+                          Flexibilidad: {item.desired_from_at || item.desired_to_at ? "rango sugerido" : "horario puntual"}
+                        </div>
                         {item.desired_from_at || item.desired_to_at ? (
                           <div className="mt-1 text-xs text-slate-500">
                             Rango: {formatDateTime(item.desired_from_at)} a {formatDateTime(item.desired_to_at)}
@@ -347,9 +377,9 @@ export default function AdminWaitlistPage() {
                         ) : null}
                       </td>
                       <td className="px-3 py-3 align-top">
-                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-black ${statusClass(item.status)}`}>
+                        <StatusBadge tone={statusTone(item.status)}>
                           {STATUS_LABEL[item.status]}
-                        </span>
+                        </StatusBadge>
                         {item.notified_at ? (
                           <div className="mt-1 text-xs text-slate-400">
                             {formatDateTime(item.notified_at)}
@@ -367,7 +397,7 @@ export default function AdminWaitlistPage() {
                             disabled={actionId === item.id}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            Contactada
+                            Contactar
                           </button>
                           <button
                             type="button"
@@ -375,7 +405,7 @@ export default function AdminWaitlistPage() {
                             disabled={actionId === item.id}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            Reservada
+                            Convertir
                           </button>
                           <button
                             type="button"
@@ -383,7 +413,7 @@ export default function AdminWaitlistPage() {
                             disabled={actionId === item.id}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            Expirar
+                            Cerrar
                           </button>
                           <button
                             type="button"
@@ -401,8 +431,7 @@ export default function AdminWaitlistPage() {
               </tbody>
             </table>
           </div>
-        </section>
-      </div>
-    </main>
+        </AdminSectionCard>
+    </AdminPageShell>
   );
 }

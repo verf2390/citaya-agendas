@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 
 export type CustomerLite = {
@@ -164,13 +165,13 @@ export default function AppointmentCreateModal({
   const handleCreateCustomer = async () => {
     const name = newName.trim();
     if (!name) {
-      alert("Ingresa el nombre del cliente");
+      toast({ title: "Ingresa el nombre del cliente", variant: "destructive" });
       return;
     }
 
     const phoneNormalized = normalizePhone(newPhone.trim());
     if (!phoneNormalized) {
-      alert("El teléfono es obligatorio (WhatsApp).");
+      toast({ title: "El telefono es obligatorio", description: "Necesitamos un telefono para WhatsApp.", variant: "destructive" });
       return;
     }
 
@@ -180,7 +181,7 @@ export default function AppointmentCreateModal({
 
       const token = await getBearerTokenOrNull();
       if (!token) {
-        alert("Sesión expirada. Vuelve a iniciar sesión.");
+        toast({ title: "Sesion expirada", description: "Vuelve a iniciar sesion.", variant: "destructive" });
         return;
       }
 
@@ -203,7 +204,7 @@ export default function AppointmentCreateModal({
 
       if (!res.ok || !json?.ok) {
         console.error("Error creating customer (API):", json);
-        alert("No se pudo crear el cliente (revisa consola).");
+        toast({ title: "No se pudo crear el cliente", variant: "destructive" });
         return;
       }
 
@@ -214,9 +215,10 @@ export default function AppointmentCreateModal({
         (await findCustomerByPhone(phoneNormalized));
 
       if (json.reused && localExisting) {
-        alert(
-          "Ya existe un cliente con este teléfono. Seleccionándolo para agendar.",
-        );
+        toast({
+          title: "Cliente existente",
+          description: "Ya existe un cliente con este telefono. Se selecciono para agendar.",
+        });
         setSelected(localExisting);
         setQ(localExisting.name);
         setShowCreate(false);

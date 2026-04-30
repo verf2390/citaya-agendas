@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { normalizeCLPhone } from "@/app/lib/phone";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 
 type InitialCustomer = {
@@ -71,7 +72,7 @@ export default function CustomerUpsertModal(props: {
       const token = sess.session?.access_token;
 
       if (!token) {
-        alert("Sesión expirada. Vuelve a iniciar sesión.");
+        toast({ title: "Sesion expirada", description: "Vuelve a iniciar sesion.", variant: "destructive" });
         setSaving(false);
         return;
       }
@@ -95,10 +96,11 @@ export default function CustomerUpsertModal(props: {
 
       if (!res.ok || !json?.ok) {
         console.error("Error upsert customer (API):", json);
-        alert(
-          json?.error ??
-            (isEdit ? "Error editando cliente" : "Error creando cliente"),
-        );
+        toast({
+          title: isEdit ? "Error editando cliente" : "Error creando cliente",
+          description: json?.error,
+          variant: "destructive",
+        });
         setSaving(false);
         return;
       }
@@ -107,9 +109,10 @@ export default function CustomerUpsertModal(props: {
 
       // ✅ Aviso UX (puedes cambiarlo por toast)
       if (!isEdit && reused) {
-        alert(
-          "Este cliente ya existía (mismo teléfono o email). Se reutilizó el registro existente.",
-        );
+        toast({
+          title: "Cliente reutilizado",
+          description: "Este cliente ya existia con el mismo telefono o email.",
+        });
       }
 
       // ✅ Devolver solo id + reused (la lista se refresca afuera)
@@ -119,7 +122,11 @@ export default function CustomerUpsertModal(props: {
       onClose();
     } catch (e: any) {
       console.error("Error upsert customer (fetch):", e?.message || e);
-      alert(isEdit ? "Error editando cliente" : "Error creando cliente");
+      toast({
+        title: isEdit ? "Error editando cliente" : "Error creando cliente",
+        description: e?.message,
+        variant: "destructive",
+      });
       setSaving(false);
     }
   };

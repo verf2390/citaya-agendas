@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
+import {
+  AdminKpiCard,
+  AdminPageHeader,
+  AdminPageShell,
+  EmptyState,
+  StatusBadge,
+} from "@/components/admin/admin-ui";
+import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
@@ -160,7 +168,7 @@ export default function ServiciosPage() {
   const saveService = async () => {
     const name = form.name.trim();
     if (!name) {
-      alert("El nombre del servicio es obligatorio.");
+      toast({ title: "El nombre del servicio es obligatorio", variant: "destructive" });
       return;
     }
 
@@ -202,7 +210,7 @@ export default function ServiciosPage() {
       const message = json?.error ?? "No se pudo guardar el servicio.";
       console.error("[admin/servicios] save error:", json);
       setSaveError(message);
-      alert(message);
+      toast({ title: "No se pudo guardar el servicio", description: message, variant: "destructive" });
       return;
     }
 
@@ -251,7 +259,7 @@ export default function ServiciosPage() {
       const message = json?.error ?? "No se pudo cambiar el estado del servicio.";
       console.error("[admin/servicios] active toggle error:", json);
       setSaveError(message);
-      alert(message);
+      toast({ title: "No se pudo cambiar el estado del servicio", description: message, variant: "destructive" });
       return;
     }
 
@@ -266,12 +274,18 @@ export default function ServiciosPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f6f7fb] p-4 sm:p-6">
-      <div className="mx-auto max-w-6xl min-w-0">
+    <AdminPageShell width="normal">
         <AdminNav />
-        <div>
-          <h1 className="text-2xl font-black text-slate-950">Servicios</h1>
-          <p className="mt-1 text-sm text-slate-500">Precios y duración para {tenantSlug || "..."}.</p>
+        <AdminPageHeader
+          eyebrow="Catalogo"
+          title="Servicios"
+          description={`Precios, duracion y disponibilidad comercial para ${tenantSlug || "..."}.`}
+        />
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <AdminKpiCard label="Total servicios" value={services.length} />
+          <AdminKpiCard label="Activos" value={services.filter((s) => s.is_active ?? true).length} tone="green" />
+          <AdminKpiCard label="Inactivos" value={services.filter((s) => !(s.is_active ?? true)).length} />
         </div>
 
         <div className="mt-5 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
@@ -321,7 +335,9 @@ export default function ServiciosPage() {
             {loading ? (
               <div className="p-4 text-sm text-slate-500">Cargando...</div>
             ) : services.length === 0 ? (
-              <div className="p-4 text-sm text-slate-500">Aún no hay servicios.</div>
+              <div className="p-4">
+                <EmptyState title="Aun no hay servicios" description="Crea el primer servicio para que aparezca en la agenda online." />
+              </div>
             ) : (
               services.map((service) => (
                 <div key={service.id} className="grid min-w-0 gap-3 border-b p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
@@ -331,9 +347,9 @@ export default function ServiciosPage() {
                     <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
                       <span className="rounded-full border bg-slate-50 px-2 py-1">{formatDuration(service.duration_min)}</span>
                       <span className="rounded-full border bg-slate-50 px-2 py-1">{formatPrice(service.price, service.currency)}</span>
-                      <span className={`rounded-full border px-2 py-1 ${service.is_active ?? true ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500"}`}>
+                      <StatusBadge tone={service.is_active ?? true ? "green" : "slate"}>
                         {service.is_active ?? true ? "Activo" : "Inactivo"}
-                      </span>
+                      </StatusBadge>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 md:justify-end">
@@ -349,7 +365,6 @@ export default function ServiciosPage() {
             )}
           </section>
         </div>
-      </div>
-    </main>
+    </AdminPageShell>
   );
 }
