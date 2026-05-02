@@ -104,6 +104,33 @@ function dayLabelCL(dayKey: string) {
   }).format(d);
 }
 
+function dayShortCL(dayKey: string) {
+  const d = new Date(`${dayKey}T12:00:00`);
+  return new Intl.DateTimeFormat("es-CL", {
+    timeZone: tz,
+    weekday: "short",
+  })
+    .format(d)
+    .replace(".", "");
+}
+
+function dayNumberCL(dayKey: string) {
+  const d = new Date(`${dayKey}T12:00:00`);
+  return new Intl.DateTimeFormat("es-CL", {
+    timeZone: tz,
+    day: "2-digit",
+  }).format(d);
+}
+
+function monthLabelCL(dayKey: string) {
+  const d = new Date(`${dayKey}T12:00:00`);
+  const label = new Intl.DateTimeFormat("es-CL", {
+    timeZone: tz,
+    month: "long",
+  }).format(d);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function dayKeyCL(iso: string) {
   const d = new Date(iso);
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -732,6 +759,10 @@ function ReservarInner() {
   }, [slots]);
 
   const visibleDays = useMemo(() => buildPageDays(pageStart), [pageStart]);
+  const visibleMonth = useMemo(
+    () => monthLabelCL(selectedDayKey || visibleDays[0]?.dayKey || dayKeyCL(new Date().toISOString())),
+    [selectedDayKey, visibleDays],
+  );
 
   useEffect(() => {
     if (visibleDays.length === 0) return;
@@ -1585,33 +1616,61 @@ function ReservarInner() {
                 </SurfaceCard>
               ) : (
                 <div className="mt-3">
-                  <div className="relative">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Button
-                        type="button"
-                        onClick={goPrev7}
-                        disabled={!canPrev}
-                        variant="pill"
-                        size="icon"
-                        className="h-10 w-10 rounded-2xl border-white/80 bg-white/78 shadow-[0_8px_18px_rgba(15,23,42,0.05)] hover:bg-white"
-                        title="Anterior"
-                        aria-label="Anterior"
-                      >
-                        <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </Button>
+                  <div className="rounded-[28px] border border-slate-200/70 bg-white/82 p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
+                          Agenda
+                        </div>
+                        <div className="mt-0.5 text-lg font-black tracking-[-0.03em] text-slate-950 sm:text-xl">
+                          {visibleMonth}
+                        </div>
+                      </div>
 
-                      <div className="relative flex-1 min-w-0 w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="hidden text-[11px] font-bold text-slate-400 sm:inline">
+                          Otras fechas disponibles
+                        </span>
+                        <Button
+                          type="button"
+                          onClick={goPrev7}
+                          disabled={!canPrev}
+                          variant="pill"
+                          size="icon"
+                          className="h-8 w-8 rounded-full border-slate-200 bg-white text-slate-500 shadow-none hover:bg-slate-50 disabled:opacity-35 sm:h-9 sm:w-9"
+                          title="Anterior"
+                          aria-label="Anterior"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={goNext7}
+                          disabled={!canNext}
+                          variant="pill"
+                          size="icon"
+                          className="h-8 w-8 rounded-full border-slate-200 bg-white text-slate-500 shadow-none hover:bg-slate-50 disabled:opacity-35 sm:h-9 sm:w-9"
+                          title="Siguiente"
+                          aria-label="Siguiente"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="relative min-w-0">
+                      <div className="relative min-w-0">
                         <div
                           aria-hidden
-                          className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-background/90 to-transparent"
+                          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-white via-white/70 to-transparent"
                         />
                         <div
                           aria-hidden
-                          className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-background/90 to-transparent"
+                          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-white via-white/70 to-transparent"
                         />
 
-                        <div className="overflow-x-auto touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-                          <div className="flex min-w-max flex-nowrap items-center gap-2 py-0.5">
+                        <div className="no-scrollbar overflow-x-auto scroll-smooth touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+                          <div className="flex min-w-max snap-x snap-mandatory flex-nowrap items-end gap-1.5 px-1 py-1 sm:min-w-0 sm:justify-between sm:gap-2">
                             {visibleDays.map((d) => {
                               const active = d.dayKey === selectedDayKey;
                               const n = dayCounts.get(d.dayKey) ?? 0;
@@ -1625,25 +1684,36 @@ function ReservarInner() {
                                     setSelectedSlot(null);
                                   }}
                                   className={cn(
-                                    "shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[10px] font-semibold ring-1 ring-slate-200/80 transition",
-                                    "sm:px-4 sm:py-2 sm:text-sm",
+                                    "group flex min-h-[64px] w-[48px] shrink-0 snap-start flex-col items-center justify-center rounded-[22px] px-2 py-2 text-center transition sm:w-[58px]",
                                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                     active
-                                      ? "bg-slate-900 text-white shadow-[0_10px_22px_rgba(15,23,42,0.14)]"
-                                      : "bg-white/82 hover:bg-white",
-                                    n === 0 ? "opacity-70" : "",
+                                      ? "bg-slate-950 text-white shadow-[0_14px_28px_rgba(15,23,42,0.22)]"
+                                      : "text-slate-500 hover:bg-slate-50/80 hover:text-slate-900",
+                                    n === 0 && !active ? "opacity-55" : "",
                                   )}
                                 >
-                                  <span className="capitalize">{d.label}</span>
                                   <span
                                     className={cn(
-                                      "ml-1 inline-flex min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold",
-                                      active
-                                        ? "bg-white/15 text-white"
-                                        : "bg-muted text-muted-foreground",
+                                      "text-[10px] font-black uppercase tracking-[0.08em]",
+                                      active ? "text-white/75" : "text-slate-400 group-hover:text-slate-500",
                                     )}
                                   >
-                                    {n === 0 ? "—" : n >= 9 ? "9+" : n}
+                                    {dayShortCL(d.dayKey)}
+                                  </span>
+                                  <span className="mt-1 text-xl font-black leading-none tracking-[-0.04em]">
+                                    {dayNumberCL(d.dayKey)}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "mt-1 inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 text-[9px] font-extrabold",
+                                      active
+                                        ? "bg-white/15 text-white"
+                                        : n > 0
+                                          ? "bg-slate-100 text-slate-500"
+                                          : "bg-transparent text-slate-300",
+                                    )}
+                                  >
+                                    {n === 0 ? "-" : n >= 9 ? "9+" : n}
                                   </span>
                                 </button>
                               );
@@ -1651,19 +1721,6 @@ function ReservarInner() {
                           </div>
                         </div>
                       </div>
-
-                      <Button
-                        type="button"
-                        onClick={goNext7}
-                        disabled={!canNext}
-                        variant="pill"
-                        size="icon"
-                        className="h-10 w-10 rounded-2xl border-white/80 bg-white/78 shadow-[0_8px_18px_rgba(15,23,42,0.05)] hover:bg-white"
-                        title="Siguiente"
-                        aria-label="Siguiente"
-                      >
-                        <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
-                      </Button>
                     </div>
                   </div>
 
@@ -1714,7 +1771,7 @@ function ReservarInner() {
                         ) : null}
                       </div>
                     ) : (
-                      <div className="mt-3 grid gap-3 sm:gap-4">
+                      <div className="mt-4 grid gap-4">
                         {(["Mañana", "Tarde", "Noche"] as const).map((label) => {
                           const list = buckets[label] ?? [];
                           if (list.length === 0) return null;
@@ -1727,9 +1784,9 @@ function ReservarInner() {
                               tone="default"
                               shadow="soft"
                               radius="lg"
-                              className="border-slate-200/60 bg-gradient-to-br from-white/96 to-slate-50/96 p-3 sm:p-4 shadow-[0_12px_28px_rgba(15,23,42,0.06)]"
+                              className="border-slate-200/70 bg-white/90 p-3 sm:p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]"
                             >
-                              <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
                                 <div className="flex items-center gap-2 min-w-0">
                                   <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-white ring-1 ring-border shadow-sm">
                                     <span className="text-muted-foreground">
@@ -1751,7 +1808,7 @@ function ReservarInner() {
                                 </span>
                               </div>
 
-                              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                              <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
                                 {list.map((s: Slot) => {
                                   const active =
                                     selectedSlot?.start_at === s.start_at;
@@ -1767,13 +1824,13 @@ function ReservarInner() {
                                       }}
                                       className={cn(
                                         "relative w-full rounded-2xl border text-left transition",
-                                        "min-h-[52px] px-3 py-3",
+                                        "min-h-[56px] px-3 py-3",
                                         "active:scale-[0.98] motion-reduce:active:scale-100",
                                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                         "shadow-[0_8px_18px_rgba(15,23,42,0.05)]",
                                         active
                                           ? "border-slate-900/10 bg-[linear-gradient(135deg,#0f172a_0%,#1e293b_100%)] text-white ring-2 ring-slate-900/15"
-                                          : "border-slate-200/70 bg-white/88 hover:border-slate-300/80 hover:bg-white",
+                                          : "border-slate-200/80 bg-white hover:border-slate-300/80 hover:bg-slate-50",
                                         saving || !tenantId
                                           ? "cursor-not-allowed opacity-60"
                                           : "",

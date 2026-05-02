@@ -341,8 +341,8 @@ export default function AdminWaitlistPage() {
                   <tr>
                     <td colSpan={6} className="rounded-xl px-3 py-4">
                       <EmptyState
-                        title="No hay solicitudes para este filtro"
-                        description="Cuando una persona solicite un horario no disponible, aparecerá aquí con servicio, contacto y flexibilidad."
+                        title="Todavía no hay personas en espera"
+                        description="Cuando un cliente solicite un horario no disponible, podrás gestionarlo desde aquí."
                       />
                     </td>
                   </tr>

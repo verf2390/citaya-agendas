@@ -12,6 +12,7 @@ import CustomerUpsertModal from "./components/CustomerUpsertModal";
 import AdminNav from "@/components/admin/AdminNav";
 import {
   CustomerStatusBadge,
+  EmptyState,
   StatusBadge,
   getCustomerVisualStatus,
 } from "@/components/admin/admin-ui";
@@ -1191,31 +1192,13 @@ export default function CustomersPage() {
         </div>
 
         {!loading && customers.length === 0 && (
-          <div
-            style={{
-              padding: 28,
-              display: "grid",
-              placeItems: "center",
-              textAlign: "center",
-              borderTop: "1px solid #e2e8f0",
-            }}
-          >
-            <div
-              style={{
-                width: "min(100%, 520px)",
-                padding: 24,
-                borderRadius: 18,
-                border: "1px dashed #cbd5e1",
-                background: "#f8fafc",
-              }}
-            >
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>
-                Aún no hay clientes registrados
-              </div>
-              <div style={{ marginTop: 8, fontSize: 14, color: "#64748b" }}>
-                Cuando tus clientes reserven, aparecerán aquí.
-              </div>
-            </div>
+          <div style={{ padding: 28, borderTop: "1px solid #e2e8f0" }}>
+            <EmptyState
+              title="Todavía no tienes clientes registrados"
+              description="Cuando alguien reserve una hora, aparecerá automáticamente aquí. También puedes crear un cliente manualmente."
+              actionLabel="Crear cliente"
+              actionHref="/admin/customers/new"
+            />
           </div>
         )}
 

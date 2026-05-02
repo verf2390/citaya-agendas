@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import Link from "next/link";
+import type { ComponentType, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -126,13 +127,24 @@ export function EmptyState({
   title,
   description,
   action,
+  actionLabel,
+  actionHref,
+  icon: Icon,
 }: {
   title: string;
   description?: ReactNode;
   action?: ReactNode;
+  actionLabel?: string;
+  actionHref?: string;
+  icon?: ComponentType<{ className?: string }>;
 }) {
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+      {Icon ? (
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 shadow-sm">
+          <Icon className="h-5 w-5" />
+        </div>
+      ) : null}
       <div className="text-lg font-black text-slate-950">{title}</div>
       {description ? (
         <div className="mx-auto mt-2 max-w-md text-sm font-medium text-slate-500">
@@ -140,19 +152,62 @@ export function EmptyState({
         </div>
       ) : null}
       {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
+      {!action && actionLabel && actionHref ? (
+        <div className="mt-4 flex justify-center">
+          <Link
+            href={actionHref}
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800"
+          >
+            {actionLabel}
+          </Link>
+        </div>
+      ) : null}
     </div>
   );
 }
 
+const STATUS_MAP: Record<
+  string,
+  { label: string; tone: "slate" | "green" | "amber" | "red" | "blue" | "dark" }
+> = {
+  confirmed: { label: "Confirmada", tone: "green" },
+  pending: { label: "Pendiente", tone: "amber" },
+  pending_payment: { label: "Pago pendiente", tone: "amber" },
+  cancelled: { label: "Cancelada", tone: "red" },
+  canceled: { label: "Cancelada", tone: "red" },
+  completed: { label: "Completada", tone: "green" },
+  paid: { label: "Pagado", tone: "green" },
+  failed: { label: "Fallido", tone: "red" },
+  refunded: { label: "Reembolsado", tone: "blue" },
+  not_required: { label: "No requerido", tone: "blue" },
+  pay_later: { label: "Pago manual", tone: "blue" },
+  sent: { label: "Enviada", tone: "green" },
+  error: { label: "Error", tone: "red" },
+  prepared: { label: "Preparada", tone: "amber" },
+  sending: { label: "Enviando", tone: "blue" },
+  active: { label: "Activo", tone: "green" },
+  inactive: { label: "Inactivo", tone: "slate" },
+  upcoming: { label: "Próximamente", tone: "slate" },
+  draft: { label: "Borrador", tone: "slate" },
+};
+
 export function StatusBadge({
   children,
+  status,
+  label,
+  variant,
   tone = "slate",
   className,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
+  status?: string | null;
+  label?: ReactNode;
+  variant?: "slate" | "green" | "amber" | "red" | "blue" | "dark";
   tone?: "slate" | "green" | "amber" | "red" | "blue" | "dark";
   className?: string;
 }) {
+  const mapped = status ? STATUS_MAP[String(status).trim().toLowerCase()] : null;
+  const resolvedTone = variant ?? mapped?.tone ?? tone;
   const toneClass = {
     slate: "border-slate-200 bg-slate-50 text-slate-600",
     green: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -160,11 +215,11 @@ export function StatusBadge({
     red: "border-red-200 bg-red-50 text-red-700",
     blue: "border-sky-200 bg-sky-50 text-sky-700",
     dark: "border-slate-900 bg-slate-900 text-white",
-  }[tone];
+  }[resolvedTone];
 
   return (
     <span className={cn("inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-black", toneClass, className)}>
-      {children}
+      {children ?? label ?? mapped?.label ?? status ?? ""}
     </span>
   );
 }
