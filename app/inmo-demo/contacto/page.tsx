@@ -1,43 +1,21 @@
+import Link from "next/link";
 import { InmoHero } from "../components/inmo-hero";
 
 export default function ContactoPage() {
   return (
-    <main>
-      <InmoHero
-        eyebrow="Concierge inmobiliario"
-        title="Recibe asesoría inmobiliaria personalizada"
-        subtitle="Cuéntanos qué estás buscando y te contactaremos con una propuesta curada de acuerdo a tu perfil."
-        poster="/inmo-demo/properties/pexels-artbovich-8141956.jpg"
-        heightClassName="min-h-[80vh]"
-      />
+    <main className="bg-[#f4f4f2]">
+      <InmoHero eyebrow="Concierge inmobiliario" title="Convierte tu catálogo inmobiliario en una experiencia premium" subtitle="Te mostramos cómo una web así puede presentar tus propiedades, ordenar tus contactos y elevar la percepción de tu marca." poster="/inmo-demo/properties/pexels-artbovich-8141956.jpg" heightClassName="min-h-[68vh]">
+        <div className="flex flex-col gap-3 sm:flex-row"><Link href="/inmo-demo/propiedades" className="btn-inmo-secondary border-white/45 bg-white/10 text-white">Ver propiedades</Link><a href="https://wa.me/56961425029" target="_blank" rel="noreferrer" className="btn-inmo-primary border-white/20 bg-white text-neutral-950 hover:bg-zinc-200">Hablar con asesor</a></div>
+      </InmoHero>
 
-      <section className="mx-auto -mt-24 w-full max-w-5xl px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_24px_60px_-34px_rgba(15,23,42,0.55)] sm:p-10 animate-fade-in-up">
+      <section className="mx-auto w-full max-w-5xl px-4 py-14 sm:px-6 lg:px-8">
+        <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-[0_24px_60px_-34px_rgba(15,23,42,0.55)] sm:p-10">
           <form className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-2 text-xs uppercase tracking-[0.14em] text-slate-500">
-              Nombre
-              <input type="text" className="h-12 rounded-xl border border-slate-300 px-3 text-sm normal-case tracking-normal text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200" placeholder="Tu nombre" />
-            </label>
-            <label className="flex flex-col gap-2 text-xs uppercase tracking-[0.14em] text-slate-500">
-              Email
-              <input type="email" className="h-12 rounded-xl border border-slate-300 px-3 text-sm normal-case tracking-normal text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200" placeholder="tu@email.com" />
-            </label>
-            <label className="flex flex-col gap-2 text-xs uppercase tracking-[0.14em] text-slate-500 sm:col-span-2">
-              ¿Qué propiedad estás buscando?
-              <textarea className="min-h-28 rounded-xl border border-slate-300 p-3 text-sm normal-case tracking-normal text-slate-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200" placeholder="Ej: Departamento 2D+2B en Vitacura para inversión." />
-            </label>
-            <div className="sm:col-span-2">
-              <button type="button" className="btn-inmo-primary w-full justify-center">Solicitar asesoría privada</button>
-            </div>
+            <label className="flex flex-col gap-2 text-xs uppercase tracking-[0.14em] text-neutral-500">Nombre<input type="text" className="h-12 rounded-xl border border-neutral-300 px-3 text-sm" placeholder="Tu nombre" /></label>
+            <label className="flex flex-col gap-2 text-xs uppercase tracking-[0.14em] text-neutral-500">Email<input type="email" className="h-12 rounded-xl border border-neutral-300 px-3 text-sm" placeholder="tu@email.com" /></label>
+            <label className="flex flex-col gap-2 text-xs uppercase tracking-[0.14em] text-neutral-500 sm:col-span-2">Objetivo inmobiliario<textarea className="min-h-28 rounded-xl border border-neutral-300 p-3 text-sm" placeholder="Ej: vender departamento en Las Condes en 90 días." /></label>
+            <div className="sm:col-span-2"><button type="button" className="btn-inmo-primary w-full justify-center">Solicitar asesoría privada</button></div>
           </form>
-
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <a href="https://wa.me/56961425029" target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-6 text-sm font-semibold text-emerald-950 transition hover:-translate-y-0.5 hover:bg-emerald-400">
-              <span aria-hidden="true">✦</span>
-              Hablar por WhatsApp
-            </a>
-            <a href="mailto:verf14@gmail.com" className="btn-inmo-secondary justify-center">Contacto por email</a>
-          </div>
         </div>
       </section>
     </main>
