@@ -1,9 +1,21 @@
 import Link from "next/link";
 
-const painPoints = [
-  "Mensajes sin responder a tiempo",
-  "Clientes que preguntan y no vuelven",
-  "Agenda desordenada y difícil de controlar",
+const highlights = [
+  "Organiza tu agenda y evita clientes perdidos.",
+  "Automatiza recordatorios sin sumar carga operativa.",
+  "Convierte tu web en una máquina de reservas.",
+] as const;
+
+const particles = [
+  "left-[8%] top-[14%]",
+  "left-[20%] top-[68%]",
+  "left-[36%] top-[24%]",
+  "left-[48%] top-[80%]",
+  "left-[64%] top-[18%]",
+  "left-[78%] top-[62%]",
+  "left-[88%] top-[28%]",
+  "left-[58%] top-[44%]",
+  "left-[14%] top-[46%]",
 ] as const;
 
 const whatsappMessage = "Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.";
@@ -11,122 +23,91 @@ const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsa
 
 export function BrandHeroSection() {
   return (
-    <section className="px-4 pb-20 pt-6 sm:px-6 sm:pb-24 sm:pt-8 lg:px-10 lg:pb-28 lg:pt-10">
-      <div className="mx-auto w-full max-w-6xl">
-        <div className="relative grid gap-8 overflow-hidden rounded-3xl border border-cyan-200/80 bg-gradient-to-br from-slate-950/15 via-cyan-200/75 to-white p-6 shadow-[0_40px_110px_-45px_rgba(15,23,42,0.62)] sm:p-8 lg:grid-cols-2 lg:items-center lg:gap-12 lg:p-12">
-          <div
-            aria-hidden
-            className="animate-gradient-shift pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_14%_10%,rgba(14,116,144,0.24),transparent_46%),radial-gradient(circle_at_86%_20%,rgba(34,211,238,0.26),transparent_44%),linear-gradient(120deg,rgba(255,255,255,0.62),rgba(207,250,254,0.68),rgba(224,242,254,0.6),rgba(255,255,255,0.62))]"
-          />
-          <div
-            aria-hidden
-            className="animate-glow-drift pointer-events-none absolute -top-24 right-2 h-96 w-96 rounded-full bg-cyan-400/65 blur-[110px]"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -bottom-16 -left-20 h-72 w-72 rounded-full bg-sky-300/55 blur-3xl"
-          />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute left-[18%] top-[58%] h-16 w-16 rounded-full border border-cyan-300/45 bg-white/35 blur-sm sm:h-20 sm:w-20"
-          />
+    <section className="relative overflow-hidden bg-slate-950 px-4 pb-18 pt-8 sm:px-6 sm:pb-22 sm:pt-10 lg:px-10 lg:pb-24 lg:pt-12">
+      <div aria-hidden className="hero-animated-bg absolute inset-0" />
+      <div aria-hidden className="tech-grid animate-grid-pan absolute inset-0 opacity-45" />
+      <div aria-hidden className="hero-wave absolute inset-0" />
+      <svg aria-hidden viewBox="0 0 1200 700" className="hero-network absolute inset-0 h-full w-full">
+        <path d="M40 520C220 450 320 340 520 360C760 385 860 250 1140 190" className="network-path"/>
+        <path d="M10 290C180 230 320 250 500 190C700 125 840 140 1180 90" className="network-path network-path-delay"/>
+        <path d="M120 660C320 600 500 520 660 550C860 585 1000 515 1180 460" className="network-path network-path-slow"/>
+        <g className="network-nodes">
+          <circle cx="190" cy="252" r="4"/><circle cx="338" cy="246" r="4"/><circle cx="512" cy="188" r="5"/>
+          <circle cx="707" cy="134" r="4"/><circle cx="876" cy="142" r="5"/><circle cx="1020" cy="106" r="4"/>
+          <circle cx="230" cy="446" r="4"/><circle cx="509" cy="360" r="5"/><circle cx="872" cy="266" r="4"/>
+        </g>
+      </svg>
+      <div aria-hidden className="animate-orbit-slow absolute -right-28 top-0 h-[24rem] w-[24rem] rounded-full border border-cyan-300/25 sm:h-[32rem] sm:w-[32rem]" />
+      {particles.map((pos, idx) => (
+        <span key={pos} aria-hidden className={`hero-particle ${pos}`} style={{ animationDelay: `${idx * 1.2}s` }} />
+      ))}
+
+      <div className="relative mx-auto w-full max-w-6xl">
+        <div className="grid items-center gap-10 lg:grid-cols-[1.07fr_0.93fr] lg:gap-12">
           <div className="relative z-10">
-            <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-800 sm:text-xs">
-              Para negocios locales que viven de su agenda
+            <span className="inline-flex rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan-100 sm:text-xs">
+              Menos desorden · Más reservas
             </span>
 
-            <h1 className="mt-4 text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:mt-5 sm:text-5xl lg:text-6xl">
-              Deja de perder clientes por un WhatsApp desordenado
+            <h1 className="mt-5 text-4xl font-semibold leading-[1.03] tracking-tight text-white sm:text-5xl lg:text-6xl">
+              Deja atrás el caos de agendar por WhatsApp.
+              <span className="block bg-gradient-to-r from-cyan-200 via-sky-300 to-blue-400 bg-clip-text text-transparent">
+                Escala reservas con orden, automatización e imagen premium.
+              </span>
             </h1>
 
-            <p className="mt-5 text-base leading-relaxed text-slate-600 sm:text-lg">
-              Si hoy agendas respondiendo mensajes uno a uno, estás perdiendo tiempo y clientes.
-            </p>
-            <p className="mt-2 text-base leading-relaxed text-slate-600 sm:text-lg">
-              En Citaya te ayudamos a ordenar tu captación con una web clara, agenda online y automatizaciones simples
-              que sí se usan.
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-slate-300 sm:text-lg">
+              En Citaya unimos web, agenda y automatización para que dejes de perder oportunidades por mensajes sueltos y
+              empieces a gestionar reservas con control, velocidad y una imagen digital premium.
             </p>
 
-            <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 sm:text-base">
-              Tus clientes quieren agendar rápido. Si no pueden, se van.
-            </p>
-
-            <ul className="mt-5 space-y-2.5 text-sm text-slate-700 sm:text-base">
-              {painPoints.map((point) => (
-                <li key={point} className="flex items-start gap-2.5">
-                  <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-600 shadow-[0_0_0_4px_rgba(8,145,178,0.15)]" />
-                  <span>{point}</span>
+            <ul className="mt-6 space-y-2.5 text-sm text-slate-200 sm:text-base">
+              {highlights.map((item) => (
+                <li key={item} className="flex items-start gap-3">
+                  <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-300 shadow-[0_0_0_6px_rgba(34,211,238,0.16)]" />
+                  <span>{item}</span>
                 </li>
               ))}
             </ul>
 
-            <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
-              <Link
-                href={whatsappHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="animate-soft-pulse group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 via-sky-500 to-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_24px_56px_-16px_rgba(8,145,178,0.6)] transition-all duration-300 hover:-translate-y-1.5 hover:scale-[1.015] hover:shadow-[0_38px_84px_-18px_rgba(14,165,233,0.75)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 active:scale-[0.985] sm:w-auto"
-              >
-                <span>Ver cómo funcionaría en mi negocio</span>
-                <span className="text-base transition-transform duration-300 group-hover:translate-x-1">→</span>
+            <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap">
+              <Link href={whatsappHref} target="_blank" rel="noopener noreferrer" className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-300 via-sky-400 to-blue-500 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_24px_60px_-18px_rgba(34,211,238,0.82)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_34px_84px_-16px_rgba(34,211,238,0.95)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:w-auto">
+                Ver cómo funcionaría en mi negocio
+                <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
               </Link>
-              <a
-                href="/demos"
-                className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-6 py-3 text-sm font-medium text-slate-600 transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 active:scale-[0.99] sm:w-auto"
-              >
-                <span>Ver demos</span>
-                <span className="text-base text-cyan-700 transition-transform duration-300 group-hover:translate-x-1">→</span>
+              <a href="/demos" className="group inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-cyan-200/30 bg-slate-900/85 px-6 py-3 text-sm font-medium text-slate-100 transition-all duration-300 hover:-translate-y-1 hover:border-cyan-200/50 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:w-auto">
+                Ver demos
+                <span className="text-cyan-300 transition-transform duration-300 group-hover:translate-x-1">→</span>
               </a>
             </div>
-
-            <p className="mt-3 text-xs font-semibold tracking-wide text-slate-500 sm:text-sm">
-              Sin compromiso · Explicado en simple · Enfocado en resultados reales
-            </p>
           </div>
 
-          <div className="relative z-10 rounded-[1.9rem] border border-cyan-200/70 bg-slate-900/[0.035] p-3 backdrop-blur-sm sm:p-4">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -inset-8 -z-10 rounded-[2.2rem] bg-[radial-gradient(circle,rgba(34,211,238,0.45),rgba(34,211,238,0)_65%)] blur-2xl"
-            />
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-2 top-1 h-40 rounded-full bg-cyan-400/75 blur-3xl sm:inset-x-7"
-            />
-            <div className="animate-floating-card relative scale-[1.02] rounded-3xl border border-cyan-100 bg-white/90 p-4 shadow-[0_62px_150px_-28px_rgba(15,23,42,0.86)] ring-1 ring-cyan-100/70 backdrop-blur-[3px] transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_72px_170px_-26px_rgba(14,165,233,0.58)] sm:p-5 motion-safe:lg:translate-y-1">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista previa</p>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                  En línea
-                </span>
-              </div>
-
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold text-slate-700">Agenda de hoy</p>
-                <div className="mt-2 space-y-2">
-                  <div className="flex items-center justify-between rounded-lg border border-cyan-100 bg-white px-3 py-2">
-                    <span className="text-xs text-slate-700">10:30 · Corte + barba</span>
-                    <span className="text-[11px] font-semibold text-cyan-700">Confirmado</span>
+          <div className="relative z-10">
+            <div className="relative overflow-hidden rounded-3xl border border-cyan-300/25 bg-slate-900/70 p-4 shadow-[0_42px_130px_-44px_rgba(8,145,178,0.9)] backdrop-blur-xl sm:p-5">
+              <div aria-hidden className="absolute inset-0 bg-[radial-gradient(circle_at_78%_0%,rgba(34,211,238,0.24),transparent_42%)]" />
+              <svg viewBox="0 0 500 500" className="animate-fibonacci-spin absolute -right-20 -top-18 h-[360px] w-[360px] text-cyan-300/50 sm:h-[440px] sm:w-[440px]" fill="none" aria-hidden>
+                <path d="M250 250m-24 0a24 24 0 1 0 48 0a24 24 0 1 0-48 0" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M250 250m-39 0a39 39 0 1 0 78 0a39 39 0 1 0-78 0" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M250 250m-63 0a63 63 0 1 0 126 0a63 63 0 1 0-126 0" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M250 250m-102 0a102 102 0 1 0 204 0a102 102 0 1 0-204 0" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M250 250m-165 0a165 165 0 1 0 330 0a165 165 0 1 0-330 0" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+              <div className="relative rounded-2xl border border-slate-700/85 bg-slate-950/80 p-4 sm:p-5">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Sistema Citaya</p>
+                  <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">En vivo</span>
+                </div>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-xl border border-cyan-400/25 bg-cyan-400/8 px-3 py-2">
+                    <p className="text-[11px] text-slate-400">Captación automática</p>
+                    <p className="text-sm font-medium text-cyan-200">+18 nuevos contactos esta semana</p>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <span className="text-xs text-slate-700">11:15 · Manicure</span>
-                    <span className="text-[11px] font-semibold text-slate-500">Pendiente</span>
+                  <div className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2">
+                    <p className="text-[11px] text-slate-400">Agenda de hoy</p>
+                    <p className="text-sm text-slate-200">12 reservas confirmadas · 0 clientes perdidos</p>
                   </div>
                 </div>
               </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-cyan-100 bg-cyan-50 px-3 py-3 shadow-[0_14px_26px_-20px_rgba(6,182,212,0.8)]">
-                  <p className="text-[11px] text-slate-500">Reservas</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">+12</p>
-                </div>
-                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-3 shadow-[0_14px_26px_-20px_rgba(16,185,129,0.8)]">
-                  <p className="text-[11px] text-slate-500">Tasa de respuesta</p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900">94%</p>
-                </div>
-              </div>
-
-              <p className="mt-4 text-sm text-slate-600">Mockup de una experiencia de reserva clara y rápida.</p>
             </div>
           </div>
         </div>
