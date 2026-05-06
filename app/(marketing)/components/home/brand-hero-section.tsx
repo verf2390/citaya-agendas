@@ -14,6 +14,8 @@ const particles = [
   "left-[64%] top-[18%]",
   "left-[78%] top-[62%]",
   "left-[88%] top-[28%]",
+  "left-[58%] top-[44%]",
+  "left-[14%] top-[46%]",
 ] as const;
 
 const whatsappMessage = "Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.";
@@ -25,6 +27,16 @@ export function BrandHeroSection() {
       <div aria-hidden className="hero-animated-bg absolute inset-0" />
       <div aria-hidden className="tech-grid animate-grid-pan absolute inset-0 opacity-45" />
       <div aria-hidden className="hero-wave absolute inset-0" />
+      <svg aria-hidden viewBox="0 0 1200 700" className="hero-network absolute inset-0 h-full w-full">
+        <path d="M40 520C220 450 320 340 520 360C760 385 860 250 1140 190" className="network-path"/>
+        <path d="M10 290C180 230 320 250 500 190C700 125 840 140 1180 90" className="network-path network-path-delay"/>
+        <path d="M120 660C320 600 500 520 660 550C860 585 1000 515 1180 460" className="network-path network-path-slow"/>
+        <g className="network-nodes">
+          <circle cx="190" cy="252" r="4"/><circle cx="338" cy="246" r="4"/><circle cx="512" cy="188" r="5"/>
+          <circle cx="707" cy="134" r="4"/><circle cx="876" cy="142" r="5"/><circle cx="1020" cy="106" r="4"/>
+          <circle cx="230" cy="446" r="4"/><circle cx="509" cy="360" r="5"/><circle cx="872" cy="266" r="4"/>
+        </g>
+      </svg>
       <div aria-hidden className="animate-orbit-slow absolute -right-28 top-0 h-[24rem] w-[24rem] rounded-full border border-cyan-300/25 sm:h-[32rem] sm:w-[32rem]" />
       {particles.map((pos, idx) => (
         <span key={pos} aria-hidden className={`hero-particle ${pos}`} style={{ animationDelay: `${idx * 1.2}s` }} />
@@ -38,9 +50,9 @@ export function BrandHeroSection() {
             </span>
 
             <h1 className="mt-5 text-4xl font-semibold leading-[1.03] tracking-tight text-white sm:text-5xl lg:text-6xl">
-              Tu negocio no necesita más chats.
+              Deja atrás el caos de agendar por WhatsApp.
               <span className="block bg-gradient-to-r from-cyan-200 via-sky-300 to-blue-400 bg-clip-text text-transparent">
-                Necesita un sistema que convierta y ordene.
+                Escala reservas con orden, automatización e imagen premium.
               </span>
             </h1>
 
