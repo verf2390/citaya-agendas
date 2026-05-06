@@ -1,22 +1,12 @@
 import { RevealOnScroll } from "./reveal-on-scroll";
 import { SectionHeading } from "./section-heading";
 
-const testimonials = [
-  {
-    type: "Hogar",
-    quote: "Reservé en menos de un minuto y quedó confirmado al instante.",
-    author: "Familia Rojas · La Serena",
-  },
-  {
-    type: "Oficina",
-    quote: "Dejamos de perseguir mensajes. Ahora todo entra ordenado y el equipo actúa rápido.",
-    author: "Estudio Jurídico V&P · Coquimbo",
-  },
-  {
-    type: "Comercio",
-    quote: "Pasamos de improvisar horarios a tener una agenda que realmente vende.",
-    author: "Café Puerto Norte · Coquimbo",
-  },
+const businessTypes = [
+  "Barberías",
+  "Estéticas / uñas / pestañas",
+  "Psicólogos / kinesiólogos",
+  "Centros de atención por hora",
+  "Profesionales independientes",
 ] as const;
 
 export function SocialProofSection() {
@@ -25,35 +15,32 @@ export function SocialProofSection() {
       <div className="mx-auto max-w-6xl">
         <RevealOnScroll>
           <SectionHeading
-            eyebrow="Prueba social"
-            title="Negocios reales ya están vendiendo con este flujo"
-            description="Cuando el proceso se siente simple para el cliente, las reservas llegan con menos fricción."
+            eyebrow="Para quién es"
+            title="Hecho para negocios locales que viven de sus reservas"
+            description="Si atiendes por hora, esta forma de agendar te ahorra tiempo y evita perder clientes."
           />
         </RevealOnScroll>
 
-        <RevealOnScroll className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:mt-8 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-5">
-          <div>
-            <p className="text-sm font-semibold text-amber-900">Valoración promedio de experiencia</p>
-            <p className="mt-1 text-sm text-amber-800">Destacan rapidez, orden y sensación de negocio profesional.</p>
-          </div>
-          <p className="mt-3 text-lg font-semibold text-amber-900 sm:mt-0">★★★★★ 4.9/5</p>
-        </RevealOnScroll>
-
-        <div className="mt-4 grid gap-4 md:grid-cols-3">
-          {testimonials.map((item, index) => (
-            <RevealOnScroll
-              key={item.author}
-              delayMs={index * 80}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-            >
-              <p className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-                {item.type}
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-slate-700">“{item.quote}”</p>
-              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{item.author}</p>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {businessTypes.map((item, index) => (
+            <RevealOnScroll key={item} delayMs={index * 70} className="rounded-2xl border border-slate-200 bg-white p-5 text-sm font-semibold text-slate-800 shadow-md">
+              {item}
             </RevealOnScroll>
           ))}
         </div>
+
+        <RevealOnScroll className="mt-8 grid gap-4 md:grid-cols-2">
+          <article className="rounded-2xl border border-rose-100 bg-rose-50/70 p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">Antes</p>
+            <p className="mt-2 text-base font-semibold text-rose-900">Todo se coordina por chat</p>
+          </article>
+          <article className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Después</p>
+            <p className="mt-2 text-base font-semibold text-emerald-900">
+              El cliente reserva solo y tú recibes la solicitud ordenada
+            </p>
+          </article>
+        </RevealOnScroll>
       </div>
     </section>
   );
