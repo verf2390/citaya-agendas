@@ -30,6 +30,7 @@ type TenantBranding = {
   logo_url: string | null;
   phone_display?: string | null;
   whatsapp?: string | null;
+  contact_email?: string | null;
   admin_email?: string | null;
 };
 
@@ -41,7 +42,11 @@ type CustomerRow = {
 };
 
 type AppointmentRow = {
+  id?: string;
   customer_id: string | null;
+  customer_name?: string | null;
+  customer_email?: string | null;
+  customer_phone?: string | null;
   service_name: string | null;
   start_at: string | null;
   status: string | null;
@@ -57,6 +62,10 @@ type Recipient = {
   customerName: string;
   customerEmail: string;
   phone: string;
+  appointmentId?: string;
+  serviceName?: string;
+  startAt?: string | null;
+  amount?: number;
   lastAppointmentAt: string | null;
   totalAppointments: number;
   pendingAmount: number;
@@ -180,7 +189,7 @@ function getTenantSlug(req: Request, body: CampaignPayload) {
 async function fetchTenantBranding(tenantSlug: string): Promise<TenantBranding | null> {
   const withWhatsapp = await supabaseAdmin
     .from("tenants")
-    .select("id, slug, name, logo_url, phone_display, whatsapp, admin_email")
+    .select("id, slug, name, logo_url, phone_display, whatsapp, contact_email, admin_email")
     .eq("slug", tenantSlug)
     .maybeSingle();
 
@@ -190,7 +199,7 @@ async function fetchTenantBranding(tenantSlug: string): Promise<TenantBranding |
 
   const fallback = await supabaseAdmin
     .from("tenants")
-    .select("id, slug, name, logo_url, phone_display, admin_email")
+    .select("id, slug, name, logo_url, phone_display, contact_email, admin_email")
     .eq("slug", tenantSlug)
     .maybeSingle();
 
@@ -385,6 +394,62 @@ async function fetchRecipients(tenantId: string, segmentKey: string) {
   return recipients;
 }
 
+function isPendingPaymentAppointment(appt: AppointmentRow) {
+  const paymentStatus = normalized(appt.payment_status);
+  const bookingStatus = normalized(appt.booking_status);
+  const status = normalized(appt.status);
+  return (
+    paymentStatus === "pending" ||
+    paymentStatus === "failed" ||
+    paymentStatus === "pending_payment" ||
+    bookingStatus === "pending_payment" ||
+    status === "pending_payment"
+  );
+}
+
+async function fetchPendingPaymentRecipients(tenantId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("appointments")
+    .select(
+      "id, customer_id, customer_name, customer_email, customer_phone, service_name, start_at, status, booking_status, payment_status, payment_required_amount, payment_remaining_amount, payment_url",
+    )
+    .eq("tenant_id", tenantId)
+    .order("start_at", { ascending: true })
+    .limit(5000);
+
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as AppointmentRow[])
+    .filter(isPendingPaymentAppointment)
+    .map((appt) => {
+      const pendingAmount =
+        moneyNumber(appt.payment_remaining_amount) ||
+        moneyNumber(appt.payment_required_amount);
+      const paymentLink = appt.payment_url?.trim() || "";
+
+      return {
+        customerId: appt.customer_id || String(appt.id ?? ""),
+        customerName: appt.customer_name?.trim() || "Cliente",
+        customerEmail: appt.customer_email?.trim().toLowerCase() || "",
+        phone: appt.customer_phone?.trim() || "",
+        appointmentId: String(appt.id ?? ""),
+        serviceName: appt.service_name?.trim() || "",
+        startAt: appt.start_at,
+        amount: pendingAmount,
+        lastAppointmentAt: appt.start_at,
+        totalAppointments: 1,
+        pendingAmount,
+        paymentLink,
+        payment_link: paymentLink,
+        ctaUrl: "",
+        cta_url: "",
+        ctaLabel: "",
+        cta_label: "",
+        tags: ["pago_pendiente"],
+      } satisfies Recipient;
+    });
+}
+
 function filterPaymentRecipients(
   recipients: Recipient[],
   ctaLabel: string,
@@ -431,12 +496,14 @@ function enrichNormalRecipients(
 function dedupeValidRecipients(recipients: Recipient[]) {
   const seen = new Set<string>();
   const valid: Recipient[] = [];
-  let skipped = 0;
+  let invalidEmailCount = 0;
+  let duplicateOrLimitedCount = 0;
 
   for (const recipient of recipients) {
     const email = recipient.customerEmail.trim().toLowerCase();
     if (!email || !isEmail(email) || seen.has(email)) {
-      skipped += 1;
+      if (!email || !isEmail(email)) invalidEmailCount += 1;
+      else duplicateOrLimitedCount += 1;
       continue;
     }
     seen.add(email);
@@ -444,9 +511,43 @@ function dedupeValidRecipients(recipients: Recipient[]) {
   }
 
   const limited = valid.slice(0, MAX_RECIPIENTS);
-  skipped += Math.max(0, valid.length - limited.length);
+  duplicateOrLimitedCount += Math.max(0, valid.length - limited.length);
 
-  return { recipients: limited, skippedCount: skipped };
+  return {
+    recipients: limited,
+    skippedCount: invalidEmailCount + duplicateOrLimitedCount,
+    invalidEmailCount,
+    duplicateOrLimitedCount,
+  };
+}
+
+async function buildAudiencePreview(tenantId: string, paymentCampaign: boolean, segmentKey: string) {
+  const allRecipients = paymentCampaign
+    ? await fetchPendingPaymentRecipients(tenantId)
+    : await fetchRecipients(tenantId, segmentKey);
+  const deduped = dedupeValidRecipients(allRecipients);
+  const paymentFiltered = paymentCampaign
+    ? filterPaymentRecipients(deduped.recipients, "Pagar ahora", "")
+    : {
+        recipients: deduped.recipients,
+        skippedMissingPaymentLink: [] as Recipient[],
+      };
+  const missingPaymentLinkCount = paymentFiltered.skippedMissingPaymentLink.length;
+  const skippedCount =
+    deduped.skippedCount + (paymentCampaign ? missingPaymentLinkCount : 0);
+
+  return {
+    totalMatchedCount: allRecipients.length,
+    validEmailCount: deduped.recipients.length,
+    validPaymentLinkCount: paymentCampaign
+      ? paymentFiltered.recipients.length
+      : deduped.recipients.length,
+    recipientCount: paymentFiltered.recipients.length,
+    skippedCount,
+    invalidEmailCount: deduped.invalidEmailCount,
+    duplicateOrLimitedCount: deduped.duplicateOrLimitedCount,
+    missingPaymentLinkCount,
+  };
 }
 
 async function logMessage(
@@ -472,6 +573,52 @@ async function logMessage(
     });
   } catch (e: any) {
     console.error("[api/admin/campaigns/send] log ignored:", e?.message || e);
+  }
+}
+
+export async function GET(req: Request) {
+  try {
+    const token = getBearerToken(req);
+    if (!token) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const url = new URL(req.url);
+    const tenantSlug =
+      getTenantSlugFromHostname(req.headers.get("x-forwarded-host") || req.headers.get("host")) ||
+      String(url.searchParams.get("tenantSlug") ?? "").trim();
+    if (!tenantSlug) return badRequest("No se pudo detectar el tenant actual.");
+
+    const templateKey = String(url.searchParams.get("templateKey") ?? "").trim();
+    const segmentKey = String(url.searchParams.get("segmentKey") ?? "all").trim();
+    if (!ALLOWED_SEGMENTS.has(segmentKey)) return badRequest("Segmento invalido");
+
+    const tenant = await fetchTenantBranding(tenantSlug);
+    if (!tenant?.id) return badRequest("Tenant no encontrado.");
+
+    const paymentCampaign = isPaymentCampaign({ templateKey, segmentKey });
+    const preview = await buildAudiencePreview(
+      tenant.id,
+      paymentCampaign,
+      paymentCampaign ? "pending_payment" : segmentKey,
+    );
+
+    return NextResponse.json({
+      ok: true,
+      isPaymentCampaign: paymentCampaign,
+      ...preview,
+    });
+  } catch (e: any) {
+    console.error("[api/admin/campaigns/send] preview error:", e?.message || e);
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "Error preparando audiencia" },
+      { status: 500 },
+    );
   }
 }
 
@@ -550,9 +697,15 @@ export async function POST(req: Request) {
     }
 
     const recipientSegmentKey = paymentCampaign ? "pending_payment" : payload.segmentKey;
-    const allRecipients = await fetchRecipients(tenant.id, recipientSegmentKey);
-    const { recipients: emailRecipients, skippedCount: emailSkippedCount } =
-      dedupeValidRecipients(allRecipients);
+    const allRecipients = paymentCampaign
+      ? await fetchPendingPaymentRecipients(tenant.id)
+      : await fetchRecipients(tenant.id, recipientSegmentKey);
+    const {
+      recipients: emailRecipients,
+      skippedCount: emailSkippedCount,
+      invalidEmailCount,
+      duplicateOrLimitedCount,
+    } = dedupeValidRecipients(allRecipients);
     const paymentFiltered = paymentCampaign
       ? filterPaymentRecipients(emailRecipients, ctaLabel, ctaUrl)
       : {
@@ -560,8 +713,8 @@ export async function POST(req: Request) {
           skippedMissingPaymentLink: [],
         };
     const recipients = paymentFiltered.recipients;
-    const skippedCount =
-      emailSkippedCount + paymentFiltered.skippedMissingPaymentLink.length;
+    const missingPaymentLinkCount = paymentFiltered.skippedMissingPaymentLink.length;
+    const skippedCount = emailSkippedCount + missingPaymentLinkCount;
 
     if (recipients.length === 0) {
       if (paymentFiltered.skippedMissingPaymentLink.length > 0) {
@@ -588,9 +741,15 @@ export async function POST(req: Request) {
           skippedReasonSummary: paymentCampaign
             ? {
                 missingPaymentLink: paymentFiltered.skippedMissingPaymentLink.length,
+                invalidEmail: invalidEmailCount,
                 invalidOrDuplicateEmail: emailSkippedCount,
+                duplicateOrLimited: duplicateOrLimitedCount,
               }
-            : { invalidOrDuplicateEmail: emailSkippedCount },
+            : {
+                invalidEmail: invalidEmailCount,
+                invalidOrDuplicateEmail: emailSkippedCount,
+                duplicateOrLimited: duplicateOrLimitedCount,
+              },
         },
         { status: 400 },
       );
@@ -619,7 +778,7 @@ export async function POST(req: Request) {
     const whatsapp =
       tenantWhatsapp || (phoneDisplay && isLikelyChileanMobile(phoneDisplay) ? phoneDisplay : "");
     const whatsappUrl = whatsappUrlFromPhone(whatsapp);
-    const contactEmail = tenant.admin_email?.trim() || "";
+    const contactEmail = tenant.contact_email?.trim() || tenant.admin_email?.trim() || "";
     const normalizedMediaType =
       payload.mediaUrl && payload.mediaType !== "none"
         ? (payload.mediaType as "image" | "gif" | "video")
@@ -652,10 +811,19 @@ export async function POST(req: Request) {
       phone_display: phoneDisplay,
       replyNotice: true,
       fromName: businessName,
-      campaignType: payload.templateKey,
+      campaignType: paymentCampaign ? "pending_payment" : payload.templateKey,
       templateKey: payload.templateKey,
+      template: paymentCampaign ? "payment_pending" : payload.templateKey,
       segmentKey: payload.segmentKey,
       isPaymentCampaign: paymentCampaign,
+      tenant: {
+        id: tenant.id,
+        slug: tenant.slug,
+        name: businessName,
+        whatsapp,
+        contactEmail,
+        contact_email: contactEmail,
+      },
       subject: payload.subject,
       headline: payload.headline,
       message: payload.message,
@@ -681,6 +849,12 @@ export async function POST(req: Request) {
         mediaType: media.type,
         mediaUrl: media.url,
         mediaFileName: media.fileName,
+        totalMatchedCount: allRecipients.length,
+        validEmailCount: emailRecipients.length,
+        validPaymentLinkCount: paymentCampaign ? recipients.length : emailRecipients.length,
+        skippedCount,
+        invalidEmailCount,
+        missingPaymentLinkCount,
       },
     };
 
@@ -761,10 +935,20 @@ export async function POST(req: Request) {
       skippedCount,
       skippedReasonSummary: paymentCampaign
         ? {
-            missingPaymentLink: paymentFiltered.skippedMissingPaymentLink.length,
+            missingPaymentLink: missingPaymentLinkCount,
+            invalidEmail: invalidEmailCount,
             invalidOrDuplicateEmail: emailSkippedCount,
+            duplicateOrLimited: duplicateOrLimitedCount,
           }
-        : { invalidOrDuplicateEmail: emailSkippedCount },
+        : {
+            invalidEmail: invalidEmailCount,
+            invalidOrDuplicateEmail: emailSkippedCount,
+            duplicateOrLimited: duplicateOrLimitedCount,
+          },
+      invalidEmailCount,
+      missingPaymentLinkCount,
+      validPaymentLinkCount: paymentCampaign ? recipients.length : 0,
+      totalMatchedCount: allRecipients.length,
       segmentKey: payload.segmentKey,
       templateKey: payload.templateKey,
       message: "Campana enviada correctamente",

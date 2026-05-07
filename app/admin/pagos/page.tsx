@@ -1059,14 +1059,15 @@ export default function AdminPagosPage() {
 
         <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <div className="min-w-[980px]">
-              <div className="grid grid-cols-[1.4fr_1.2fr_1.2fr_1fr_1fr_1fr_1.6fr] gap-3 bg-slate-50 p-3 text-xs font-black text-slate-500">
+            <div className="min-w-[1120px]">
+              <div className="grid grid-cols-[1.4fr_1.2fr_1.2fr_1fr_1fr_1fr_1.1fr_1.6fr] gap-3 bg-slate-50 p-3 text-xs font-black text-slate-500">
                 <div>Cliente</div>
                 <div>Servicio</div>
                 <div>Fecha/hora</div>
                 <div>Pago</div>
                 <div>Monto</div>
                 <div>Reserva</div>
+                <div>Documento</div>
                 <div>Acciones</div>
               </div>
               {loading ? (
@@ -1082,7 +1083,7 @@ export default function AdminPagosPage() {
                 </div>
               ) : (
                 filteredRows.map((row) => (
-                  <div key={row.id} className="grid grid-cols-[1.4fr_1.2fr_1.2fr_1fr_1fr_1fr_1.6fr] gap-3 border-t p-3 text-sm">
+                  <div key={row.id} className="grid grid-cols-[1.4fr_1.2fr_1.2fr_1fr_1fr_1fr_1.1fr_1.6fr] gap-3 border-t p-3 text-sm">
                     <div>
                       <div className="font-bold text-slate-900">{row.customer_name || "Cliente"}</div>
                       <div className="text-xs text-slate-500">{row.customer_email || "Sin email"}</div>
@@ -1103,6 +1104,25 @@ export default function AdminPagosPage() {
                       {row.status && row.status !== row.booking_status ? (
                         <div className="text-xs text-slate-500">{row.status}</div>
                       ) : null}
+                    </div>
+                    <div className="grid gap-2">
+                      <StatusBadge label="Sin documento" tone="slate" />
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-xl border bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400 disabled:cursor-not-allowed"
+                        title="Disponible cuando facturación esté conectada"
+                      >
+                        Emitir boleta
+                      </button>
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-xl border bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400 disabled:cursor-not-allowed"
+                        title="Disponible cuando facturación esté conectada"
+                      >
+                        Emitir factura
+                      </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button

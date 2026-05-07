@@ -134,6 +134,7 @@ type TenantInfo = {
   logo_url?: string | null;
   phone_display?: string | null;
   whatsapp?: string | null;
+  contact_email?: string | null;
   admin_email?: string | null;
 };
 
@@ -142,7 +143,22 @@ type SendResult = {
   sentCount: number;
   skippedCount: number;
   errorCount: number;
+  invalidEmailCount: number;
+  missingPaymentLinkCount: number;
+  validPaymentLinkCount: number;
+  totalMatchedCount: number;
   message: string;
+};
+
+type AudienceStats = {
+  totalMatchedCount: number;
+  validEmailCount: number;
+  validPaymentLinkCount: number;
+  recipientCount: number;
+  skippedCount: number;
+  invalidEmailCount: number;
+  duplicateOrLimitedCount: number;
+  missingPaymentLinkCount: number;
 };
 
 const MEDIA_TYPES: Array<{ id: CampaignMediaType; title: string; text: string }> = [
@@ -244,6 +260,9 @@ export default function AdminCampanasPage() {
     text: string;
   } | null>(null);
   const [result, setResult] = useState<SendResult | null>(null);
+  const [audienceStats, setAudienceStats] = useState<AudienceStats | null>(null);
+  const [loadingAudienceStats, setLoadingAudienceStats] = useState(false);
+  const [audienceStatsError, setAudienceStatsError] = useState("");
 
   useEffect(() => {
     const run = async () => {
@@ -255,7 +274,7 @@ export default function AdminCampanasPage() {
 
       const withWhatsapp = await supabase
         .from("tenants")
-        .select("id, slug, name, logo_url, phone_display, whatsapp, admin_email")
+        .select("id, slug, name, logo_url, phone_display, whatsapp, contact_email, admin_email")
         .eq("slug", slug)
         .maybeSingle();
 
@@ -264,7 +283,7 @@ export default function AdminCampanasPage() {
           ? withWhatsapp
           : await supabase
               .from("tenants")
-              .select("id, slug, name, logo_url, phone_display, admin_email")
+              .select("id, slug, name, logo_url, phone_display, contact_email, admin_email")
               .eq("slug", slug)
               .maybeSingle();
 
@@ -298,6 +317,15 @@ export default function AdminCampanasPage() {
     [segmentKey],
   );
   const pendingPaymentCampaign = isPendingPaymentCampaign(templateKey, segmentKey);
+  const pendingPaymentHasNoValidRecipients =
+    pendingPaymentCampaign &&
+    !loadingAudienceStats &&
+    audienceStats !== null &&
+    audienceStats.validPaymentLinkCount === 0;
+  const pendingPaymentAudienceUnavailable =
+    pendingPaymentCampaign &&
+    !loadingAudienceStats &&
+    (!audienceStats || Boolean(audienceStatsError));
 
   const statusLabel = sending
     ? "Enviando"
@@ -312,13 +340,76 @@ export default function AdminCampanasPage() {
     !message.trim() ||
     !ctaLabel.trim() ||
     (!pendingPaymentCampaign && !ctaUrl.trim()) ||
-    !confirmed;
+    !confirmed ||
+    (pendingPaymentCampaign &&
+      (loadingAudienceStats ||
+        pendingPaymentHasNoValidRecipients ||
+        pendingPaymentAudienceUnavailable));
 
   const effectiveMediaUrl = mediaType === "none" ? "" : mediaUrl.trim();
   const selectedMediaType = useMemo(
     () => MEDIA_TYPES.find((item) => item.id === mediaType),
     [mediaType],
   );
+
+  useEffect(() => {
+    if (!authChecked || !tenantSlug || !pendingPaymentCampaign) {
+      setAudienceStats(null);
+      setAudienceStatsError("");
+      setLoadingAudienceStats(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const run = async () => {
+      setLoadingAudienceStats(true);
+      setAudienceStatsError("");
+
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const token = sess.session?.access_token;
+        if (!token) throw new Error("Inicia sesión nuevamente para revisar pagos pendientes.");
+
+        const params = new URLSearchParams({
+          tenantSlug,
+          templateKey,
+          segmentKey,
+        });
+        const res = await fetch(`/api/admin/campaigns/send?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error ?? "No se pudo revisar la audiencia.");
+        }
+        if (cancelled) return;
+        setAudienceStats({
+          totalMatchedCount: Number(json.totalMatchedCount ?? 0),
+          validEmailCount: Number(json.validEmailCount ?? 0),
+          validPaymentLinkCount: Number(json.validPaymentLinkCount ?? 0),
+          recipientCount: Number(json.recipientCount ?? 0),
+          skippedCount: Number(json.skippedCount ?? 0),
+          invalidEmailCount: Number(json.invalidEmailCount ?? 0),
+          duplicateOrLimitedCount: Number(json.duplicateOrLimitedCount ?? 0),
+          missingPaymentLinkCount: Number(json.missingPaymentLinkCount ?? 0),
+        });
+      } catch (e: any) {
+        if (cancelled) return;
+        setAudienceStats(null);
+        setAudienceStatsError(e?.message ?? "No se pudo revisar la audiencia.");
+      } finally {
+        if (!cancelled) setLoadingAudienceStats(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authChecked, pendingPaymentCampaign, segmentKey, templateKey, tenantSlug]);
 
   const resetMedia = () => {
     setMediaUrl("");
@@ -499,6 +590,10 @@ export default function AdminCampanasPage() {
         sentCount: Number(json.sentCount ?? 0),
         skippedCount: Number(json.skippedCount ?? 0),
         errorCount: Number(json.errorCount ?? 0),
+        invalidEmailCount: Number(json.invalidEmailCount ?? 0),
+        missingPaymentLinkCount: Number(json.missingPaymentLinkCount ?? 0),
+        validPaymentLinkCount: Number(json.validPaymentLinkCount ?? 0),
+        totalMatchedCount: Number(json.totalMatchedCount ?? 0),
         message: text,
       });
       setConfirmed(false);
@@ -573,7 +668,8 @@ export default function AdminCampanasPage() {
   const previewWhatsAppValue =
     previewWhatsApp || (previewPhone && isLikelyChileanMobile(previewPhone) ? previewPhone : "");
   const previewWhatsAppUrl = whatsappUrlFromPhone(previewWhatsAppValue);
-  const previewContactEmail = tenantInfo?.admin_email?.trim() || "";
+  const previewContactEmail =
+    tenantInfo?.contact_email?.trim() || tenantInfo?.admin_email?.trim() || "";
   const hasContactChannels = Boolean(previewWhatsAppUrl || previewContactEmail);
 
   if (tenantError) {
@@ -682,9 +778,42 @@ export default function AdminCampanasPage() {
                       Puedes personalizar el texto sin perder la estructura de la plantilla.
                     </p>
                     {pendingPaymentCampaign ? (
-                    <p className="mt-2 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                        Esta campaña usará el link de pago pendiente de cada reserva. Si una reserva pendiente no tiene link de pago, se omitirá para evitar enviar al cliente a una página incorrecta.
-                      </p>
+                      <div className="mt-3 grid gap-3 rounded-2xl border border-amber-100 bg-[linear-gradient(180deg,#fffbeb_0%,#ffffff_100%)] p-4 shadow-sm">
+                        <div className="text-sm font-black text-amber-950">
+                          Esta campaña enviará un link de pago único a cada cliente con pago pendiente.
+                        </div>
+                        <p className="text-sm font-semibold leading-6 text-amber-900">
+                          El botón del email usará el mismo link real que aparece en Pagos para abrir, copiar o reenviar. Los registros sin link válido se omiten.
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          {[
+                            ["Encontrados", loadingAudienceStats ? "..." : audienceStats?.totalMatchedCount ?? 0],
+                            ["Con link válido", loadingAudienceStats ? "..." : audienceStats?.validPaymentLinkCount ?? 0],
+                            ["Sin link", loadingAudienceStats ? "..." : audienceStats?.missingPaymentLinkCount ?? 0],
+                            ["Email inválido", loadingAudienceStats ? "..." : audienceStats?.invalidEmailCount ?? 0],
+                          ].map(([label, value]) => (
+                            <div key={label} className="rounded-2xl border border-white bg-white/80 p-3 shadow-sm">
+                              <div className="text-[10px] font-black uppercase text-slate-400">{label}</div>
+                              <div className="mt-1 text-lg font-black text-slate-950">{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                        {audienceStatsError ? (
+                          <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-800">
+                            {audienceStatsError}
+                          </div>
+                        ) : null}
+                        {pendingPaymentHasNoValidRecipients ? (
+                          <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-800">
+                            No hay pagos pendientes con link válido para enviar.
+                          </div>
+                        ) : null}
+                        {audienceStats && audienceStats.missingPaymentLinkCount > 0 ? (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900">
+                            Algunos clientes serán omitidos porque no tienen link de pago válido.
+                          </div>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                   <button
@@ -980,6 +1109,16 @@ export default function AdminCampanasPage() {
                   </button>
                   <StatusBadge status={sending ? "sending" : sendState?.type === "success" ? "sent" : "prepared"} />
                 </div>
+                {pendingPaymentHasNoValidRecipients ? (
+                  <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-800">
+                    No hay pagos pendientes con link válido para enviar.
+                  </div>
+                ) : null}
+                {pendingPaymentCampaign && audienceStats && audienceStats.missingPaymentLinkCount > 0 ? (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                    Algunos clientes fueron omitidos porque no tienen link de pago válido.
+                  </div>
+                ) : null}
 
                 {sendState ? (
                   <div
@@ -1128,6 +1267,34 @@ export default function AdminCampanasPage() {
               <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 font-bold text-amber-900">
                 Límite de seguridad: máximo 100 destinatarios.
               </div>
+              {pendingPaymentCampaign ? (
+                <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex justify-between gap-3">
+                    <span className="font-bold text-slate-500">Pagos encontrados</span>
+                    <span className="font-black text-slate-900">
+                      {loadingAudienceStats ? "..." : audienceStats?.totalMatchedCount ?? 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="font-bold text-slate-500">Listos para enviar</span>
+                    <span className="font-black text-emerald-700">
+                      {loadingAudienceStats ? "..." : audienceStats?.validPaymentLinkCount ?? 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="font-bold text-slate-500">Omitidos sin link</span>
+                    <span className="font-black text-amber-700">
+                      {loadingAudienceStats ? "..." : audienceStats?.missingPaymentLinkCount ?? 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="font-bold text-slate-500">Emails inválidos</span>
+                    <span className="font-black text-red-700">
+                      {loadingAudienceStats ? "..." : audienceStats?.invalidEmailCount ?? 0}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 font-bold text-slate-600">
                 Se registrará un log por cada mensaje enviado.
               </div>
@@ -1145,6 +1312,22 @@ export default function AdminCampanasPage() {
                   <span>Omitidos</span>
                   <span className="font-black text-amber-700">{result.skippedCount}</span>
                 </div>
+                {pendingPaymentCampaign ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Con link válido</span>
+                      <span className="font-black text-emerald-700">{result.validPaymentLinkCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Sin link de pago</span>
+                      <span className="font-black text-amber-700">{result.missingPaymentLinkCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Email inválido</span>
+                      <span className="font-black text-red-700">{result.invalidEmailCount}</span>
+                    </div>
+                  </>
+                ) : null}
                 <div className="flex justify-between">
                   <span>Errores</span>
                   <span className="font-black text-red-700">{result.errorCount}</span>

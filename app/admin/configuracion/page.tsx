@@ -25,6 +25,32 @@ type TenantForm = {
   logo_url: string;
 };
 
+type TenantConfigResponse = {
+  id: string;
+  slug: string;
+  name: string | null;
+  phone_display: string | null;
+  whatsapp: string | null;
+  contact_email: string | null;
+  address: string | null;
+  city: string | null;
+  description: string | null;
+  logo_url: string | null;
+};
+
+function tenantToForm(tenant: TenantConfigResponse): TenantForm {
+  return {
+    name: tenant.name ?? "",
+    phone_display: tenant.phone_display ?? "",
+    whatsapp: tenant.whatsapp ?? "",
+    contact_email: tenant.contact_email ?? "",
+    address: tenant.address ?? "",
+    city: tenant.city ?? "",
+    description: tenant.description ?? "",
+    logo_url: tenant.logo_url ?? "",
+  };
+}
+
 function countPhoneDigits(value: string) {
   return value.replace(/\D/g, "").length;
 }
@@ -62,47 +88,36 @@ export default function ConfiguracionPage() {
       }
       setTenantSlug(slug);
 
-      const { data, error } = await supabase
-        .from("tenants")
-        .select("id, slug, name, phone_display, whatsapp, contact_email, address, city, description, logo_url")
-        .eq("slug", slug)
-        .maybeSingle();
-
-      if (error || !data?.id) {
-        setTenantError(error?.message ?? `No existe tenant para ${slug}`);
-        setLoading(false);
-        return;
-      }
-
-      setTenantId(data.id);
-      setForm({
-        name: data.name ?? "",
-        phone_display: data.phone_display ?? "",
-        whatsapp: data.whatsapp ?? "",
-        contact_email: data.contact_email ?? "",
-        address: data.address ?? "",
-        city: data.city ?? "",
-        description: data.description ?? "",
-        logo_url: data.logo_url ?? "",
-      });
-      setLoading(false);
-    };
-
-    void run();
-  }, []);
-
-  useEffect(() => {
-    const run = async () => {
-      if (!tenantId || tenantError) return;
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
         router.push(`/login?redirectTo=${encodeURIComponent("/admin/configuracion")}`);
         return;
       }
       setAuthChecked(true);
+
+      const res = await fetch(
+        `/api/admin/tenant?tenantSlug=${encodeURIComponent(slug)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        },
+      );
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok || !json?.tenant?.id) {
+        setTenantError(json?.error ?? `No existe tenant para ${slug}`);
+        setLoading(false);
+        return;
+      }
+
+      setTenantId(json.tenant.id);
+      setForm(tenantToForm(json.tenant));
+      setLoading(false);
     };
+
     void run();
-  }, [router, tenantId, tenantError]);
+  }, [router]);
 
   const save = async () => {
     if (!tenantId) return;
@@ -164,6 +179,11 @@ export default function ConfiguracionPage() {
       return;
     }
 
+    if (json.tenant?.id) {
+      setTenantId(json.tenant.id);
+      setForm(tenantToForm(json.tenant));
+    }
+
     toast({ title: "Configuración guardada" });
   };
 
@@ -177,7 +197,7 @@ export default function ConfiguracionPage() {
         <AdminPageHeader
           eyebrow="Negocio"
           title="Configuración"
-          description={`Datos publicos basicos para ${tenantSlug || "..."}.`}
+          description={`Datos públicos básicos para ${tenantSlug || "..."}.`}
         />
 
         <AdminSectionCard
@@ -212,7 +232,7 @@ export default function ConfiguracionPage() {
                 </div>
                 <div className="grid gap-4">
                   <label className="grid gap-1 text-sm font-semibold text-slate-700">
-                    Nombre negocio
+                    Nombre del negocio
                     <input
                       className="rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-slate-400"
                       value={form.name}
@@ -269,7 +289,7 @@ export default function ConfiguracionPage() {
                     </span>
                   </label>
                   <label className="grid gap-1 text-sm font-semibold text-slate-700 sm:col-span-2">
-                    Email visible/contacto
+                    Email de contacto público
                     <input
                       className="rounded-xl border border-slate-200 px-3 py-2 outline-none focus:border-slate-400"
                       value={form.contact_email}
@@ -277,7 +297,7 @@ export default function ConfiguracionPage() {
                       placeholder="contacto@negocio.cl"
                     />
                     <span className="text-xs font-semibold text-slate-500">
-                      Se mostrará como canal de contacto para clientes. El envío técnico puede seguir saliendo desde Citaya.
+                      Se guarda en contact_email y se mostrará como canal público para clientes. No cambia el correo interno admin_email ni el remitente técnico.
                     </span>
                   </label>
                 </div>

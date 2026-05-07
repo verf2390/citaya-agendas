@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   BarChart3,
   Bot,
@@ -38,7 +40,8 @@ const integrationModules = [
       "Monto pagado o pendiente",
     ],
     button: "Configurar facturación",
-    note: "Disponible cuando se conecte un proveedor DTE.",
+    note: "Base disponible para dejar datos tributarios listos.",
+    href: "/admin/facturacion",
   },
   {
     key: "collections_bot",
@@ -230,13 +233,22 @@ export default function AdminIntegracionesPage() {
                 ) : null}
 
                 <div>
-                  <button
-                    type="button"
-                    disabled
-                    className="rounded-xl border bg-slate-100 px-4 py-2 text-sm font-black text-slate-400 disabled:cursor-not-allowed"
-                  >
-                    {module.button}
-                  </button>
+                  {"href" in module ? (
+                    <Link
+                      href={module.href}
+                      className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800"
+                    >
+                      {module.button}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="rounded-xl border bg-slate-100 px-4 py-2 text-sm font-black text-slate-400 disabled:cursor-not-allowed"
+                    >
+                      {module.button}
+                    </button>
+                  )}
                   <p className="mt-2 text-xs font-bold text-slate-500">{module.note}</p>
                 </div>
               </div>

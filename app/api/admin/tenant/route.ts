@@ -17,6 +17,9 @@ type TenantUpdatePayload = {
   logo_url?: unknown;
 };
 
+const TENANT_PUBLIC_CONFIG_SELECT =
+  "id, slug, name, phone_display, whatsapp, contact_email, address, city, description, logo_url";
+
 function getBearerToken(req: Request): string {
   const auth = req.headers.get("authorization") ?? "";
   if (!auth.toLowerCase().startsWith("bearer ")) return "";
@@ -50,13 +53,55 @@ function getTenantSlug(req: Request, body: TenantUpdatePayload) {
   return String(body.tenantSlug ?? "").trim();
 }
 
+async function requireUser(req: Request) {
+  const token = getBearerToken(req);
+  if (!token) return { ok: false as const, error: "Unauthorized", status: 401 };
+
+  const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+  if (userErr || !userData?.user) {
+    return { ok: false as const, error: "Unauthorized", status: 401 };
+  }
+
+  return { ok: true as const };
+}
+
+export async function GET(req: Request) {
+  try {
+    const auth = await requireUser(req);
+    if (!auth.ok) return jsonError(auth.error, auth.status);
+
+    const url = new URL(req.url);
+    const forwardedHost = req.headers.get("x-forwarded-host");
+    const host = forwardedHost || req.headers.get("host");
+    const fromHost = getTenantSlugFromHostname(host);
+    const tenantSlug = fromHost || String(url.searchParams.get("tenantSlug") ?? "").trim();
+
+    if (!tenantSlug) return jsonError("No se pudo detectar el tenant actual.");
+
+    const { data: tenant, error } = await supabaseAdmin
+      .from("tenants")
+      .select(TENANT_PUBLIC_CONFIG_SELECT)
+      .eq("slug", tenantSlug)
+      .maybeSingle();
+
+    if (error || !tenant?.id) {
+      return jsonError(error?.message ?? "No se pudo cargar el negocio actual.", 404);
+    }
+
+    return NextResponse.json({ ok: true, tenant });
+  } catch (e: any) {
+    console.error("[api/admin/tenant] get error:", e?.message || e);
+    return NextResponse.json(
+      { ok: false, error: e?.message ?? "No se pudo cargar la configuración" },
+      { status: 500 },
+    );
+  }
+}
+
 export async function PATCH(req: Request) {
   try {
-    const token = getBearerToken(req);
-    if (!token) return jsonError("Unauthorized", 401);
-
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userData?.user) return jsonError("Unauthorized", 401);
+    const auth = await requireUser(req);
+    if (!auth.ok) return jsonError(auth.error, auth.status);
 
     const body = (await req.json().catch(() => null)) as TenantUpdatePayload | null;
     if (!body || typeof body !== "object") return jsonError("JSON inválido");
@@ -87,7 +132,7 @@ export async function PATCH(req: Request) {
       return jsonError("No se pudo validar el negocio actual.", 404);
     }
 
-    const { error: updateError } = await supabaseAdmin
+    const { data: updatedTenant, error: updateError } = await supabaseAdmin
       .from("tenants")
       .update({
         name,
@@ -99,14 +144,16 @@ export async function PATCH(req: Request) {
         description: optionalText(body.description),
         logo_url: optionalText(body.logo_url),
       })
-      .eq("id", tenant.id);
+      .eq("id", tenant.id)
+      .select(TENANT_PUBLIC_CONFIG_SELECT)
+      .single();
 
     if (updateError) {
       console.error("[api/admin/tenant] update error:", updateError);
       return jsonError(updateError.message, 500);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, tenant: updatedTenant });
   } catch (e: any) {
     console.error("[api/admin/tenant] error:", e?.message || e);
     return NextResponse.json(

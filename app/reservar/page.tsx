@@ -264,6 +264,11 @@ function useSmoothScrollTo() {
   return scrollToRef;
 }
 
+function scrollToElementStart(el: HTMLElement, offset = 90) {
+  const y = el.getBoundingClientRect().top + window.scrollY - offset;
+  window.scrollTo({ top: Math.max(y, 0), behavior: "smooth" });
+}
+
 function SectionHeader({
   icon,
   title,
@@ -350,8 +355,10 @@ function ReservarInner() {
   const scrollToRef = useSmoothScrollTo();
 
   const serviceRef = useRef<HTMLDivElement>(null);
+  const professionalRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const contactRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const paymentRef = useRef<HTMLDivElement>(null);
 
   const [isScrolled, setIsScrolled] = useState(false);
@@ -855,7 +862,7 @@ function ReservarInner() {
 
     if (!professionalId) {
       alert("Selecciona un profesional.");
-      scrollToRef(serviceRef);
+      scrollToRef(professionalRef);
       return;
     }
 
@@ -1166,8 +1173,7 @@ function ReservarInner() {
     const p = new URLSearchParams(searchParams.toString());
     p.set("service", id);
     if (tenantFromQuery) p.set("tenant", tenantFromQuery);
-    router.push(`/reservar?${p.toString()}`);
-    setTimeout(() => scrollToRef(slotRef), 80);
+    router.push(`/reservar?${p.toString()}`, { scroll: false });
   };
 
   const dayCounts = useMemo(() => {
@@ -1246,11 +1252,26 @@ function ReservarInner() {
   const contactDone =
     fullName.trim().length >= 2 && isPhoneValid && isValidEmail(email);
 
+  const scrollToContactStart = useCallback(() => {
+    const target = contactRef.current;
+    if (!target) return;
+
+    try {
+      scrollToElementStart(target, 92);
+    } catch {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    window.setTimeout(() => {
+      nameInputRef.current?.focus({ preventScroll: true });
+    }, 320);
+  }, []);
+
   return (
     <DemoShell className="overflow-x-clip">
       <DemoContainer
         size="booking"
-        className="font-[system-ui] text-[12px] leading-snug sm:text-[14px] sm:leading-normal"
+        className="max-w-full overflow-x-clip font-[system-ui] text-[12px] leading-snug sm:text-[14px] sm:leading-normal"
       >
         <div
           className={cn(
@@ -1340,8 +1361,8 @@ function ReservarInner() {
           </SurfaceCard>
         </div>
 
-        <div className="grid gap-4 pt-4 sm:gap-5 lg:grid-cols-[minmax(0,1.08fr)_320px]">
-          <div className="lg:col-span-2">
+        <div className="grid min-w-0 max-w-full gap-4 pt-4 sm:gap-5 lg:grid-cols-[minmax(0,1.08fr)_320px]">
+          <div className="min-w-0 max-w-full lg:col-span-2">
             <div ref={serviceRef} />
             <Section className="bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
               <SectionHeader
@@ -1440,8 +1461,9 @@ function ReservarInner() {
                         onClick={() => {
                           const p = new URLSearchParams(searchParams.toString());
                           p.delete("service");
-                          router.push(`/reservar?${p.toString()}`);
-                          setTimeout(() => scrollToRef(serviceRef), 60);
+                          router.push(`/reservar?${p.toString()}`, {
+                            scroll: false,
+                          });
                         }}
                         variant="pill"
                         className="h-10 gap-2 border-white/80 bg-white/78 px-4 text-[12px] font-extrabold shadow-[0_8px_18px_rgba(15,23,42,0.06)] hover:bg-white"
@@ -1456,6 +1478,7 @@ function ReservarInner() {
               )}
             </Section>
 
+            <div ref={professionalRef} />
             <Section className="mt-4 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
               <SectionHeader
                 icon={<User className="h-4 w-4 text-muted-foreground" />}
@@ -1496,7 +1519,10 @@ function ReservarInner() {
                     <select
                       value={professionalId}
                       disabled={saving || !tenantId}
-                      onChange={(e) => setProfessionalId(e.target.value)}
+                      onChange={(e) => {
+                        setProfessionalId(e.target.value);
+                        setSelectedSlot(null);
+                      }}
                       className="mt-4 h-11 w-full rounded-2xl border border-white/80 bg-white/88 px-3 text-[12px] font-medium shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                     >
                       {professionals.map((p) => (
@@ -1559,7 +1585,7 @@ function ReservarInner() {
             <div ref={slotRef} />
             <Section
               className={cn(
-                "mt-4 border-white/70 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6",
+                "mt-4 min-w-0 max-w-full overflow-hidden border-white/70 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6",
                 lockSlots ? "opacity-70" : "",
               )}
             >
@@ -1616,7 +1642,7 @@ function ReservarInner() {
                 </SurfaceCard>
               ) : (
                 <div className="mt-3">
-                  <div className="rounded-[28px] border border-slate-200/70 bg-white/82 p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:p-4">
+                  <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white/82 p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:rounded-[28px] sm:p-4">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
                         <div className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-400">
@@ -1731,8 +1757,8 @@ function ReservarInner() {
                       "motion-reduce:animate-none",
                     )}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[11px] font-extrabold sm:text-sm">
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <div className="min-w-0 break-words text-[11px] font-extrabold sm:text-sm">
                         Selecciona una hora disponible
                       </div>
 
@@ -1784,7 +1810,7 @@ function ReservarInner() {
                               tone="default"
                               shadow="soft"
                               radius="lg"
-                              className="border-slate-200/70 bg-white/90 p-3 sm:p-4 shadow-[0_10px_24px_rgba(15,23,42,0.05)]"
+                              className="min-w-0 max-w-full overflow-hidden border-slate-200/70 bg-white/90 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:p-4"
                             >
                               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -1808,7 +1834,7 @@ function ReservarInner() {
                                 </span>
                               </div>
 
-                              <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                              <div className="mt-3 grid min-w-0 grid-cols-1 gap-2.5 min-[380px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                                 {list.map((s: Slot) => {
                                   const active =
                                     selectedSlot?.start_at === s.start_at;
@@ -1820,10 +1846,10 @@ function ReservarInner() {
                                       disabled={saving || !tenantId}
                                       onClick={() => {
                                         setSelectedSlot(s);
-                                        setTimeout(() => scrollToRef(contactRef), 90);
+                                        setTimeout(scrollToContactStart, 90);
                                       }}
                                       className={cn(
-                                        "relative w-full rounded-2xl border text-left transition",
+                                        "relative w-full min-w-0 rounded-2xl border text-left transition",
                                         "min-h-[56px] px-3 py-3",
                                         "active:scale-[0.98] motion-reduce:active:scale-100",
                                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -1849,12 +1875,12 @@ function ReservarInner() {
                                         )}
                                       </span>
 
-                                      <div className="text-[14px] font-extrabold leading-none sm:text-sm">
+                                      <div className="break-words pr-7 text-[14px] font-extrabold leading-snug sm:text-sm">
                                         {onlyTimeCL(s.start_at)}
                                       </div>
                                       <div
                                         className={cn(
-                                          "mt-1 text-[10px] leading-none",
+                                          "mt-1 break-words pr-7 text-[10px] leading-snug",
                                           active
                                             ? "text-white/80"
                                             : "text-muted-foreground",
@@ -1877,19 +1903,19 @@ function ReservarInner() {
                         <div className="text-[11px] font-extrabold text-amber-900 sm:text-sm">
                           Horarios ocupados
                         </div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                        <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 min-[380px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                           {activeUnavailableSlots.map((s) => (
                             <button
                               key={s.start_at}
                               type="button"
                               disabled={waitlistSavingSlot === s.start_at}
                               onClick={() => openWaitlist({ type: "exact", slot: s })}
-                              className="min-h-[52px] rounded-2xl border border-amber-200 bg-white/85 px-3 py-2 text-left text-amber-950 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
+                              className="min-h-[52px] w-full min-w-0 rounded-2xl border border-amber-200 bg-white/85 px-3 py-2 text-left text-amber-950 shadow-[0_8px_18px_rgba(15,23,42,0.04)] transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
                             >
-                              <div className="text-[14px] font-extrabold leading-none sm:text-sm">
+                              <div className="break-words text-[14px] font-extrabold leading-snug sm:text-sm">
                                 {onlyTimeCL(s.start_at)}
                               </div>
-                              <div className="mt-1 text-[10px] leading-none text-amber-700">
+                              <div className="mt-1 break-words text-[10px] leading-snug text-amber-700">
                                 Unirme a lista de espera
                               </div>
                             </button>
@@ -2032,7 +2058,7 @@ function ReservarInner() {
             <div ref={contactRef} />
             <Section
               className={cn(
-                "mt-4 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6",
+                "mt-4 min-w-0 max-w-full overflow-hidden bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6",
                 lockContact ? "opacity-70" : "",
               )}
             >
@@ -2042,16 +2068,17 @@ function ReservarInner() {
                 subtitle="Te enviaremos la confirmación al correo."
               />
 
-              <div className="mt-4 rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs">
+              <div className="mt-4 max-w-full break-words rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-[10.5px] leading-relaxed text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs">
                 Tus datos se usan solo para gestionar tu reserva y enviarte la confirmación.
               </div>
 
-              <div className="mt-3 grid gap-3">
-                <div>
+              <div className="mt-3 grid min-w-0 gap-3">
+                <div className="min-w-0">
                   <label className="mb-1.5 block text-[11px] font-semibold sm:text-sm">
                     Nombre
                   </label>
                   <input
+                    ref={nameInputRef}
                     value={fullName}
                     disabled={saving || !tenantId}
                     onChange={(e) => {
@@ -2059,11 +2086,11 @@ function ReservarInner() {
                       if (!nameTouched) setNameTouched(true);
                     }}
                     placeholder="Ej: Juan Pérez"
-                    className="h-11 w-full rounded-2xl border border-white/80 bg-white/90 px-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                    className="h-11 w-full min-w-0 rounded-2xl border border-white/80 bg-white/90 px-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-foreground/20 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="mb-1.5 block text-[11px] font-semibold sm:text-sm">
                     Celular
                   </label>
@@ -2082,7 +2109,7 @@ function ReservarInner() {
                       }}
                       placeholder="Ej: 912345678 o +56912345678"
                       className={cn(
-                        "h-11 w-full rounded-2xl border bg-white/90 pl-10 pr-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
+                        "h-11 w-full min-w-0 rounded-2xl border bg-white/90 pl-10 pr-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
                         phoneTouched && phone.trim().length > 0 && !isPhoneValid
                           ? "border-red-300 focus:ring-red-200"
                           : "border-slate-200 focus:ring-foreground/20",
@@ -2090,7 +2117,7 @@ function ReservarInner() {
                     />
                   </div>
 
-                  <div className="mt-1.5 text-[10px] text-muted-foreground sm:text-xs">
+                  <div className="mt-1.5 max-w-full break-words text-[10px] text-muted-foreground sm:text-xs">
                     Se guardará como:{" "}
                     <span className="font-semibold text-foreground">
                       {phoneNorm || "—"}
@@ -2098,7 +2125,7 @@ function ReservarInner() {
                   </div>
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="mb-1.5 block text-[11px] font-semibold sm:text-sm">
                     Correo
                   </label>
@@ -2114,7 +2141,7 @@ function ReservarInner() {
                       onBlur={() => setEmail((v) => v.trim().toLowerCase())}
                       placeholder="Ej: nombre@gmail.com"
                       className={cn(
-                        "h-11 w-full rounded-2xl border bg-white/90 pl-10 pr-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
+                        "h-11 w-full min-w-0 rounded-2xl border bg-white/90 pl-10 pr-3 text-[12px] shadow-[0_8px_18px_rgba(15,23,42,0.05)] outline-none placeholder:text-muted-foreground focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm",
                         email.trim().length > 0 && !isValidEmail(email)
                           ? "border-red-300 focus:ring-red-200"
                           : "border-slate-200 focus:ring-foreground/20",
@@ -2127,7 +2154,7 @@ function ReservarInner() {
                   tone="default"
                   shadow="soft"
                   radius="lg"
-                  className="border-white/80 bg-white/76 px-3 py-2 text-center text-[10px] text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] sm:text-xs"
+                  className="max-w-full break-words border-white/80 bg-white/76 px-3 py-2 text-center text-[10px] leading-relaxed text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] sm:text-xs"
                 >
                   Al reservar aceptas recibir mensajes relacionados a tu cita.
                 </SurfaceCard>
@@ -2137,7 +2164,7 @@ function ReservarInner() {
             {showPaymentOptions ? (
               <>
                 <div ref={paymentRef} />
-                <Section className="mt-4 border-white/70 bg-white/84 p-4 ring-white/70 shadow-[0_22px_56px_rgba(15,23,42,0.09)] sm:p-6">
+                <Section className="mt-4 w-full min-w-0 max-w-full overflow-hidden border-white/70 bg-white/84 p-4 ring-white/70 shadow-[0_18px_42px_rgba(15,23,42,0.08)] sm:p-6 sm:shadow-[0_22px_56px_rgba(15,23,42,0.09)]">
                   <SectionHeader
                     icon={<ShieldCheck className="h-4 w-4 text-muted-foreground" />}
                     title="Pago de la reserva"
@@ -2148,25 +2175,25 @@ function ReservarInner() {
                     }
                   />
 
-                  <div className="mt-4 grid gap-3">
+                  <div className="mt-4 grid w-full min-w-0 max-w-full gap-3">
                     <button
                       type="button"
                       onClick={() => setPaymentChoice("pay_now")}
                       className={cn(
-                        "w-full rounded-[26px] border p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition",
+                        "min-h-11 w-full max-w-full rounded-2xl border p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition duration-200 ease-out active:scale-[0.99] sm:rounded-[26px]",
                         paymentChoice === "pay_now"
                           ? "border-slate-900 bg-slate-900 text-white shadow-[0_16px_30px_rgba(15,23,42,0.16)]"
                           : "border-slate-200/70 bg-white/88 hover:border-slate-300/80 hover:bg-white",
                       )}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-[12px] font-extrabold sm:text-sm">
+                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="break-words text-[12px] font-extrabold leading-snug sm:text-sm">
                             Pagar ahora
                           </div>
                           <div
                             className={cn(
-                              "mt-1 text-[10.5px] sm:text-xs",
+                              "mt-1 break-words text-[10.5px] leading-relaxed sm:text-xs",
                               paymentChoice === "pay_now"
                                 ? "text-white/85"
                                 : "text-muted-foreground",
@@ -2178,7 +2205,7 @@ function ReservarInner() {
 
                         <div
                           className={cn(
-                            "rounded-full px-3 py-1 text-[10px] font-extrabold",
+                            "inline-flex max-w-full min-w-0 shrink-0 items-center self-start whitespace-normal break-words rounded-full px-3 py-1.5 text-left text-[10px] font-extrabold leading-tight sm:self-center",
                             paymentChoice === "pay_now"
                               ? "bg-white/15 text-white"
                               : "bg-slate-900 text-white",
@@ -2192,18 +2219,18 @@ function ReservarInner() {
                     </button>
 
                     {paymentChoice === "pay_now" ? (
-                      <div className="rounded-[24px] border border-slate-200/70 bg-white/78 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]">
-                        <div className="text-[11px] font-extrabold text-slate-700">
+                      <div className="w-full min-w-0 max-w-full rounded-2xl border border-slate-200/70 bg-white/78 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:rounded-[24px] sm:p-4">
+                        <div className="break-words text-[11px] font-extrabold text-slate-700">
                           Método de pago
                         </div>
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div className="mt-2 grid min-w-0 gap-2 sm:grid-cols-2">
                           {paymentMethodsEnabled.map((method) => (
                             <button
                               key={method}
                               type="button"
                               onClick={() => setSelectedPaymentProvider(method)}
                               className={cn(
-                                "min-h-10 rounded-2xl border px-3 py-2 text-left text-[11px] font-extrabold transition",
+                                "min-h-11 w-full min-w-0 rounded-2xl border px-3 py-2 text-left text-[11px] font-extrabold leading-snug transition duration-200 ease-out active:scale-[0.99]",
                                 selectedPaymentProvider === method
                                   ? "border-slate-900 bg-slate-900 text-white"
                                   : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
@@ -2223,21 +2250,21 @@ function ReservarInner() {
                       }}
                       disabled={isPaymentRequired}
                       className={cn(
-                        "w-full rounded-[26px] border p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition",
+                        "min-h-11 w-full max-w-full rounded-2xl border p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] transition duration-200 ease-out active:scale-[0.99] sm:rounded-[26px]",
                         paymentChoice === "pay_later"
                           ? "border-slate-900 bg-slate-900 text-white shadow-[0_16px_30px_rgba(15,23,42,0.16)]"
                           : "border-slate-200/70 bg-white/88 hover:border-slate-300/80 hover:bg-white",
                         isPaymentRequired ? "cursor-not-allowed opacity-60" : "",
                       )}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-[12px] font-extrabold sm:text-sm">
+                      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="break-words text-[12px] font-extrabold leading-snug sm:text-sm">
                             Pagar después
                           </div>
                           <div
                             className={cn(
-                              "mt-1 text-[10.5px] sm:text-xs",
+                              "mt-1 break-words text-[10.5px] leading-relaxed sm:text-xs",
                               paymentChoice === "pay_later"
                                 ? "text-white/85"
                                 : "text-muted-foreground",
@@ -2249,7 +2276,7 @@ function ReservarInner() {
 
                         <div
                           className={cn(
-                            "rounded-full px-3 py-1 text-[10px] font-extrabold",
+                            "inline-flex max-w-full min-w-0 shrink-0 items-center self-start whitespace-normal break-words rounded-full px-3 py-1.5 text-left text-[10px] font-extrabold leading-tight sm:self-center",
                             paymentChoice === "pay_later"
                               ? "bg-white/15 text-white"
                               : "bg-slate-100 text-slate-700",
@@ -2261,7 +2288,7 @@ function ReservarInner() {
                     </button>
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-[10.5px] text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs">
+                  <div className="mt-4 w-full max-w-full break-words rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-[10.5px] leading-relaxed text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm sm:text-xs">
                     {isPayNowSelected
                       ? paymentBreakdown.remaining > 0
                         ? `Pagas ahora ${moneyCLP(paymentBreakdown.requiredNow, service?.currency)} como abono. El saldo de ${moneyCLP(paymentBreakdown.remaining, service?.currency)} se paga en el local.`
