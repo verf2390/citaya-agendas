@@ -29,6 +29,67 @@ function cleanEmailOrNull(v: unknown): string | null {
   return t ? t : null;
 }
 
+const ACTIVE_BOOKING_STATUSES = new Set([
+  "confirmed",
+  "pending_payment",
+  "pending",
+  "paid",
+]);
+
+function normalizeStatus(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isActiveSlotBlockingAppointment(row: {
+  status?: string | null;
+  booking_status?: string | null;
+  payment_status?: string | null;
+}) {
+  const status = normalizeStatus(row.status);
+  const bookingStatus = normalizeStatus(row.booking_status);
+  const paymentStatus = normalizeStatus(row.payment_status);
+
+  if (
+    status === "canceled" ||
+    status === "cancelled" ||
+    status === "no_show" ||
+    status === "rejected" ||
+    bookingStatus === "canceled" ||
+    bookingStatus === "cancelled" ||
+    bookingStatus === "no_show" ||
+    bookingStatus === "rejected"
+  ) {
+    return false;
+  }
+
+  return (
+    ACTIVE_BOOKING_STATUSES.has(status) ||
+    ACTIVE_BOOKING_STATUSES.has(bookingStatus) ||
+    ACTIVE_BOOKING_STATUSES.has(paymentStatus)
+  );
+}
+
+function isAppointmentConflictError(error: { code?: string; message?: string }) {
+  return (
+    error.code === "23P01" ||
+    error.code === "23505" ||
+    /appointments_no_active_overlap|appointments_active_slot_unique|exclusion/i.test(
+      error.message ?? "",
+    )
+  );
+}
+
+function slotTakenResponse() {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Ese horario ya fue tomado. Elige otro horario.",
+      code: "slot_taken",
+    },
+    { status: 409 },
+  );
+}
+
 async function resolveCustomerId(args: {
   sb: typeof supabaseServer;
   tenantId: string;
@@ -76,7 +137,7 @@ async function resolveCustomerId(args: {
   }
 
   if (existing?.id) {
-    const patch: any = {};
+    const patch: Record<string, string> = {};
     if (full_name && !existing.full_name) patch.full_name = full_name;
     if (phone && !existing.phone) patch.phone = phone;
     if (email && !existing.email) patch.email = email;
@@ -186,8 +247,11 @@ async function sendConfirmationWebhook(args: {
     });
 
     clearTimeout(timeout);
-  } catch (err: any) {
-    console.error("[appointments/create] n8n webhook error:", err?.message || err);
+  } catch (err: unknown) {
+    console.error(
+      "[appointments/create] n8n webhook error:",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -252,15 +316,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const resolvedCustomerId = await resolveCustomerId({
-      sb,
-      tenantId: effectiveTenantId,
-      customerId: customerId ?? null,
-      customerName: customerName ?? null,
-      customerPhone: customerPhone ?? null,
-      customerEmail: customerEmail ?? null,
-    });
-
     let service_name: string | null = null;
     let description: string | null = null;
 
@@ -285,6 +340,30 @@ export async function POST(req: Request) {
       }
     }
 
+    const { data: conflicts, error: conflictError } = await sb
+      .from("appointments")
+      .select("id,status,booking_status,payment_status")
+      .eq("tenant_id", effectiveTenantId)
+      .eq("professional_id", professionalId)
+      .lt("start_at", parsedEndAt.toISOString())
+      .gt("end_at", parsedStartAt.toISOString())
+      .limit(20);
+
+    if (conflictError) throw conflictError;
+
+    if ((conflicts ?? []).some(isActiveSlotBlockingAppointment)) {
+      return slotTakenResponse();
+    }
+
+    const resolvedCustomerId = await resolveCustomerId({
+      sb,
+      tenantId: effectiveTenantId,
+      customerId: customerId ?? null,
+      customerName: customerName ?? null,
+      customerPhone: customerPhone ?? null,
+      customerEmail: customerEmail ?? null,
+    });
+
     // ✅ token privado SIEMPRE
     const manage_token = generateManageToken();
     const normalizedPaymentRequired = paymentRequired === true;
@@ -302,8 +381,8 @@ export async function POST(req: Request) {
     const payload = {
       tenant_id: effectiveTenantId,
       professional_id: professionalId,
-      start_at: startAt,
-      end_at: endAt,
+      start_at: parsedStartAt.toISOString(),
+      end_at: parsedEndAt.toISOString(),
 
       customer_name: customerName,
       customer_phone: customerPhone ?? null,
@@ -334,7 +413,13 @@ export async function POST(req: Request) {
       .select("id, manage_token")
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (isAppointmentConflictError(error)) {
+        return slotTakenResponse();
+      }
+
+      throw error;
+    }
 
     if (
       !shouldSendConfirmation({
@@ -376,11 +461,17 @@ export async function POST(req: Request) {
       manageToken: data.manage_token,
       customerId: resolvedCustomerId ?? null,
     });
-  } catch (e: any) {
-    console.error("[appointments/create] error:", e?.message || e);
+  } catch (e: unknown) {
+    console.error(
+      "[appointments/create] error:",
+      e instanceof Error ? e.message : e,
+    );
 
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error inesperado" },
+      {
+        ok: false,
+        error: e instanceof Error ? e.message : "Error inesperado",
+      },
       { status: 500 }
     );
   }

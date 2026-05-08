@@ -7,7 +7,9 @@ import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
 type AppointmentRangeRow = {
   start_at: string;
   end_at: string;
+  status: string | null;
   booking_status: string | null;
+  payment_status: string | null;
 };
 
 type AvailabilityRow = {
@@ -131,6 +133,42 @@ function minDate(a: Date, b: Date) {
 function diffDaysCeil(a: Date, b: Date) {
   const ms = b.getTime() - a.getTime();
   return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
+
+const ACTIVE_BOOKING_STATUSES = new Set([
+  "confirmed",
+  "pending_payment",
+  "pending",
+  "paid",
+]);
+
+function normalizedStatus(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isActiveSlotBlockingAppointment(row: AppointmentRangeRow) {
+  const status = normalizedStatus(row.status);
+  const bookingStatus = normalizedStatus(row.booking_status);
+  const paymentStatus = normalizedStatus(row.payment_status);
+
+  if (
+    status === "canceled" ||
+    status === "cancelled" ||
+    status === "no_show" ||
+    status === "rejected" ||
+    bookingStatus === "canceled" ||
+    bookingStatus === "cancelled" ||
+    bookingStatus === "no_show" ||
+    bookingStatus === "rejected"
+  ) {
+    return false;
+  }
+
+  return (
+    ACTIVE_BOOKING_STATUSES.has(status) ||
+    ACTIVE_BOOKING_STATUSES.has(bookingStatus) ||
+    ACTIVE_BOOKING_STATUSES.has(paymentStatus)
+  );
 }
 
 export async function GET(req: Request) {
@@ -267,14 +305,13 @@ export async function GET(req: Request) {
       );
     });
 
-    // 1) citas existentes: solo las confirmadas bloquean agenda.
-    // Pendientes de pago, fallidas o canceladas no deben ocupar el slot.
+    // 1) citas existentes: confirmadas y pendientes activas bloquean agenda.
+    // Canceladas, no-show o rechazadas no ocupan el slot.
     const { data: appts, error: apptErr } = await supabaseServer
       .from("appointments")
-      .select("start_at,end_at,booking_status")
+      .select("start_at,end_at,status,booking_status,payment_status")
       .eq("tenant_id", effectiveTenantId)
       .eq("professional_id", professionalId)
-      .eq("booking_status", "confirmed")
       .lt("start_at", rangeEnd.toISOString())
       .gt("end_at", rangeStart.toISOString());
 
@@ -295,13 +332,15 @@ export async function GET(req: Request) {
       appointments: appts ?? [],
     });
 
-    const booked: BookedRange[] = ((appts ?? []) as AppointmentRangeRow[]).map(
-      (a) => ({
+    const blockingAppointments = ((appts ?? []) as AppointmentRangeRow[]).filter(
+      isActiveSlotBlockingAppointment,
+    );
+
+    const booked: BookedRange[] = blockingAppointments.map((a) => ({
         start: new Date(a.start_at),
         end: new Date(a.end_at),
-      }),
-    );
-    const unavailableSlots: Slot[] = ((appts ?? []) as AppointmentRangeRow[])
+      }));
+    const unavailableSlots: Slot[] = blockingAppointments
       .map((a) => ({
         start_at: new Date(a.start_at).toISOString(),
         end_at: new Date(a.end_at).toISOString(),
@@ -313,7 +352,7 @@ export async function GET(req: Request) {
       professionalId,
       count: unavailableSlots.length,
       appointments: unavailableSlots,
-      rule: 'booking_status = "confirmed"',
+      rule: "active status/booking_status/payment_status",
     });
 
     // 2) generar slots
