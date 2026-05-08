@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
-import { calculatePaymentAmount } from "@/services/payments/payment-amount";
+import { calculatePaymentBreakdown } from "@/services/payments/payment-mode";
 import { createMercadoPagoPreference } from "@/services/payments/mercadopago";
 
 export async function POST(req: Request) {
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
 
     const paymentConfig = await getTenantPaymentConfig(appointment.tenant_id);
 
-    if (!paymentConfig.enabled || paymentConfig.mode === 'none') {
+    if (!paymentConfig.enabled || paymentConfig.collectionMode === "none") {
       return NextResponse.json(
         { ok: false, error: "Pagos no habilitados para este tenant" },
         { status: 400 },
@@ -116,14 +116,13 @@ export async function POST(req: Request) {
       .eq("id", appointment.tenant_id)
       .maybeSingle();
 
-    const servicePrice = service?.price ?? 0;
-
-    const amount = calculatePaymentAmount({
-      servicePrice,
-      paymentMode: paymentConfig.mode,
+    const breakdown = calculatePaymentBreakdown({
+      totalAmount: service.price ?? 0,
+      paymentMode: paymentConfig.collectionMode,
       depositType: paymentConfig.depositType,
       depositValue: paymentConfig.depositValue,
     });
+    const amount = breakdown.requiredOnlineAmount;
 
     if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
@@ -248,6 +247,8 @@ export async function POST(req: Request) {
       .update({
         payment_required: true,
         payment_status: "pending",
+        status: "pending_payment",
+        booking_status: "pending_payment",
         updated_at: new Date().toISOString(),
       })
       .eq("id", appointment.id)
@@ -264,6 +265,18 @@ export async function POST(req: Request) {
       );
     }
 
+    await supabaseAdmin
+      .from("appointments")
+      .update({
+        payment_provider: "mercadopago",
+        payment_required_amount: amount,
+        payment_remaining_amount: breakdown.remainingAmount,
+        payment_reference: preference.id,
+        payment_url: preference.init_point ?? preference.sandbox_init_point ?? null,
+      })
+      .eq("id", appointment.id)
+      .eq("tenant_id", appointment.tenant_id);
+
     console.info("[payments/create-preference] preferencia creada", {
       appointmentId: appointment.id,
       tenantId: appointment.tenant_id,
@@ -276,6 +289,9 @@ export async function POST(req: Request) {
       init_point: preference.init_point,
       preference_id: preference.id,
       amount,
+      totalAmount: breakdown.totalAmount,
+      remainingAmount: breakdown.remainingAmount,
+      paymentMode: breakdown.paymentMode,
     });
   } catch (error) {
     console.error("[payments/create-preference] unexpected error:", error);

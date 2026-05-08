@@ -56,7 +56,7 @@ export default function HomeClient() {
   // Marca blanca (customizable luego por tenant)
   const business = useMemo(
     () => ({
-      name: "Fajas Paola",
+      name: "Citaya Demo",
       tagline: "Reserva tu hora en segundos",
       description:
         "Elige tu día y horario disponible. Recibirás confirmación y podrás gestionar tu cita desde un enlace privado.",

@@ -544,6 +544,7 @@ export default function AgendaPage() {
       setTenantId(data.id);
       setTenantLogoUrl(data.logo_url ?? "");
       setTenantName(data.name ?? "");
+      document.title = `Agenda Citas | ${data.name?.trim() || data.slug || "Citaya"}`;
       setLoadingTenant(false);
     };
 

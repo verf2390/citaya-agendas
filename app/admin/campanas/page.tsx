@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Image as ImageIcon, RefreshCw, Send, Upload, Video, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -159,6 +159,33 @@ type AudienceStats = {
   invalidEmailCount: number;
   duplicateOrLimitedCount: number;
   missingPaymentLinkCount: number;
+  audienceOffset: number;
+  audienceLimit: number;
+};
+
+type CampaignHistoryItem = {
+  id: string;
+  campaignId: string;
+  createdAt: string;
+  subject: string;
+  templateKey: string;
+  segmentKey: string;
+  channel: string;
+  mediaType: CampaignMediaType;
+  sentCount: number;
+  errorCount: number;
+  status: "enviada" | "parcial" | "error";
+};
+
+type CampaignLogRow = {
+  created_at?: string | null;
+  subject?: string | null;
+  campaign_id?: string | null;
+  template_key?: string | null;
+  segment_key?: string | null;
+  channel?: string | null;
+  media_type?: string | null;
+  status?: string | null;
 };
 
 const MEDIA_TYPES: Array<{ id: CampaignMediaType; title: string; text: string }> = [
@@ -234,6 +261,62 @@ function isPendingPaymentCampaign(templateKey: TemplateKey, segmentKey: SegmentK
   return templateKey === "pending_payment" || segmentKey === "pending_payment";
 }
 
+function formatCampaignDate(value: string) {
+  if (!value) return "Sin fecha";
+  return new Date(value).toLocaleString("es-CL", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function groupCampaignHistory(logs: CampaignLogRow[]): CampaignHistoryItem[] {
+  const grouped = new Map<string, CampaignHistoryItem>();
+
+  for (const log of logs) {
+    const createdAt = String(log.created_at ?? "");
+    const fallbackKey = `${String(log.subject ?? "Campaña")}-${createdAt.slice(0, 16)}`;
+    const campaignId = String(log.campaign_id ?? "") || fallbackKey;
+    const current =
+      grouped.get(campaignId) ??
+      {
+        id: campaignId,
+        campaignId,
+        createdAt,
+        subject: String(log.subject ?? "Campaña"),
+        templateKey: String(log.template_key ?? ""),
+        segmentKey: String(log.segment_key ?? ""),
+        channel: String(log.channel ?? "email"),
+        mediaType: (String(log.media_type ?? "none") as CampaignMediaType) || "none",
+        sentCount: 0,
+        errorCount: 0,
+        status: "enviada" as const,
+      };
+
+    if (!current.createdAt || createdAt > current.createdAt) {
+      current.createdAt = createdAt;
+    }
+    if (String(log.status ?? "") === "sent") current.sentCount += 1;
+    if (String(log.status ?? "") === "error") current.errorCount += 1;
+    grouped.set(campaignId, current);
+  }
+
+  return Array.from(grouped.values())
+    .map((item): CampaignHistoryItem => ({
+      ...item,
+      status:
+        item.errorCount > 0 && item.sentCount > 0
+          ? "parcial"
+          : item.errorCount > 0
+            ? "error"
+            : "enviada",
+    }))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
 export default function AdminCampanasPage() {
   const router = useRouter();
   const [tenantSlug, setTenantSlug] = useState("");
@@ -263,6 +346,10 @@ export default function AdminCampanasPage() {
   const [audienceStats, setAudienceStats] = useState<AudienceStats | null>(null);
   const [loadingAudienceStats, setLoadingAudienceStats] = useState(false);
   const [audienceStatsError, setAudienceStatsError] = useState("");
+  const [audienceOffset, setAudienceOffset] = useState(0);
+  const [campaignHistory, setCampaignHistory] = useState<CampaignHistoryItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historySetupRequired, setHistorySetupRequired] = useState(false);
 
   useEffect(() => {
     const run = async () => {
@@ -326,6 +413,30 @@ export default function AdminCampanasPage() {
     pendingPaymentCampaign &&
     !loadingAudienceStats &&
     (!audienceStats || Boolean(audienceStatsError));
+  const eligibleAudienceCount = pendingPaymentCampaign
+    ? audienceStats?.validPaymentLinkCount ?? 0
+    : audienceStats?.validEmailCount ?? 0;
+  const audienceRanges = useMemo(() => {
+    const total = Math.max(0, eligibleAudienceCount);
+    const count = Math.max(1, Math.ceil(total / 100));
+    return Array.from({ length: count }, (_, index) => {
+      const start = index * 100;
+      const end = Math.min(start + 100, total || start + 100);
+      return {
+        offset: start,
+        label: `${start + 1}-${end}`,
+        estimatedCount: Math.max(0, end - start),
+      };
+    });
+  }, [eligibleAudienceCount]);
+  const selectedAudienceRange =
+    audienceRanges.find((item) => item.offset === audienceOffset) ?? audienceRanges[0];
+
+  useEffect(() => {
+    if (audienceOffset > 0 && audienceOffset >= Math.max(1, eligibleAudienceCount)) {
+      setAudienceOffset(0);
+    }
+  }, [audienceOffset, eligibleAudienceCount]);
 
   const statusLabel = sending
     ? "Enviando"
@@ -352,8 +463,43 @@ export default function AdminCampanasPage() {
     [mediaType],
   );
 
+  const loadCampaignHistory = useCallback(async () => {
+    if (!authChecked || !tenantSlug) return;
+    setLoadingHistory(true);
+    setHistorySetupRequired(false);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) throw new Error("Inicia sesión nuevamente para ver historial.");
+
+      const params = new URLSearchParams(
+        tenantInfo?.id ? { tenantId: tenantInfo.id, tenantSlug } : { tenantSlug },
+      );
+      const res = await fetch(`/api/admin/logs/messages?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error ?? "No se pudo cargar el historial.");
+      }
+      setHistorySetupRequired(Boolean(json.setupRequired));
+      setCampaignHistory(
+        groupCampaignHistory(Array.isArray(json.logs) ? (json.logs as CampaignLogRow[]) : []),
+      );
+    } catch {
+      setCampaignHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [authChecked, tenantInfo?.id, tenantSlug]);
+
   useEffect(() => {
-    if (!authChecked || !tenantSlug || !pendingPaymentCampaign) {
+    void loadCampaignHistory();
+  }, [loadCampaignHistory]);
+
+  useEffect(() => {
+    if (!authChecked || !tenantSlug) {
       setAudienceStats(null);
       setAudienceStatsError("");
       setLoadingAudienceStats(false);
@@ -375,6 +521,8 @@ export default function AdminCampanasPage() {
           tenantSlug,
           templateKey,
           segmentKey,
+          audienceOffset: String(audienceOffset),
+          audienceLimit: "100",
         });
         const res = await fetch(`/api/admin/campaigns/send?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -394,11 +542,13 @@ export default function AdminCampanasPage() {
           invalidEmailCount: Number(json.invalidEmailCount ?? 0),
           duplicateOrLimitedCount: Number(json.duplicateOrLimitedCount ?? 0),
           missingPaymentLinkCount: Number(json.missingPaymentLinkCount ?? 0),
+          audienceOffset: Number(json.audienceOffset ?? audienceOffset),
+          audienceLimit: Number(json.audienceLimit ?? 100),
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (cancelled) return;
         setAudienceStats(null);
-        setAudienceStatsError(e?.message ?? "No se pudo revisar la audiencia.");
+        setAudienceStatsError(getErrorMessage(e, "No se pudo revisar la audiencia."));
       } finally {
         if (!cancelled) setLoadingAudienceStats(false);
       }
@@ -409,7 +559,7 @@ export default function AdminCampanasPage() {
     return () => {
       cancelled = true;
     };
-  }, [authChecked, pendingPaymentCampaign, segmentKey, templateKey, tenantSlug]);
+  }, [audienceOffset, authChecked, segmentKey, templateKey, tenantSlug]);
 
   const resetMedia = () => {
     setMediaUrl("");
@@ -491,10 +641,10 @@ export default function AdminCampanasPage() {
       setResult(null);
       setConfirmed(false);
       toast({ title: "Imagen cargada correctamente", description: "El contenido visual quedó listo para la campaña." });
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast({
         title: "No se pudo subir el archivo",
-        description: e?.message ?? "Intenta nuevamente en unos minutos.",
+        description: getErrorMessage(e, "Intenta nuevamente en unos minutos."),
         variant: "destructive",
       });
     } finally {
@@ -555,11 +705,14 @@ export default function AdminCampanasPage() {
           ctaLabel: cleanCtaLabel,
           ctaUrl: cleanCtaUrl,
           tenantSlug,
+          tenantId: tenantInfo?.id,
           mediaType,
           mediaUrl: cleanMediaUrl,
           mediaFileName,
           mediaMimeType,
           mediaSize,
+          audienceOffset,
+          audienceLimit: 100,
           campaignImageUrl:
             mediaType === "image" || mediaType === "gif" ? cleanMediaUrl : "",
           imageUrl: mediaType === "image" || mediaType === "gif" ? cleanMediaUrl : "",
@@ -596,13 +749,14 @@ export default function AdminCampanasPage() {
         totalMatchedCount: Number(json.totalMatchedCount ?? 0),
         message: text,
       });
+      await loadCampaignHistory();
       setConfirmed(false);
       toast({
         title: "Campaña enviada",
         description: `${Number(json.sentCount ?? 0)} emails enviados.`,
       });
-    } catch (e: any) {
-      const text = e?.message ?? "No se pudo conectar con el endpoint de campañas.";
+    } catch (e: unknown) {
+      const text = getErrorMessage(e, "No se pudo conectar con el endpoint de campañas.");
       setSendState({ type: "error", text });
       toast({ title: "Error en campaña", description: text, variant: "destructive" });
     } finally {
@@ -616,6 +770,7 @@ export default function AdminCampanasPage() {
     setSendState(null);
     setResult(null);
     setConfirmed(false);
+    setAudienceOffset(0);
     if (!template) return;
     setSubject(template.subject);
     setHeadline(template.headline);
@@ -755,6 +910,7 @@ export default function AdminCampanasPage() {
                           setSendState(null);
                           setResult(null);
                           setConfirmed(false);
+                          setAudienceOffset(0);
                         }}
                         className={`rounded-2xl border p-4 text-left shadow-sm transition ${
                           active
@@ -768,6 +924,42 @@ export default function AdminCampanasPage() {
                     );
                   })}
                 </div>
+              </div>
+
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black text-slate-800">Lote de destinatarios</div>
+                    <p className="mt-1 text-sm font-medium text-slate-500">
+                      El envío respeta el máximo de 100 destinatarios por lote.
+                    </p>
+                  </div>
+                  <div className="text-xs font-black uppercase text-slate-500">
+                    {loadingAudienceStats ? "Calculando" : `${eligibleAudienceCount} disponibles`}
+                  </div>
+                </div>
+                <select
+                  value={audienceOffset}
+                  onChange={(e) => {
+                    setAudienceOffset(Number(e.target.value));
+                    setSendState(null);
+                    setResult(null);
+                    setConfirmed(false);
+                  }}
+                  disabled={loadingAudienceStats || audienceRanges.length <= 1}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-slate-400 disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                  {audienceRanges.map((range) => (
+                    <option key={range.offset} value={range.offset}>
+                      {range.label} ({range.estimatedCount} estimados)
+                    </option>
+                  ))}
+                </select>
+                {audienceStatsError ? (
+                  <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-800">
+                    {audienceStatsError}
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid gap-3">
@@ -1246,6 +1438,16 @@ export default function AdminCampanasPage() {
                 <span className="font-black text-slate-900">{selectedAudience?.title}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
+                <span className="font-bold text-slate-500">Rango</span>
+                <span className="font-black text-slate-900">{selectedAudienceRange?.label}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-bold text-slate-500">Destinatarios estimados</span>
+                <span className="font-black text-slate-900">
+                  {loadingAudienceStats ? "..." : audienceStats?.recipientCount ?? 0}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
                 <span className="font-bold text-slate-500">Canal</span>
                 <span className="font-black text-slate-900">Email</span>
               </div>
@@ -1339,16 +1541,84 @@ export default function AdminCampanasPage() {
                 ) : null}
               </div>
             </AdminSectionCard>
-          ) : (
-            <AdminSectionCard title="Historial">
+          ) : null}
+
+          <AdminSectionCard title="Historial">
+            {loadingHistory ? (
+              <EmptyState
+                title="Cargando historial"
+                description="Estamos revisando los envíos registrados para este tenant."
+              />
+            ) : historySetupRequired ? (
+              <EmptyState
+                title="Historial no configurado"
+                description="Falta crear la tabla message_logs en Supabase para persistir campañas enviadas."
+              />
+            ) : campaignHistory.length === 0 ? (
               <EmptyState
                 title="Aún no has enviado campañas"
                 description="Puedes comenzar con una promoción, un recordatorio o una campaña para clientes inactivos."
                 actionLabel="Crear campaña"
                 actionHref="/admin/campanas"
               />
-            </AdminSectionCard>
-          )}
+            ) : (
+              <div className="grid gap-3">
+                {campaignHistory.slice(0, 8).map((item) => {
+                  const template = CAMPAIGN_TEMPLATES.find((entry) => entry.id === item.templateKey);
+                  const segment = SEGMENTS.find((entry) => entry.id === item.segmentKey);
+                  const media = MEDIA_TYPES.find((entry) => entry.id === item.mediaType);
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate font-black text-slate-900">
+                            {item.subject || template?.title || "Campaña"}
+                          </div>
+                          <div className="mt-1 text-xs font-bold text-slate-500">
+                            {formatCampaignDate(item.createdAt)}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-700">
+                          {item.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600">
+                        <div className="flex justify-between gap-3">
+                          <span>Plantilla</span>
+                          <span className="text-right text-slate-900">{template?.title || item.templateKey || "Sin dato"}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span>Segmento</span>
+                          <span className="text-right text-slate-900">{segment?.title || item.segmentKey || "Sin dato"}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span>Canal</span>
+                          <span className="text-right text-slate-900">{item.channel || "email"}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span>Contenido visual</span>
+                          <span className="text-right text-slate-900">{media?.title || "Sin imagen"}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span>Destinatarios/enviados</span>
+                          <span className="text-right text-slate-900">{item.sentCount}</span>
+                        </div>
+                        {item.errorCount > 0 ? (
+                          <div className="flex justify-between gap-3 text-red-700">
+                            <span>Errores</span>
+                            <span>{item.errorCount}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </AdminSectionCard>
         </div>
       </div>
     </AdminPageShell>

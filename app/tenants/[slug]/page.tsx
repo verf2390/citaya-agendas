@@ -244,7 +244,7 @@ function DemoLanding() {
                 </p>
 
                 <p className="mt-5 text-sm font-bold text-white">
-                  Fajas Paola — La Serena
+                  Cliente Citaya — Chile
                 </p>
 
                 <p className="mt-1 text-xs text-slate-400">
@@ -252,7 +252,7 @@ function DemoLanding() {
                 </p>
 
                 <a
-                  href="https://instagram.com/fajaspaola"
+                  href="https://citaya.online"
                   target="_blank"
                   rel="noreferrer"
                   className="mt-5 inline-flex min-h-[48px] items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] px-5 py-3 text-sm font-extrabold text-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 active:scale-[0.99]"

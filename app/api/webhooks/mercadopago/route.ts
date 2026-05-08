@@ -252,7 +252,7 @@ export async function POST(req: Request) {
         paymentStatus,
       });
 
-      return supabaseAdmin
+      let query = supabaseAdmin
         .from("appointments")
         .update({
           status: nextAppointmentStatus,
@@ -262,28 +262,43 @@ export async function POST(req: Request) {
         })
         .eq("id", resolvedAppointmentId)
         .eq("tenant_id", tenantId);
+
+      if (paymentStatus === "paid") {
+        query = query.or("payment_status.is.null,payment_status.neq.paid");
+      }
+
+      return query.select("id, payment_status").maybeSingle();
     };
 
     const currentStatus = String(currentPayment?.status ?? "").toLowerCase();
+    const appointmentPaymentStatus = String(
+      appointmentRow.payment_status ?? "",
+    ).toLowerCase();
+    const alreadyPaid =
+      currentStatus === "paid" || appointmentPaymentStatus === "paid";
+    if (alreadyPaid && normalizedStatus !== "paid") {
+      console.info("[webhooks/mercadopago] estado no aprobado omitido para pago ya aprobado", {
+        appointmentId: resolvedAppointmentId,
+        paymentId,
+        currentStatus,
+        appointmentPaymentStatus,
+        incomingStatus: normalizedStatus,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: "already_paid",
+        status: "paid",
+      });
+    }
+
     const isDuplicateApproval =
       currentStatus === normalizedStatus &&
       normalizedStatus === "paid";
 
     if (isDuplicateApproval) {
       const nextAppointmentStatus = appointmentStatusForPayment(normalizedStatus);
-      const { error: appointmentUpdateError } =
-        await updateAppointmentPaymentStatus(normalizedStatus);
-
-      if (appointmentUpdateError) {
-        console.error(
-          "[webhooks/mercadopago] error actualizando appointment payment_status:",
-          appointmentUpdateError,
-        );
-        return NextResponse.json(
-          { ok: false, error: "No se pudo actualizar payment_status de la cita" },
-          { status: 500 },
-        );
-      }
 
       console.info("[webhooks/mercadopago] webhook duplicado omitido", {
         appointmentId: resolvedAppointmentId,
@@ -352,7 +367,7 @@ export async function POST(req: Request) {
     }
 
     const nextAppointmentStatus = appointmentStatusForPayment(normalizedStatus);
-    const { error: appointmentUpdateError } =
+    const { data: updatedAppointment, error: appointmentUpdateError } =
       await updateAppointmentPaymentStatus(normalizedStatus);
 
     if (appointmentUpdateError) {
@@ -377,8 +392,7 @@ export async function POST(req: Request) {
 
     if (
       normalizedStatus === "paid" &&
-      appointmentRow.payment_status !== "paid" &&
-      currentStatus !== "paid"
+      updatedAppointment?.id
     ) {
       await notifyPaymentConfirmed({
         appointmentId: resolvedAppointmentId,

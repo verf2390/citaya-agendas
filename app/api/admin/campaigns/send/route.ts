@@ -22,6 +22,8 @@ type CampaignPayload = {
   videoUrl?: string;
   imageUrl?: string;
   campaignImageUrl?: string;
+  audienceOffset?: number | string;
+  audienceLimit?: number | string;
 };
 
 type TenantBranding = {
@@ -79,6 +81,28 @@ type Recipient = {
   tags: string[];
 };
 
+type CampaignLogInput = {
+  tenantId: string;
+  campaignId: string;
+  recipientEmail: string;
+  recipientName: string;
+  subject: string;
+  headline: string;
+  templateKey: string;
+  segmentKey: string;
+  mediaType: string;
+  recipientCount: number;
+  status: "sent" | "error";
+  errorMessage?: string;
+};
+
+type CampaignLogResult = {
+  attempted: number;
+  inserted: number;
+  metadataStored: boolean;
+  error: string | null;
+};
+
 const ALLOWED_TEMPLATES = new Set([
   "promo",
   "discount",
@@ -112,6 +136,10 @@ function getBearerToken(req: Request): string {
 
 function badRequest(error: string) {
   return NextResponse.json({ ok: false, error }, { status: 400 });
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function isEmail(value: string) {
@@ -172,6 +200,12 @@ function whatsappUrlFromPhone(value: string) {
 function moneyNumber(value: unknown) {
   const amount = Number(value ?? 0);
   return Number.isFinite(amount) ? amount : 0;
+}
+
+function integerInRange(value: unknown, fallback: number, min: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
 function normalized(value: unknown) {
@@ -454,7 +488,6 @@ async function fetchPendingPaymentRecipients(tenantId: string) {
 function filterPaymentRecipients(
   recipients: Recipient[],
   ctaLabel: string,
-  ctaUrl: string,
 ) {
   const usable: Recipient[] = [];
   const skippedMissingPaymentLink: Recipient[] = [];
@@ -511,28 +544,40 @@ function dedupeValidRecipients(recipients: Recipient[]) {
     valid.push({ ...recipient, customerEmail: email });
   }
 
-  const limited = valid.slice(0, MAX_RECIPIENTS);
-  duplicateOrLimitedCount += Math.max(0, valid.length - limited.length);
-
   return {
-    recipients: limited,
+    recipients: valid,
     skippedCount: invalidEmailCount + duplicateOrLimitedCount,
     invalidEmailCount,
     duplicateOrLimitedCount,
   };
 }
 
-async function buildAudiencePreview(tenantId: string, paymentCampaign: boolean, segmentKey: string) {
+function applyAudienceRange(recipients: Recipient[], offset: number, limit: number) {
+  return recipients.slice(offset, offset + limit);
+}
+
+async function buildAudiencePreview(
+  tenantId: string,
+  paymentCampaign: boolean,
+  segmentKey: string,
+  offset: number,
+  limit: number,
+) {
   const allRecipients = paymentCampaign
     ? await fetchPendingPaymentRecipients(tenantId)
     : await fetchRecipients(tenantId, segmentKey);
   const deduped = dedupeValidRecipients(allRecipients);
   const paymentFiltered = paymentCampaign
-    ? filterPaymentRecipients(deduped.recipients, "Pagar ahora", "")
+    ? filterPaymentRecipients(deduped.recipients, "Pagar ahora")
     : {
         recipients: deduped.recipients,
         skippedMissingPaymentLink: [] as Recipient[],
       };
+  const rangedRecipients = applyAudienceRange(
+    paymentFiltered.recipients,
+    offset,
+    limit,
+  );
   const missingPaymentLinkCount = paymentFiltered.skippedMissingPaymentLink.length;
   const skippedCount =
     deduped.skippedCount + (paymentCampaign ? missingPaymentLinkCount : 0);
@@ -543,38 +588,112 @@ async function buildAudiencePreview(tenantId: string, paymentCampaign: boolean, 
     validPaymentLinkCount: paymentCampaign
       ? paymentFiltered.recipients.length
       : deduped.recipients.length,
-    recipientCount: paymentFiltered.recipients.length,
+    recipientCount: rangedRecipients.length,
     skippedCount,
     invalidEmailCount: deduped.invalidEmailCount,
     duplicateOrLimitedCount: deduped.duplicateOrLimitedCount,
     missingPaymentLinkCount,
+    audienceOffset: offset,
+    audienceLimit: limit,
   };
 }
 
-async function logMessage(
-  req: Request,
-  token: string,
-  body: {
-    tenantSlug: string;
-    type: "campaign";
-    recipient: string;
-    subject: string;
-    status: "sent" | "error";
-    errorMessage?: string;
-  },
-) {
-  try {
-    await fetch(new URL("/api/admin/logs/messages", req.url).toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-  } catch (e: any) {
-    console.error("[api/admin/campaigns/send] log ignored:", e?.message || e);
+function isMissingCampaignLogColumn(message: string) {
+  return /campaign_id|template_key|segment_key|channel|media_type|recipient_count|recipient_name|headline|metadata/i.test(
+    message,
+  );
+}
+
+async function insertCampaignLogs(logs: CampaignLogInput[]): Promise<CampaignLogResult> {
+  if (logs.length === 0) {
+    return { attempted: 0, inserted: 0, metadataStored: true, error: null };
   }
+
+  const fullRows = logs.map((log) => ({
+    tenant_id: log.tenantId,
+    type: "campaign",
+    recipient: log.recipientEmail,
+    recipient_name: log.recipientName || null,
+    subject: log.subject,
+    headline: log.headline || null,
+    status: log.status,
+    error_message: log.errorMessage || null,
+    campaign_id: log.campaignId,
+    template_key: log.templateKey,
+    segment_key: log.segmentKey,
+    channel: "email",
+    media_type: log.mediaType || "none",
+    recipient_count: log.recipientCount,
+    metadata: {
+      campaignId: log.campaignId,
+      templateKey: log.templateKey,
+      segmentKey: log.segmentKey,
+      channel: "email",
+      mediaType: log.mediaType || "none",
+      recipientCount: log.recipientCount,
+    },
+  }));
+
+  const fullInsert = await supabaseAdmin
+    .from("message_logs")
+    .insert(fullRows)
+    .select("id");
+
+  if (!fullInsert.error) {
+    return {
+      attempted: logs.length,
+      inserted: fullInsert.data?.length ?? logs.length,
+      metadataStored: true,
+      error: null,
+    };
+  }
+
+  if (!isMissingCampaignLogColumn(fullInsert.error.message)) {
+    console.error("[campaigns/send] log insert failed", {
+      attempted: logs.length,
+      error: fullInsert.error.message,
+    });
+    return {
+      attempted: logs.length,
+      inserted: 0,
+      metadataStored: false,
+      error: fullInsert.error.message,
+    };
+  }
+
+  const fallbackRows = logs.map((log) => ({
+    tenant_id: log.tenantId,
+    type: "campaign",
+    recipient: log.recipientEmail,
+    subject: log.subject,
+    status: log.status,
+    error_message: log.errorMessage || null,
+  }));
+
+  const fallbackInsert = await supabaseAdmin
+    .from("message_logs")
+    .insert(fallbackRows)
+    .select("id");
+
+  if (fallbackInsert.error) {
+    console.error("[campaigns/send] fallback log insert failed", {
+      attempted: logs.length,
+      error: fallbackInsert.error.message,
+    });
+    return {
+      attempted: logs.length,
+      inserted: 0,
+      metadataStored: false,
+      error: fallbackInsert.error.message,
+    };
+  }
+
+  return {
+    attempted: logs.length,
+    inserted: fallbackInsert.data?.length ?? logs.length,
+    metadataStored: false,
+    error: null,
+  };
 }
 
 export async function GET(req: Request) {
@@ -600,6 +719,18 @@ export async function GET(req: Request) {
 
     const templateKey = String(url.searchParams.get("templateKey") ?? "").trim();
     const segmentKey = String(url.searchParams.get("segmentKey") ?? "all").trim();
+    const audienceOffset = integerInRange(
+      url.searchParams.get("audienceOffset"),
+      0,
+      0,
+      100000,
+    );
+    const audienceLimit = integerInRange(
+      url.searchParams.get("audienceLimit"),
+      MAX_RECIPIENTS,
+      1,
+      MAX_RECIPIENTS,
+    );
     if (!ALLOWED_SEGMENTS.has(segmentKey)) return badRequest("Segmento invalido");
 
     const tenant = await fetchTenantBranding(tenantSlug);
@@ -612,6 +743,8 @@ export async function GET(req: Request) {
       tenant.id,
       paymentCampaign,
       paymentCampaign ? "pending_payment" : segmentKey,
+      audienceOffset,
+      audienceLimit,
     );
 
     return NextResponse.json({
@@ -619,10 +752,10 @@ export async function GET(req: Request) {
       isPaymentCampaign: paymentCampaign,
       ...preview,
     });
-  } catch (e: any) {
-    console.error("[api/admin/campaigns/send] preview error:", e?.message || e);
+  } catch (e: unknown) {
+    console.error("[api/admin/campaigns/send] preview error:", getErrorMessage(e, String(e)));
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error preparando audiencia" },
+      { ok: false, error: getErrorMessage(e, "Error preparando audiencia") },
       { status: 500 },
     );
   }
@@ -662,6 +795,8 @@ export async function POST(req: Request) {
       mediaFileName: String(body.mediaFileName ?? "").trim(),
       mediaMimeType: String(body.mediaMimeType ?? "").trim(),
       mediaSize: moneyNumber(body.mediaSize),
+      audienceOffset: integerInRange(body.audienceOffset, 0, 0, 100000),
+      audienceLimit: integerInRange(body.audienceLimit, MAX_RECIPIENTS, 1, MAX_RECIPIENTS),
     };
 
     if (!ALLOWED_TEMPLATES.has(payload.templateKey)) return badRequest("Plantilla invalida");
@@ -718,29 +853,45 @@ export async function POST(req: Request) {
       duplicateOrLimitedCount,
     } = dedupeValidRecipients(allRecipients);
     const paymentFiltered = paymentCampaign
-      ? filterPaymentRecipients(emailRecipients, ctaLabel, ctaUrl)
+      ? filterPaymentRecipients(emailRecipients, ctaLabel)
       : {
           recipients: enrichNormalRecipients(emailRecipients, ctaLabel, ctaUrl),
           skippedMissingPaymentLink: [],
         };
-    const recipients = paymentFiltered.recipients;
+    const recipients = applyAudienceRange(
+      paymentFiltered.recipients,
+      payload.audienceOffset,
+      payload.audienceLimit,
+    );
     const missingPaymentLinkCount = paymentFiltered.skippedMissingPaymentLink.length;
     const skippedCount = emailSkippedCount + missingPaymentLinkCount;
+    const campaignId = crypto.randomUUID();
 
     if (recipients.length === 0) {
       if (paymentFiltered.skippedMissingPaymentLink.length > 0) {
-        await Promise.all(
-          paymentFiltered.skippedMissingPaymentLink.map((recipient) =>
-            logMessage(req, token, {
-              tenantSlug: tenant.slug,
-              type: "campaign",
-              recipient: recipient.customerEmail || recipient.customerId,
-              subject: payload.subject,
-              status: "error",
-              errorMessage: "Pago pendiente sin link de pago",
-            }),
-          ),
+        const logResult = await insertCampaignLogs(
+          paymentFiltered.skippedMissingPaymentLink.map((recipient) => ({
+            tenantId: auth.tenantId,
+            campaignId,
+            recipientEmail: recipient.customerEmail || recipient.customerId,
+            recipientName: recipient.customerName,
+            subject: payload.subject,
+            headline: payload.headline,
+            templateKey: payload.templateKey,
+            segmentKey: payload.segmentKey,
+            mediaType: payload.mediaType,
+            recipientCount: 0,
+            status: "error",
+            errorMessage: "Pago pendiente sin link de pago",
+          })),
         );
+        console.info("[campaigns/send] missing payment link logs", {
+          tenantId: auth.tenantId,
+          campaignId,
+          attempted: logResult.attempted,
+          inserted: logResult.inserted,
+          error: logResult.error,
+        });
       }
       return NextResponse.json(
         {
@@ -766,22 +917,6 @@ export async function POST(req: Request) {
       );
     }
 
-    if (paymentFiltered.skippedMissingPaymentLink.length > 0) {
-      await Promise.all(
-        paymentFiltered.skippedMissingPaymentLink.map((recipient) =>
-          logMessage(req, token, {
-            tenantSlug: tenant.slug,
-            type: "campaign",
-            recipient: recipient.customerEmail || recipient.customerId,
-            subject: payload.subject,
-            status: "error",
-            errorMessage: "Pago pendiente sin link de pago",
-          }),
-        ),
-      );
-    }
-
-    const campaignId = crypto.randomUUID();
     const businessName = tenant.name?.trim() || tenant.slug;
     const logoUrl = tenant.logo_url?.trim() || "";
     const tenantWhatsapp = tenant.whatsapp?.trim() || "";
@@ -866,6 +1001,9 @@ export async function POST(req: Request) {
         skippedCount,
         invalidEmailCount,
         missingPaymentLinkCount,
+        audienceOffset: payload.audienceOffset,
+        audienceLimit: payload.audienceLimit,
+        selectedRecipientCount: recipients.length,
       },
     };
 
@@ -876,22 +1014,37 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(webhookPayload),
       });
-    } catch (e: any) {
-      console.error("[api/admin/campaigns/send] n8n fetch error:", e?.message || e);
-      await Promise.all(
-        recipients.map((recipient) =>
-          logMessage(req, token, {
-            tenantSlug: tenant.slug,
-            type: "campaign",
-            recipient: recipient.customerEmail,
-            subject: payload.subject,
-            status: "error",
-            errorMessage: "No se pudo conectar con el sistema de envios.",
-          }),
-        ),
+    } catch (e: unknown) {
+      console.error("[api/admin/campaigns/send] n8n fetch error:", getErrorMessage(e, String(e)));
+      const logResult = await insertCampaignLogs(
+        recipients.map((recipient) => ({
+          tenantId: auth.tenantId,
+          campaignId,
+          recipientEmail: recipient.customerEmail,
+          recipientName: recipient.customerName,
+          subject: payload.subject,
+          headline: payload.headline,
+          templateKey: payload.templateKey,
+          segmentKey: payload.segmentKey,
+          mediaType: media.type,
+          recipientCount: recipients.length,
+          status: "error",
+          errorMessage: "No se pudo conectar con el sistema de envios.",
+        })),
       );
+      console.info("[campaigns/send] log insert result", {
+        tenantId: auth.tenantId,
+        campaignId,
+        attempted: logResult.attempted,
+        inserted: logResult.inserted,
+        error: logResult.error,
+      });
       return NextResponse.json(
-        { ok: false, error: "No se pudo conectar con el sistema de envios." },
+        {
+          ok: false,
+          error: "No se pudo conectar con el sistema de envios.",
+          logResult,
+        },
         { status: 502 },
       );
     }
@@ -902,20 +1055,35 @@ export async function POST(req: Request) {
         status: n8nRes.status,
         detail,
       });
-      await Promise.all(
-        recipients.map((recipient) =>
-          logMessage(req, token, {
-            tenantSlug: tenant.slug,
-            type: "campaign",
-            recipient: recipient.customerEmail,
-            subject: payload.subject,
-            status: "error",
-            errorMessage: "No se pudo conectar con el sistema de envios.",
-          }),
-        ),
+      const logResult = await insertCampaignLogs(
+        recipients.map((recipient) => ({
+          tenantId: auth.tenantId,
+          campaignId,
+          recipientEmail: recipient.customerEmail,
+          recipientName: recipient.customerName,
+          subject: payload.subject,
+          headline: payload.headline,
+          templateKey: payload.templateKey,
+          segmentKey: payload.segmentKey,
+          mediaType: media.type,
+          recipientCount: recipients.length,
+          status: "error",
+          errorMessage: "No se pudo conectar con el sistema de envios.",
+        })),
       );
+      console.info("[campaigns/send] log insert result", {
+        tenantId: auth.tenantId,
+        campaignId,
+        attempted: logResult.attempted,
+        inserted: logResult.inserted,
+        error: logResult.error,
+      });
       return NextResponse.json(
-        { ok: false, error: "No se pudo conectar con el sistema de envios." },
+        {
+          ok: false,
+          error: "No se pudo conectar con el sistema de envios.",
+          logResult,
+        },
         { status: 502 },
       );
     }
@@ -927,22 +1095,34 @@ export async function POST(req: Request) {
         ? Math.min(n8nSentCount, recipients.length)
         : recipients.length;
 
-    await Promise.all(
-      recipients.map((recipient) =>
-        logMessage(req, token, {
-          tenantSlug: tenant.slug,
-          type: "campaign",
-          recipient: recipient.customerEmail,
-          subject: payload.subject,
-          status: "sent",
-        }),
-      ),
+    const sentLogResult = await insertCampaignLogs(
+      recipients.map((recipient) => ({
+        tenantId: auth.tenantId,
+        campaignId,
+        recipientEmail: recipient.customerEmail,
+        recipientName: recipient.customerName,
+        subject: payload.subject,
+        headline: payload.headline,
+        templateKey: payload.templateKey,
+        segmentKey: payload.segmentKey,
+        mediaType: media.type,
+        recipientCount: recipients.length,
+        status: "sent",
+      })),
     );
+    console.info("[campaigns/send] log insert result", {
+      tenantId: auth.tenantId,
+      campaignId,
+      attempted: sentLogResult.attempted,
+      inserted: sentLogResult.inserted,
+      error: sentLogResult.error,
+    });
 
     return NextResponse.json({
       ok: true,
       campaignId,
       sentCount,
+      logResult: sentLogResult,
       skippedCount,
       skippedReasonSummary: paymentCampaign
         ? {
@@ -960,14 +1140,17 @@ export async function POST(req: Request) {
       missingPaymentLinkCount,
       validPaymentLinkCount: paymentCampaign ? recipients.length : 0,
       totalMatchedCount: allRecipients.length,
+      audienceOffset: payload.audienceOffset,
+      audienceLimit: payload.audienceLimit,
+      selectedRecipientCount: recipients.length,
       segmentKey: payload.segmentKey,
       templateKey: payload.templateKey,
       message: "Campana enviada correctamente",
     });
-  } catch (e: any) {
-    console.error("[api/admin/campaigns/send] error:", e?.message || e);
+  } catch (e: unknown) {
+    console.error("[api/admin/campaigns/send] error:", getErrorMessage(e, String(e)));
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error enviando campana" },
+      { ok: false, error: getErrorMessage(e, "Error enviando campana") },
       { status: 500 },
     );
   }
