@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type CampaignMediaType = "image" | "gif" | "video";
@@ -22,12 +23,6 @@ const ALLOWED_TYPES: Record<string, { mediaType: CampaignMediaType; extensions: 
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
 
 function jsonError(error: string, status = 400) {
   return NextResponse.json({ ok: false, error }, { status });
@@ -65,16 +60,6 @@ function sanitizeFileName(fileName: string) {
 
 export async function POST(req: Request) {
   try {
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userData?.user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     const formData = await req.formData();
     const file = formData.get("file");
     if (!(file instanceof File)) {
@@ -84,15 +69,8 @@ export async function POST(req: Request) {
     const tenantSlug = getTenantSlug(req, formData.get("tenantSlug"));
     if (!tenantSlug) return jsonError("No se pudo detectar el negocio actual.");
 
-    const { data: tenant, error: tenantError } = await supabaseAdmin
-      .from("tenants")
-      .select("id, slug")
-      .eq("slug", tenantSlug)
-      .maybeSingle();
-
-    if (tenantError || !tenant?.id) {
-      return jsonError("No se pudo validar el negocio actual.", 404);
-    }
+    const auth = await requireTenantAdmin(req, { tenantSlug });
+    if (!auth.ok) return auth.response;
 
     const rule = ALLOWED_TYPES[file.type];
     if (!rule) {
@@ -114,7 +92,7 @@ export async function POST(req: Request) {
     }
 
     const safeFileName = sanitizeFileName(file.name);
-    const storagePath = `campaigns/${tenant.slug}/drafts/${Date.now()}-${safeFileName}`;
+    const storagePath = `campaigns/${auth.tenant.slug}/drafts/${Date.now()}-${safeFileName}`;
     const buffer = Buffer.from(await file.arrayBuffer());
 
     const { error: uploadError } = await supabaseAdmin.storage

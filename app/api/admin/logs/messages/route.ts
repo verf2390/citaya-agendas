@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type MessageLogPayload = {
@@ -15,12 +16,6 @@ type MessageLogPayload = {
 
 const ALLOWED_TYPES = new Set(["payment_resend", "campaign"]);
 const ALLOWED_STATUSES = new Set(["sent", "error"]);
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
 
 function badRequest(error: string) {
   return NextResponse.json({ ok: false, error }, { status: 400 });
@@ -37,16 +32,6 @@ function getTenantSlug(req: Request, body: MessageLogPayload) {
 
 export async function POST(req: Request) {
   try {
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userData?.user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = (await req.json().catch(() => null)) as MessageLogPayload | null;
     if (!body || typeof body !== "object") return badRequest("JSON invalido");
 
@@ -65,21 +50,11 @@ export async function POST(req: Request) {
     const tenantSlug = getTenantSlug(req, body);
     if (!tenantSlug) return badRequest("tenantSlug requerido");
 
-    const { data: tenant, error: tenantError } = await supabaseAdmin
-      .from("tenants")
-      .select("id")
-      .eq("slug", tenantSlug)
-      .maybeSingle();
-
-    if (tenantError || !tenant?.id) {
-      return NextResponse.json(
-        { ok: false, error: tenantError?.message ?? "Tenant no encontrado" },
-        { status: 404 },
-      );
-    }
+    const auth = await requireTenantAdmin(req, { tenantSlug });
+    if (!auth.ok) return auth.response;
 
     const { error } = await supabaseAdmin.from("message_logs").insert({
-      tenant_id: tenant.id,
+      tenant_id: auth.tenantId,
       type: payload.type,
       recipient: payload.recipient,
       subject: payload.subject || null,

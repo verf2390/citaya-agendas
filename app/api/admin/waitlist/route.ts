@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type WaitlistAdminRow = {
@@ -24,29 +25,8 @@ type WaitlistAdminRow = {
   created_at: string;
 };
 
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return false;
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  return !error && !!data?.user;
-}
-
 export async function GET(req: Request) {
   try {
-    if (!(await requireUser(req))) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
     const { searchParams } = new URL(req.url);
     const tenantId = String(searchParams.get("tenantId") || "").trim();
     const status = String(searchParams.get("status") || "active").trim();
@@ -57,6 +37,9 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
+
+    const auth = await requireTenantAdmin(req, { tenantId });
+    if (!auth.ok) return auth.response;
 
     let query = supabaseAdmin
       .from("waitlist_requests")
@@ -81,7 +64,7 @@ export async function GET(req: Request) {
           "created_at",
         ].join(","),
       )
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", auth.tenantId)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(500);
@@ -108,7 +91,7 @@ export async function GET(req: Request) {
       const { data: services, error: servicesError } = await supabaseAdmin
         .from("services")
         .select("id, name")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", auth.tenantId)
         .in("id", serviceIds);
 
       if (servicesError) {

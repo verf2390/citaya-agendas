@@ -175,6 +175,7 @@ function ConfirmacionFallback() {
 function ConfirmacionInner() {
   const sp = useSearchParams();
   const id = sp.get("id") ?? "";
+  const tokenParam = sp.get("token") ?? "";
 
   const tenantFromQuery = sp.get("tenant") ?? "";
   const host =
@@ -207,9 +208,16 @@ function ConfirmacionInner() {
       try {
         setLoading(true);
         setError("");
+        const tokenFromStorage =
+          typeof window !== "undefined"
+            ? sessionStorage.getItem(`citaya_manage_token:${id}`) ?? ""
+            : "";
+        const token = tokenParam || tokenFromStorage;
+        const params = new URLSearchParams({ id });
+        if (token) params.set("token", token);
 
         const res = await fetch(
-          `/api/appointments/by-id?id=${encodeURIComponent(id)}`,
+          `/api/appointments/by-id?${params.toString()}`,
           { cache: "no-store" },
         );
 
@@ -230,7 +238,7 @@ function ConfirmacionInner() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, tokenParam]);
 
   // 2) Resolver tenant
   useEffect(() => {

@@ -1,7 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type CampaignRecipient = {
   customer_id?: string;
@@ -22,37 +22,12 @@ type CampaignPayload = {
   recipients?: CampaignRecipient[];
 };
 
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
 function badRequest(error: string) {
   return NextResponse.json({ ok: false, error }, { status: 400 });
 }
 
 export async function POST(req: Request) {
   try {
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(
-      token,
-    );
-
-    if (userErr || !userData?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
     const body = (await req.json().catch(() => null)) as CampaignPayload | null;
 
     if (!body || typeof body !== "object") {
@@ -88,6 +63,12 @@ export async function POST(req: Request) {
     if (payload.channel === "email" && !payload.subject) {
       return badRequest("subject requerido para email");
     }
+
+    const auth = await requireTenantAdmin(req, {
+      tenantId: payload.tenant_id,
+      tenantSlug: payload.tenant_slug,
+    });
+    if (!auth.ok) return auth.response;
 
     const webhookUrl = process.env.N8N_CAMPAIGN_WEBHOOK_URL;
     if (!webhookUrl) {

@@ -1,44 +1,15 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-    v,
-  );
-}
 
 export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(
-      token,
-    );
-
-    if (userErr || !userData?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
     const { id } = await context.params;
     const { searchParams } = new URL(req.url);
     const tenantId = String(searchParams.get("tenantId") || "").trim();
@@ -57,11 +28,14 @@ export async function GET(
       );
     }
 
+    const auth = await requireTenantAdmin(req, { tenantId });
+    if (!auth.ok) return auth.response;
+
     const { data: customer, error: customerErr } = await supabaseAdmin
       .from("customers")
       .select("id, tenant_id, full_name, phone, email, notes, created_at")
       .eq("id", id)
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", auth.tenantId)
       .maybeSingle();
 
     if (customerErr) {
@@ -83,7 +57,7 @@ export async function GET(
       .select(
         "id, start_at, end_at, status, booking_status, payment_status, payment_required_amount, payment_paid_amount, payment_provider, service_name, service_id, professional_id, notes",
       )
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", auth.tenantId)
       .eq("customer_id", id)
       .order("start_at", { ascending: false });
 
@@ -117,7 +91,7 @@ export async function GET(
       const { data: services } = await supabaseAdmin
         .from("services")
         .select("id, name")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", auth.tenantId)
         .in("id", serviceIds);
 
       servicesMap = new Map((services ?? []).map((s) => [s.id, s.name]));
@@ -127,7 +101,7 @@ export async function GET(
       const { data: professionals } = await supabaseAdmin
         .from("professionals")
         .select("id, name")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", auth.tenantId)
         .in("id", professionalIds);
 
       professionalsMap = new Map(

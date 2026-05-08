@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const ALLOWED_STATUSES = new Set([
@@ -12,30 +13,7 @@ const ALLOWED_STATUSES = new Set([
   "deleted",
 ]);
 
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return false;
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  return !error && !!data?.user;
-}
-
 async function getContext(req: Request, context: { params: Promise<{ id: string }> }) {
-  if (!(await requireUser(req))) {
-    return {
-      error: NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      ),
-    };
-  }
-
   const { id } = await context.params;
   const { searchParams } = new URL(req.url);
   const tenantId = String(searchParams.get("tenantId") || "").trim();
@@ -58,7 +36,10 @@ async function getContext(req: Request, context: { params: Promise<{ id: string 
     };
   }
 
-  return { id, tenantId };
+  const auth = await requireTenantAdmin(req, { tenantId });
+  if (!auth.ok) return { error: auth.response };
+
+  return { id, tenantId: auth.tenantId };
 }
 
 export async function PATCH(

@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type TenantUpdatePayload = {
@@ -19,12 +20,6 @@ type TenantUpdatePayload = {
 
 const TENANT_PUBLIC_CONFIG_SELECT =
   "id, slug, name, phone_display, whatsapp, contact_email, address, city, description, logo_url";
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
 
 function jsonError(error: string, status = 400) {
   return NextResponse.json({ ok: false, error }, { status });
@@ -53,23 +48,8 @@ function getTenantSlug(req: Request, body: TenantUpdatePayload) {
   return String(body.tenantSlug ?? "").trim();
 }
 
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return { ok: false as const, error: "Unauthorized", status: 401 };
-
-  const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-  if (userErr || !userData?.user) {
-    return { ok: false as const, error: "Unauthorized", status: 401 };
-  }
-
-  return { ok: true as const };
-}
-
 export async function GET(req: Request) {
   try {
-    const auth = await requireUser(req);
-    if (!auth.ok) return jsonError(auth.error, auth.status);
-
     const url = new URL(req.url);
     const forwardedHost = req.headers.get("x-forwarded-host");
     const host = forwardedHost || req.headers.get("host");
@@ -78,10 +58,13 @@ export async function GET(req: Request) {
 
     if (!tenantSlug) return jsonError("No se pudo detectar el tenant actual.");
 
+    const auth = await requireTenantAdmin(req, { tenantSlug });
+    if (!auth.ok) return auth.response;
+
     const { data: tenant, error } = await supabaseAdmin
       .from("tenants")
       .select(TENANT_PUBLIC_CONFIG_SELECT)
-      .eq("slug", tenantSlug)
+      .eq("id", auth.tenantId)
       .maybeSingle();
 
     if (error || !tenant?.id) {
@@ -100,14 +83,14 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await requireUser(req);
-    if (!auth.ok) return jsonError(auth.error, auth.status);
-
     const body = (await req.json().catch(() => null)) as TenantUpdatePayload | null;
     if (!body || typeof body !== "object") return jsonError("JSON inválido");
 
     const tenantSlug = getTenantSlug(req, body);
     if (!tenantSlug) return jsonError("No se pudo detectar el tenant actual.");
+
+    const auth = await requireTenantAdmin(req, { tenantSlug });
+    if (!auth.ok) return auth.response;
 
     const name = optionalText(body.name);
     const phoneDisplay = optionalText(body.phone_display);
@@ -125,7 +108,7 @@ export async function PATCH(req: Request) {
     const { data: tenant, error: tenantError } = await supabaseAdmin
       .from("tenants")
       .select("id, slug")
-      .eq("slug", tenantSlug)
+      .eq("id", auth.tenantId)
       .maybeSingle();
 
     if (tenantError || !tenant?.id) {

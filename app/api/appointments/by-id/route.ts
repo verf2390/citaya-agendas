@@ -5,6 +5,7 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
+    const token = String(url.searchParams.get("token") ?? "").trim();
 
     if (!id) {
       return NextResponse.json({ error: "Falta id" }, { status: 400 });
@@ -67,21 +68,34 @@ export async function GET(req: Request) {
       );
     }
 
+    const row = data as Record<string, unknown> & {
+      manage_token?: string | null;
+      professionals?: unknown;
+      tenants?: unknown;
+    };
+
+    if (!token || !row.manage_token || row.manage_token !== token) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // Supabase puede devolver join como objeto o array
-    const profAny = (data as any)?.professionals ?? null;
+    const profAny = row.professionals ?? null;
     const profObj = Array.isArray(profAny)
       ? (profAny.length ? profAny[0] : null)
       : profAny;
+    const professional = profObj as { name?: unknown; title?: unknown } | null;
 
     const professional_name =
-      (profObj?.name && String(profObj.name).trim()) ||
-      (profObj?.title && String(profObj.title).trim()) ||
+      (professional?.name && String(professional.name).trim()) ||
+      (professional?.title && String(professional.title).trim()) ||
       null;
 
-    const tenant = (data as any)?.tenants ?? null;
+    const tenant = row.tenants ?? null;
 
+    const safeAppointmentData = { ...row };
+    delete safeAppointmentData.manage_token;
     const appointment = {
-      ...(data as any),
+      ...safeAppointmentData,
       professional_name,
       // (opcional) también dejo el objeto para frontend/email si lo quieres
       professional: profObj ?? null,

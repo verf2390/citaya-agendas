@@ -938,6 +938,15 @@ function ReservarInner() {
       if (!appointmentId)
         throw new Error("Reserva creada pero falta id en respuesta.");
 
+      if (manageToken) {
+        try {
+          sessionStorage.setItem(
+            `citaya_manage_token:${appointmentId}`,
+            manageToken,
+          );
+        } catch {}
+      }
+
       if (isPayNowSelected) {
         const paymentRes = await fetch("/api/payments/create", {
           method: "POST",
@@ -945,6 +954,7 @@ function ReservarInner() {
           body: JSON.stringify({
             appointmentId,
             tenantId,
+            manageToken,
             provider: selectedPaymentProvider,
           }),
         });
@@ -988,15 +998,6 @@ function ReservarInner() {
       }
 
       const qs = new URLSearchParams({ id: appointmentId }).toString();
-
-      if (manageToken) {
-        try {
-          sessionStorage.setItem(
-            `citaya_manage_token:${appointmentId}`,
-            manageToken,
-          );
-        } catch {}
-      }
 
       router.push(`/reservar/confirmacion?${qs}`);
     } catch (e: any) {

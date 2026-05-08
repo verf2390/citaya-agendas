@@ -1,5 +1,6 @@
 // app/api/appointments/reschedule-by-id/route.ts
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
@@ -76,6 +77,9 @@ export async function POST(req: Request) {
       );
     }
 
+    const auth = await requireTenantAdmin(req, { tenantId: tenant_id });
+    if (!auth.ok) return auth.response;
+
     // ✅ No permitir reagendar citas canceladas (opcional pero sano)
     if (oldAppt.status === "canceled") {
       return NextResponse.json(
@@ -122,6 +126,7 @@ export async function POST(req: Request) {
         rescheduled_at,
       })
       .eq("id", appointment_id)
+      .eq("tenant_id", auth.tenantId)
       .select("id, tenant_id, professional_id, start_at, end_at, status, booking_status, rescheduled_at")
       .single();
 

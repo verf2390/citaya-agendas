@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
@@ -58,6 +59,9 @@ export async function POST(req: Request) {
       // 🔒 multi-tenant guard
       return NextResponse.json({ ok: false, error: "Forbidden: tenant mismatch" }, { status: 403 });
     }
+
+    const auth = await requireTenantAdmin(req, { tenantId: appt.tenant_id });
+    if (!auth.ok) return auth.response;
 
     // Config n8n
     const n8nUrl =

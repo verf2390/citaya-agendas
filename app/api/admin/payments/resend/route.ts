@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type PaymentResendPayload = {
@@ -104,11 +105,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userData?.user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = (await req.json().catch(() => null)) as PaymentResendPayload | null;
     if (!body || typeof body !== "object") return badRequest("JSON invalido");
 
@@ -133,8 +129,13 @@ export async function POST(req: Request) {
       return badRequest("amount invalido");
     }
 
+    const auth = await requireTenantAdmin(req, { tenantSlug: payload.tenantSlug });
+    if (!auth.ok) return auth.response;
+
     const tenant = await fetchTenantBranding(payload.tenantSlug);
-    if (!tenant?.id) return badRequest("tenantSlug invalido");
+    if (!tenant?.id || tenant.id !== auth.tenantId) {
+      return badRequest("tenantSlug invalido");
+    }
 
     const { data: appointment } = await supabaseAdmin
       .from("appointments")

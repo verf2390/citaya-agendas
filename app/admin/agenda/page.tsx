@@ -659,7 +659,9 @@ export default function AgendaPage() {
 
   const loadProfessionals = useCallback(async () => {
     try {
+      const headers = await getAdminAuthHeaders();
       const res = await fetch(`/api/admin/professionals/list`, {
+        headers,
         cache: "no-store",
       });
       const json = await res.json().catch(() => null);
@@ -683,7 +685,7 @@ export default function AgendaPage() {
     } catch (e) {
       console.error("Error loading professionals:", e);
     }
-  }, [tenantId]);
+  }, [getAdminAuthHeaders, tenantId]);
 
   const loadCustomers = useCallback(async () => {
     if (!tenantId) return;
@@ -1444,9 +1446,10 @@ export default function AgendaPage() {
     }
 
     try {
+      const headers = await getAdminAuthHeaders("application/json");
       const res = await fetch("/api/appointments/reschedule-by-id", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify({
           tenant_id: tenantId,
           appointment_id: id,
@@ -1489,9 +1492,10 @@ export default function AgendaPage() {
 
   async function cancelAppointment(appointmentId: string) {
     try {
+      const headers = await getAdminAuthHeaders("application/json");
       const res = await fetch("/api/appointments/cancel-by-id", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           tenant_id: tenantId,
           appointment_id: appointmentId,

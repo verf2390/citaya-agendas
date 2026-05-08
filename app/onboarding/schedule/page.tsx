@@ -42,7 +42,17 @@ export default function OnboardingSchedulePage() {
       }
       setTenantId(tenant.id);
 
-      const res = await fetch(`/api/admin/professionals/list?tenantId=${encodeURIComponent(tenant.id)}`, { cache: "no-store" });
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        router.push("/login?redirectTo=/onboarding/schedule");
+        return;
+      }
+
+      const res = await fetch(`/api/admin/professionals/list?tenantId=${encodeURIComponent(tenant.id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
       const json = await res.json().catch(() => null);
       const firstProfessional = json?.professionals?.[0]?.id ?? "";
       if (!firstProfessional) {
@@ -52,7 +62,7 @@ export default function OnboardingSchedulePage() {
       setProfessionalId(firstProfessional);
     };
     void run();
-  }, []);
+  }, [router]);
 
   const toggleDay = (day: number) => {
     setDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
@@ -61,9 +71,19 @@ export default function OnboardingSchedulePage() {
   const save = async () => {
     if (!tenantId || !professionalId || days.length === 0) return;
     setSaving(true);
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    if (!token) {
+      setSaving(false);
+      router.push("/login?redirectTo=/onboarding/schedule");
+      return;
+    }
     const res = await fetch("/api/admin/availability/upsert", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
         tenantId,
         professionalId,

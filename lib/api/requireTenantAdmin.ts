@@ -170,6 +170,13 @@ export async function requireTenantAdmin(
   }
 
   const tenant = data as TenantAdminTenant;
+  if (tenantId && tenantSlug && tenant.slug !== tenantSlug) {
+    return {
+      ok: false,
+      response: jsonError("Forbidden: tenantId/tenantSlug mismatch", 403),
+    };
+  }
+
   const adminEmail = cleanText(tenant.admin_email).toLowerCase();
   const userEmail = cleanText(userData.user.email).toLowerCase();
 

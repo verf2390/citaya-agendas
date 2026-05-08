@@ -58,6 +58,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
     const appointmentId = String(body?.appointmentId ?? "").trim();
     const tenantId = body?.tenantId ? String(body.tenantId).trim() : "";
+    const manageToken = String(body?.manageToken ?? body?.token ?? "").trim();
     const providerId = String(body?.provider ?? "mercadopago").trim();
 
     if (!appointmentId || !isUuid(appointmentId)) {
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from("appointments")
       .select(
-        "id, tenant_id, service_id, service_name, customer_name, customer_email, status",
+        "id, tenant_id, service_id, service_name, customer_name, customer_email, status, manage_token",
       )
       .eq("id", appointmentId)
       .single();
@@ -99,6 +100,17 @@ export async function POST(req: Request) {
     if (tenantId && appointment.tenant_id !== tenantId) {
       return NextResponse.json(
         { ok: false, error: "Tenant mismatch para la cita" },
+        { status: 403 },
+      );
+    }
+
+    if (
+      !manageToken ||
+      !appointment.manage_token ||
+      appointment.manage_token !== manageToken
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "manage_token inválido" },
         { status: 403 },
       );
     }
@@ -227,7 +239,7 @@ export async function POST(req: Request) {
       customerEmail: appointment.customer_email ?? null,
       successUrl,
       failureUrl: `${appUrl}/reservar/resultado?status=failure`,
-      pendingUrl: `${appUrl}/reservar/resultado?status=pending&id=${appointment.id}&provider=${providerId}`,
+      pendingUrl: `${appUrl}/reservar/resultado?status=pending&id=${appointment.id}&token=${encodeURIComponent(manageToken)}&provider=${providerId}`,
       notificationUrl: notificationUrl.toString(),
       config: providerConfig,
     });

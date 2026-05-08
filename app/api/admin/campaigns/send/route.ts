@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
@@ -594,12 +595,17 @@ export async function GET(req: Request) {
       String(url.searchParams.get("tenantSlug") ?? "").trim();
     if (!tenantSlug) return badRequest("No se pudo detectar el tenant actual.");
 
+    const auth = await requireTenantAdmin(req, { tenantSlug });
+    if (!auth.ok) return auth.response;
+
     const templateKey = String(url.searchParams.get("templateKey") ?? "").trim();
     const segmentKey = String(url.searchParams.get("segmentKey") ?? "all").trim();
     if (!ALLOWED_SEGMENTS.has(segmentKey)) return badRequest("Segmento invalido");
 
     const tenant = await fetchTenantBranding(tenantSlug);
-    if (!tenant?.id) return badRequest("Tenant no encontrado.");
+    if (!tenant?.id || tenant.id !== auth.tenantId) {
+      return badRequest("Tenant no encontrado.");
+    }
 
     const paymentCampaign = isPaymentCampaign({ templateKey, segmentKey });
     const preview = await buildAudiencePreview(
@@ -677,8 +683,13 @@ export async function POST(req: Request) {
     const tenantSlug = getTenantSlug(req, body);
     if (!tenantSlug) return badRequest("No se pudo detectar el tenant actual.");
 
+    const auth = await requireTenantAdmin(req, { tenantSlug });
+    if (!auth.ok) return auth.response;
+
     const tenant = await fetchTenantBranding(tenantSlug);
-    if (!tenant?.id) return badRequest("Tenant no encontrado.");
+    if (!tenant?.id || tenant.id !== auth.tenantId) {
+      return badRequest("Tenant no encontrado.");
+    }
 
     const ctaLabel = paymentCampaign ? "Pagar ahora" : payload.ctaLabel || "Reservar hora";
     const ctaUrl = paymentCampaign

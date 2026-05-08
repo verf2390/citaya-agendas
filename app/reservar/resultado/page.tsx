@@ -98,6 +98,7 @@ function ResultInner() {
   const sp = useSearchParams();
   const status = (sp.get("status") || "").toLowerCase();
   const appointmentId = sp.get("id");
+  const tokenParam = sp.get("token") ?? "";
   const start = sp.get("start");
   const end = sp.get("end");
   const [appointment, setAppointment] = useState<AppointmentResult | null>(null);
@@ -123,8 +124,16 @@ function ResultInner() {
 
     (async () => {
       try {
+        const tokenFromStorage =
+          typeof window !== "undefined"
+            ? sessionStorage.getItem(`citaya_manage_token:${appointmentId}`) ?? ""
+            : "";
+        const token = tokenParam || tokenFromStorage;
+        const params = new URLSearchParams({ id: appointmentId });
+        if (token) params.set("token", token);
+
         const res = await fetch(
-          `/api/appointments/by-id?id=${encodeURIComponent(appointmentId)}`,
+          `/api/appointments/by-id?${params.toString()}`,
           { cache: "no-store" },
         );
         const json = await res.json().catch(() => null);
@@ -138,7 +147,7 @@ function ResultInner() {
     return () => {
       cancelled = true;
     };
-  }, [appointmentId]);
+  }, [appointmentId, tokenParam]);
 
   const title = isRescheduled
     ? "¡Listo! Tu cita ha sido reagendada"
