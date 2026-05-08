@@ -156,7 +156,6 @@ function dedupePreservingInactive(list: Block[]) {
 
 function safeUUID() {
   try {
-    // @ts-ignore
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   } catch {}
   return `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;

@@ -1,20 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 export default function OnboardingConfirmPage() {
-  const [slug, setSlug] = useState("");
+  const slug =
+    typeof window === "undefined"
+      ? ""
+      : getTenantSlugFromHostname(window.location.hostname) ?? "";
   const publicLink = useMemo(
     () => (slug ? `https://${slug}.citaya.online` : ""),
     [slug],
   );
-
-  useEffect(() => {
-    setSlug(getTenantSlugFromHostname(window.location.hostname) ?? "");
-  }, []);
 
   return (
     <main className="min-h-screen bg-[#f6f7fb] p-4 sm:p-6">

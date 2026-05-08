@@ -230,7 +230,7 @@ export default function AdminDashboardPage() {
   }, [authChecked, tenantId]);
 
   const metrics = useMemo(() => {
-    const now = Date.now();
+    const now = new Date().getTime();
     const today = dayKey(new Date());
 
     return appointments.reduce(
