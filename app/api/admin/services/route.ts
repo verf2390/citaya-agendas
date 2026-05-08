@@ -2,31 +2,13 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
-
-type TenantResolution = {
-  tenantId: string;
-  error: string;
-  status: number;
-};
 
 const SERVICE_SELECT =
   "id, tenant_id, name, description, duration_min, price, currency, is_active, created_at";
 const SERVICE_SELECT_NO_CREATED =
   "id, tenant_id, name, description, duration_min, price, currency, is_active";
-
-function getBearerToken(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-function getHostnameFromReq(req: Request) {
-  const host =
-    req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  return host.split(",")[0]?.trim().split(":")[0] ?? "";
-}
 
 function cleanText(value: unknown) {
   if (typeof value !== "string") return "";
@@ -68,55 +50,6 @@ function jsonError(error: string, status: number) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return false;
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  return !error && !!data?.user;
-}
-
-async function resolveTenantId(
-  req: Request,
-  body?: any,
-): Promise<TenantResolution> {
-  const url = new URL(req.url);
-  const slug =
-    cleanText(url.searchParams.get("tenant")) ||
-    getTenantSlugFromHostname(getHostnameFromReq(req));
-
-  if (slug) {
-    const { data, error } = await supabaseAdmin
-      .from("tenants")
-      .select("id")
-      .eq("slug", slug)
-      .maybeSingle();
-
-    if (error) return { tenantId: "", error: error.message, status: 500 };
-    if (!data?.id) {
-      return {
-        tenantId: "",
-        error: `Tenant no encontrado para ${slug}`,
-        status: 404,
-      };
-    }
-
-    return { tenantId: data.id as string, error: "", status: 200 };
-  }
-
-  const tenantIdFromBody =
-    cleanText(body?.tenantId) || cleanText(url.searchParams.get("tenantId"));
-  if (tenantIdFromBody && isUuid(tenantIdFromBody)) {
-    return { tenantId: tenantIdFromBody, error: "", status: 200 };
-  }
-
-  return {
-    tenantId: "",
-    error: "No se pudo resolver tenant actual",
-    status: 400,
-  };
-}
-
 async function fetchServiceById(id: string, tenantId: string) {
   const withCreated = await supabaseAdmin
     .from("services")
@@ -143,22 +76,20 @@ async function selectChangedService(id: string, tenantId: string) {
 
 export async function GET(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
-    const tenant = await resolveTenantId(req);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const auth = await requireTenantAdmin(req);
+    if (!auth.ok) return auth.response;
 
     const withCreated = await supabaseAdmin
       .from("services")
       .select(SERVICE_SELECT)
-      .eq("tenant_id", tenant.tenantId)
+      .eq("tenant_id", auth.tenantId)
       .order("created_at", { ascending: false });
 
     const result = withCreated.error
       ? await supabaseAdmin
           .from("services")
           .select(SERVICE_SELECT_NO_CREATED)
-          .eq("tenant_id", tenant.tenantId)
+          .eq("tenant_id", auth.tenantId)
           .order("name", { ascending: true })
       : withCreated;
 
@@ -177,11 +108,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
     const body = await req.json().catch(() => null);
-    const tenant = await resolveTenantId(req, body);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const auth = await requireTenantAdmin(req, { body });
+    if (!auth.ok) return auth.response;
 
     const name = cleanText(body?.name);
     const description = cleanText(body?.description);
@@ -206,7 +135,7 @@ export async function POST(req: Request) {
     }
 
     const payload = {
-      tenant_id: tenant.tenantId,
+      tenant_id: auth.tenantId,
       name,
       description: description || null,
       price,
@@ -235,18 +164,16 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
     const body = await req.json().catch(() => null);
-    const tenant = await resolveTenantId(req, body);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const auth = await requireTenantAdmin(req, { body });
+    if (!auth.ok) return auth.response;
 
     const serviceId = cleanText(body?.id ?? body?.serviceId);
     if (!serviceId || !isUuid(serviceId)) {
       return jsonError("id de servicio inválido", 400);
     }
 
-    const existing = await fetchServiceById(serviceId, tenant.tenantId);
+    const existing = await fetchServiceById(serviceId, auth.tenantId);
     if (existing.error) {
       console.error("[api/admin/services] lookup error:", existing.error);
       return jsonError(existing.error.message, 500);
@@ -307,7 +234,7 @@ export async function PATCH(req: Request) {
       .from("services")
       .update(update)
       .eq("id", serviceId)
-      .eq("tenant_id", tenant.tenantId);
+      .eq("tenant_id", auth.tenantId);
 
     if (error) {
       console.error("[api/admin/services] update error:", error);
@@ -316,7 +243,7 @@ export async function PATCH(req: Request) {
 
     const { service, error: selectError } = await selectChangedService(
       serviceId,
-      tenant.tenantId,
+      auth.tenantId,
     );
     if (selectError) return jsonError(selectError.message, 500);
     if (!service) return jsonError("Servicio no encontrado para este tenant", 404);
@@ -330,12 +257,10 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
     const url = new URL(req.url);
     const body = await req.json().catch(() => null);
-    const tenant = await resolveTenantId(req, body);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const auth = await requireTenantAdmin(req, { body });
+    if (!auth.ok) return auth.response;
 
     const serviceId =
       cleanText(body?.id ?? body?.serviceId) || cleanText(url.searchParams.get("id"));
@@ -343,7 +268,7 @@ export async function DELETE(req: Request) {
       return jsonError("id de servicio inválido", 400);
     }
 
-    const existing = await fetchServiceById(serviceId, tenant.tenantId);
+    const existing = await fetchServiceById(serviceId, auth.tenantId);
     if (existing.error) return jsonError(existing.error.message, 500);
     if (!existing.data) {
       return jsonError("Servicio no encontrado para este tenant", 404);
@@ -353,7 +278,7 @@ export async function DELETE(req: Request) {
       .from("services")
       .update({ is_active: false })
       .eq("id", serviceId)
-      .eq("tenant_id", tenant.tenantId);
+      .eq("tenant_id", auth.tenantId);
 
     if (error) {
       console.error("[api/admin/services] deactivate error:", error);

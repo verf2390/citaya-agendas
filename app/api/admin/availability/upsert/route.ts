@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type IncomingBlock = {
   id?: string | null; // uuid si existe
@@ -33,9 +33,6 @@ function overlaps(a: { start: string; end: string }, b: { start: string; end: st
 
 export async function POST(req: Request) {
   try {
-    const host = req.headers.get("host") || "";
-    const tenantSlug = getTenantSlugFromHostname(host);
-
     const body = await req.json().catch(() => ({}));
 
     const professionalId: string | undefined = body?.professionalId;
@@ -62,23 +59,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // tenant por slug (hostname)
-    const { data: tenant, error: tenantErr } = await supabaseAdmin
-      .from("tenants")
-      .select("id, slug")
-      .eq("slug", tenantSlug)
-      .single();
+    const auth = await requireTenantAdmin(req, { body });
+    if (!auth.ok) return auth.response;
 
-    if (tenantErr || !tenant?.id) {
-      return NextResponse.json({ error: "tenant no encontrado" }, { status: 404, headers: NO_STORE_HEADERS });
-    }
+    const tenantId = auth.tenantId;
 
     // profesional pertenece al tenant
     const { data: prof, error: profErr } = await supabaseAdmin
       .from("professionals")
       .select("id")
       .eq("id", professionalId)
-      .eq("tenant_id", tenant.id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (profErr || !prof?.id) {
@@ -155,7 +146,7 @@ export async function POST(req: Request) {
     const { data: existing, error: exErr } = await supabaseAdmin
       .from("availability")
       .select("id")
-      .eq("tenant_id", tenant.id)
+      .eq("tenant_id", tenantId)
       .eq("professional_id", professionalId);
 
     if (exErr) {
@@ -204,7 +195,7 @@ export async function POST(req: Request) {
         .from("availability")
         .delete()
         .in("id", toDelete)
-        .eq("tenant_id", tenant.id)
+        .eq("tenant_id", tenantId)
         .eq("professional_id", professionalId);
 
       if (del.error) {
@@ -217,7 +208,7 @@ export async function POST(req: Request) {
     if (toUpdate.length > 0) {
       const rows = toUpdate.map((b) => ({
         id: b.id,
-        tenant_id: tenant.id,
+        tenant_id: tenantId,
         professional_id: professionalId,
         day_of_week: b.day_of_week,
         start_time: b.start_time,
@@ -237,7 +228,7 @@ export async function POST(req: Request) {
     // INSERT — solo activos
     if (toInsert.length > 0) {
       const rows = toInsert.map((b) => ({
-        tenant_id: tenant.id,
+        tenant_id: tenantId,
         professional_id: professionalId,
         day_of_week: b.day_of_week,
         start_time: b.start_time,
@@ -256,7 +247,7 @@ export async function POST(req: Request) {
     const { data: items, error: readErr } = await supabaseAdmin
       .from("availability")
       .select("id, day_of_week, start_time, end_time")
-      .eq("tenant_id", tenant.id)
+      .eq("tenant_id", tenantId)
       .eq("professional_id", professionalId)
       .order("day_of_week", { ascending: true })
       .order("start_time", { ascending: true });

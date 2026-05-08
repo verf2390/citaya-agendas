@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 
 const PaymentModeSchema = z.enum(["none", "optional", "required"]);
@@ -67,14 +67,12 @@ function maskSecret(value: string | null | undefined) {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const tenantId = String(searchParams.get("tenantId") ?? "").trim();
+    const requestedTenantId = String(searchParams.get("tenantId") ?? "").trim();
 
-    if (!tenantId || !isUuid(tenantId)) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId requerido o inválido" },
-        { status: 400 },
-      );
-    }
+    const auth = await requireTenantAdmin(req, { tenantId: requestedTenantId });
+    if (!auth.ok) return auth.response;
+
+    const tenantId = auth.tenantId;
 
     const config = await getTenantPaymentConfig(tenantId);
 
@@ -116,7 +114,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
-    const tenantId = String(body?.tenantId ?? "").trim();
+    const requestedTenantId = String(body?.tenantId ?? "").trim();
     const parsedMode = PaymentModeSchema.safeParse(body?.paymentMode);
     const hasDepositType = hasOwn(body, "depositType");
     const hasDepositValue = hasOwn(body, "depositValue");
@@ -129,12 +127,10 @@ export async function POST(req: Request) {
       ? PaymentCollectionModeSchema.safeParse(body?.paymentCollectionMode)
       : null;
 
-    if (!tenantId || !isUuid(tenantId)) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId requerido o inválido" },
-        { status: 400 },
-      );
-    }
+    const auth = await requireTenantAdmin(req, { tenantId: requestedTenantId });
+    if (!auth.ok) return auth.response;
+
+    const tenantId = auth.tenantId;
 
     if (!parsedMode.success) {
       return NextResponse.json(

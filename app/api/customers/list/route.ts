@@ -1,52 +1,22 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
 
 export async function GET(req: Request) {
   try {
-    // ✅ Auth por Bearer token (JWT de Supabase)
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    // ✅ Verificar token con Supabase Admin
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(
-      token,
-    );
-
-    if (userErr || !userData?.user) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
     const { searchParams } = new URL(req.url);
     const tenantId = searchParams.get("tenantId") || "";
-    if (!tenantId || !isUuid(tenantId)) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId requerido o inválido" },
-        { status: 400 },
-      );
-    }
+
+    const auth = await requireTenantAdmin(req, { tenantId });
+    if (!auth.ok) return auth.response;
 
     // ✅ Listar customers por tenant (service role)
     const { data: customers, error } = await supabaseAdmin
       .from("customers")
       .select("id, tenant_id, full_name, phone, email, notes, created_at")
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", auth.tenantId)
       .order("full_name", { ascending: true })
       .limit(1000);
 
@@ -83,7 +53,7 @@ export async function GET(req: Request) {
         .select(
           "customer_id, start_at, payment_status, payment_paid_amount, payment_required_amount",
         )
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", auth.tenantId)
         .in("customer_id", customerIds);
 
       if (apptError) {

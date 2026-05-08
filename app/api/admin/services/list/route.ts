@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -8,10 +9,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Falta tenantId" }, { status: 400 });
   }
 
-  const { data, error } = await supabaseServer
+  const auth = await requireTenantAdmin(req, { tenantId });
+  if (!auth.ok) return auth.response;
+
+  const { data, error } = await supabaseAdmin
     .from("services")
     .select("id, tenant_id, name, duration_min, price, currency, is_active")
-    .eq("tenant_id", tenantId)
+    .eq("tenant_id", auth.tenantId)
     .order("name", { ascending: true });
 
   if (error) {

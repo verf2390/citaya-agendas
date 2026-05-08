@@ -177,6 +177,14 @@ export default function AdminPagosPage() {
   const [bankRut, setBankRut] = useState("");
   const [bankEmail, setBankEmail] = useState("");
   const [savingPaymentSettings, setSavingPaymentSettings] = useState(false);
+  const getAdminAuthHeaders = async (contentType?: string) => {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    const headers: Record<string, string> = {};
+    if (contentType) headers["Content-Type"] = contentType;
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  };
 
   useEffect(() => {
     const run = async () => {
@@ -232,9 +240,10 @@ export default function AdminPagosPage() {
     setLoadingPaymentSettings(true);
 
     try {
+      const headers = await getAdminAuthHeaders();
       const res = await fetch(
         `/api/admin/payment-settings?tenantId=${encodeURIComponent(tenantId)}`,
-        { cache: "no-store" },
+        { headers, cache: "no-store" },
       );
       const json = await res.json().catch(() => null);
 
@@ -318,8 +327,10 @@ export default function AdminPagosPage() {
       start: "2000-01-01T00:00:00.000Z",
       end: "2100-01-01T00:00:00.000Z",
     });
+    const headers = await getAdminAuthHeaders();
 
     const res = await fetch(`/api/admin/appointments/range?${params.toString()}`, {
+      headers,
       cache: "no-store",
     });
     const json = await res.json().catch(() => null);
@@ -485,9 +496,10 @@ export default function AdminPagosPage() {
     setSavingPaymentSettings(true);
 
     try {
+      const headers = await getAdminAuthHeaders("application/json");
       const res = await fetch("/api/admin/payment-settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           tenantId,
           paymentMode: nextPaymentMode,
@@ -537,9 +549,10 @@ export default function AdminPagosPage() {
   const markAsPaid = async (appointmentId: string) => {
     setMarkingId(appointmentId);
     try {
+      const headers = await getAdminAuthHeaders("application/json");
       const res = await fetch("/api/admin/appointments/mark-paid", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ appointmentId, paymentProvider: "manual" }),
       });
       const json = await res.json().catch(() => null);

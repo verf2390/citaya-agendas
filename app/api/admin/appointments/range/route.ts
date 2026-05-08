@@ -1,6 +1,7 @@
 // app/api/admin/appointments/range/route.ts
 
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function isUuid(v: string) {
@@ -74,6 +75,36 @@ export async function GET(req: Request) {
       );
     }
 
+    const auth = await requireTenantAdmin(req, { tenantId });
+    if (!auth.ok) return auth.response;
+
+    if (professionalId) {
+      const { data: professional, error: professionalError } = await supabaseAdmin
+        .from("professionals")
+        .select("id")
+        .eq("id", professionalId)
+        .eq("tenant_id", auth.tenantId)
+        .maybeSingle();
+
+      if (professionalError) {
+        console.error(
+          "[admin/appointments/range] professional lookup error:",
+          professionalError,
+        );
+        return NextResponse.json(
+          { error: "professional lookup error" },
+          { status: 500, headers: NO_STORE_HEADERS },
+        );
+      }
+
+      if (!professional?.id) {
+        return NextResponse.json(
+          { error: "professionalId inválido para este tenant" },
+          { status: 403, headers: NO_STORE_HEADERS },
+        );
+      }
+    }
+
     let q = supabaseAdmin
       .from("appointments")
       .select(
@@ -98,11 +129,10 @@ export async function GET(req: Request) {
         payment_paid_amount,
         payment_remaining_amount,
         payment_reference,
-        payment_url,
-        manage_token
+        payment_url
       `,
       )
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", auth.tenantId)
       .order("start_at", { ascending: true })
       .limit(2000);
 

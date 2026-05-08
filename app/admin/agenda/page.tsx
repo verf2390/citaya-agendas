@@ -418,6 +418,14 @@ export default function AgendaPage() {
 
   // auth
   const [authChecked, setAuthChecked] = useState(false);
+  const getAdminAuthHeaders = useCallback(async (contentType?: string) => {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess.session?.access_token;
+    const headers: Record<string, string> = {};
+    if (contentType) headers["Content-Type"] = contentType;
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }, []);
 
   // professionals
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -571,9 +579,10 @@ export default function AgendaPage() {
       if (!authChecked || !tenantId) return;
 
       try {
+        const headers = await getAdminAuthHeaders();
         const res = await fetch(
           `/api/admin/payment-settings?tenantId=${encodeURIComponent(tenantId)}`,
-          { cache: "no-store" },
+          { headers, cache: "no-store" },
         );
         const json = await res.json().catch(() => null);
 
@@ -642,7 +651,7 @@ export default function AgendaPage() {
     };
 
     void run();
-  }, [authChecked, tenantId]);
+  }, [authChecked, getAdminAuthHeaders, tenantId]);
 
   /* =====================================================
      LOADERS
@@ -730,10 +739,11 @@ export default function AgendaPage() {
         const qs = new URLSearchParams();
         qs.set("professionalId", professionalId);
         qs.set("tenantId", tenantId);
+        const headers = await getAdminAuthHeaders();
 
         const res = await fetch(
           `/api/admin/availability/list?${qs.toString()}`,
-          { cache: "no-store" },
+          { headers, cache: "no-store" },
         );
 
         const json = await res.json().catch(() => null);
@@ -765,7 +775,7 @@ export default function AgendaPage() {
         setAvailabilityBlocks([]);
       }
     },
-    [tenantId],
+    [getAdminAuthHeaders, tenantId],
   );
 
   const saveAvailability = async () => {
@@ -784,10 +794,11 @@ export default function AgendaPage() {
           is_active: !!b.is_active,
         })),
       };
+      const headers = await getAdminAuthHeaders("application/json");
 
       const res = await fetch("/api/admin/availability/upsert", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -827,10 +838,12 @@ export default function AgendaPage() {
         if (professionalId) qs.set("professionalId", professionalId);
         if (start) qs.set("start", start);
         if (end) qs.set("end", end);
+        const headers = await getAdminAuthHeaders();
 
         const res = await fetch(
           `/api/admin/appointments/range?${qs.toString()}`,
           {
+            headers,
             cache: "no-store",
             signal: ac.signal,
           },
@@ -879,7 +892,7 @@ export default function AgendaPage() {
         setLoading(false);
       }
     },
-    [tenantId],
+    [getAdminAuthHeaders, tenantId],
   );
 
   const loadServices = useCallback(async () => {
@@ -891,8 +904,10 @@ export default function AgendaPage() {
     try {
       const qs = new URLSearchParams();
       qs.set("tenantId", tenantId);
+      const headers = await getAdminAuthHeaders();
 
       const res = await fetch(`/api/admin/services/list?${qs.toString()}`, {
+        headers,
         cache: "no-store",
       });
       const json = await res.json().catch(() => null);
@@ -916,7 +931,7 @@ export default function AgendaPage() {
     } finally {
       setLoadingServices(false);
     }
-  }, [tenantId]);
+  }, [getAdminAuthHeaders, tenantId]);
 
   const loadServiceRules = useCallback(
     async (professionalId: string, serviceId: string) => {
@@ -933,10 +948,11 @@ export default function AgendaPage() {
         qs.set("tenantId", tenantId);
         qs.set("professionalId", professionalId);
         qs.set("serviceId", serviceId);
+        const headers = await getAdminAuthHeaders();
 
         const res = await fetch(
           `/api/admin/service-rules/list?${qs.toString()}`,
-          { cache: "no-store" },
+          { headers, cache: "no-store" },
         );
 
         const json = await res.json().catch(() => null);
@@ -972,7 +988,7 @@ export default function AgendaPage() {
         setLoadingServiceRules(false);
       }
     },
-    [tenantId],
+    [getAdminAuthHeaders, tenantId],
   );
 
   const saveServiceRules = useCallback(async () => {
@@ -1007,10 +1023,11 @@ export default function AgendaPage() {
           return row;
         }),
       };
+      const headers = await getAdminAuthHeaders("application/json");
 
       const res = await fetch("/api/admin/service-rules/upsert", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -1042,6 +1059,7 @@ export default function AgendaPage() {
     selectedServiceId,
     serviceRulesBlocks,
     loadServiceRules,
+    getAdminAuthHeaders,
   ]);
 
   useEffect(() => {
@@ -1347,10 +1365,12 @@ export default function AgendaPage() {
       qs.set("tenantId", tenantId);
       qs.set("professionalId", selectedProfessionalId);
       qs.set("serviceId", eventServiceId);
+      const headers = await getAdminAuthHeaders();
 
       const res = await fetch(
         `/api/admin/service-rules/list?${qs.toString()}`,
         {
+          headers,
           cache: "no-store",
         },
       );
@@ -1600,9 +1620,10 @@ export default function AgendaPage() {
     setSavingPaymentMode(true);
 
     try {
+      const headers = await getAdminAuthHeaders("application/json");
       const res = await fetch("/api/admin/payment-settings", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           tenantId,
           paymentMode: nextPaymentMode,

@@ -1,18 +1,7 @@
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
-
-function getHostnameFromReq(req: Request) {
-  const host =
-    req.headers.get("x-forwarded-host") ||
-    req.headers.get("host") ||
-    "";
-  return host.split(",")[0].trim().split(":")[0];
-}
-
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
-}
 
 export async function GET(req: Request) {
   try {
@@ -23,45 +12,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "professionalId requerido" }, { status: 400 });
     }
 
-    // ✅ Preferimos tenantId si viene (admin)
-    const tenantIdFromQuery = (searchParams.get("tenantId") || "").trim();
-
-    let tenantId = "";
-
-    if (tenantIdFromQuery) {
-      if (!isUuid(tenantIdFromQuery)) {
-        return NextResponse.json({ error: "tenantId invalid uuid" }, { status: 400 });
-      }
-      tenantId = tenantIdFromQuery;
-    } else {
-      // ✅ fallback por subdominio
-      const hostname = getHostnameFromReq(req);
-      const tenantSlug = getTenantSlugFromHostname(hostname);
-
-      if (!tenantSlug) {
-        return NextResponse.json(
-          { error: "tenant requerido (tenantId o subdominio)" },
-          { status: 400 },
-        );
-      }
-
-      const { data: tenant, error: tenantErr } = await supabaseAdmin
-        .from("tenants")
-        .select("id")
-        .eq("slug", tenantSlug)
-        .maybeSingle();
-
-      if (tenantErr) {
-        console.error("[admin/availability/list] tenant lookup error:", tenantErr);
-        return NextResponse.json({ error: "db error" }, { status: 500 });
-      }
-
-      if (!tenant?.id) {
-        return NextResponse.json({ error: "tenant no encontrado" }, { status: 404 });
-      }
-
-      tenantId = tenant.id;
+    if (!isUuid(professionalId)) {
+      return NextResponse.json({ error: "professionalId inválido" }, { status: 400 });
     }
+
+    const auth = await requireTenantAdmin(req);
+    if (!auth.ok) return auth.response;
+
+    const tenantId = auth.tenantId;
 
     // ✅ Verifica que el profesional pertenece al tenant (seguridad multi-tenant)
     const { data: prof, error: profErr } = await supabaseAdmin

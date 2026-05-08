@@ -2,8 +2,8 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { supabaseServer } from "@/lib/supabaseServer";
 
 function cleanTextOrNull(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -27,25 +27,6 @@ function cleanEmailOrNull(v: unknown): string | null {
 
 export async function POST(req: Request) {
   try {
-    /**
-     * ✅ GUARD DE SESIÓN (muy importante)
-     * OJO: supabaseServer usa SERVICE ROLE, entonces NO tiene sesión/cookies.
-     * Para el guard, usamos el header Authorization del request (Bearer <access_token>).
-     * En el front, al llamar fetch, debes mandar ese token.
-     */
-    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-
-    if (!token) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Validamos token con ANON (no con service role)
-    const { data: userData, error: userErr } = await supabaseServer.auth.getUser(token);
-    if (userErr || !userData?.user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = await req.json();
 
     const tenantId = cleanTextOrNull(body?.tenantId);
@@ -66,6 +47,9 @@ export async function POST(req: Request) {
     if (!isUuid(tenantId)) {
       return NextResponse.json({ ok: false, error: "tenantId inválido" }, { status: 400 });
     }
+
+    const auth = await requireTenantAdmin(req, { tenantId });
+    if (!auth.ok) return auth.response;
 
     if (!full_name) {
       return NextResponse.json({ ok: false, error: "name requerido" }, { status: 400 });
@@ -97,7 +81,7 @@ export async function POST(req: Request) {
         .from("customers")
         .update(patch)
         .eq("id", customerId)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", auth.tenantId);
 
       if (upErr) throw upErr;
 
@@ -111,7 +95,7 @@ export async function POST(req: Request) {
       const { data, error } = await supabaseAdmin
         .from("customers")
         .select("id, phone, email")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", auth.tenantId)
         .eq("phone", phone)
         .maybeSingle();
 
@@ -123,7 +107,7 @@ export async function POST(req: Request) {
       const { data, error } = await supabaseAdmin
         .from("customers")
         .select("id, phone, email")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", auth.tenantId)
         .eq("email", email)
         .maybeSingle();
 
@@ -143,7 +127,7 @@ export async function POST(req: Request) {
         .from("customers")
         .update(patch)
         .eq("id", existing.id)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", auth.tenantId);
 
       if (upErr) throw upErr;
 
@@ -154,7 +138,7 @@ export async function POST(req: Request) {
     const { data: created, error: insErr } = await supabaseAdmin
       .from("customers")
       .insert({
-        tenant_id: tenantId,
+        tenant_id: auth.tenantId,
         full_name,
         phone,
         email,

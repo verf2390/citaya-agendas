@@ -195,6 +195,7 @@ export default function AdminDashboardPage() {
 
       const [appointmentsRes, customersRes] = await Promise.all([
         fetch(`/api/admin/appointments/range?${params.toString()}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
           cache: "no-store",
         }),
         token

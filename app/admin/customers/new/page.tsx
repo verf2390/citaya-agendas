@@ -49,11 +49,21 @@ export default function NewCustomerPage() {
     setSaving(true);
 
     try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        router.push("/login?redirectTo=/admin/customers/new");
+        return;
+      }
+
       // ✅ IMPORTANTE: ya NO insertamos customers desde frontend (RLS lo bloquea)
       // Ahora usamos API server-side
       const res = await fetch("/api/customers/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           tenantId: TENANT_ID,
           name, // endpoint espera "name" (después ajustas DB si quieres)

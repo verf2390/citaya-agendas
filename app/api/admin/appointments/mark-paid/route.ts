@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import type { PaymentProviderId } from "@/services/payments/providers/types";
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
 
     const { data: appointment, error: readError } = await supabaseAdmin
       .from("appointments")
-      .select("id, payment_paid_amount, payment_required_amount")
+      .select("id, tenant_id, payment_paid_amount, payment_required_amount")
       .eq("id", appointmentId)
       .maybeSingle();
 
@@ -52,6 +53,11 @@ export async function POST(req: Request) {
       );
     }
 
+    const auth = await requireTenantAdmin(req, {
+      tenantId: appointment.tenant_id,
+    });
+    if (!auth.ok) return auth.response;
+
     const paymentPaidAmount =
       appointment.payment_required_amount ??
       appointment.payment_paid_amount ??
@@ -68,6 +74,7 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", appointmentId)
+      .eq("tenant_id", auth.tenantId)
       .select("id, payment_status")
       .maybeSingle();
 
