@@ -11,6 +11,15 @@ export type TenantAdminTenant = {
   admin_email?: string | null;
 };
 
+export type TenantMembership = {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  email: string | null;
+  role: "owner" | "admin" | "staff" | "professional" | "viewer";
+  is_active: boolean;
+};
+
 type RequireTenantAdminOptions = {
   tenantId?: string | null;
   tenantSlug?: string | null;
@@ -22,7 +31,8 @@ type RequireTenantAdminSuccess = {
   user: User;
   tenantId: string;
   tenant: TenantAdminTenant;
-  authorizationMode: "admin_email" | "authenticated_tenant";
+  authorizationMode: "tenant_membership" | "admin_email";
+  membership?: TenantMembership;
 };
 
 type RequireTenantAdminFailure = {
@@ -121,6 +131,17 @@ async function fetchTenantBySlug(tenantSlug: string) {
     .maybeSingle();
 }
 
+async function fetchAdminMembership(tenantId: string, userId: string) {
+  return supabaseAdmin
+    .from("tenant_members")
+    .select("id, tenant_id, user_id, email, role, is_active")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .in("role", ["owner", "admin"])
+    .maybeSingle();
+}
+
 export async function requireTenantAdmin(
   req: Request,
   options: RequireTenantAdminOptions = {},
@@ -177,17 +198,35 @@ export async function requireTenantAdmin(
     };
   }
 
+  const { data: membershipData, error: membershipError } =
+    await fetchAdminMembership(tenant.id, userData.user.id);
+
+  if (membershipError) {
+    console.error(
+      "[requireTenantAdmin] tenant_members lookup error:",
+      membershipError,
+    );
+    return {
+      ok: false,
+      response: jsonError("No se pudo validar membresía del tenant", 500),
+    };
+  }
+
+  if (membershipData?.id) {
+    return {
+      ok: true,
+      user: userData.user,
+      tenantId: tenant.id,
+      tenant,
+      authorizationMode: "tenant_membership",
+      membership: membershipData as TenantMembership,
+    };
+  }
+
   const adminEmail = cleanText(tenant.admin_email).toLowerCase();
   const userEmail = cleanText(userData.user.email).toLowerCase();
 
-  if (adminEmail) {
-    if (!userEmail || userEmail !== adminEmail) {
-      return {
-        ok: false,
-        response: jsonError("Forbidden: usuario no administra este tenant", 403),
-      };
-    }
-
+  if (userEmail && adminEmail && userEmail === adminEmail) {
     return {
       ok: true,
       user: userData.user,
@@ -198,10 +237,7 @@ export async function requireTenantAdmin(
   }
 
   return {
-    ok: true,
-    user: userData.user,
-    tenantId: tenant.id,
-    tenant,
-    authorizationMode: "authenticated_tenant",
+    ok: false,
+    response: jsonError("Forbidden: usuario no administra este tenant", 403),
   };
 }
