@@ -19,8 +19,9 @@ El laboratorio empieza a implementar:
 - Validación y normalización de RUT.
 - Tipos y estados internos DTE.
 - Draft tributario multi-tenant.
-- Generación XML DTE dummy/no productiva.
-- Placeholder seguro de firma XML.
+- Generación XML DTE de laboratorio estilo SII.
+- Firma XML mock/lab segura.
+- CAF/folios dummy/lab en memoria.
 - Cliente SII mock/controlado.
 - Base para CAF/folios y PDF tributario.
 
@@ -32,6 +33,7 @@ El laboratorio empieza a implementar:
 - [IMPLEMENTATION_ROADMAP.md](./IMPLEMENTATION_ROADMAP.md): fases de implementacion recomendadas.
 - [SECURITY_NOTES.md](./SECURITY_NOTES.md): advertencias y reglas de seguridad para certificados, claves, tenant isolation y auditoria.
 - [LAB_DTE_OWN_ENGINE.md](./LAB_DTE_OWN_ENGINE.md): laboratorio operativo aislado para DTE propio Citaya.
+- [SII_FORMATS_AND_CERTIFICATION_CHECKLIST.md](./SII_FORMATS_AND_CERTIFICATION_CHECKLIST.md): schemas, estructuras y proceso SII que deben validarse antes de producción.
 
 ## Documentos objetivo
 
@@ -82,13 +84,16 @@ Investigación y documentación inicial.
 Laboratorio operativo DTE propio: RUT, tipos, XML dummy, firma mock, cliente SII mock.
 
 ### Fase 2
-XML compatible SII: estructura real por tipo DTE, carátula, encabezado, detalle y validación contra schemas.
+XML DTE de laboratorio estilo SII: carátula, encabezado, detalle, escape XML y validaciones mínimas. Pendiente validar contra XSD oficiales.
+
+### Fase 2.5
+Vista admin del laboratorio DTE en `/admin/facturacion`, con generación visual de XML de prueba, firma mock, CAF/folios dummy y metadata simulada.
 
 ### Fase 3
-Firma real con certificado por tenant, canonicalización y controles de secretos.
+Firma XML de laboratorio con mock seguro y preparación para certificado de prueba/controlado. Pendiente firma real con canonicalización y controles de secretos.
 
 ### Fase 4
-CAF/folios por tenant.
+CAF/folios de laboratorio por tenant/tipo DTE, con manager en memoria. Pendiente control transaccional real.
 
 ### Fase 5
 Envío ambiente certificación SII y consulta de estado.

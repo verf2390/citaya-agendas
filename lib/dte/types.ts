@@ -161,3 +161,67 @@ export type DteGenerationError = {
   status: "error";
   error: string;
 };
+
+export type SigningCertificateInput = {
+  tenantId: string;
+  certificateRut?: string | null;
+  certificateSubject?: string | null;
+  certificateBuffer?: Buffer | null;
+  certificatePem?: string | null;
+  privateKeyPem?: string | null;
+  password?: string | null;
+};
+
+export type XmlSignatureOptions = {
+  signatureTarget: string;
+  canonicalizationMethod: string;
+  signatureMethod: string;
+  digestMethod: string;
+  includeKeyInfo: boolean;
+  mode: "mock" | "lab";
+};
+
+export type SignedXmlResult = {
+  signedXml: string;
+  signatureId: string;
+  signedAt: string;
+  mode: "mock" | "lab";
+  warnings: string[];
+  xsdReference: "xmldsignature_v10.xsd";
+  isProductionValid: false;
+};
+
+export type CafLabData = {
+  tenantId: string;
+  issuerRut: string;
+  documentType: DteDocumentType;
+  rangeFrom: number;
+  rangeTo: number;
+  issuedAt: string;
+  expiresAt?: string | null;
+  authorizationDate?: string | null;
+  rawXmlHash?: string | null;
+  mode: "lab";
+  isProductionValid: false;
+};
+
+export type FolioReservation = {
+  tenantId: string;
+  documentType: DteDocumentType;
+  folio: number;
+  status: "reserved" | "used" | "released" | "voided";
+  reservedAt: string;
+  usedAt?: string | null;
+  documentId?: string | null;
+};
+
+export type FolioState = {
+  tenantId: string;
+  documentType: DteDocumentType;
+  currentFolio: number;
+  rangeFrom: number;
+  rangeTo: number;
+  availableCount: number;
+  usedCount: number;
+  reservations: FolioReservation[];
+};

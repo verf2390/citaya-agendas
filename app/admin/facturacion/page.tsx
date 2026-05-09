@@ -4,9 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  Clipboard,
+  Code2,
+  Eraser,
   FileCheck2,
   FileText,
+  FlaskConical,
   Landmark,
+  Loader2,
   ReceiptText,
   Save,
   ShieldCheck,
@@ -29,6 +34,38 @@ import { getTenantSlugFromHostname } from "@/lib/tenant";
 type DocumentType = "boleta" | "factura" | "exenta";
 type BillingProvider = "none" | "manual_sii" | "api_provider";
 type ProviderStatus = "not_configured" | "pending" | "connected" | "error";
+
+type DteLabResult = {
+  xml: string;
+  metadata: {
+    tipoDte: string;
+    folioDummy: number;
+    rutEmisor: string;
+    rutReceptor: string;
+    montoTotal: number;
+    modo: "lab";
+    xsdStatus: "pending";
+    firma: "mock";
+    caf: "dummy";
+    estadoSii: "simulated";
+    advertencia: string;
+  };
+  caf: {
+    range: string;
+    rangeFrom: number;
+    rangeTo: number;
+  };
+  folio: {
+    reservedFolio: number;
+    reservationStatus: string;
+    simulatedUsageStatus: string;
+  };
+  signature: {
+    signatureId: string;
+    xsdReference: string;
+  };
+  warnings: string[];
+};
 
 type BillingSettings = {
   tenantId: string;
@@ -408,39 +445,56 @@ function providerStatusTone(status: ProviderStatus) {
   return "slate";
 }
 
-function normalizeSettings(input: any, tenantId: string): BillingSettings {
-  const taxCommune = String(input?.taxCommune ?? "");
-  const taxCity = inferRegionName(String(input?.taxCity ?? ""), taxCommune);
+function labMetadataLabel(value: string) {
+  if (value === "boleta_afecta") return "Boleta afecta";
+  if (value === "factura_afecta") return "Factura afecta";
+  return value;
+}
+
+function getRecordValue(input: unknown, key: string): unknown {
+  if (!input || typeof input !== "object") return undefined;
+  return (input as Record<string, unknown>)[key];
+}
+
+function normalizeSettings(input: unknown, tenantId: string): BillingSettings {
+  const taxCommune = String(getRecordValue(input, "taxCommune") ?? "");
+  const taxCity = inferRegionName(
+    String(getRecordValue(input, "taxCity") ?? ""),
+    taxCommune,
+  );
+  const defaultDocumentType = getRecordValue(input, "defaultDocumentType");
+  const provider = getRecordValue(input, "provider");
+  const providerStatus = getRecordValue(input, "providerStatus");
+  const allowInvoiceRequest = getRecordValue(input, "allowInvoiceRequest");
 
   return {
     tenantId,
-    legalName: String(input?.legalName ?? ""),
-    taxId: String(input?.taxId ?? ""),
-    businessActivity: String(input?.businessActivity ?? ""),
-    taxAddress: String(input?.taxAddress ?? ""),
+    legalName: String(getRecordValue(input, "legalName") ?? ""),
+    taxId: String(getRecordValue(input, "taxId") ?? ""),
+    businessActivity: String(getRecordValue(input, "businessActivity") ?? ""),
+    taxAddress: String(getRecordValue(input, "taxAddress") ?? ""),
     taxCommune,
     taxCity,
-    taxEmail: String(input?.taxEmail ?? ""),
-    taxPhone: String(input?.taxPhone ?? ""),
+    taxEmail: String(getRecordValue(input, "taxEmail") ?? ""),
+    taxPhone: String(getRecordValue(input, "taxPhone") ?? ""),
     defaultDocumentType:
-      input?.defaultDocumentType === "factura" ||
-      input?.defaultDocumentType === "exenta"
-        ? input.defaultDocumentType
+      defaultDocumentType === "factura" || defaultDocumentType === "exenta"
+        ? defaultDocumentType
         : "boleta",
     provider:
-      input?.provider === "manual_sii" || input?.provider === "api_provider"
-        ? input.provider
+      provider === "manual_sii" || provider === "api_provider"
+        ? provider
         : "none",
     providerStatus:
-      input?.providerStatus === "pending" ||
-      input?.providerStatus === "connected" ||
-      input?.providerStatus === "error"
-        ? input.providerStatus
+      providerStatus === "pending" ||
+      providerStatus === "connected" ||
+      providerStatus === "error"
+        ? providerStatus
         : "not_configured",
-    autoIssueOnPaid: Boolean(input?.autoIssueOnPaid),
+    autoIssueOnPaid: Boolean(getRecordValue(input, "autoIssueOnPaid")),
     allowInvoiceRequest:
-      typeof input?.allowInvoiceRequest === "boolean"
-        ? input.allowInvoiceRequest
+      typeof allowInvoiceRequest === "boolean"
+        ? allowInvoiceRequest
         : true,
   };
 }
@@ -455,6 +509,9 @@ export default function AdminFacturacionPage() {
   const [saving, setSaving] = useState(false);
   const [schemaHint, setSchemaHint] = useState("");
   const [settings, setSettings] = useState<BillingSettings>(DEFAULT_SETTINGS);
+  const [dteLabLoading, setDteLabLoading] = useState(false);
+  const [dteLabResult, setDteLabResult] = useState<DteLabResult | null>(null);
+  const [dteLabError, setDteLabError] = useState("");
 
   useEffect(() => {
     const run = async () => {
@@ -568,6 +625,59 @@ export default function AdminFacturacionPage() {
 
     setSettings(normalizeSettings(json.settings, tenantId));
     toast({ title: "Facturación guardada" });
+  };
+
+  const generateDteLabXml = async () => {
+    if (!tenantId || dteLabLoading) return;
+
+    setDteLabLoading(true);
+    setDteLabError("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setDteLabLoading(false);
+      router.push(`/login?redirectTo=${encodeURIComponent("/admin/facturacion")}`);
+      return;
+    }
+
+    const res = await fetch("/api/admin/dte-lab/generate-xml", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+      body: JSON.stringify({ ...settings, tenantId, tenantSlug }),
+    });
+    const json = await res.json().catch(() => null);
+
+    setDteLabLoading(false);
+
+    if (!res.ok || !json?.ok) {
+      setDteLabError(json?.error ?? "No se pudo generar XML de laboratorio.");
+      toast({
+        title: "Laboratorio DTE",
+        description: json?.error ?? "No se pudo generar XML de laboratorio.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDteLabResult(json as DteLabResult);
+    toast({ title: "XML DTE de laboratorio generado" });
+  };
+
+  const copyDteLabXml = async () => {
+    if (!dteLabResult?.xml) return;
+
+    await navigator.clipboard.writeText(dteLabResult.xml);
+    toast({ title: "XML copiado" });
+  };
+
+  const clearDteLab = () => {
+    setDteLabResult(null);
+    setDteLabError("");
   };
 
   if (tenantError) {
@@ -686,6 +796,146 @@ export default function AdminFacturacionPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
+              title="Laboratorio DTE Citaya"
+              description="Genera un XML de prueba estilo SII sin emitir, sin firmar y sin enviar al SII."
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  {["LAB", "No productivo", "Sin envío SII", "Sin folio real", "Pendiente XSD"].map(
+                    (badge) => (
+                      <span
+                        key={badge}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-black uppercase text-slate-600"
+                      >
+                        {badge}
+                      </span>
+                    ),
+                  )}
+                </div>
+              }
+            >
+              <div className="grid gap-4">
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
+                  Este laboratorio no emite DTE real, no firma XML real, no envía al
+                  SII, no usa CAF real, no consume folio real y no tiene validez
+                  tributaria.
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    ["XML", "estilo SII"],
+                    ["Firma", "mock/no real"],
+                    ["CAF/Folios", "dummy"],
+                    ["Estado SII", "simulado"],
+                    ["XSD", "pendiente validación oficial"],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <div className="text-xs font-black uppercase text-slate-500">
+                        {label}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-slate-900">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void generateDteLabXml()}
+                    disabled={dteLabLoading || !tenantId}
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {dteLabLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FlaskConical className="h-4 w-4" />
+                    )}
+                    {dteLabLoading ? "Generando..." : "Generar XML de prueba"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyDteLabXml()}
+                    disabled={!dteLabResult?.xml}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Clipboard className="h-4 w-4" />
+                    Copiar XML
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearDteLab}
+                    disabled={!dteLabResult && !dteLabError}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Eraser className="h-4 w-4" />
+                    Limpiar
+                  </button>
+                </div>
+
+                {dteLabError ? (
+                  <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-800">
+                    {dteLabError}
+                  </div>
+                ) : null}
+
+                {dteLabResult ? (
+                  <div className="grid gap-4">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {[
+                        ["tipo DTE", labMetadataLabel(dteLabResult.metadata.tipoDte)],
+                        ["folio dummy", String(dteLabResult.metadata.folioDummy)],
+                        ["RUT emisor", dteLabResult.metadata.rutEmisor],
+                        ["RUT receptor", dteLabResult.metadata.rutReceptor],
+                        ["monto total", `$${dteLabResult.metadata.montoTotal.toLocaleString("es-CL")}`],
+                        ["modo", dteLabResult.metadata.modo],
+                        ["xsdStatus", dteLabResult.metadata.xsdStatus],
+                        ["firma", dteLabResult.metadata.firma],
+                        ["caf", dteLabResult.metadata.caf],
+                        ["estadoSii", dteLabResult.metadata.estadoSii],
+                        ["rango folios", dteLabResult.caf.range],
+                        [
+                          "folio simulado",
+                          `${dteLabResult.folio.reservedFolio} (${dteLabResult.folio.reservationStatus}/${dteLabResult.folio.simulatedUsageStatus})`,
+                        ],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="rounded-2xl border border-slate-200 bg-white p-3"
+                        >
+                          <div className="text-[11px] font-black uppercase text-slate-500">
+                            {label}
+                          </div>
+                          <div className="mt-1 break-words text-sm font-black text-slate-900">
+                            {value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-950">
+                      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                        <div className="flex items-center gap-2 text-sm font-black text-white">
+                          <Code2 className="h-4 w-4" />
+                          XML DTE laboratorio
+                        </div>
+                        <span className="rounded-full bg-amber-400/15 px-2.5 py-1 text-xs font-black uppercase text-amber-200">
+                          {dteLabResult.metadata.advertencia}
+                        </span>
+                      </div>
+                      <pre className="max-h-[460px] overflow-auto p-4 text-xs leading-5 text-slate-100">
+                        <code>{dteLabResult.xml}</code>
+                      </pre>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </AdminSectionCard>
 

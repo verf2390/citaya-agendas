@@ -66,9 +66,13 @@ Objetivo: firmar XML de laboratorio con un certificado de prueba/controlado del 
 
 Alcance:
 
+- Firma MOCK segura para probar flujo visual y estados.
+- Tipos `SigningCertificateInput`, `XmlSignatureOptions` y `SignedXmlResult`.
+- Referencia explícita a `xmldsignature_v10.xsd`.
 - Carga segura de certificado por tenant.
 - Password por variable segura o secret manager.
 - Canonicalización XML requerida.
+- Digest y firma del nodo objetivo.
 - Firma del DTE y del envío cuando corresponda.
 - Pruebas con certificados de certificación.
 - Auditoría de acceso a secretos.
@@ -82,16 +86,27 @@ Controles mínimos:
 
 ## Fase 4 — CAF/folios
 
-Objetivo: consumir folios autorizados por tenant de forma controlada.
+Objetivo: preparar CAF/folios de laboratorio y el futuro control de consumo por tenant/tipo DTE sin usar CAF ni folios reales.
 
 Alcance:
 
+- Parser CAF dummy/lab con RUT emisor, tipo DTE, rango y fecha de autorización.
+- Tipos `CafLabData`, `FolioReservation` y `FolioState`.
+- Folio manager en memoria para reservar, marcar usado, liberar y consultar disponibilidad.
 - Cargar CAF por tenant de forma segura.
 - Parsear rango autorizado y tipo DTE.
 - Reservar folio antes de emitir.
 - Marcar folio como usado solo si corresponde.
 - Manejar reintentos, errores y folios agotados.
 - Evitar doble consumo de folio con transacciones/idempotencia.
+
+Fuera de alcance:
+
+- CAF real.
+- Folios reales SII.
+- Persistencia en base de datos.
+- Concurrencia real multi-proceso.
+- Emisión automática desde pagos/reservas.
 
 ## Fase 5 — Envío ambiente certificación SII
 

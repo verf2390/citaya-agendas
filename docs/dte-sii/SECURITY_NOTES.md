@@ -4,7 +4,7 @@
 
 Citaya está avanzando hacia `citaya_own_dte`, pero el código actual es un laboratorio aislado.
 
-El laboratorio puede validar RUT, generar XML dummy, simular firma y simular envío/estado SII. No implementa firma real DTE todavía y no debe conectarse a producción.
+El laboratorio puede validar RUT, generar XML estilo SII, simular firma, simular CAF/folios y simular envío/estado SII. No implementa firma real DTE todavía y no debe conectarse a producción.
 
 No se deben guardar certificados reales, claves privadas, CAF productivos ni credenciales SII en el repositorio o en texto plano. `manual_mipyme` queda como fallback manual temporal con documentos internos en estado `pending_manual_issue`.
 
@@ -15,6 +15,7 @@ No se deben guardar certificados reales, claves privadas, CAF productivos ni cre
 - No commitear claves privadas.
 - No commitear passwords de certificados.
 - No commitear CAF productivos.
+- No subir `.p12`, `.pfx`, `.pem`, `.key` reales.
 - No guardar credenciales SII en archivos locales versionados.
 - No enviar certificados o claves privadas a n8n, logs, emails o herramientas de soporte.
 - No usar correos, RUT, passwords o rutas de certificados hardcodeadas en código TypeScript productivo.
@@ -32,6 +33,8 @@ Si algun dia Citaya almacena certificados por tenant:
 - Restringir lectura a servicios backend estrictamente necesarios.
 - Evitar que el frontend reciba certificados, passwords o claves privadas.
 - Separar ambiente certificación y producción para certificados, CAF y tokens.
+- Auditar cada uso futuro de certificado por tenant, documento, ambiente, usuario/servicio y resultado.
+- Redactar private keys, passwords y certificados antes de cualquier log o error.
 
 ## Multi-tenant
 
@@ -84,6 +87,8 @@ No implementar firma real en producción todavía.
 Antes de construir firma XML real se requiere:
 
 - Investigacion completa de schemas SII.
+- Descargar y validar contra `xmldsignature_v10.xsd`.
+- Validar también contra `DTE_v10.xsd`, `EnvioDTE_v10.xsd` y `SiiTypes_v10.xsd`.
 - Ambiente de prueba aislado.
 - Certificados de prueba o estrategia segura.
 - Revision de seguridad.
@@ -97,3 +102,8 @@ Antes de construir firma XML real se requiere:
 - El consumo de folios debe ser transaccional e idempotente.
 - Cada folio usado debe quedar asociado a `tenant_id`, tipo DTE y documento tributario.
 - Un folio de un tenant nunca puede ser utilizado por otro tenant.
+- El control real de folios debe evitar doble emisión con bloqueo transaccional o una estrategia equivalente.
+- El consumo debe auditar reserva, uso, liberación, anulación, usuario/servicio y documento asociado.
+- La reserva de folios debe separarse por tenant y tipo de documento.
+- Los CAF reales deben tener control de vigencia, rango, tipo DTE y ambiente.
+- La concurrencia debe probarse antes de conectar pagos, reservas o emisión automática.
