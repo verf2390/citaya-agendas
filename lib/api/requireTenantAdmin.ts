@@ -20,6 +20,14 @@ export type TenantMembership = {
   is_active: boolean;
 };
 
+export type PlatformAdmin = {
+  id: string;
+  user_id: string;
+  email: string | null;
+  role: "super_admin" | "support";
+  is_active: boolean;
+};
+
 type RequireTenantAdminOptions = {
   tenantId?: string | null;
   tenantSlug?: string | null;
@@ -31,7 +39,8 @@ type RequireTenantAdminSuccess = {
   user: User;
   tenantId: string;
   tenant: TenantAdminTenant;
-  authorizationMode: "tenant_membership" | "admin_email";
+  authorizationMode: "platform_admin" | "tenant_membership" | "admin_email";
+  platformAdmin?: PlatformAdmin;
   membership?: TenantMembership;
 };
 
@@ -142,6 +151,16 @@ async function fetchAdminMembership(tenantId: string, userId: string) {
     .maybeSingle();
 }
 
+async function fetchPlatformAdmin(userId: string) {
+  return supabaseAdmin
+    .from("platform_admins")
+    .select("id, user_id, email, role, is_active")
+    .eq("user_id", userId)
+    .eq("is_active", true)
+    .in("role", ["super_admin", "support"])
+    .maybeSingle();
+}
+
 export async function requireTenantAdmin(
   req: Request,
   options: RequireTenantAdminOptions = {},
@@ -195,6 +214,34 @@ export async function requireTenantAdmin(
     return {
       ok: false,
       response: jsonError("Forbidden: tenantId/tenantSlug mismatch", 403),
+    };
+  }
+
+  const { data: platformAdminData, error: platformAdminError } =
+    await fetchPlatformAdmin(userData.user.id);
+
+  if (platformAdminError) {
+    console.error(
+      "[requireTenantAdmin] platform_admins lookup error:",
+      platformAdminError,
+    );
+    return {
+      ok: false,
+      response: jsonError(
+        "No se pudo validar administrador de plataforma",
+        500,
+      ),
+    };
+  }
+
+  if (platformAdminData?.id) {
+    return {
+      ok: true,
+      user: userData.user,
+      tenantId: tenant.id,
+      tenant,
+      authorizationMode: "platform_admin",
+      platformAdmin: platformAdminData as PlatformAdmin,
     };
   }
 
