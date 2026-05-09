@@ -1,0 +1,131 @@
+import { getSiiDteTypeCode } from "../dte-types";
+import { normalizeRut } from "../rut";
+import type {
+  DteGenerationError,
+  DteGenerationResult,
+  TaxDocumentDraft,
+} from "../types";
+
+function escapeXml(value: string | number | null | undefined): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildDetailXml(draft: TaxDocumentDraft): string {
+  return draft.lines
+    .map((line, index) => {
+      return [
+        "      <Detalle>",
+        `        <NroLinDet>${index + 1}</NroLinDet>`,
+        `        <NmbItem>${escapeXml(line.name)}</NmbItem>`,
+        line.description
+          ? `        <DscItem>${escapeXml(line.description)}</DscItem>`
+          : null,
+        `        <QtyItem>${line.quantity}</QtyItem>`,
+        `        <PrcItem>${line.unitPrice}</PrcItem>`,
+        `        <MontoItem>${line.amount}</MontoItem>`,
+        "      </Detalle>",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n");
+}
+
+export function buildDteEnvelope(
+  draft: TaxDocumentDraft,
+): DteGenerationResult | DteGenerationError {
+  try {
+    const issuerRut = normalizeRut(draft.issuer.rut);
+    const recipientRut = normalizeRut(draft.recipient.rut);
+    const documentTypeCode = getSiiDteTypeCode(draft.documentType);
+    const issueDate = formatDate(draft.issueDate);
+
+    const xml = `<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+  Citaya DTE Lab XML - NO PRODUCTIVO.
+  Este XML es experimental: no esta firmado, no consume CAF real,
+  no incluye timbre TED final y no debe enviarse al SII.
+-->
+<EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">
+  <SetDTE ID="CitayaDteLab-${escapeXml(draft.tenantId)}-${draft.folio}">
+    <Caratula version="1.0">
+      <RutEmisor>${escapeXml(issuerRut)}</RutEmisor>
+      <RutEnvia>${escapeXml(issuerRut)}</RutEnvia>
+      <RutReceptor>60803000-K</RutReceptor>
+      <FchResol>${escapeXml(draft.issuer.siiResolutionDate ?? "2006-01-01")}</FchResol>
+      <NroResol>${escapeXml(draft.issuer.siiResolutionNumber ?? "0")}</NroResol>
+      <TmstFirmaEnv>LAB-NOT-SIGNED</TmstFirmaEnv>
+      <SubTotDTE>
+        <TpoDTE>${documentTypeCode}</TpoDTE>
+        <NroDTE>1</NroDTE>
+      </SubTotDTE>
+    </Caratula>
+    <DTE version="1.0">
+      <Documento ID="CitayaDocLab-${documentTypeCode}-${draft.folio}">
+        <Encabezado>
+          <IdDoc>
+            <TipoDTE>${documentTypeCode}</TipoDTE>
+            <Folio>${draft.folio}</Folio>
+            <FchEmis>${escapeXml(issueDate)}</FchEmis>
+          </IdDoc>
+          <Emisor>
+            <RUTEmisor>${escapeXml(issuerRut)}</RUTEmisor>
+            <RznSoc>${escapeXml(draft.issuer.legalName)}</RznSoc>
+            <GiroEmis>${escapeXml(draft.issuer.businessActivity)}</GiroEmis>
+            <Acteco>${escapeXml(draft.issuer.businessActivityCode ?? "")}</Acteco>
+            <DirOrigen>${escapeXml(draft.issuer.address)}</DirOrigen>
+            <CmnaOrigen>${escapeXml(draft.issuer.commune)}</CmnaOrigen>
+            <CiudadOrigen>${escapeXml(draft.issuer.city)}</CiudadOrigen>
+          </Emisor>
+          <Receptor>
+            <RUTRecep>${escapeXml(recipientRut)}</RUTRecep>
+            <RznSocRecep>${escapeXml(draft.recipient.legalName)}</RznSocRecep>
+            <GiroRecep>${escapeXml(draft.recipient.businessActivity)}</GiroRecep>
+            <DirRecep>${escapeXml(draft.recipient.address)}</DirRecep>
+            <CmnaRecep>${escapeXml(draft.recipient.commune)}</CmnaRecep>
+            <CiudadRecep>${escapeXml(draft.recipient.city)}</CiudadRecep>
+          </Receptor>
+          <Totales>
+            <MntNeto>${draft.netAmount ?? 0}</MntNeto>
+            <MntExe>${draft.exemptAmount ?? 0}</MntExe>
+            <IVA>${draft.taxAmount ?? 0}</IVA>
+            <MntTotal>${draft.totalAmount}</MntTotal>
+          </Totales>
+        </Encabezado>
+${buildDetailXml(draft)}
+      </Documento>
+    </DTE>
+  </SetDTE>
+</EnvioDTE>`;
+
+    return {
+      ok: true,
+      documentType: draft.documentType,
+      folio: draft.folio,
+      status: "pending_signature",
+      xml,
+      warnings: [
+        "XML experimental no productivo.",
+        "No incluye CAF, TED ni firma XML real.",
+      ],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "error",
+      error: error instanceof Error ? error.message : "DTE XML generation failed",
+    };
+  }
+}
+

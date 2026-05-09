@@ -2,9 +2,29 @@
 
 ## Objetivo
 
-Definir las alternativas para avanzar con documentos tributarios electronicos en Citaya sin prometer emision automatica SII antes de tener una integracion validada.
+Definir la decisión actual para avanzar con documentos tributarios electrónicos en Citaya sin prometer emisión automática SII antes de tener certificación, seguridad y pruebas controladas.
 
-Citaya NO emite DTE real todavia. No firma XML, no usa CAF, no consume folios, no envia documentos al SII y no administra certificados reales.
+Citaya NO emite DTE real todavía. El camino principal ahora es `citaya_own_dte`, pero la primera implementación es un laboratorio aislado que no firma XML real, no usa CAF real, no consume folios reales, no envía documentos al SII y no administra certificados reales.
+
+## Decisión actual
+
+Camino principal: `citaya_own_dte`.
+
+Citaya debe actuar como software/orquestador DTE para cada tenant:
+
+- Generar XML DTE.
+- Firmar XML con certificado del contribuyente/tenant.
+- Usar CAF y folios del tenant.
+- Enviar al SII.
+- Consultar estado.
+- Guardar folio, XML, PDF, track id y estado.
+- Asociar documento a tenant, reserva, pago y cliente.
+- Mantener separación estricta multi-tenant.
+
+Alternativas secundarias:
+
+- `manual_mipyme`: fallback manual temporal para tenants que aún no estén habilitados en DTE propio.
+- `external_provider`: alternativa temporal/plan B si el costo técnico o tributario de DTE propio bloquea producción.
 
 ## Alternativas
 
@@ -12,26 +32,26 @@ Citaya NO emite DTE real todavia. No firma XML, no usa CAF, no consume folios, n
 
 Modo interno sugerido: `manual_mipyme`
 
-Citaya registra el documento tributario interno y guia al administrador para emitir manualmente desde el Sistema de Facturacion Gratuito del SII / MiPyme.
+Citaya registra el documento tributario interno y guía al administrador para emitir manualmente desde el Sistema de Facturación Gratuito del SII / MiPyme.
 
 Ventajas:
 
-- Menor riesgo tecnico y legal en la primera etapa.
+- Menor riesgo técnico y legal en la primera etapa.
 - No requiere certificados digitales dentro de Citaya.
-- No requiere firma XML, CAF ni envio automatico al SII.
+- No requiere firma XML, CAF ni envío automático al SII.
 - Permite ordenar pagos, reservas, folios y comprobantes desde el panel.
-- Entrega valor comercial rapido para clientes que necesitan trazabilidad tributaria.
+- Entrega valor comercial rápido para clientes que necesitan trazabilidad tributaria.
 
 Desventajas:
 
-- No hay emision automatica real desde Citaya.
+- No hay emisión automática real desde Citaya.
 - El administrador debe entrar al portal del SII y emitir manualmente.
-- El folio, PDF y fecha de emision se registran manualmente.
-- Puede requerir capacitacion operativa para cada negocio.
+- El folio, PDF y fecha de emisión se registran manualmente.
+- Puede requerir capacitación operativa para cada negocio.
 
 Uso recomendado:
 
-- Fase inicial para todos los tenants que necesiten orden tributario sin automatizacion.
+- Fallback temporal para tenants que necesiten orden tributario sin automatización mientras se certifica `citaya_own_dte`.
 - Estado inicial del documento: `pending_manual_issue`.
 
 ### 2. Proveedor DTE externo
@@ -42,66 +62,69 @@ Citaya se integra con una API de un proveedor DTE autorizado o de mercado para e
 
 Ventajas:
 
-- Reduce complejidad de certificacion, firma XML, CAF y comunicacion SII.
-- Acelera la llegada a emision automatica real.
+- Reduce complejidad de certificación, firma XML, CAF y comunicación SII.
+- Acelera la llegada a emisión automática real.
 - Permite delegar cambios normativos y manejo de errores tributarios al proveedor.
 - Facilita soporte para PDF, XML, folios y estados.
 
 Desventajas:
 
 - Costo por documento, mensualidad o setup.
-- Dependencia comercial y tecnica de un tercero.
-- Riesgo de lock-in si Citaya se acopla a un proveedor especifico.
-- Requiere revisar SLA, seguridad, soporte multi-tenant y exportacion de datos.
+- Dependencia comercial y técnica de un tercero.
+- Riesgo de lock-in si Citaya se acopla a un proveedor específico.
+- Requiere revisar SLA, seguridad, soporte multi-tenant y exportación de datos.
 
 Uso recomendado:
 
-- Segunda fase, despues de validar demanda real.
-- Implementar con adapter generico para no acoplar Citaya a un solo proveedor.
+- Plan B temporal si certificación, firma real, CAF/folios o soporte operativo bloquean `citaya_own_dte`.
+- Implementar con adapter genérico para no acoplar Citaya a un solo proveedor.
 
 ### 3. DTE propio Citaya
 
-Modo futuro sugerido: `citaya_own_dte`
+Modo principal sugerido: `citaya_own_dte`
 
-Citaya implementa el flujo completo de emision DTE: certificado digital, firma XML, CAF/folios, XML DTE, envio SII, consulta de estado, PDF tributario y auditoria.
+Citaya implementa el flujo completo de emisión DTE: certificado digital, firma XML, CAF/folios, XML DTE, envío SII, consulta de estado, PDF tributario y auditoría.
 
 Ventajas:
 
 - Control total del flujo tributario.
 - Menor dependencia de proveedores externos a largo plazo.
-- Posibilidad de optimizar costos unitarios si el volumen justifica la inversion.
-- Flexibilidad para UX, auditoria y automatizaciones propias.
+- Posibilidad de optimizar costos unitarios si el volumen justifica la inversión.
+- Flexibilidad para UX, auditoría y automatizaciones propias.
 
 Desventajas:
 
-- Mayor riesgo tecnico, legal y operativo.
+- Mayor riesgo técnico, legal y operativo.
 - Requiere dominio profundo de schemas DTE, firma XML, CAF, folios y APIs SII.
 - Requiere manejo seguro de certificados y claves privadas por tenant.
-- Requiere certificacion/pruebas, monitoreo, soporte y actualizaciones normativas.
+- Requiere certificación/pruebas, monitoreo, soporte y actualizaciones normativas.
 - Alto costo de mantenimiento.
 
 Uso recomendado:
 
-- Solo como fase avanzada, cuando exista volumen, equipo tecnico y controles de seguridad suficientes.
+- Camino principal desde el laboratorio técnico.
+- Mantener aislado hasta completar XML real, firma, CAF/folios, certificación SII y auditoría multi-tenant.
 
-## Decision recomendada por fases
+## Decisión recomendada por fases
 
-1. `manual_mipyme`
+1. `citaya_own_dte`
+   - Crear laboratorio aislado.
+   - Validar RUT.
+   - Generar XML dummy no productivo.
+   - Simular firma, envío y estado SII.
+   - Avanzar hacia XML real y certificación.
+
+2. `external_provider`
+   - Mantener como alternativa temporal o plan B.
+   - Implementar con adapter genérico para no acoplar Citaya a un solo proveedor.
+   - Usar solo si certificación, firma real, CAF/folios o soporte operativo bloquean `citaya_own_dte`.
+
+3. `manual_mipyme`
+   - Mantener como fallback manual temporal.
    - Registrar documentos internos.
    - Asociarlos a pagos, reservas y clientes.
    - Usar estado inicial `pending_manual_issue`.
-   - Permitir registrar folio, fecha, monto, tipo de documento y PDF opcional.
-   - No emitir DTE real.
-
-2. `external_provider`
-   - Investigar proveedores DTE.
-   - Comparar costos, soporte, API y seguridad.
-   - Construir adapter generico.
-   - Emitir automaticamente solo despues de pruebas controladas.
-
-3. `citaya_own_dte`
-   - Investigar e implementar firma XML, CAF, folios, envio SII y auditoria.
-   - Avanzar solo con ambiente de prueba y controles estrictos.
+   - No emitir DTE real desde Citaya.
 
 ## Estados internos sugeridos
 
@@ -122,17 +145,21 @@ Estados futuros para proveedor/API:
 
 Estados futuros para DTE propio:
 
-- `draft`: borrador tecnico.
+- `draft`: borrador técnico.
+- `pending_signature`: XML generado y pendiente de firma.
 - `signed`: XML firmado.
+- `pending_send`: firmado y pendiente de envío.
 - `sent_to_sii`: enviado al SII.
 - `accepted`: aceptado.
 - `rejected`: rechazado.
+- `cancelled`: cancelado.
+- `error`: error técnico u operativo.
 
 ## Regla comercial
 
-Citaya no debe prometer emision automatica SII hasta tener:
+Citaya no debe prometer emisión automática SII hasta tener:
 
-- Un proveedor DTE/API conectado, probado y habilitado para el tenant, o
-- Un flujo DTE propio validado con certificado, CAF, firma XML, envio SII, consulta de estado, auditoria y seguridad multi-tenant.
+- Un flujo DTE propio validado con certificado, CAF, firma XML, envío SII, consulta de estado, auditoría y seguridad multi-tenant, o
+- Un proveedor DTE/API conectado, probado y habilitado para el tenant como plan B.
 
-Mientras el modo sea `manual_mipyme`, la comunicacion comercial debe decir "facturacion asistida" o "registro y seguimiento tributario", no "emision automatica".
+Mientras el modo sea `manual_mipyme`, la comunicación comercial debe decir "facturación asistida" o "registro y seguimiento tributario", no "emisión automática".

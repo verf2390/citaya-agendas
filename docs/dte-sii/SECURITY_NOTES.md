@@ -2,9 +2,11 @@
 
 ## Estado actual
 
-Citaya no implementa firma real DTE todavia.
+Citaya está avanzando hacia `citaya_own_dte`, pero el código actual es un laboratorio aislado.
 
-No se deben guardar certificados reales, claves privadas, CAF productivos ni credenciales SII en el repositorio o en texto plano. La fase inicial es `manual_mipyme`, con documentos internos en estado `pending_manual_issue`.
+El laboratorio puede validar RUT, generar XML dummy, simular firma y simular envío/estado SII. No implementa firma real DTE todavía y no debe conectarse a producción.
+
+No se deben guardar certificados reales, claves privadas, CAF productivos ni credenciales SII en el repositorio o en texto plano. `manual_mipyme` queda como fallback manual temporal con documentos internos en estado `pending_manual_issue`.
 
 ## Reglas de secretos
 
@@ -15,6 +17,7 @@ No se deben guardar certificados reales, claves privadas, CAF productivos ni cre
 - No commitear CAF productivos.
 - No guardar credenciales SII en archivos locales versionados.
 - No enviar certificados o claves privadas a n8n, logs, emails o herramientas de soporte.
+- No usar correos, RUT, passwords o rutas de certificados hardcodeadas en código TypeScript productivo.
 
 ## Almacenamiento futuro de certificados
 
@@ -23,10 +26,12 @@ Si algun dia Citaya almacena certificados por tenant:
 - Cifrar certificados por tenant.
 - Separar el password del certificado.
 - Usar variables seguras o secret manager.
+- Referenciar secretos por `tenant_id` y nombre/version, nunca por valor plano.
 - Rotar secretos cuando un usuario admin cambia o deja el negocio.
 - Registrar version del secreto sin exponer el valor.
 - Restringir lectura a servicios backend estrictamente necesarios.
 - Evitar que el frontend reciba certificados, passwords o claves privadas.
+- Separar ambiente certificación y producción para certificados, CAF y tokens.
 
 ## Multi-tenant
 
@@ -35,6 +40,8 @@ Si algun dia Citaya almacena certificados por tenant:
 - Toda accion de emision debe validar tenant antes de ejecutarse.
 - Los logs deben incluir `tenant_id` pero no secretos.
 - Los IDs externos de proveedor deben estar asociados a tenant y documento.
+- `tenant_members` no debe mezclarse con credenciales tributarias.
+- `platform_admins` puede operar soporte, pero toda lectura/uso de secretos DTE debe auditarse.
 
 ## Auditoria
 
@@ -48,6 +55,8 @@ Toda emision o marca manual debe registrar:
 - Estado anterior y nuevo.
 - Folio, si existe.
 - Error o rechazo, si existe.
+- Ambiente (`certification` o `production`).
+- Origen de la acción (`admin`, `support`, `automation`, `lab`).
 
 ## Validaciones tributarias
 
@@ -65,10 +74,12 @@ Antes de emitir o registrar documentos:
 - No registrar certificados, passwords, claves privadas ni CAF.
 - Registrar errores de proveedor o SII de forma resumida.
 - Guardar trazabilidad suficiente para soporte y auditoria.
+- Redactar tokens, seeds, track ids sensibles si SII los considera privados.
+- Evitar logs de payloads completos en webhooks o jobs automáticos.
 
 ## Firma real
 
-No implementar firma real todavia.
+No implementar firma real en producción todavía.
 
 Antes de construir firma XML real se requiere:
 
@@ -77,4 +88,12 @@ Antes de construir firma XML real se requiere:
 - Certificados de prueba o estrategia segura.
 - Revision de seguridad.
 - Revision legal/tributaria.
-- Decision explicita entre proveedor DTE y DTE propio.
+- Decisión explícita de activar `citaya_own_dte` por tenant y ambiente.
+
+## CAF y folios
+
+- CAF reales nunca van al repositorio.
+- CAF por tenant debe guardarse cifrado o en storage privado con controles estrictos.
+- El consumo de folios debe ser transaccional e idempotente.
+- Cada folio usado debe quedar asociado a `tenant_id`, tipo DTE y documento tributario.
+- Un folio de un tenant nunca puede ser utilizado por otro tenant.

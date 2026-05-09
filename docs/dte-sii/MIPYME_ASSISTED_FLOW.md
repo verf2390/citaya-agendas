@@ -2,9 +2,9 @@
 
 ## Objetivo
 
-Implementar una primera versión de facturación asistida usando el Sistema de Facturación Gratuito del SII / MiPyme, sin emitir DTE directamente desde Citaya.
+Mantener una versión de facturación asistida usando el Sistema de Facturación Gratuito del SII / MiPyme, sin emitir DTE directamente desde Citaya.
 
-Esta fase permite que Citaya ordene pagos, reservas y documentos tributarios pendientes, pero la emisión real del documento se realiza manualmente desde el portal del SII.
+Este flujo queda como fallback manual temporal mientras el camino principal avanza por `citaya_own_dte`. Permite que Citaya ordene pagos, reservas y documentos tributarios pendientes, pero la emisión real del documento se realiza manualmente desde el portal del SII.
 
 ## Alcance fase 1
 
@@ -71,15 +71,14 @@ Citaya NO debe todavía:
 
 ## Decisión técnica
 
-La primera versión de DTE en Citaya será asistida y no automática.
+El camino principal actual es `citaya_own_dte`. MiPyme asistido se mantiene como fallback operativo para tenants que aún no estén certificados o habilitados en el motor propio.
 
 Motivo:
 
 - Reduce riesgo técnico.
 - No requiere certificación inmediata con SII.
 - No requiere manejar certificados digitales reales desde Citaya.
-- Permite entregar valor comercial antes.
-- Deja la base lista para integrar proveedor DTE o DTE propio más adelante.
+- Permite continuidad operativa si el motor DTE propio aún no está listo para un tenant.
 
 ## Futuro DTE automático
 

@@ -2,132 +2,139 @@
 
 ## Principios
 
-- Citaya no emite DTE real todavia.
-- El modo inicial es `manual_mipyme`.
-- El estado inicial de un documento interno es `pending_manual_issue`.
-- MiPyme asistido es una fase manual/asistida, no una integracion automatica.
-- Proveedor externo y DTE propio son fases futuras.
-- No se debe tocar el flujo de pagos, reservas o campanas para emitir DTE real hasta que exista una fase validada.
+- El camino principal es `citaya_own_dte`.
+- Citaya no debe emitir documentos usando el RUT de Citaya para todos los tenants.
+- Cada tenant debe emitir con su propio RUT, certificado digital, CAF/folios y habilitación tributaria.
+- `manual_mipyme` queda como fallback manual temporal.
+- `external_provider` queda como alternativa temporal/plan B.
+- No se debe tocar el flujo de pagos, reservas o campañas para emitir DTE real hasta que exista una fase validada.
+- No se deben usar certificados, claves privadas, CAF ni credenciales reales dentro del repositorio.
 
-## Fase 1 — MiPyme asistido
+## Fase 1 — Laboratorio operativo DTE propio
 
-Objetivo: dejar trazabilidad tributaria interna sin emitir DTE real desde Citaya.
+Objetivo: crear una base técnica aislada para avanzar hacia DTE propio sin afectar producción.
 
 Alcance:
 
-- Registrar documentos tributarios internos.
-- Asociar documentos a pagos y reservas.
-- Asociar documentos a clientes cuando exista `customer_id`.
-- Crear documentos con estado `pending_manual_issue`.
-- Mostrar documentos pendientes en el admin.
-- Agregar boton visual "Emitir en SII MiPyme".
-- Agregar boton "Marcar como emitido".
-- Guardar folio.
-- Guardar fecha de emision.
-- Guardar tipo de documento.
-- Guardar monto.
-- Guardar PDF o comprobante opcional.
-- Registrar quien marco el documento como emitido y cuando.
+- Validar y normalizar RUT chileno.
+- Definir tipos DTE internos.
+- Definir estados internos del documento tributario.
+- Definir `TenantTaxProfile`, `TaxDocumentDraft` y resultados de generación.
+- Generar XML DTE dummy/no productivo.
+- Crear placeholders de firma XML.
+- Crear cliente SII mock con semilla, token, envío y estado simulados.
+- Documentar seguridad, riesgos y pasos hacia certificación.
 
 Fuera de alcance:
 
-- No emitir DTE real.
-- No firmar XML.
-- No solicitar ni consumir CAF.
-- No enviar documentos al SII.
-- No consultar estado automatico del SII.
-- No guardar certificados digitales reales.
+- Firma real.
+- Envío real al SII.
+- CAF/folios reales.
+- Certificados reales.
+- PDF tributario válido.
+- Emisión automática post pago.
 
-Estados principales:
+## Fase 2 — XML compatible SII
 
-- `pending_manual_issue`
-- `issued_manual`
-- `cancelled_manual`
-- `error`
+Objetivo: reemplazar el XML dummy por XML compatible con especificaciones SII para los tipos iniciales.
 
-UX esperada:
+Alcance:
 
-- En `/admin/pagos`, mostrar si el pago tiene documento tributario asociado.
-- En `/admin/facturacion`, listar documentos pendientes de emision manual.
-- El boton "Emitir en SII MiPyme" puede abrir una guia o enlace operativo, pero no automatiza el portal del SII.
-- El boton "Marcar como emitido" permite registrar folio, fecha y PDF opcional.
+- Boleta afecta tipo 39.
+- Boleta exenta tipo 41.
+- Factura afecta tipo 33.
+- Factura exenta tipo 34.
+- Nota de crédito tipo 61.
+- Nota de débito tipo 56.
+- Carátula, encabezado, emisor, receptor, totales y detalle.
+- Validación contra schemas oficiales en ambiente de certificación.
+- Manejo de errores de validación XML.
 
-## Fase 2 — Proveedor DTE
+## Fase 3 — Firma real
 
-Objetivo: preparar emision automatica real mediante una API externa sin acoplar Citaya a un solo proveedor.
+Objetivo: firmar XML con certificado del tenant/contribuyente.
 
-Investigacion:
+Alcance:
 
-- Identificar proveedores DTE adecuados para SaaS multi-tenant.
-- Comparar costos por documento, mensualidad, setup y soporte.
-- Revisar limites de API, SLA, ambientes de prueba y documentacion.
-- Revisar seguridad para credenciales por tenant.
-- Revisar soporte para boleta, factura afecta, factura exenta y nota de credito.
-- Revisar manejo de PDF, XML, folio, track id y estados.
+- Carga segura de certificado por tenant.
+- Password por variable segura o secret manager.
+- Canonicalización XML requerida.
+- Firma del DTE y del envío cuando corresponda.
+- Pruebas con certificados de certificación.
+- Auditoría de acceso a secretos.
 
-Diseno tecnico:
+Controles mínimos:
 
-- Definir campos requeridos por proveedor.
-- Definir contrato interno de adapter generico.
-- Crear interfaz de proveedor DTE sin nombres comerciales en el dominio central.
-- Mapear estados del proveedor a estados internos de Citaya.
-- Registrar request/response resumido para auditoria sin guardar secretos.
-- Aislar credenciales por tenant.
+- No exponer certificados al frontend.
+- No loggear certificados, passwords ni XML firmado completo.
+- Cifrado por tenant.
+- Separación estricta entre certificación y producción.
 
-Adapter generico sugerido:
+## Fase 4 — CAF/folios
 
-- `createDocument`
-- `getDocumentStatus`
-- `cancelDocument` o `createCreditNote`
-- `getPdfUrl`
-- `getXmlUrl`
+Objetivo: consumir folios autorizados por tenant de forma controlada.
+
+Alcance:
+
+- Cargar CAF por tenant de forma segura.
+- Parsear rango autorizado y tipo DTE.
+- Reservar folio antes de emitir.
+- Marcar folio como usado solo si corresponde.
+- Manejar reintentos, errores y folios agotados.
+- Evitar doble consumo de folio con transacciones/idempotencia.
+
+## Fase 5 — Envío ambiente certificación SII
+
+Objetivo: enviar DTE firmado al ambiente de certificación SII y consultar estado.
+
+Alcance:
+
+- Obtener semilla/token reales en certificación.
+- Enviar sobre DTE.
+- Guardar `track_id`.
+- Consultar estado.
+- Mapear respuestas SII a estados internos.
+- Registrar respuesta resumida para auditoría.
+
+## Fase 6 — PDF tributario
+
+Objetivo: generar representación impresa desde DTE emitido.
+
+Alcance:
+
+- PDF desde XML/documento emitido.
+- Datos del emisor, receptor, detalle, totales, folio y fecha.
+- Timbre requerido cuando aplique.
+- Almacenamiento por tenant.
+- Acceso seguro desde admin/cliente según reglas.
+
+## Fase 7 — Motor multi-tenant
+
+Objetivo: conectar el motor DTE con datos reales de Citaya sin emisión automática masiva.
+
+Alcance:
+
+- `tenant_tax_profiles`.
+- Certificados y CAF por tenant.
+- `tax_documents` con tenant, reserva, pago y cliente.
+- Auditoría por tenant.
+- Feature flags por tenant y ambiente.
+- Backoffice para soporte.
+- Idempotencia por pago/reserva.
+
+## Fase 8 — Emisión automática post pago
+
+Objetivo: emitir DTE automáticamente después de pago aprobado solo para tenants habilitados.
+
+Requisitos previos:
+
+- Certificación SII completada.
+- Tenant habilitado y probado.
+- Certificado y CAF vigentes.
+- Flujo de nota de crédito definido.
+- Observabilidad y soporte.
+- Feature flag de activación.
 
 Regla:
 
-- No acoplar Citaya a un solo proveedor.
-- Toda integracion debe pasar por un adapter.
-
-## Fase 3 — DTE propio
-
-Objetivo: investigar si Citaya puede implementar emision DTE completa con sistema propio.
-
-Investigacion requerida:
-
-- Certificado digital por contribuyente.
-- Password y administracion segura del certificado.
-- Firma XML.
-- CAF / folios autorizados.
-- Estructura XML DTE.
-- Sobre de envio SII.
-- Envio SII.
-- Consulta de estado.
-- Respuesta de aceptacion/rechazo.
-- PDF tributario / representacion impresa.
-- Timbre PDF417 si aplica.
-- Notas de credito.
-- Seguridad multi-tenant.
-- Auditoria de emision.
-
-Riesgos:
-
-- Manejo de claves privadas.
-- Aislamiento por tenant.
-- Cambios normativos.
-- Rechazos SII.
-- Certificacion y pruebas.
-- Soporte operativo.
-
-Controles minimos antes de implementar:
-
-- Secret manager o cifrado fuerte por tenant.
-- Separacion de password del certificado.
-- Auditoria de quien emite, cuando y desde que tenant.
-- Validacion estricta de RUT y datos tributarios.
-- Ambientes separados para prueba y produccion.
-- Revision legal/tributaria antes de activar emision real.
-
-Resultado esperado:
-
-- Documento tecnico de viabilidad.
-- Prototipo aislado fuera del flujo productivo.
-- Decision explicita entre seguir con proveedor DTE o invertir en DTE propio.
+No conectar Mercado Pago, Webpay, Khipu ni pagos productivos a emisión real hasta completar fases 1 a 7 y validar con pruebas manuales controladas.
