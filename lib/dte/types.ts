@@ -32,6 +32,17 @@ export type TenantTaxProfile = {
   dteEnvironment: "certification" | "production";
 };
 
+export type DteIssuerLab = TenantTaxProfile;
+
+export type DteLabIssuer = {
+  rut: string;
+  razonSocial: string;
+  giro: string;
+  direccion: string;
+  comuna: string;
+  ciudad: string;
+};
+
 export type TaxDocumentRecipient = {
   rut: string;
   legalName: string;
@@ -42,6 +53,18 @@ export type TaxDocumentRecipient = {
   email?: string | null;
 };
 
+export type DteRecipientLab = TaxDocumentRecipient;
+
+export type DteLabRecipient = {
+  rut: string;
+  razonSocial: string;
+  giro?: string | null;
+  direccion?: string | null;
+  comuna?: string | null;
+  ciudad?: string | null;
+  email?: string | null;
+};
+
 export type TaxDocumentLine = {
   name: string;
   description?: string | null;
@@ -49,6 +72,58 @@ export type TaxDocumentLine = {
   unitPrice: number;
   amount: number;
   exempt?: boolean;
+};
+
+export type DteDocumentDetailLab = TaxDocumentLine;
+
+export type DteLabDetail = {
+  nombre: string;
+  descripcion?: string | null;
+  cantidad: number;
+  precioUnitario: number;
+  montoItem: number;
+};
+
+export type DteDocumentTotalsLab = {
+  netAmount?: number | null;
+  exemptAmount?: number | null;
+  taxAmount?: number | null;
+  totalAmount: number;
+};
+
+export type DteLabTotals = {
+  montoNeto?: number | null;
+  montoExento?: number | null;
+  iva?: number | null;
+  montoTotal: number;
+};
+
+export type DteDocumentIdentificationLab = {
+  documentType: DteDocumentType;
+  folio: number;
+  issueDate: string;
+};
+
+export type DteLabDocumentIdentification = {
+  tipoDte: DteDocumentType;
+  folio: number;
+  fechaEmision: string;
+};
+
+export type DteDocumentHeaderLab = DteDocumentIdentificationLab &
+  DteDocumentTotalsLab & {
+    issuer: DteIssuerLab;
+    recipient: DteRecipientLab;
+  };
+
+export type DteLabHeader = DteLabDocumentIdentification &
+  DteLabTotals & {
+    emisor: DteLabIssuer;
+    receptor: DteLabRecipient;
+  };
+
+export type DteLabDocument = DteLabHeader & {
+  detalles: DteLabDetail[];
 };
 
 export type TaxDocumentDraft = {
@@ -79,9 +154,10 @@ export type DteGenerationResult = {
   warnings: string[];
 };
 
+export type DteXmlLabResult = DteGenerationResult;
+
 export type DteGenerationError = {
   ok: false;
   status: "error";
   error: string;
 };
-

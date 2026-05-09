@@ -34,9 +34,9 @@ Fuera de alcance:
 - PDF tributario válido.
 - Emisión automática post pago.
 
-## Fase 2 — XML compatible SII
+## Fase 2 — XML DTE de laboratorio estilo SII
 
-Objetivo: reemplazar el XML dummy por XML compatible con especificaciones SII para los tipos iniciales.
+Objetivo: reemplazar el XML dummy por XML DTE de laboratorio más cercano al modelo SII para los tipos iniciales, sin afirmar compatibilidad final ni certificación.
 
 Alcance:
 
@@ -47,12 +47,22 @@ Alcance:
 - Nota de crédito tipo 61.
 - Nota de débito tipo 56.
 - Carátula, encabezado, emisor, receptor, totales y detalle.
-- Validación contra schemas oficiales en ambiente de certificación.
-- Manejo de errores de validación XML.
+- Escape seguro de valores XML.
+- Validaciones mínimas de RUT, folio, fecha, totales y detalles.
+- Builders separados para boleta, factura y sobre DTE.
+- Tests básicos de estructura XML y escape de caracteres.
 
-## Fase 3 — Firma real
+Fuera de alcance:
 
-Objetivo: firmar XML con certificado del tenant/contribuyente.
+- Validación contra schemas oficiales.
+- Firma XML real.
+- CAF/folios reales.
+- Envío al ambiente de certificación SII.
+- Emisión desde flujos productivos de Citaya.
+
+## Fase 3 — Firma XML real de laboratorio con certificado de prueba/controlado
+
+Objetivo: firmar XML de laboratorio con un certificado de prueba/controlado del tenant/contribuyente, manteniendo el flujo fuera de producción.
 
 Alcance:
 

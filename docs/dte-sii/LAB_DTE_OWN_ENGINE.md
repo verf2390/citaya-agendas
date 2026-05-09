@@ -6,6 +6,8 @@ Crear una base técnica aislada para avanzar hacia `citaya_own_dte` sin tocar re
 
 El laboratorio permite iterar sobre generación XML, firma, CAF/folios, envío SII y estados antes de conectar cualquier flujo productivo.
 
+La fase actual avanza desde XML dummy hacia un `SII-like XML laboratory format`: una estructura de laboratorio más cercana al modelo DTE chileno, pero todavía no certificada ni validada como XML final ante SII.
+
 ## Qué permite hacer hoy
 
 - Validar y normalizar RUT chileno.
@@ -28,7 +30,14 @@ El laboratorio permite iterar sobre generación XML, firma, CAF/folios, envío S
   - `error`
   - `pending_manual_issue`
   - `issued_manual`
-- Generar un XML DTE dummy/no productivo desde un `TaxDocumentDraft`.
+- Generar XML DTE de laboratorio estilo SII desde un `TaxDocumentDraft`.
+- Armar `EnvioDTE`, `SetDTE`, `Caratula`, `DTE`, `Documento`, `Encabezado`, `IdDoc`, `Emisor`, `Receptor`, `Totales` y `Detalle`.
+- Separar builders de laboratorio para boleta, factura y sobre DTE:
+  - `buildBoletaXmlLab()`
+  - `buildFacturaXmlLab()`
+  - `buildDteEnvelopeXmlLab()`
+- Escapar caracteres especiales XML en campos de texto.
+- Validar RUT emisor, RUT receptor, tipo DTE, folio, fecha, totales y detalles antes de generar XML.
 - Simular firma XML.
 - Simular semilla, token, envío y consulta de estado SII.
 - Parsear campos mínimos de CAF en modo laboratorio.
@@ -36,6 +45,7 @@ El laboratorio permite iterar sobre generación XML, firma, CAF/folios, envío S
 ## Qué NO hace todavía
 
 - No genera XML final válido ante SII.
+- No ha sido comparado ni validado contra XSD oficial SII.
 - No firma XML real.
 - No usa certificados reales.
 - No usa CAF reales.
@@ -53,6 +63,8 @@ El laboratorio permite iterar sobre generación XML, firma, CAF/folios, envío S
 - `lib/dte/xml/build-dte-envelope.ts`
 - `lib/dte/xml/build-boleta.ts`
 - `lib/dte/xml/build-factura.ts`
+- `lib/dte/xml/escape-xml.ts`
+- `lib/dte/xml/validate-dte-draft.ts`
 - `lib/dte/caf/parse-caf.ts`
 - `lib/dte/signing/sign-xml.placeholder.ts`
 - `lib/dte/sii/sii-client.placeholder.ts`
@@ -71,11 +83,18 @@ npx eslint lib/dte
 npm run build
 ```
 
+Si el runtime local soporta TypeScript directo con `node:test`, también se pueden ejecutar los tests de laboratorio con:
+
+```bash
+node --test lib/dte/__tests__/*.test.ts
+```
+
 Cuando se agregue un runner TypeScript, estos tests deben ejecutarse como parte de CI.
 
 ## Riesgos
 
-- El XML actual es experimental y no debe enviarse al SII.
+- El XML actual es experimental, estilo SII, y no debe enviarse al SII.
+- Falta comparar la estructura generada contra XSD oficial SII.
 - El parser CAF es mínimo y no valida firma ni estructura completa.
 - El cliente SII es mock y no representa errores reales.
 - La firma es placeholder y no prueba canonicalización.
@@ -103,4 +122,3 @@ Cuando se agregue un runner TypeScript, estos tests deben ejecutarse como parte 
 No usar certificados, claves privadas, passwords, CAF reales ni credenciales SII en el repositorio.
 
 Citaya debe orquestar DTE por tenant. El RUT, certificado, CAF, folios, XML, PDF, track id y estado pertenecen al tenant emisor, no a Citaya globalmente.
-

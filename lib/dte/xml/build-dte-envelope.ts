@@ -5,15 +5,8 @@ import type {
   DteGenerationResult,
   TaxDocumentDraft,
 } from "../types";
-
-function escapeXml(value: string | number | null | undefined): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+import { escapeXml } from "./escape-xml";
+import { validateDteDraftForXmlLab } from "./validate-dte-draft";
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -42,10 +35,13 @@ function buildDetailXml(draft: TaxDocumentDraft): string {
     .join("\n");
 }
 
-export function buildDteEnvelope(
+// LAB / NO PRODUCTIVO: genera un sobre SII-like, no certificado ante SII.
+export function buildDteEnvelopeXmlLab(
   draft: TaxDocumentDraft,
 ): DteGenerationResult | DteGenerationError {
   try {
+    validateDteDraftForXmlLab(draft);
+
     const issuerRut = normalizeRut(draft.issuer.rut);
     const recipientRut = normalizeRut(draft.recipient.rut);
     const documentTypeCode = getSiiDteTypeCode(draft.documentType);
@@ -53,8 +49,9 @@ export function buildDteEnvelope(
 
     const xml = `<?xml version="1.0" encoding="ISO-8859-1"?>
 <!--
-  Citaya DTE Lab XML - NO PRODUCTIVO.
-  Este XML es experimental: no esta firmado, no consume CAF real,
+  Citaya DTE Lab XML - SII-like XML laboratory format - NO PRODUCTIVO.
+  Este XML es experimental: no es XML certificado/final ante SII.
+  No esta firmado, no consume CAF real,
   no incluye timbre TED final y no debe enviarse al SII.
 -->
 <EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">
@@ -95,6 +92,7 @@ export function buildDteEnvelope(
             <DirRecep>${escapeXml(draft.recipient.address)}</DirRecep>
             <CmnaRecep>${escapeXml(draft.recipient.commune)}</CmnaRecep>
             <CiudadRecep>${escapeXml(draft.recipient.city)}</CiudadRecep>
+            <CorreoRecep>${escapeXml(draft.recipient.email)}</CorreoRecep>
           </Receptor>
           <Totales>
             <MntNeto>${draft.netAmount ?? 0}</MntNeto>
@@ -117,7 +115,8 @@ ${buildDetailXml(draft)}
       xml,
       warnings: [
         "XML experimental no productivo.",
-        "No incluye CAF, TED ni firma XML real.",
+        "SII-like XML laboratory format, no validado contra XSD oficial.",
+        "No incluye CAF real, TED final ni firma XML real.",
       ],
     };
   } catch (error) {
@@ -129,3 +128,8 @@ ${buildDetailXml(draft)}
   }
 }
 
+export function buildDteEnvelope(
+  draft: TaxDocumentDraft,
+): DteGenerationResult | DteGenerationError {
+  return buildDteEnvelopeXmlLab(draft);
+}

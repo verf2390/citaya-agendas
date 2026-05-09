@@ -15,6 +15,12 @@ export const SII_DTE_TYPE_CODES: Record<DteDocumentType, number> = {
   nota_debito: 56,
 };
 
+export function isSupportedDteDocumentType(
+  documentType: string,
+): documentType is DteDocumentType {
+  return Object.hasOwn(SII_DTE_TYPE_CODES, documentType);
+}
+
 export function getSiiDteTypeCode(documentType: DteDocumentType): number {
   return SII_DTE_TYPE_CODES[documentType];
 }
@@ -26,4 +32,3 @@ export function isInvoiceType(documentType: DteDocumentType): boolean {
 export function isBoletaType(documentType: DteDocumentType): boolean {
   return documentType === "boleta_afecta" || documentType === "boleta_exenta";
 }
-
