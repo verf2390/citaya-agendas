@@ -14,7 +14,7 @@ Este directorio contiene solo placeholders seguros para el laboratorio DTE.
 ## Variables previstas
 
 - `DTE_CERT_PATH`: ruta local ignorada o montada desde secreto seguro. No versionar el archivo.
-- `DTE_CERT_PASSWORD`: password del certificado desde secret manager o entorno seguro.
+- `DTE_CERT_PASSWORD`: password del certificado desde secret manager o entorno seguro, si aplica.
 - `DTE_PRIVATE_KEY_PATH`: clave privada local/secret mount, nunca versionada.
 - `DTE_PUBLIC_CERT_PATH`: certificado publico local/secret mount, nunca versionado.
 - `DTE_SIGNING_MODE`: `lab`, `certification` o `production`.

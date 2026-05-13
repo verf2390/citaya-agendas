@@ -1042,8 +1042,9 @@ export default function AdminFacturacionPage() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   ["XSD oficial", "Estructura LAB pasa"],
-                  ["Firma XML", "Signature sintética / real bloqueada"],
-                  ["CAF/TED", "TED sintético / FRMT real pendiente"],
+                  ["TED real", "pendiente CAF externo"],
+                  ["FRMT real", "pendiente llave CAF"],
+                  ["XMLDSig real", "pendiente certificado"],
                   ["Track ID", "Sin envío SII"],
                   ["Estado SII", "No consultado"],
                   ["Rechazos", "Sin evidencia real"],

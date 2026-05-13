@@ -2,7 +2,7 @@
 
 Estado: scaffold serio / PENDIENTE / NO PRODUCTIVO.
 
-El modulo `lib/dte/sii/sii-client.certification.ts` define la ruta para operar contra ambiente de certificacion SII, pero bloquea envio real hasta que existan XML validado contra XSD, firma XML real y CAF/TED real.
+El modulo `lib/dte/sii/sii-client.certification.ts` define la ruta para operar contra ambiente de certificacion SII, pero bloquea envio real hasta que existan XML validado contra XSD, firma XML real y CAF/TED real. El setup local previo esta documentado en `docs/dte-sii/CERTIFICATION_ENV_SETUP.md`.
 
 ## Flujo esperado
 
@@ -50,8 +50,9 @@ Guardar por tenant/documento:
 
 ## Pendiente oficial
 
+- Completar XML local certification con CAF, FRMT y XMLDSig reales/controlados.
+- Validar `tmp/dte-certification/certification-envio-dte.xml` contra XSD oficial.
 - Confirmar endpoints vigentes y contratos request/response en documentacion SII.
 - Confirmar certificados y flujo token para certificacion.
 - Confirmar formatos exactos para upload DTE y consulta estado.
 - Ejecutar pruebas reales en ambiente certificacion.
-

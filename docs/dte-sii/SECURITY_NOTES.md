@@ -88,6 +88,8 @@ Variables previstas:
 
 - `DTE_CERT_PATH`.
 - `DTE_CERT_PASSWORD`.
+- `DTE_PRIVATE_KEY_PATH`.
+- `DTE_PUBLIC_CERT_PATH`.
 - `DTE_SIGNING_MODE=lab|certification|production`.
 
 Estas variables no deben quedar en archivos versionados ni mostrarse al frontend.
@@ -124,6 +126,7 @@ La dependencia recomendada para XMLDSig es `xml-crypto`, pero no se instala auto
 - `xsd-structure` puede insertar TED/FRMT/Signature sinteticos para probar XSD, pero no son criptograficamente validos.
 - FRMT real requiere clave privada asociada al CAF, cargada fuera del repositorio.
 - XMLDSig real requiere certificado/clave privada del contribuyente o usuario autorizado, fuera del repositorio.
+- `certification` genera XML en `tmp/dte-certification/`, ruta ignorada por git.
 - Si un XML pasa XSD solo en modo `xsd-structure`, debe seguir marcado `LAB / PENDIENTE / NO PRODUCTIVO`.
 
 ## Cliente SII certificacion

@@ -237,14 +237,17 @@ export type CafLabData = {
 export type CafRealData = {
   tenantId: string;
   issuerRut: string;
+  issuerLegalName?: string | null;
   documentType: DteDocumentType;
   rangeFrom: number;
   rangeTo: number;
   authorizationDate: string;
   cafXmlHash: string;
+  cafXml?: string | null;
   publicKeyAlgorithm?: string | null;
   publicKeyModulus?: string | null;
   publicKeyExponent?: string | null;
+  keyId?: string | null;
   cafSignature?: string | null;
   mode: "controlled";
   isProductionValid: false;
@@ -300,13 +303,13 @@ export type FrmtSignatureResult =
 export type XmlDsigBuildInput = {
   referenceUri: string;
   signedXmlFragment: string;
-  mode: "xsd-structure";
+  mode: "xsd-structure" | "certification";
   signatureId?: string;
 };
 
 export type XmlDsigBuildResult = {
   signatureXml: string;
-  mode: "xsd-structure";
+  mode: "xsd-structure" | "certification";
   isProductionValid: false;
   warnings: string[];
 };

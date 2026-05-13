@@ -23,6 +23,21 @@
 # misc
 .DS_Store
 *.pem
+*.p12
+*.pfx
+*.key
+*.crt
+*.cer
+*.der
+*.csr
+*.jks
+*.keystore
+*.caf.xml
+caf.xml
+certs/
+secrets/
+private/
+tmp/dte-certification/
 
 # debug
 npm-debug.log*

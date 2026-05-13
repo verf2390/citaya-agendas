@@ -190,14 +190,14 @@ Pendiente:
 Entregado:
 
 - `lib/dte/signing/sign-xml.real.ts`.
-- Variables previstas: `DTE_CERT_PATH`, `DTE_CERT_PASSWORD`, `DTE_SIGNING_MODE`.
+- Variables previstas: `DTE_CERT_PATH`, `DTE_PRIVATE_KEY_PATH`, `DTE_PUBLIC_CERT_PATH`, `DTE_CERT_PASSWORD`, `DTE_SIGNING_MODE`.
 - Tests de fallo seguro sin secretos.
+- Ruta Node crypto controlada para XMLDSig local certification, con advertencia de canonicalizacion pendiente.
 
 Pendiente:
 
 - Evaluar e instalar dependencia XMLDSig, probablemente `xml-crypto`, o implementar manualmente con `node:crypto`.
-- Extraer clave privada desde certificado controlado.
-- Canonicalizar, digerir y firmar nodo correcto.
+- Confirmar canonicalizacion exacta exigida por SII.
 - Validar contra `xmldsignature_v10.xsd`.
 
 ## Fase 7 critica — CAF/TED real
@@ -209,12 +209,14 @@ Entregado:
 - `lib/dte/caf/ted-builder.ts`.
 - `lib/dte/caf/frmt-signature.ts`.
 - Tipos CAF/TED.
+- Carga CAF desde `DTE_CAF_PATH` y validaciones minimas de RUT/tipo/folio.
+- FRMT con Node crypto desde `DTE_CAF_PRIVATE_KEY_PATH`.
 
 Pendiente:
 
 - Leer CAF desde storage seguro.
 - Validar firma CAF.
-- Firmar `FRMT` real.
+- Validar `FRMT` con CAF real en ambiente certification.
 - Persistir folios con transacciones e idempotencia.
 
 ## Fase 8 critica — cliente ambiente certificacion SII

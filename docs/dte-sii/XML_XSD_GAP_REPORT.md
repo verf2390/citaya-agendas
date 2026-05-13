@@ -207,6 +207,41 @@ Que impide certificacion real:
 - XMLDSig real no implementada con certificado/key reales.
 - Falta validar criptograficamente y enviar al ambiente de certificacion SII.
 
+## Ruta certification local controlada
+
+Setup documentado en:
+
+```text
+docs/dte-sii/CERTIFICATION_ENV_SETUP.md
+```
+
+Variables minimas:
+
+```text
+DTE_CAF_PATH
+DTE_CAF_PRIVATE_KEY_PATH
+DTE_CERT_PATH
+DTE_PRIVATE_KEY_PATH
+```
+
+Salida esperada:
+
+```text
+tmp/dte-certification/certification-envio-dte.xml
+```
+
+Estado:
+
+- CAF: se carga desde archivo externo al repo y se valida RUT/tipo/folio.
+- FRMT: se firma con Node crypto usando `DTE_CAF_PRIVATE_KEY_PATH`.
+- XMLDSig: se firma con Node crypto usando `DTE_PRIVATE_KEY_PATH` y `DTE_CERT_PATH`.
+- Productivo: NO.
+- Aprobado SII: NO.
+
+Limitacion:
+
+La canonicalizacion XMLDSig debe validarse contra SII. Node crypto firma bytes entregados, pero no reemplaza una implementacion XMLDSig completa con canonicalizacion robusta.
+
 ## EnvioDTE / SetDTE
 
 Brechas detectadas:

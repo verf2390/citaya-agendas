@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 
-import { SII_DTE_TYPE_CODES } from "../dte-types";
+import { getSiiDteTypeCode, SII_DTE_TYPE_CODES } from "../dte-types";
 import type { DteDocumentType } from "../dte-types";
 import { normalizeRut } from "../rut";
-import type { CafRealData } from "../types";
+import type { CafRealData, TaxDocumentDraft } from "../types";
 
 function readTag(xml: string, tagName: string): string | null {
   const match = xml.match(new RegExp(`<${tagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${tagName}>`, "i"));
@@ -37,6 +38,12 @@ function hashXml(xml: string): string {
   return createHash("sha256").update(xml).digest("hex");
 }
 
+function extractCafXml(xml: string): string {
+  const match = xml.match(/<CAF(?:\s[^>]*)?>[\s\S]*<\/CAF>/i);
+  if (!match) throw new Error("CAF controlado debe incluir nodo <CAF>");
+  return match[0].trim();
+}
+
 // Controlado / NO PRODUCTIVO: parsea estructura CAF sin validar firma criptografica SII.
 export function parseCafRealControlledXml(
   cafXml: string,
@@ -45,11 +52,17 @@ export function parseCafRealControlledXml(
   if (!tenantId.trim()) throw new Error("tenantId requerido para CAF controlado");
   if (!cafXml.includes("<CAF")) throw new Error("CAF controlado debe incluir nodo <CAF>");
 
+  const normalizedCafXml = extractCafXml(cafXml);
   const issuerRut = normalizeRut(readRequiredTag(cafXml, "RE"));
   const documentType = mapSiiCodeToDocumentType(readRequiredTag(cafXml, "TD"));
   const rangeFrom = readRequiredNumber(cafXml, "D");
   const rangeTo = readRequiredNumber(cafXml, "H");
   const authorizationDate = readRequiredTag(cafXml, "FA");
+  const issuerLegalName = readRequiredTag(cafXml, "RS");
+  const publicKeyModulus = readRequiredTag(cafXml, "M");
+  const publicKeyExponent = readRequiredTag(cafXml, "E");
+  const keyId = readRequiredTag(cafXml, "IDK");
+  const cafSignature = readRequiredTag(cafXml, "FRMA");
 
   if (rangeFrom > rangeTo) {
     throw new Error("CAF controlado invalido: rango desde/hasta inconsistente");
@@ -58,17 +71,55 @@ export function parseCafRealControlledXml(
   return {
     tenantId,
     issuerRut,
+    issuerLegalName,
     documentType,
     rangeFrom,
     rangeTo,
     authorizationDate,
-    cafXmlHash: hashXml(cafXml),
-    publicKeyAlgorithm: readTag(cafXml, "ALGO"),
-    publicKeyModulus: readTag(cafXml, "M"),
-    publicKeyExponent: readTag(cafXml, "E"),
-    cafSignature: readTag(cafXml, "FRMA"),
+    cafXmlHash: hashXml(normalizedCafXml),
+    cafXml: normalizedCafXml,
+    publicKeyAlgorithm: "RSA",
+    publicKeyModulus,
+    publicKeyExponent,
+    keyId,
+    cafSignature,
     mode: "controlled",
     isProductionValid: false,
   };
 }
 
+export function loadCafRealControlledFromFile(
+  path: string,
+  tenantId: string,
+): CafRealData {
+  if (!path.trim()) throw new Error("DTE_CAF_PATH requerido");
+  if (!existsSync(path)) throw new Error("DTE_CAF_PATH no existe");
+  return parseCafRealControlledXml(readFileSync(path, "utf8"), tenantId);
+}
+
+export function loadCafRealControlledFromEnv(tenantId: string): CafRealData {
+  return loadCafRealControlledFromFile(
+    String(process.env.DTE_CAF_PATH ?? ""),
+    tenantId,
+  );
+}
+
+export function validateCafForDraftOrThrow(
+  caf: CafRealData,
+  draft: TaxDocumentDraft,
+): void {
+  const issuerRut = normalizeRut(draft.issuer.rut);
+  if (caf.issuerRut !== issuerRut) {
+    throw new Error("CAF RUT emisor no coincide con el draft");
+  }
+
+  const expectedTypeCode = getSiiDteTypeCode(draft.documentType);
+  const cafTypeCode = getSiiDteTypeCode(caf.documentType);
+  if (cafTypeCode !== expectedTypeCode) {
+    throw new Error("CAF tipo DTE no coincide con el draft");
+  }
+
+  if (draft.folio < caf.rangeFrom || draft.folio > caf.rangeTo) {
+    throw new Error("Folio del draft fuera del rango CAF");
+  }
+}

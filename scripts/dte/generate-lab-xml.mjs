@@ -23,7 +23,6 @@ require.extensions[".ts"] = (module, filename) => {
 };
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
-const outputPath = resolve(repoRoot, "docs/dte-sii/samples/lab-envio-dte.xml");
 const modeArg = process.argv.find((arg) => arg.startsWith("--mode="));
 const mode = modeArg?.split("=")[1] ?? "lab";
 const allowedModes = new Set(["lab", "xsd-structure", "certification"]);
@@ -41,10 +40,22 @@ const { buildTedControlled } = require(resolve(
   repoRoot,
   "lib/dte/caf/ted-builder.ts",
 ));
+const { signFrmtControlled } = require(resolve(
+  repoRoot,
+  "lib/dte/caf/frmt-signature.ts",
+));
+const {
+  loadCafRealControlledFromEnv,
+  validateCafForDraftOrThrow,
+} = require(resolve(repoRoot, "lib/dte/caf/parse-caf.real.ts"));
 const { buildSyntheticXmlDsigForXsd } = require(resolve(
   repoRoot,
   "lib/dte/signing/xml-dsig.structure.ts",
 ));
+const {
+  buildXmlDsigControlled,
+  getRealXmlSigningConfigFromEnv,
+} = require(resolve(repoRoot, "lib/dte/signing/sign-xml.real.ts"));
 
 const draft = {
   tenantId: "tenant-lab-citaya",
@@ -178,6 +189,93 @@ function buildXsdStructureOptions() {
   };
 }
 
+function buildCertificationOptions() {
+  const documentTypeCode = 33;
+  const documentId = `CitayaDocLab-${documentTypeCode}-${draft.folio}`;
+  const setDteId = `CitayaDteLab-${draft.tenantId}-${draft.folio}`;
+  const caf = loadCafRealControlledFromEnv(draft.tenantId);
+  validateCafForDraftOrThrow(caf, draft);
+  const tedWithoutFrmt = buildTedControlled({
+    issuerRut: caf.issuerRut,
+    documentTypeCode,
+    folio: draft.folio,
+    issueDate: draft.issueDate,
+    recipientRut: "11111111-1",
+    recipientLegalName: "Cliente Demo",
+    totalAmount: draft.totalAmount,
+    firstItemName: draft.lines[0].name,
+    cafXml: caf.cafXml,
+    timestamp: "2026-05-13T00:00:00",
+  });
+  const frmt = signFrmtControlled({
+    ddXml: tedWithoutFrmt.ddXml,
+    privateKeyPath: process.env.DTE_CAF_PRIVATE_KEY_PATH,
+    mode: "certification",
+  });
+
+  if (!frmt.ok) {
+    throw new Error(`FRMT certification failed. Missing: ${frmt.missing.join(", ")}`);
+  }
+
+  const ted = buildTedControlled({
+    issuerRut: caf.issuerRut,
+    documentTypeCode,
+    folio: draft.folio,
+    issueDate: draft.issueDate,
+    recipientRut: "11111111-1",
+    recipientLegalName: "Cliente Demo",
+    totalAmount: draft.totalAmount,
+    firstItemName: draft.lines[0].name,
+    cafXml: caf.cafXml,
+    timestamp: "2026-05-13T00:00:00",
+    frmtXml: frmt.frmtXml,
+    frmtStatus: "real_controlled",
+  });
+  const documentSigningConfig = getRealXmlSigningConfigFromEnv(
+    draft.tenantId,
+    documentId,
+  );
+  documentSigningConfig.mode = "certification";
+  const envioSigningConfig = getRealXmlSigningConfigFromEnv(
+    draft.tenantId,
+    setDteId,
+  );
+  envioSigningConfig.mode = "certification";
+  const documentSignature = buildXmlDsigControlled(
+    {
+      referenceUri: documentId,
+      signedXmlFragment: ted.tedXml,
+      mode: "certification",
+      signatureId: "CERTIFICATION-DTE-SIGNATURE",
+    },
+    documentSigningConfig,
+  );
+  const envioSignature = buildXmlDsigControlled(
+    {
+      referenceUri: setDteId,
+      signedXmlFragment: `${setDteId}:${documentId}:${ted.tedXml}`,
+      mode: "certification",
+      signatureId: "CERTIFICATION-ENVIO-SIGNATURE",
+    },
+    envioSigningConfig,
+  );
+
+  return {
+    mode: "certification",
+    tedXml: ted.tedXml,
+    documentSignedAt: "2026-05-13T00:00:00",
+    documentSignatureXml: documentSignature.signatureXml,
+    envioSignatureXml: envioSignature.signatureXml,
+    warnings: [
+      ...ted.warnings,
+      ...frmt.warnings,
+      ...documentSignature.warnings,
+      ...envioSignature.warnings,
+      "Certification local no equivale a aprobacion SII ni envio a SII.",
+    ],
+  };
+}
+
 if (mode === "certification") {
   const missing = [
     "DTE_CAF_PATH",
@@ -193,13 +291,33 @@ if (mode === "certification") {
   }
 }
 
-const options = mode === "xsd-structure" ? buildXsdStructureOptions() : { mode };
+let options;
+try {
+  options =
+    mode === "xsd-structure"
+      ? buildXsdStructureOptions()
+      : mode === "certification"
+        ? buildCertificationOptions()
+        : { mode };
+} catch (error) {
+  console.error(
+    error instanceof Error
+      ? `Certification generation failed: ${error.message}`
+      : "Certification generation failed",
+  );
+  process.exit(3);
+}
 const result = buildFacturaXmlLab(draft, options);
 
 if (!result.ok) {
   console.error(result.error);
   process.exit(1);
 }
+
+const outputPath =
+  mode === "certification"
+    ? resolve(repoRoot, "tmp/dte-certification/certification-envio-dte.xml")
+    : resolve(repoRoot, "docs/dte-sii/samples/lab-envio-dte.xml");
 
 mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, result.xml, "latin1");

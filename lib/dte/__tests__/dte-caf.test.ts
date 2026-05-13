@@ -20,10 +20,14 @@ const cafXml = `
   <CAF version="1.0">
     <DA>
       <RE>76.123.456-0</RE>
+      <RS>Empresa Demo Citaya SpA</RS>
       <TD>39</TD>
       <RNG><D>1001</D><H>1010</H></RNG>
       <FA>2026-05-08</FA>
+      <RSAPK><M>AA==</M><E>AQAB</E></RSAPK>
+      <IDK>1</IDK>
     </DA>
+    <FRMA algoritmo="SHA1withRSA">AA==</FRMA>
   </CAF>
 </AUTORIZACION>`;
 
