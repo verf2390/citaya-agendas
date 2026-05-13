@@ -5,6 +5,10 @@ import {
   signXmlForLab,
   signXmlMockForLab,
 } from "../signing/sign-xml.placeholder";
+import {
+  getRealXmlSigningConfigFromEnv,
+  prepareRealXmlSigning,
+} from "../signing/sign-xml.real";
 
 test("creates mock XML signature metadata for lab", () => {
   const result = signXmlMockForLab("<Documento>LAB</Documento>", {
@@ -36,4 +40,14 @@ test("blocks real lab signing without controlled certificate input", async () =>
       ),
     /controlled test certificate/,
   );
+});
+
+test("prepares real XML signing with safe missing-secret status", () => {
+  const config = getRealXmlSigningConfigFromEnv("tenant-lab", "Documento");
+  const result = prepareRealXmlSigning("<Documento>LAB</Documento>", config);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.isProductionValid, false);
+  assert.match(result.status, /missing_secret|pending_dependency/);
+  assert.ok(result.warnings.some((warning) => warning.includes("PENDIENTE")));
 });

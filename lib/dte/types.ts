@@ -29,7 +29,7 @@ export type TenantTaxProfile = {
   city: string;
   siiResolutionDate?: string | null;
   siiResolutionNumber?: string | null;
-  dteEnvironment: "certification" | "production";
+  dteEnvironment: "lab" | "certification" | "production";
 };
 
 export type DteIssuerLab = TenantTaxProfile;
@@ -191,6 +191,23 @@ export type SignedXmlResult = {
   isProductionValid: false;
 };
 
+export type RealXmlSigningConfig = {
+  tenantId: string;
+  mode: "lab" | "certification" | "production";
+  certificatePath?: string | null;
+  certificatePassword?: string | null;
+  signatureTarget: string;
+};
+
+export type RealXmlSigningPreparationResult = {
+  ok: false;
+  status: "pending_dependency" | "missing_secret" | "blocked";
+  mode: "lab" | "certification" | "production";
+  isProductionValid: false;
+  missing: string[];
+  warnings: string[];
+};
+
 export type CafLabData = {
   tenantId: string;
   issuerRut: string;
@@ -202,6 +219,78 @@ export type CafLabData = {
   authorizationDate?: string | null;
   rawXmlHash?: string | null;
   mode: "lab";
+  isProductionValid: false;
+};
+
+export type CafRealData = {
+  tenantId: string;
+  issuerRut: string;
+  documentType: DteDocumentType;
+  rangeFrom: number;
+  rangeTo: number;
+  authorizationDate: string;
+  cafXmlHash: string;
+  publicKeyAlgorithm?: string | null;
+  publicKeyModulus?: string | null;
+  publicKeyExponent?: string | null;
+  cafSignature?: string | null;
+  mode: "controlled";
+  isProductionValid: false;
+};
+
+export type TedInput = {
+  issuerRut: string;
+  documentTypeCode: number;
+  folio: number;
+  issueDate: string;
+  recipientRut: string;
+  recipientLegalName: string;
+  totalAmount: number;
+  firstItemName: string;
+  cafXml: string;
+  timestamp?: string;
+};
+
+export type TedBuildResult = {
+  tedXml: string;
+  ddXml: string;
+  frmtStatus: "pending_real_signature";
+  warnings: string[];
+  isProductionValid: false;
+};
+
+export type SiiEnvironment = "lab" | "certification" | "production";
+
+export type SiiClientConfig = {
+  environment: SiiEnvironment;
+  baseUrl?: string | null;
+  rutEmpresa?: string | null;
+  rutUsuario?: string | null;
+  timeoutMs?: number;
+};
+
+export type SiiRejectReason = {
+  code: string;
+  message: string;
+  field?: string | null;
+};
+
+export type SiiSendResult = {
+  ok: boolean;
+  environment: SiiEnvironment;
+  trackId?: string | null;
+  status: "pending" | "sent_to_sii" | "rejected" | "error";
+  errors: SiiRejectReason[];
+  isProductionValid: false;
+};
+
+export type SiiTrackStatusResult = {
+  ok: boolean;
+  environment: SiiEnvironment;
+  trackId: string;
+  siiStatus: "pending" | "accepted" | "rejected" | "unknown" | "error";
+  errors: SiiRejectReason[];
+  checkedAt: string;
   isProductionValid: false;
 };
 

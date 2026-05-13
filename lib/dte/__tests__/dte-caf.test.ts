@@ -7,7 +7,13 @@ import {
   markFolioUsed,
   reserveNextFolio,
 } from "../caf/folio-manager.lab";
+import {
+  createFolioStateFromControlledCaf,
+  reserveControlledFolio,
+} from "../caf/folio-manager";
 import { parseCafLabXmlToData } from "../caf/parse-caf";
+import { parseCafRealControlledXml } from "../caf/parse-caf.real";
+import { buildTedControlled } from "../caf/ted-builder";
 
 const cafXml = `
 <AUTORIZACION>
@@ -48,4 +54,42 @@ test("reserves and marks CAF lab folio as used in memory", () => {
   const availability = getFolioAvailability(used.state);
   assert.equal(availability.usedCount, 1);
   assert.equal(availability.availableCount, 9);
+});
+
+test("parses controlled CAF without marking it production valid", () => {
+  const caf = parseCafRealControlledXml(cafXml, "tenant-lab");
+
+  assert.equal(caf.mode, "controlled");
+  assert.equal(caf.isProductionValid, false);
+  assert.equal(caf.issuerRut, "76123456-0");
+  assert.equal(caf.rangeFrom, 1001);
+});
+
+test("builds controlled TED with FRMT pending", () => {
+  const result = buildTedControlled({
+    issuerRut: "76123456-0",
+    documentTypeCode: 39,
+    folio: 1001,
+    issueDate: "2026-05-08",
+    recipientRut: "11111111-1",
+    recipientLegalName: "Cliente Demo",
+    totalAmount: 11900,
+    firstItemName: "Reserva demo Citaya",
+    cafXml,
+    timestamp: "2026-05-08T12:00:00.000Z",
+  });
+
+  assert.equal(result.isProductionValid, false);
+  assert.equal(result.frmtStatus, "pending_real_signature");
+  assert.match(result.tedXml, /<TED version="1.0">/);
+  assert.match(result.tedXml, /PENDIENTE-FIRMA-FRMT-CAF-REAL/);
+});
+
+test("reserves controlled CAF folio in memory", () => {
+  const caf = parseCafRealControlledXml(cafXml, "tenant-lab");
+  const state = createFolioStateFromControlledCaf(caf);
+  const reserved = reserveControlledFolio(state);
+
+  assert.equal(reserved.reservation.folio, 1001);
+  assert.equal(reserved.state.availableCount, 9);
 });

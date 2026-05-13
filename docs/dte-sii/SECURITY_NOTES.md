@@ -82,7 +82,15 @@ Antes de emitir o registrar documentos:
 
 ## Firma real
 
-No implementar firma real en producción todavía.
+No implementar firma real en producción todavía. La ruta `lib/dte/signing/sign-xml.real.ts` solo prepara configuración y falla de forma segura.
+
+Variables previstas:
+
+- `DTE_CERT_PATH`.
+- `DTE_CERT_PASSWORD`.
+- `DTE_SIGNING_MODE=lab|certification|production`.
+
+Estas variables no deben quedar en archivos versionados ni mostrarse al frontend.
 
 Antes de construir firma XML real se requiere:
 
@@ -94,6 +102,8 @@ Antes de construir firma XML real se requiere:
 - Revision de seguridad.
 - Revision legal/tributaria.
 - Decisión explícita de activar `citaya_own_dte` por tenant y ambiente.
+
+La dependencia recomendada para XMLDSig es `xml-crypto`, pero no se instala automaticamente. Antes de instalarla se debe revisar soporte de canonicalización, algoritmos SII, mantenimiento y compatibilidad con Next/Node.
 
 ## CAF y folios
 
@@ -107,3 +117,22 @@ Antes de construir firma XML real se requiere:
 - La reserva de folios debe separarse por tenant y tipo de documento.
 - Los CAF reales deben tener control de vigencia, rango, tipo DTE y ambiente.
 - La concurrencia debe probarse antes de conectar pagos, reservas o emisión automática.
+
+## Cliente SII certificacion
+
+- `lib/dte/sii/sii-client.certification.ts` esta bloqueado hasta validar endpoints oficiales SII.
+- Variables previstas: `SII_ENV`, `SII_CERTIFICATION_BASE_URL`, `SII_PRODUCTION_BASE_URL`, `SII_RUT_EMPRESA`, `SII_RUT_USUARIO`.
+- No loggear semillas, tokens ni XML completo.
+- Separar estrictamente `certification` de `production`.
+- Guardar evidencia resumida: request id interno, `track_id`, estado, rechazo normalizado, fecha y tenant.
+
+## Endpoint LAB admin
+
+El endpoint `/api/admin/dte-lab/generate-xml` mantiene un guard minimo:
+
+- Bearer token validado con Supabase Admin.
+- Tenant resuelto desde host/subdominio con fallback `tenantSlug` solo si host no resuelve.
+- `tenantId` debe coincidir con slug del host.
+- No escribe DB, no envia SII, no usa secretos, no consume folios reales.
+
+Pendiente posterior: helper global `requireTenantAdmin` basado en `tenant_members` para unificar permisos admin por tenant.

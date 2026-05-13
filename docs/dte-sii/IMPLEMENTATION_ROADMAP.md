@@ -163,3 +163,93 @@ Requisitos previos:
 Regla:
 
 No conectar Mercado Pago, Webpay, Khipu ni pagos productivos a emisión real hasta completar fases 1 a 7 y validar con pruebas manuales controladas.
+
+## Rebase de fases criticas para junio
+
+La numeracion historica anterior queda como contexto. El plan operativo actual para `citaya_own_dte` se organiza asi:
+
+## Fase 5 critica — XSD oficial y brechas
+
+Entregado:
+
+- `docs/dte-sii/xsd/README.md`.
+- `docs/dte-sii/XML_XSD_GAP_REPORT.md`.
+- `scripts/dte/validate-xsd.mjs`.
+
+Pendiente:
+
+- Descargar XSD oficiales desde SII.
+- Ejecutar validacion real con `EnvioDTE_v10.xsd`.
+- Ajustar orden/cardinalidad de XML segun errores reales.
+
+## Fase 6 critica — firma XML real controlada
+
+Entregado:
+
+- `lib/dte/signing/sign-xml.real.ts`.
+- Variables previstas: `DTE_CERT_PATH`, `DTE_CERT_PASSWORD`, `DTE_SIGNING_MODE`.
+- Tests de fallo seguro sin secretos.
+
+Pendiente:
+
+- Evaluar e instalar dependencia XMLDSig, probablemente `xml-crypto`, o implementar manualmente con `node:crypto`.
+- Extraer clave privada desde certificado controlado.
+- Canonicalizar, digerir y firmar nodo correcto.
+- Validar contra `xmldsignature_v10.xsd`.
+
+## Fase 7 critica — CAF/TED real
+
+Entregado:
+
+- `lib/dte/caf/parse-caf.real.ts`.
+- `lib/dte/caf/folio-manager.ts`.
+- `lib/dte/caf/ted-builder.ts`.
+- Tipos CAF/TED.
+
+Pendiente:
+
+- Leer CAF desde storage seguro.
+- Validar firma CAF.
+- Firmar `FRMT` real.
+- Persistir folios con transacciones e idempotencia.
+
+## Fase 8 critica — cliente ambiente certificacion SII
+
+Entregado:
+
+- `lib/dte/sii/sii-client.certification.ts`.
+- `docs/dte-sii/SII_CERTIFICATION_CLIENT.md`.
+- UI admin con estados de certificacion y botones bloqueados.
+
+Pendiente:
+
+- Confirmar endpoints oficiales vigentes.
+- Implementar getSeed/getToken/envio/estado reales.
+- Guardar `track_id` y rechazos normalizados.
+
+## Fase 9 critica — PDF tributario / muestra impresa
+
+Entregado:
+
+- `lib/dte/pdf/build-dte-print-view.ts`.
+- `lib/dte/pdf/build-dte-pdf.ts`.
+- `docs/dte-sii/PDF_AND_PRINT_SAMPLE.md`.
+- UI admin con `Ver muestra` y `Generar PDF de prueba`.
+
+Pendiente:
+
+- PDF417 real desde TED.
+- Guardar PDF por tenant/documento.
+- Enviar al cliente solo cuando el documento este permitido por flujo SII.
+
+## Fase 10 preparada — agenda y pagos
+
+Entregado:
+
+- `docs/dte-sii/AGENDA_PAYMENTS_INTEGRATION_PLAN.md`.
+
+Pendiente:
+
+- No conectar pagos productivos hasta completar certificacion.
+- Crear idempotencia por pago/reserva.
+- Integrar estados DTE en agenda, pagos y clientes.

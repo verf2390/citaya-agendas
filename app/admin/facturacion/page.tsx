@@ -7,7 +7,9 @@ import {
   Clipboard,
   Code2,
   Eraser,
+  Eye,
   FileCheck2,
+  FileDown,
   FileText,
   FlaskConical,
   Landmark,
@@ -28,6 +30,9 @@ import {
   StatusBadge,
 } from "@/components/admin/admin-ui";
 import { toast } from "@/components/ui/use-toast";
+import { buildDtePdfLab } from "@/lib/dte/pdf/build-dte-pdf";
+import { buildDtePrintHtml } from "@/lib/dte/pdf/build-dte-print-view";
+import type { DteDocumentType } from "@/lib/dte/dte-types";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
@@ -49,6 +54,7 @@ type DteLabResult = {
     caf: "dummy";
     estadoSii: "simulated";
     advertencia: string;
+    isProductionValid: false;
   };
   caf: {
     range: string;
@@ -680,6 +686,73 @@ export default function AdminFacturacionPage() {
     setDteLabError("");
   };
 
+  const buildPrintDocumentFromLab = () => {
+    const folio = dteLabResult?.metadata.folioDummy ?? 1001;
+    const totalAmount = dteLabResult?.metadata.montoTotal ?? 11900;
+    const taxAmount = Math.round(totalAmount * 0.19);
+    const netAmount = totalAmount - taxAmount;
+
+    return {
+      documentType:
+        (dteLabResult?.metadata.tipoDte as DteDocumentType | undefined) ??
+        "boleta_afecta",
+      folio,
+      issueDate: new Date().toISOString().slice(0, 10),
+      issuer: {
+        tenantId,
+        rut: settings.taxId || dteLabResult?.metadata.rutEmisor || "76.123.456-0",
+        legalName: settings.legalName || "Emisor demo Citaya",
+        businessActivity: settings.businessActivity || "Servicios profesionales",
+        address: settings.taxAddress || "Direccion demo",
+        commune: settings.taxCommune || "La Serena",
+        city: settings.taxCity || "La Serena",
+        dteEnvironment: "lab" as const,
+      },
+      recipient: {
+        rut: dteLabResult?.metadata.rutReceptor || "11.111.111-1",
+        legalName: "Cliente Demo",
+        businessActivity: "Persona natural",
+        address: "Sin direccion",
+        commune: settings.taxCommune || "La Serena",
+        city: settings.taxCity || "La Serena",
+      },
+      lines: [
+        {
+          name: "Reserva demo Citaya",
+          description: "Muestra impresa de laboratorio",
+          quantity: 1,
+          unitPrice: totalAmount,
+          amount: totalAmount,
+        },
+      ],
+      netAmount,
+      taxAmount,
+      exemptAmount: 0,
+      totalAmount,
+      environment: "LAB" as const,
+      statusLabel: "LAB / PENDIENTE SII",
+      tedStatus: "pending" as const,
+      trackId: null,
+    };
+  };
+
+  const openPrintSample = () => {
+    const html = buildDtePrintHtml(buildPrintDocumentFromLab());
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  const downloadPdfSample = () => {
+    const pdf = buildDtePdfLab(buildPrintDocumentFromLab());
+    const link = document.createElement("a");
+    link.href = pdf.dataUri;
+    link.download = pdf.fileName;
+    link.click();
+    toast({ title: "PDF de muestra generado" });
+  };
+
   if (tenantError) {
     return (
       <AdminPageShell width="normal">
@@ -878,6 +951,22 @@ export default function AdminFacturacionPage() {
                     <Eraser className="h-4 w-4" />
                     Limpiar
                   </button>
+                  <button
+                    type="button"
+                    onClick={openPrintSample}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Ver muestra
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadPdfSample}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    Generar PDF de prueba
+                  </button>
                 </div>
 
                 {dteLabError ? (
@@ -900,6 +989,12 @@ export default function AdminFacturacionPage() {
                         ["firma", dteLabResult.metadata.firma],
                         ["caf", dteLabResult.metadata.caf],
                         ["estadoSii", dteLabResult.metadata.estadoSii],
+                        [
+                          "certificacion",
+                          dteLabResult.metadata.isProductionValid
+                            ? "validado"
+                            : "LAB / PENDIENTE",
+                        ],
                         ["rango folios", dteLabResult.caf.range],
                         [
                           "folio simulado",
@@ -936,6 +1031,60 @@ export default function AdminFacturacionPage() {
                     </div>
                   </div>
                 ) : null}
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
+              title="Certificación SII"
+              description="Ruta preparada para firma, CAF/TED, envío a certificación y consulta de track_id."
+              actions={<StatusBadge label="PENDIENTE" tone="amber" />}
+            >
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["XSD oficial", "Pendiente descarga/validación"],
+                  ["Firma XML", "Mock LAB / real bloqueada"],
+                  ["CAF/TED", "CAF dummy / FRMT pendiente"],
+                  ["Track ID", "Sin envío SII"],
+                  ["Estado SII", "No consultado"],
+                  ["Rechazos", "Sin evidencia real"],
+                  ["PDF tributario", "Muestra LAB"],
+                  ["Ambiente", "LAB separado de certification"],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="text-[11px] font-black uppercase text-slate-500">
+                      {label}
+                    </div>
+                    <div className="mt-1 text-sm font-black text-slate-900">
+                      {value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
+                Los botones de envío a SII quedan deshabilitados hasta contar con XML
+                validado contra XSD oficial, firma XML real, CAF/TED real y ambiente
+                de certificación configurado.
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white opacity-50"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Enviar a certificación
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 opacity-50"
+                >
+                  <FileCheck2 className="h-4 w-4" />
+                  Consultar track_id
+                </button>
               </div>
             </AdminSectionCard>
 
