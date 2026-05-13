@@ -13,7 +13,36 @@ Esta carpeta queda reservada para los XSD oficiales usados al validar XML DTE an
 
 Descargar siempre desde el sitio oficial del SII, seccion de Factura Electronica / Documentacion tecnica / Formatos XML y schemas. No copiar XSD desde blogs, gists ni repositorios terceros como fuente primaria.
 
+Fuente usada para esta descarga:
+
+```text
+https://www.sii.cl/factura_electronica/factura_mercado/schema_dte.zip
+```
+
+Fecha de descarga: 2026-05-13.
+
+Comandos usados:
+
+```bash
+curl -fL https://www.sii.cl/factura_electronica/factura_mercado/schema_dte.zip -o /tmp/schema_dte.zip
+python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/schema_dte.zip"); print("\n".join(z.namelist()))'
+python3 -c 'import zipfile, pathlib; dest=pathlib.Path("/tmp/citaya-sii-schema-dte.irju0x"); names=["EnvioDTE_v10.xsd","DTE_v10.xsd","SiiTypes_v10.xsd","xmldsignature_v10.xsd"]; z=zipfile.ZipFile("/tmp/schema_dte.zip"); [dest.joinpath(n).write_bytes(z.read(n)) for n in names]; print("\n".join(str(dest.joinpath(n)) for n in names))'
+cp /tmp/citaya-sii-schema-dte.irju0x/EnvioDTE_v10.xsd docs/dte-sii/xsd/EnvioDTE_v10.xsd
+cp /tmp/citaya-sii-schema-dte.irju0x/DTE_v10.xsd docs/dte-sii/xsd/DTE_v10.xsd
+cp /tmp/citaya-sii-schema-dte.irju0x/SiiTypes_v10.xsd docs/dte-sii/xsd/SiiTypes_v10.xsd
+cp /tmp/citaya-sii-schema-dte.irju0x/xmldsignature_v10.xsd docs/dte-sii/xsd/xmldsignature_v10.xsd
+```
+
+Nota: `unzip` no estaba disponible en el entorno, por eso se uso `zipfile` de la libreria estandar de Python. No se instalaron dependencias.
+
 Los XSD son publicos y pueden versionarse si se descargan intactos desde SII. Si SII publica una revision nueva, conservar el nombre original o documentar claramente la fecha de descarga y el cambio.
+
+Archivos descargados desde el ZIP oficial:
+
+- `EnvioDTE_v10.xsd`.
+- `DTE_v10.xsd`.
+- `SiiTypes_v10.xsd`.
+- `xmldsignature_v10.xsd`.
 
 ## Que no debe subirse
 
@@ -43,9 +72,9 @@ Esa utilidad no implementa validacion XSD por si sola: invoca `xmllint` y falla 
 
 - Registrar fecha de descarga y URL oficial en este README cuando se agreguen XSD reales.
 - Validar que los imports/references entre XSD funcionen desde esta carpeta.
-- No modificar manualmente los XSD oficiales salvo que se documente como parche local y quede fuera del camino de certificacion.
+- No editar manualmente estos XSD oficiales. Si SII publica una version nueva, descargar otra vez desde fuente oficial y reemplazar el archivo completo intacto.
 - Cada cambio en builders XML debe acompanarse de una prueba con `EnvioDTE_v10.xsd` y `xmldsignature_v10.xsd`.
 
 ## Estado actual
 
-PENDIENTE: los XSD oficiales no estan versionados todavia. Todo XML generado por `lib/dte` sigue marcado como LAB / NO PRODUCTIVO hasta validar contra estos schemas y contra el ambiente de certificacion SII.
+Los cuatro XSD oficiales requeridos quedaron descargados desde el ZIP oficial del SII. Todo XML generado por `lib/dte` sigue marcado como LAB / NO PRODUCTIVO hasta validar contra estos schemas y contra el ambiente de certificacion SII.
