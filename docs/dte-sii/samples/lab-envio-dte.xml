@@ -13,17 +13,17 @@
       <RutReceptor>60803000-K</RutReceptor>
       <FchResol>2006-01-01</FchResol>
       <NroResol>0</NroResol>
-      <TmstFirmaEnv>LAB-NOT-SIGNED</TmstFirmaEnv>
+      <TmstFirmaEnv>2026-05-13T00:00:00</TmstFirmaEnv>
       <SubTotDTE>
-        <TpoDTE>39</TpoDTE>
+        <TpoDTE>33</TpoDTE>
         <NroDTE>1</NroDTE>
       </SubTotDTE>
     </Caratula>
     <DTE version="1.0">
-      <Documento ID="CitayaDocLab-39-1001">
+      <Documento ID="CitayaDocLab-33-1001">
         <Encabezado>
           <IdDoc>
-            <TipoDTE>39</TipoDTE>
+            <TipoDTE>33</TipoDTE>
             <Folio>1001</Folio>
             <FchEmis>2026-05-13</FchEmis>
           </IdDoc>
@@ -40,10 +40,10 @@
             <RUTRecep>11111111-1</RUTRecep>
             <RznSocRecep>Cliente Demo</RznSocRecep>
             <GiroRecep>Persona natural</GiroRecep>
+            <CorreoRecep>cliente.demo@example.com</CorreoRecep>
             <DirRecep>Sin direccion</DirRecep>
             <CmnaRecep>La Serena</CmnaRecep>
             <CiudadRecep>La Serena</CiudadRecep>
-            <CorreoRecep>cliente.demo@example.com</CorreoRecep>
           </Receptor>
           <Totales>
             <MntNeto>10000</MntNeto>
@@ -57,8 +57,8 @@
         <NmbItem>Reserva demo Citaya</NmbItem>
         <DscItem>Detalle LAB sin validez tributaria</DscItem>
         <QtyItem>1</QtyItem>
-        <PrcItem>11900</PrcItem>
-        <MontoItem>11900</MontoItem>
+        <PrcItem>10000</PrcItem>
+        <MontoItem>10000</MontoItem>
       </Detalle>
       </Documento>
     </DTE>

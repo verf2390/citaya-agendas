@@ -72,15 +72,87 @@ Brechas observables desde el XML generado, previas a validacion XSD completa:
 - No hay CAF real ni `FRMT`.
 - El XML es una boleta afecta tipo 39 LAB con datos ficticios, no una emision tributaria.
 
+## Ejecucion real 2026-05-13 - xmllint disponible
+
+Herramienta detectada:
+
+```text
+/usr/bin/xmllint
+```
+
+XML validado:
+
+```text
+docs/dte-sii/samples/lab-envio-dte.xml
+```
+
+XSD usado:
+
+```text
+docs/dte-sii/xsd/EnvioDTE_v10.xsd
+```
+
+Comandos ejecutados:
+
+```bash
+node scripts/dte/generate-lab-xml.mjs
+node scripts/dte/validate-xsd.mjs docs/dte-sii/samples/lab-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd
+xmllint --noout --schema docs/dte-sii/xsd/EnvioDTE_v10.xsd docs/dte-sii/samples/lab-envio-dte.xml
+```
+
+Resultado inicial contra XSD oficial:
+
+```text
+docs/dte-sii/samples/lab-envio-dte.xml:16: element TmstFirmaEnv: Schemas validity error : Element '{http://www.sii.cl/SiiDte}TmstFirmaEnv': 'LAB-NOT-SIGNED' is not a valid value of the atomic type '{http://www.sii.cl/SiiDte}FechaHoraType'.
+docs/dte-sii/samples/lab-envio-dte.xml:18: element TpoDTE: Schemas validity error : Element '{http://www.sii.cl/SiiDte}TpoDTE': [facet 'enumeration'] The value '39' is not an element of the set {'33', '34', '43', '46', '52', '56', '61', '110', '111', '112'}.
+docs/dte-sii/samples/lab-envio-dte.xml:26: element TipoDTE: Schemas validity error : Element '{http://www.sii.cl/SiiDte}TipoDTE': [facet 'enumeration'] The value '39' is not an element of the set {'33', '34', '46', '52', '56', '61'}.
+docs/dte-sii/samples/lab-envio-dte.xml:46: element CorreoRecep: Schemas validity error : Element '{http://www.sii.cl/SiiDte}CorreoRecep': This element is not expected. Expected is one of ( {http://www.sii.cl/SiiDte}DirPostal, {http://www.sii.cl/SiiDte}CmnaPostal, {http://www.sii.cl/SiiDte}CiudadPostal ).
+docs/dte-sii/samples/lab-envio-dte.xml:23: element Documento: Schemas validity error : Element '{http://www.sii.cl/SiiDte}Documento': Missing child element(s). Expected is ( {http://www.sii.cl/SiiDte}Detalle ).
+docs/dte-sii/samples/lab-envio-dte.xml:22: element DTE: Schemas validity error : Element '{http://www.sii.cl/SiiDte}DTE': Missing child element(s). Expected is ( {http://www.w3.org/2000/09/xmldsig#}Signature ).
+docs/dte-sii/samples/lab-envio-dte.xml:8: element EnvioDTE: Schemas validity error : Element '{http://www.sii.cl/SiiDte}EnvioDTE': Missing child element(s). Expected is ( {http://www.w3.org/2000/09/xmldsig#}Signature ).
+docs/dte-sii/samples/lab-envio-dte.xml fails to validate
+```
+
+Cambios seguros aplicados:
+
+- `TmstFirmaEnv` paso de `LAB-NOT-SIGNED` a formato `FechaHoraType` (`YYYY-MM-DDTHH:mm:ss`).
+- La muestra `lab-envio-dte.xml` paso de boleta 39 a factura 33, porque `EnvioDTE_v10.xsd`/`DTE_v10.xsd` no enumeran 39/41 en `DOCType`/`DTEType`.
+- `CorreoRecep` se movio antes de `DirRecep`, respetando el orden oficial del XSD.
+
+Resultado despues de cambios seguros:
+
+```text
+docs/dte-sii/samples/lab-envio-dte.xml:23: element Documento: Schemas validity error : Element '{http://www.sii.cl/SiiDte}Documento': Missing child element(s). Expected is ( {http://www.sii.cl/SiiDte}Detalle ).
+docs/dte-sii/samples/lab-envio-dte.xml:22: element DTE: Schemas validity error : Element '{http://www.sii.cl/SiiDte}DTE': Missing child element(s). Expected is ( {http://www.w3.org/2000/09/xmldsig#}Signature ).
+docs/dte-sii/samples/lab-envio-dte.xml:8: element EnvioDTE: Schemas validity error : Element '{http://www.sii.cl/SiiDte}EnvioDTE': Missing child element(s). Expected is ( {http://www.w3.org/2000/09/xmldsig#}Signature ).
+docs/dte-sii/samples/lab-envio-dte.xml fails to validate
+```
+
+Interpretacion tecnica:
+
+- El error de `Documento` es cascada de la estructura incompleta: `DTE_v10.xsd` exige `TED` y `TmstFirma` despues de `Detalle`. En una prueba temporal fuera del repo con TED sintactico LAB, ese error desaparecio y quedo solo la firma XMLDSig del `DTE`.
+- `DTE_v10.xsd` exige `ds:Signature` dentro de `DTE`.
+- `EnvioDTE_v10.xsd` exige `ds:Signature` sobre `SetDTE` al final de `EnvioDTE`.
+- No se agrego TED ni Signature falso al repo para no simular validez tributaria.
+
+| Prioridad | Error XSD | Archivo/Builder | Causa | Cambio sugerido | Estado |
+| --- | --- | --- | --- | --- | --- |
+| Alta | `TmstFirmaEnv` no era `FechaHoraType` | `lib/dte/xml/build-dte-envelope.ts` | Valor LAB textual | Emitir timestamp `YYYY-MM-DDTHH:mm:ss` | Corregido |
+| Alta | `TpoDTE`/`TipoDTE` 39 fuera de enumeracion | `scripts/dte/generate-lab-xml.mjs` | `EnvioDTE_v10.xsd` no cubre boletas 39/41 | Validar muestra base con factura 33; investigar schema boletas separado | Corregido para muestra |
+| Media | `CorreoRecep` en orden incorrecto | `lib/dte/xml/build-dte-envelope.ts` | XSD espera correo antes de direccion | Reordenar receptor | Corregido |
+| Critica | `Documento` queda incompleto | `lib/dte/xml/build-dte-envelope.ts` | Falta `TED` y `TmstFirma` real | Implementar TED real con CAF y `FRMT` real | Pendiente |
+| Critica | Falta `ds:Signature` en `DTE` | Firma XMLDSig futura | Firma de documento no implementada | Implementar XMLDSig real sobre `Documento` | Pendiente |
+| Critica | Falta `ds:Signature` en `EnvioDTE` | Firma XMLDSig futura | Firma de `SetDTE`/envio no implementada | Implementar XMLDSig real sobre `SetDTE` | Pendiente |
+
 ## Bloqueadores de validacion real hoy
 
-- Los XSD oficiales ya estan presentes en `docs/dte-sii/xsd/`, pero la validacion local no pudo ejecutarse porque falta `xmllint`.
+- Los XSD oficiales ya estan presentes en `docs/dte-sii/xsd/` y la validacion local ya se ejecuto con `xmllint`.
 - `Signature` es mock y no contiene digest/firma criptografica real.
 - No existe `TED` real dentro de `Documento`.
 - No existe `TmstFirma` real del documento.
 - No se firma `SetDTE`/envio segun flujo SII.
-- No se pudo validar orden exacto de nodos contra XSD en este entorno.
-- No se pudo validar cardinalidad completa por tipo DTE en este entorno.
+- Orden y cardinalidad ya tienen errores reales capturados; quedan bloqueos por `TED`, `TmstFirma` y `ds:Signature`.
+- La muestra base usa factura 33 porque `EnvioDTE_v10.xsd` no acepta boletas 39/41 en `DOCType`/`DTEType`.
 - No se usa CAF real ni `FRMT` real.
 - No hay cliente de certificacion que confirme aceptacion SII.
 
@@ -88,10 +160,10 @@ Brechas observables desde el XML generado, previas a validacion XSD completa:
 
 Brechas detectadas:
 
-- `EnvioDTE` usa namespace SII y `version="1.0"`, pero no se ha validado contra `EnvioDTE_v10.xsd`.
+- `EnvioDTE` usa namespace SII y `version="1.0"`; se valido contra `EnvioDTE_v10.xsd` y sigue fallando por firmas/TED pendientes.
 - `SetDTE ID` existe, pero su formato debe confirmarse contra reglas SII.
 - Falta firma real del envio cuando corresponda.
-- `TmstFirmaEnv` contiene `LAB-NOT-SIGNED`, valor invalido para XSD/operacion real.
+- `TmstFirmaEnv` ya usa formato `FechaHoraType`; sigue siendo LAB/PENDIENTE porque no representa firma real.
 - `RutEnvia` usa el RUT emisor de forma simplificada. En certificacion debe ser el RUT autorizado que firma/envia.
 
 Prioridad: alta.

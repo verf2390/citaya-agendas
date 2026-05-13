@@ -175,12 +175,14 @@ Entregado:
 - `docs/dte-sii/xsd/README.md`.
 - `docs/dte-sii/XML_XSD_GAP_REPORT.md`.
 - `scripts/dte/validate-xsd.mjs`.
+- Validacion real con `xmllint` contra `EnvioDTE_v10.xsd`.
+- Correcciones seguras iniciales: factura 33 para muestra base, `TmstFirmaEnv` con `FechaHoraType`, orden de `CorreoRecep`.
 
 Pendiente:
 
-- Descargar XSD oficiales desde SII.
-- Ejecutar validacion real con `EnvioDTE_v10.xsd`.
-- Ajustar orden/cardinalidad de XML segun errores reales.
+- No marcar XML como valido SII: la validacion sigue fallando por `TED`, `TmstFirma` y `ds:Signature`.
+- Investigar schema/flujo oficial para boletas 39/41, porque el `EnvioDTE_v10.xsd` descargado no enumera esos tipos.
+- Ajustar builders despues de implementar TED/Signature reales.
 
 ## Fase 6 critica — firma XML real controlada
 

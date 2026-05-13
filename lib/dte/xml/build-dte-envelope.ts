@@ -14,6 +14,12 @@ function formatDate(value: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function formatDateTime(value: string | null | undefined): string {
+  const date = value ? new Date(value) : new Date();
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return safeDate.toISOString().slice(0, 19);
+}
+
 function buildDetailXml(draft: TaxDocumentDraft): string {
   return draft.lines
     .map((line, index) => {
@@ -62,7 +68,7 @@ export function buildDteEnvelopeXmlLab(
       <RutReceptor>60803000-K</RutReceptor>
       <FchResol>${escapeXml(draft.issuer.siiResolutionDate ?? "2006-01-01")}</FchResol>
       <NroResol>${escapeXml(draft.issuer.siiResolutionNumber ?? "0")}</NroResol>
-      <TmstFirmaEnv>LAB-NOT-SIGNED</TmstFirmaEnv>
+      <TmstFirmaEnv>${formatDateTime(draft.issueDate)}</TmstFirmaEnv>
       <SubTotDTE>
         <TpoDTE>${documentTypeCode}</TpoDTE>
         <NroDTE>1</NroDTE>
@@ -89,10 +95,10 @@ export function buildDteEnvelopeXmlLab(
             <RUTRecep>${escapeXml(recipientRut)}</RUTRecep>
             <RznSocRecep>${escapeXml(draft.recipient.legalName)}</RznSocRecep>
             <GiroRecep>${escapeXml(draft.recipient.businessActivity)}</GiroRecep>
+            <CorreoRecep>${escapeXml(draft.recipient.email)}</CorreoRecep>
             <DirRecep>${escapeXml(draft.recipient.address)}</DirRecep>
             <CmnaRecep>${escapeXml(draft.recipient.commune)}</CmnaRecep>
             <CiudadRecep>${escapeXml(draft.recipient.city)}</CiudadRecep>
-            <CorreoRecep>${escapeXml(draft.recipient.email)}</CorreoRecep>
           </Receptor>
           <Totales>
             <MntNeto>${draft.netAmount ?? 0}</MntNeto>

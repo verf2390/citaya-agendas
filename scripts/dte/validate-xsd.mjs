@@ -25,7 +25,14 @@ const check = spawnSync("xmllint", ["--version"], {
 
 if (check.error) {
   console.error(
-    "xmllint is required for local XSD validation. Install libxml2 tools or use a CI image that includes xmllint.",
+    [
+      "xmllint is required for local XSD validation.",
+      "Ubuntu package: libxml2-utils",
+      "Install command:",
+      "  sudo apt-get update",
+      "  sudo apt-get install -y libxml2-utils",
+      "Or use a CI image that includes xmllint.",
+    ].join("\n"),
   );
   process.exit(3);
 }

@@ -23,15 +23,15 @@ require.extensions[".ts"] = (module, filename) => {
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const outputPath = resolve(repoRoot, "docs/dte-sii/samples/lab-envio-dte.xml");
-const { buildBoletaXmlLab } = require(resolve(
+const { buildFacturaXmlLab } = require(resolve(
   repoRoot,
-  "lib/dte/xml/build-boleta.ts",
+  "lib/dte/xml/build-factura.ts",
 ));
 
 const draft = {
   tenantId: "tenant-lab-citaya",
   issueMode: "citaya_own_dte",
-  documentType: "boleta_afecta",
+  documentType: "factura_afecta",
   status: "draft",
   folio: 1001,
   issueDate: "2026-05-13",
@@ -62,8 +62,8 @@ const draft = {
       name: "Reserva demo Citaya",
       description: "Detalle LAB sin validez tributaria",
       quantity: 1,
-      unitPrice: 11900,
-      amount: 11900,
+      unitPrice: 10000,
+      amount: 10000,
     },
   ],
   netAmount: 10000,
@@ -72,7 +72,7 @@ const draft = {
   totalAmount: 11900,
 };
 
-const result = buildBoletaXmlLab(draft);
+const result = buildFacturaXmlLab(draft);
 
 if (!result.ok) {
   console.error(result.error);

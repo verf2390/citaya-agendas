@@ -60,6 +60,13 @@ Sin dependencias Node nuevas, la opcion practica es usar `xmllint` si esta dispo
 xmllint --noout --schema docs/dte-sii/xsd/EnvioDTE_v10.xsd path/al/envio.xml
 ```
 
+En Ubuntu, `xmllint` viene en el paquete `libxml2-utils`:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libxml2-utils
+```
+
 Tambien se puede usar la utilidad segura de Citaya:
 
 ```bash
