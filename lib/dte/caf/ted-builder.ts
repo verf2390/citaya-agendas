@@ -6,7 +6,13 @@ function truncateTedText(value: string, maxLength: number): string {
 }
 
 export function buildTedControlled(input: TedInput): TedBuildResult {
-  const timestamp = input.timestamp ?? new Date().toISOString();
+  const timestamp = (input.timestamp ?? new Date().toISOString()).slice(0, 19);
+  const frmtXml =
+    input.frmtXml ??
+    '<FRMT algoritmo="SHA1withRSA">PENDIENTE-FIRMA-FRMT-CAF-REAL</FRMT>';
+  const frmtStatus =
+    input.frmtStatus ??
+    (input.frmtXml ? "real_controlled" : "pending_real_signature");
   const ddXml = [
     "<DD>",
     `  <RE>${escapeXml(input.issuerRut)}</RE>`,
@@ -27,15 +33,16 @@ export function buildTedControlled(input: TedInput): TedBuildResult {
     tedXml: [
       '<TED version="1.0">',
       ddXml,
-      '  <FRMT algoritmo="SHA1withRSA">PENDIENTE-FIRMA-FRMT-CAF-REAL</FRMT>',
+      `  ${frmtXml}`,
       "</TED>",
     ].join("\n"),
-    frmtStatus: "pending_real_signature",
+    frmtStatus,
     warnings: [
-      "TED controlado no productivo: FRMT real pendiente.",
+      frmtStatus === "synthetic_lab"
+        ? "TED sintetico LAB solo para validar estructura XSD; FRMT no es real."
+        : "TED controlado no productivo: FRMT real pendiente.",
       "Requiere firmar DD con clave privada asociada al CAF y validar contra XSD oficial.",
     ],
     isProductionValid: false,
   };
 }
-

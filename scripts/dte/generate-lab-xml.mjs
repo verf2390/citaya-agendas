@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
+const { createHash } = require("node:crypto");
 
 require.extensions[".ts"] = (module, filename) => {
   const source = readFileSync(filename, "utf8");
@@ -23,9 +24,26 @@ require.extensions[".ts"] = (module, filename) => {
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const outputPath = resolve(repoRoot, "docs/dte-sii/samples/lab-envio-dte.xml");
+const modeArg = process.argv.find((arg) => arg.startsWith("--mode="));
+const mode = modeArg?.split("=")[1] ?? "lab";
+const allowedModes = new Set(["lab", "xsd-structure", "certification"]);
+
+if (!allowedModes.has(mode)) {
+  console.error("Invalid mode. Use --mode=lab|xsd-structure|certification");
+  process.exit(2);
+}
+
 const { buildFacturaXmlLab } = require(resolve(
   repoRoot,
   "lib/dte/xml/build-factura.ts",
+));
+const { buildTedControlled } = require(resolve(
+  repoRoot,
+  "lib/dte/caf/ted-builder.ts",
+));
+const { buildSyntheticXmlDsigForXsd } = require(resolve(
+  repoRoot,
+  "lib/dte/signing/xml-dsig.structure.ts",
 ));
 
 const draft = {
@@ -72,7 +90,111 @@ const draft = {
   totalAmount: 11900,
 };
 
-const result = buildFacturaXmlLab(draft);
+function buildSyntheticCafXml() {
+  return [
+    '<CAF version="1.0">',
+    "  <DA>",
+    "    <RE>76123456-0</RE>",
+    "    <RS>Empresa Demo Citaya SpA</RS>",
+    "    <TD>33</TD>",
+    "    <RNG>",
+    "      <D>1001</D>",
+    "      <H>1010</H>",
+    "    </RNG>",
+    "    <FA>2026-05-13</FA>",
+    "    <RSAPK>",
+    "      <M>AA==</M>",
+    "      <E>AQAB</E>",
+    "    </RSAPK>",
+    "    <IDK>1</IDK>",
+    "  </DA>",
+    '  <FRMA algoritmo="SHA1withRSA">AA==</FRMA>',
+    "</CAF>",
+  ].join("\n");
+}
+
+function buildSyntheticFrmtXml(ddXml) {
+  const value = createHash("sha1")
+    .update(`${ddXml}:LAB-XSD-STRUCTURE`)
+    .digest("base64");
+  return `<FRMT algoritmo="SHA1withRSA">${value}</FRMT>`;
+}
+
+function buildXsdStructureOptions() {
+  const documentTypeCode = 33;
+  const documentId = `CitayaDocLab-${documentTypeCode}-${draft.folio}`;
+  const setDteId = `CitayaDteLab-${draft.tenantId}-${draft.folio}`;
+  const cafXml = buildSyntheticCafXml();
+  const tedWithoutFrmt = buildTedControlled({
+    issuerRut: "76123456-0",
+    documentTypeCode,
+    folio: draft.folio,
+    issueDate: draft.issueDate,
+    recipientRut: "11111111-1",
+    recipientLegalName: "Cliente Demo",
+    totalAmount: draft.totalAmount,
+    firstItemName: draft.lines[0].name,
+    cafXml,
+    timestamp: "2026-05-13T00:00:00",
+  });
+  const ted = buildTedControlled({
+    issuerRut: "76123456-0",
+    documentTypeCode,
+    folio: draft.folio,
+    issueDate: draft.issueDate,
+    recipientRut: "11111111-1",
+    recipientLegalName: "Cliente Demo",
+    totalAmount: draft.totalAmount,
+    firstItemName: draft.lines[0].name,
+    cafXml,
+    timestamp: "2026-05-13T00:00:00",
+    frmtXml: buildSyntheticFrmtXml(tedWithoutFrmt.ddXml),
+    frmtStatus: "synthetic_lab",
+  });
+  const documentSignature = buildSyntheticXmlDsigForXsd({
+    referenceUri: documentId,
+    signedXmlFragment: ted.tedXml,
+    mode: "xsd-structure",
+    signatureId: "LAB-XSD-DTE-SIGNATURE",
+  });
+  const envioSignature = buildSyntheticXmlDsigForXsd({
+    referenceUri: setDteId,
+    signedXmlFragment: `${setDteId}:${documentId}`,
+    mode: "xsd-structure",
+    signatureId: "LAB-XSD-ENVIO-SIGNATURE",
+  });
+
+  return {
+    mode: "xsd-structure",
+    tedXml: ted.tedXml,
+    documentSignedAt: "2026-05-13T00:00:00",
+    documentSignatureXml: documentSignature.signatureXml,
+    envioSignatureXml: envioSignature.signatureXml,
+    warnings: [
+      ...ted.warnings,
+      ...documentSignature.warnings,
+      ...envioSignature.warnings,
+    ],
+  };
+}
+
+if (mode === "certification") {
+  const missing = [
+    "DTE_CAF_PATH",
+    "DTE_CAF_PRIVATE_KEY_PATH",
+    "DTE_CERT_PATH",
+    "DTE_PRIVATE_KEY_PATH",
+  ].filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    console.error(
+      `Certification mode requires secrets outside repo. Missing: ${missing.join(", ")}`,
+    );
+    process.exit(3);
+  }
+}
+
+const options = mode === "xsd-structure" ? buildXsdStructureOptions() : { mode };
+const result = buildFacturaXmlLab(draft, options);
 
 if (!result.ok) {
   console.error(result.error);
@@ -83,7 +205,11 @@ mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, result.xml, "latin1");
 
 console.log(outputPath);
+console.log(`mode=${mode}`);
 console.log(`warnings=${result.warnings.length}`);
 for (const warning of result.warnings) {
+  console.log(`- ${warning}`);
+}
+for (const warning of options.warnings ?? []) {
   console.log(`- ${warning}`);
 }

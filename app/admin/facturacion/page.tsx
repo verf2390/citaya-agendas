@@ -877,7 +877,7 @@ export default function AdminFacturacionPage() {
               description="Genera un XML de prueba estilo SII sin emitir, sin firmar y sin enviar al SII."
               actions={
                 <div className="flex flex-wrap gap-2">
-                  {["LAB", "No productivo", "Sin envío SII", "Sin folio real", "XSD con errores"].map(
+                  {["LAB", "No productivo", "Sin envío SII", "Sin folio real", "XSD estructural LAB"].map(
                     (badge) => (
                       <span
                         key={badge}
@@ -903,7 +903,7 @@ export default function AdminFacturacionPage() {
                     ["Firma", "mock/no real"],
                     ["CAF/Folios", "dummy"],
                     ["Estado SII", "simulado"],
-                    ["XSD", "con errores oficiales"],
+                    ["XSD", "estructura LAB pasa; cripto pendiente"],
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -1041,9 +1041,9 @@ export default function AdminFacturacionPage() {
             >
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
-                  ["XSD oficial", "Validación falla por TED/Signature"],
-                  ["Firma XML", "Mock LAB / real bloqueada"],
-                  ["CAF/TED", "CAF dummy / FRMT pendiente"],
+                  ["XSD oficial", "Estructura LAB pasa"],
+                  ["Firma XML", "Signature sintética / real bloqueada"],
+                  ["CAF/TED", "TED sintético / FRMT real pendiente"],
                   ["Track ID", "Sin envío SII"],
                   ["Estado SII", "No consultado"],
                   ["Rechazos", "Sin evidencia real"],

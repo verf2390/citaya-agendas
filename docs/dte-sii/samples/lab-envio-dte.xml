@@ -3,7 +3,7 @@
   Citaya DTE Lab XML - SII-like XML laboratory format - NO PRODUCTIVO.
   Este XML es experimental: no es XML certificado/final ante SII.
   No esta firmado, no consume CAF real,
-  no incluye timbre TED final y no debe enviarse al SII.
+  no incluye timbre TED final real y no debe enviarse al SII.
 -->
 <EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">
   <SetDTE ID="CitayaDteLab-tenant-lab-citaya-1001">
@@ -60,7 +60,93 @@
         <PrcItem>10000</PrcItem>
         <MontoItem>10000</MontoItem>
       </Detalle>
+
+        <TED version="1.0">
+        <DD>
+          <RE>76123456-0</RE>
+          <TD>33</TD>
+          <F>1001</F>
+          <FE>2026-05-13</FE>
+          <RR>11111111-1</RR>
+          <RSR>Cliente Demo</RSR>
+          <MNT>11900</MNT>
+          <IT1>Reserva demo Citaya</IT1>
+        <CAF version="1.0">
+          <DA>
+            <RE>76123456-0</RE>
+            <RS>Empresa Demo Citaya SpA</RS>
+            <TD>33</TD>
+            <RNG>
+              <D>1001</D>
+              <H>1010</H>
+            </RNG>
+            <FA>2026-05-13</FA>
+            <RSAPK>
+              <M>AA==</M>
+              <E>AQAB</E>
+            </RSAPK>
+            <IDK>1</IDK>
+          </DA>
+          <FRMA algoritmo="SHA1withRSA">AA==</FRMA>
+        </CAF>
+          <TSTED>2026-05-13T00:00:00</TSTED>
+        </DD>
+          <FRMT algoritmo="SHA1withRSA">BLtcPb/SkaK3yAc+LXB6F13w98s=</FRMT>
+        </TED>
+        <TmstFirma>2026-05-13T04:00:00</TmstFirma>
       </Documento>
+
+      <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+        <SignedInfo>
+          <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod>
+          <SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"></SignatureMethod>
+          <Reference URI="#CitayaDocLab-33-1001">
+            <Transforms>
+              <Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></Transform>
+            </Transforms>
+            <DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"></DigestMethod>
+            <DigestValue>dzA4Xzw1BofQiDCJu38L2v7F6z0=</DigestValue>
+          </Reference>
+        </SignedInfo>
+        <SignatureValue>H72aZU2Vz/VRtXL3uq9kQU04dAs=</SignatureValue>
+        <KeyInfo>
+          <KeyValue>
+            <RSAKeyValue>
+              <Modulus>AA==</Modulus>
+              <Exponent>AQAB</Exponent>
+            </RSAKeyValue>
+          </KeyValue>
+          <X509Data>
+            <X509Certificate>AA==</X509Certificate>
+          </X509Data>
+        </KeyInfo>
+      </Signature>
     </DTE>
   </SetDTE>
+
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod>
+      <SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"></SignatureMethod>
+      <Reference URI="#CitayaDteLab-tenant-lab-citaya-1001">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></Transform>
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"></DigestMethod>
+        <DigestValue>aeQvHFqVU+JOMh4FJxrfJvqP8Ks=</DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue>K6PWUBd4n1p3R5qE2v1Pkg3ClkU=</SignatureValue>
+    <KeyInfo>
+      <KeyValue>
+        <RSAKeyValue>
+          <Modulus>AA==</Modulus>
+          <Exponent>AQAB</Exponent>
+        </RSAKeyValue>
+      </KeyValue>
+      <X509Data>
+        <X509Certificate>AA==</X509Certificate>
+      </X509Data>
+    </KeyInfo>
+  </Signature>
 </EnvioDTE>

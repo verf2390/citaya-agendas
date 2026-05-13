@@ -156,6 +156,57 @@ Interpretacion tecnica:
 - No se usa CAF real ni `FRMT` real.
 - No hay cliente de certificacion que confirme aceptacion SII.
 
+## Ejecucion real 2026-05-13 - modo xsd-structure
+
+Modo usado:
+
+```text
+xsd-structure
+```
+
+Comandos ejecutados:
+
+```bash
+node scripts/dte/generate-lab-xml.mjs --mode=xsd-structure
+node scripts/dte/validate-xsd.mjs docs/dte-sii/samples/lab-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd
+```
+
+Resultado XSD:
+
+```text
+docs/dte-sii/samples/lab-envio-dte.xml validates
+```
+
+Interpretacion tecnica:
+
+- La estructura XML pasa `EnvioDTE_v10.xsd` cuando se insertan TED, `TmstFirma`, `ds:Signature` del `DTE` y `ds:Signature` del `EnvioDTE`.
+- El pase es solo estructural. TED, FRMT y XMLDSig son sinteticos LAB y no tienen validez criptografica.
+- No se usaron CAF reales, certificados reales, claves privadas ni passwords.
+- La ruta `certification` debe exigir secretos fuera del repositorio y fallar si faltan.
+
+Estado por bloque:
+
+| Bloque | Estado XSD | Estado criptografico | ¿Productivo? | Proximo paso |
+| --- | --- | --- | --- | --- |
+| TED | Estructura pasa en `xsd-structure` | TED sintetico LAB con CAF ficticio | NO | Cargar CAF real/controlado fuera del repo |
+| FRMT | Estructura pasa en `xsd-structure` | Firma sintetica/base64, no firma CAF real | NO | Firmar DD con clave privada CAF en modo certification |
+| DTE Signature | Estructura pasa en `xsd-structure` | XMLDSig sintetica, digest/firma no reales | NO | Implementar canonicalizacion y firma XMLDSig real de `Documento` |
+| EnvioDTE Signature | Estructura pasa en `xsd-structure` | XMLDSig sintetica, digest/firma no reales | NO | Implementar firma XMLDSig real de `SetDTE` |
+
+Errores resueltos estructuralmente:
+
+- Falta `TED` dentro de `Documento`.
+- Falta `TmstFirma` dentro de `Documento`.
+- Falta `ds:Signature` dentro de `DTE`.
+- Falta `ds:Signature` dentro de `EnvioDTE`.
+
+Que impide certificacion real:
+
+- CAF real/controlado no cargado desde storage seguro.
+- `FRMT` real no firmado con clave privada asociada al CAF.
+- XMLDSig real no implementada con certificado/key reales.
+- Falta validar criptograficamente y enviar al ambiente de certificacion SII.
+
 ## EnvioDTE / SetDTE
 
 Brechas detectadas:

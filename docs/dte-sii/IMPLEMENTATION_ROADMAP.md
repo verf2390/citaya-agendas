@@ -177,12 +177,13 @@ Entregado:
 - `scripts/dte/validate-xsd.mjs`.
 - Validacion real con `xmllint` contra `EnvioDTE_v10.xsd`.
 - Correcciones seguras iniciales: factura 33 para muestra base, `TmstFirmaEnv` con `FechaHoraType`, orden de `CorreoRecep`.
+- Modo `xsd-structure` con TED/FRMT/Signature sinteticos LAB para confirmar orden/nodos contra XSD oficial.
 
 Pendiente:
 
 - No marcar XML como valido SII: la validacion sigue fallando por `TED`, `TmstFirma` y `ds:Signature`.
 - Investigar schema/flujo oficial para boletas 39/41, porque el `EnvioDTE_v10.xsd` descargado no enumera esos tipos.
-- Ajustar builders despues de implementar TED/Signature reales.
+- Implementar FRMT real con CAF controlado y XMLDSig real antes de certificacion.
 
 ## Fase 6 critica — firma XML real controlada
 
@@ -206,6 +207,7 @@ Entregado:
 - `lib/dte/caf/parse-caf.real.ts`.
 - `lib/dte/caf/folio-manager.ts`.
 - `lib/dte/caf/ted-builder.ts`.
+- `lib/dte/caf/frmt-signature.ts`.
 - Tipos CAF/TED.
 
 Pendiente:

@@ -109,6 +109,7 @@ La dependencia recomendada para XMLDSig es `xml-crypto`, pero no se instala auto
 
 - CAF reales nunca van al repositorio.
 - CAF por tenant debe guardarse cifrado o en storage privado con controles estrictos.
+- Variables previstas para certificacion: `DTE_CAF_PATH`, `DTE_CAF_PRIVATE_KEY_PATH`, `DTE_CAF_ENCRYPTION_KEY`, `DTE_MODE=lab|certification|production`.
 - El consumo de folios debe ser transaccional e idempotente.
 - Cada folio usado debe quedar asociado a `tenant_id`, tipo DTE y documento tributario.
 - Un folio de un tenant nunca puede ser utilizado por otro tenant.
@@ -117,6 +118,13 @@ La dependencia recomendada para XMLDSig es `xml-crypto`, pero no se instala auto
 - La reserva de folios debe separarse por tenant y tipo de documento.
 - Los CAF reales deben tener control de vigencia, rango, tipo DTE y ambiente.
 - La concurrencia debe probarse antes de conectar pagos, reservas o emisión automática.
+
+## TED, FRMT y validacion estructural
+
+- `xsd-structure` puede insertar TED/FRMT/Signature sinteticos para probar XSD, pero no son criptograficamente validos.
+- FRMT real requiere clave privada asociada al CAF, cargada fuera del repositorio.
+- XMLDSig real requiere certificado/clave privada del contribuyente o usuario autorizado, fuera del repositorio.
+- Si un XML pasa XSD solo en modo `xsd-structure`, debe seguir marcado `LAB / PENDIENTE / NO PRODUCTIVO`.
 
 ## Cliente SII certificacion
 

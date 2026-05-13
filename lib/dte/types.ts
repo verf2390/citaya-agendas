@@ -154,6 +154,16 @@ export type DteGenerationResult = {
   warnings: string[];
 };
 
+export type DteXmlBuildMode = "lab" | "xsd-structure" | "certification";
+
+export type DteEnvelopeBuildOptions = {
+  mode?: DteXmlBuildMode;
+  tedXml?: string | null;
+  documentSignatureXml?: string | null;
+  envioSignatureXml?: string | null;
+  documentSignedAt?: string | null;
+};
+
 export type DteXmlLabResult = DteGenerationResult;
 
 export type DteGenerationError = {
@@ -196,6 +206,8 @@ export type RealXmlSigningConfig = {
   mode: "lab" | "certification" | "production";
   certificatePath?: string | null;
   certificatePassword?: string | null;
+  privateKeyPath?: string | null;
+  publicCertificatePath?: string | null;
   signatureTarget: string;
 };
 
@@ -249,14 +261,54 @@ export type TedInput = {
   firstItemName: string;
   cafXml: string;
   timestamp?: string;
+  frmtXml?: string | null;
+  frmtStatus?: "synthetic_lab" | "pending_real_signature" | "real_controlled";
 };
 
 export type TedBuildResult = {
   tedXml: string;
   ddXml: string;
-  frmtStatus: "pending_real_signature";
+  frmtStatus: "synthetic_lab" | "pending_real_signature" | "real_controlled";
   warnings: string[];
   isProductionValid: false;
+};
+
+export type FrmtSignatureInput = {
+  ddXml: string;
+  privateKeyPem?: string | null;
+  privateKeyPath?: string | null;
+  mode: "lab" | "xsd-structure" | "certification" | "production";
+};
+
+export type FrmtSignatureResult =
+  | {
+      ok: true;
+      frmtXml: string;
+      mode: "xsd-structure" | "certification";
+      isProductionValid: false;
+      warnings: string[];
+    }
+  | {
+      ok: false;
+      status: "missing_secret" | "blocked";
+      mode: "lab" | "xsd-structure" | "certification" | "production";
+      isProductionValid: false;
+      missing: string[];
+      warnings: string[];
+    };
+
+export type XmlDsigBuildInput = {
+  referenceUri: string;
+  signedXmlFragment: string;
+  mode: "xsd-structure";
+  signatureId?: string;
+};
+
+export type XmlDsigBuildResult = {
+  signatureXml: string;
+  mode: "xsd-structure";
+  isProductionValid: false;
+  warnings: string[];
 };
 
 export type SiiEnvironment = "lab" | "certification" | "production";

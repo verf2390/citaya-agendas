@@ -8,12 +8,15 @@ Este directorio contiene solo placeholders seguros para el laboratorio DTE.
 - La firma MOCK referencia `xmldsignature_v10.xsd`, pero no está validada contra ese XSD.
 - `signXmlForLab()` queda preparado para una firma real futura de laboratorio y falla de forma controlada si no recibe certificado de prueba/controlado.
 - `sign-xml.real.ts` prepara la ruta real/controlada leyendo solo referencias seguras desde variables de entorno y bloquea la firma hasta implementar XMLDSig completo.
+- `xml-dsig.structure.ts` genera `Signature` sintetica solo para modo `xsd-structure`; sirve para validar orden/nodos contra XSD, no para certificacion.
 - Ninguna función usa certificados reales, claves privadas reales ni passwords reales.
 
 ## Variables previstas
 
 - `DTE_CERT_PATH`: ruta local ignorada o montada desde secreto seguro. No versionar el archivo.
 - `DTE_CERT_PASSWORD`: password del certificado desde secret manager o entorno seguro.
+- `DTE_PRIVATE_KEY_PATH`: clave privada local/secret mount, nunca versionada.
+- `DTE_PUBLIC_CERT_PATH`: certificado publico local/secret mount, nunca versionado.
 - `DTE_SIGNING_MODE`: `lab`, `certification` o `production`.
 
 Si faltan variables, la preparación falla con `missing_secret`. Si existen, sigue bloqueada con `pending_dependency` hasta implementar canonicalización, digest, firma RSA, `KeyInfo` e inserción del nodo `Signature`.

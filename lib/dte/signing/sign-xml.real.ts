@@ -26,6 +26,8 @@ export function getRealXmlSigningConfigFromEnv(
         : "lab",
     certificatePath: envValue("DTE_CERT_PATH") || null,
     certificatePassword: envValue("DTE_CERT_PASSWORD") || null,
+    privateKeyPath: envValue("DTE_PRIVATE_KEY_PATH") || null,
+    publicCertificatePath: envValue("DTE_PUBLIC_CERT_PATH") || null,
   };
 }
 
@@ -45,9 +47,17 @@ export function prepareRealXmlSigning(
   if (!config.signatureTarget.trim()) missing.push("signatureTarget");
   if (!config.certificatePath) missing.push("DTE_CERT_PATH");
   if (!config.certificatePassword) missing.push("DTE_CERT_PASSWORD");
+  if (!config.privateKeyPath) missing.push("DTE_PRIVATE_KEY_PATH");
+  if (!config.publicCertificatePath) missing.push("DTE_PUBLIC_CERT_PATH");
 
   if (config.certificatePath && !existsSync(config.certificatePath)) {
     missing.push("DTE_CERT_PATH:file_not_found");
+  }
+  if (config.privateKeyPath && !existsSync(config.privateKeyPath)) {
+    missing.push("DTE_PRIVATE_KEY_PATH:file_not_found");
+  }
+  if (config.publicCertificatePath && !existsSync(config.publicCertificatePath)) {
+    missing.push("DTE_PUBLIC_CERT_PATH:file_not_found");
   }
 
   return {
@@ -65,8 +75,7 @@ export async function signXmlRealControlled(): Promise<never> {
     [
       "Real XML signing is blocked in this build.",
       "Implement controlled certificate loading, private key extraction, canonicalization, digest, XMLDSig insertion and XSD validation before enabling it.",
-      "Required env vars: DTE_CERT_PATH, DTE_CERT_PASSWORD, DTE_SIGNING_MODE.",
+      "Required env vars: DTE_CERT_PATH, DTE_CERT_PASSWORD, DTE_PRIVATE_KEY_PATH, DTE_PUBLIC_CERT_PATH, DTE_SIGNING_MODE.",
     ].join(" "),
   );
 }
-
