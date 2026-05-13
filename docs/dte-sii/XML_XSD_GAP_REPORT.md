@@ -2,17 +2,85 @@
 
 Estado: LAB / PENDIENTE / NO PRODUCTIVO.
 
-Este reporte compara el XML generado hoy por `lib/dte/xml/build-dte-envelope.ts` contra la estructura esperada por los schemas oficiales SII (`EnvioDTE_v10.xsd`, `DTE_v10.xsd`, `SiiTypes_v10.xsd`, `xmldsignature_v10.xsd`). La comparacion es tecnica preliminar hasta descargar y ejecutar validacion XSD real.
+Este reporte compara el XML generado hoy por `lib/dte/xml/build-dte-envelope.ts` contra la estructura esperada por los schemas oficiales SII (`EnvioDTE_v10.xsd`, `DTE_v10.xsd`, `SiiTypes_v10.xsd`, `xmldsignature_v10.xsd`). La comparacion sigue marcada como LAB hasta ejecutar una validacion XSD completa en un entorno con validador instalado.
+
+## Ejecucion real 2026-05-13
+
+XML generado:
+
+```text
+docs/dte-sii/samples/lab-envio-dte.xml
+```
+
+Script usado:
+
+```bash
+node scripts/dte/generate-lab-xml.mjs
+```
+
+Resultado de generacion:
+
+```text
+/home/verf/apps/citaya-agendas/docs/dte-sii/samples/lab-envio-dte.xml
+warnings=3
+- XML experimental no productivo.
+- SII-like XML laboratory format, no validado contra XSD oficial.
+- No incluye CAF real, TED final ni firma XML real.
+```
+
+Comando de validacion solicitado:
+
+```bash
+node scripts/dte/validate-xsd.mjs docs/dte-sii/samples/lab-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd
+```
+
+Resultado real:
+
+```text
+xmllint is required for local XSD validation. Install libxml2 tools or use a CI image that includes xmllint.
+```
+
+Estado: la validacion XSD no se ejecuto porque el entorno no tiene `xmllint`. No se obtuvo todavia una lista de errores schema-level desde `EnvioDTE_v10.xsd`; por lo tanto Citaya no puede marcar este XML como validado SII.
+
+Validadores locales revisados sin instalar dependencias:
+
+- `xmllint`: no disponible.
+- `xmlstarlet`: no disponible.
+- Python `lxml`: no disponible (`ModuleNotFoundError: No module named 'lxml'`).
+- `java`: no disponible.
+
+Nodos presentes en la muestra generada:
+
+- `EnvioDTE`.
+- `SetDTE`.
+- `Caratula`.
+- `DTE`.
+- `Documento`.
+- `Encabezado`.
+- `IdDoc`.
+- `Emisor`.
+- `Receptor`.
+- `Totales`.
+- `Detalle`.
+
+Brechas observables desde el XML generado, previas a validacion XSD completa:
+
+- `TmstFirmaEnv` contiene `LAB-NOT-SIGNED`, no un timestamp/firma de envio real.
+- `Documento` no contiene `TED`.
+- `Documento` no contiene `TmstFirma`.
+- No hay `Signature` XMLDSig real.
+- No hay CAF real ni `FRMT`.
+- El XML es una boleta afecta tipo 39 LAB con datos ficticios, no una emision tributaria.
 
 ## Bloqueadores de validacion real hoy
 
-- No estan presentes los XSD oficiales en `docs/dte-sii/xsd/`.
+- Los XSD oficiales ya estan presentes en `docs/dte-sii/xsd/`, pero la validacion local no pudo ejecutarse porque falta `xmllint`.
 - `Signature` es mock y no contiene digest/firma criptografica real.
 - No existe `TED` real dentro de `Documento`.
 - No existe `TmstFirma` real del documento.
 - No se firma `SetDTE`/envio segun flujo SII.
-- No se valida orden exacto de nodos contra XSD.
-- No se valida cardinalidad completa por tipo DTE.
+- No se pudo validar orden exacto de nodos contra XSD en este entorno.
+- No se pudo validar cardinalidad completa por tipo DTE en este entorno.
 - No se usa CAF real ni `FRMT` real.
 - No hay cliente de certificacion que confirme aceptacion SII.
 

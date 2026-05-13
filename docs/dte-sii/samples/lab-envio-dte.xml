@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!--
+  Citaya DTE Lab XML - SII-like XML laboratory format - NO PRODUCTIVO.
+  Este XML es experimental: no es XML certificado/final ante SII.
+  No esta firmado, no consume CAF real,
+  no incluye timbre TED final y no debe enviarse al SII.
+-->
+<EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">
+  <SetDTE ID="CitayaDteLab-tenant-lab-citaya-1001">
+    <Caratula version="1.0">
+      <RutEmisor>76123456-0</RutEmisor>
+      <RutEnvia>76123456-0</RutEnvia>
+      <RutReceptor>60803000-K</RutReceptor>
+      <FchResol>2006-01-01</FchResol>
+      <NroResol>0</NroResol>
+      <TmstFirmaEnv>LAB-NOT-SIGNED</TmstFirmaEnv>
+      <SubTotDTE>
+        <TpoDTE>39</TpoDTE>
+        <NroDTE>1</NroDTE>
+      </SubTotDTE>
+    </Caratula>
+    <DTE version="1.0">
+      <Documento ID="CitayaDocLab-39-1001">
+        <Encabezado>
+          <IdDoc>
+            <TipoDTE>39</TipoDTE>
+            <Folio>1001</Folio>
+            <FchEmis>2026-05-13</FchEmis>
+          </IdDoc>
+          <Emisor>
+            <RUTEmisor>76123456-0</RUTEmisor>
+            <RznSoc>Empresa Demo Citaya SpA</RznSoc>
+            <GiroEmis>Servicios profesionales demo</GiroEmis>
+            <Acteco>960909</Acteco>
+            <DirOrigen>Av. Laboratorio 123</DirOrigen>
+            <CmnaOrigen>La Serena</CmnaOrigen>
+            <CiudadOrigen>La Serena</CiudadOrigen>
+          </Emisor>
+          <Receptor>
+            <RUTRecep>11111111-1</RUTRecep>
+            <RznSocRecep>Cliente Demo</RznSocRecep>
+            <GiroRecep>Persona natural</GiroRecep>
+            <DirRecep>Sin direccion</DirRecep>
+            <CmnaRecep>La Serena</CmnaRecep>
+            <CiudadRecep>La Serena</CiudadRecep>
+            <CorreoRecep>cliente.demo@example.com</CorreoRecep>
+          </Receptor>
+          <Totales>
+            <MntNeto>10000</MntNeto>
+            <MntExe>0</MntExe>
+            <IVA>1900</IVA>
+            <MntTotal>11900</MntTotal>
+          </Totales>
+        </Encabezado>
+      <Detalle>
+        <NroLinDet>1</NroLinDet>
+        <NmbItem>Reserva demo Citaya</NmbItem>
+        <DscItem>Detalle LAB sin validez tributaria</DscItem>
+        <QtyItem>1</QtyItem>
+        <PrcItem>11900</PrcItem>
+        <MontoItem>11900</MontoItem>
+      </Detalle>
+      </Documento>
+    </DTE>
+  </SetDTE>
+</EnvioDTE>
