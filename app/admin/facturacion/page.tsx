@@ -40,6 +40,25 @@ type DocumentType = "boleta" | "factura" | "exenta";
 type BillingProvider = "none" | "manual_sii" | "api_provider";
 type ProviderStatus = "not_configured" | "pending" | "connected" | "error";
 
+type DteReadinessItem = {
+  category: string;
+  status: "OK" | "WARNING" | "MISSING" | "LAB_ONLY" | "PENDING_REAL_SII";
+  message: string;
+  severity: "info" | "warning" | "critical";
+  nextAction: string;
+};
+
+type DteReadinessResult = {
+  readinessScore: number;
+  labScore: number;
+  certificationScore: number;
+  productionTechnicalScore: number;
+  globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO";
+  items: DteReadinessItem[];
+  blockers: string[];
+  nextActions: string[];
+};
+
 type DteLabResult = {
   xml: string;
   metadata: {
@@ -457,6 +476,22 @@ function labMetadataLabel(value: string) {
   return value;
 }
 
+function readinessTone(status: DteReadinessItem["status"]) {
+  if (status === "OK") return "border-emerald-100 bg-emerald-50 text-emerald-900";
+  if (status === "MISSING" || status === "PENDING_REAL_SII") {
+    return "border-amber-100 bg-amber-50 text-amber-950";
+  }
+  return "border-slate-200 bg-slate-50 text-slate-800";
+}
+
+function readinessLabel(status: DteReadinessItem["status"]) {
+  if (status === "OK") return "OK";
+  if (status === "LAB_ONLY") return "LAB";
+  if (status === "PENDING_REAL_SII") return "PENDIENTE SII";
+  if (status === "MISSING") return "FALTA";
+  return "PENDIENTE";
+}
+
 function getRecordValue(input: unknown, key: string): unknown {
   if (!input || typeof input !== "object") return undefined;
   return (input as Record<string, unknown>)[key];
@@ -518,6 +553,8 @@ export default function AdminFacturacionPage() {
   const [dteLabLoading, setDteLabLoading] = useState(false);
   const [dteLabResult, setDteLabResult] = useState<DteLabResult | null>(null);
   const [dteLabError, setDteLabError] = useState("");
+  const [dteReadiness, setDteReadiness] = useState<DteReadinessResult | null>(null);
+  const [dteReadinessError, setDteReadinessError] = useState("");
 
   useEffect(() => {
     const run = async () => {
@@ -568,6 +605,25 @@ export default function AdminFacturacionPage() {
       }
 
       setSettings(normalizeSettings(json.settings, tenant.id));
+
+      const readinessRes = await fetch("/api/admin/dte-lab/readiness", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+        cache: "no-store",
+        body: JSON.stringify({ tenantId: tenant.id, tenantSlug: slug }),
+      });
+      const readinessJson = await readinessRes.json().catch(() => null);
+      if (readinessRes.ok && readinessJson?.ok) {
+        setDteReadiness(readinessJson as DteReadinessResult);
+      } else {
+        setDteReadinessError(
+          readinessJson?.error ?? "No se pudo cargar readiness DTE.",
+        );
+      }
+
       setLoading(false);
     };
 
@@ -866,6 +922,126 @@ export default function AdminFacturacionPage() {
                     </div>
                     <div className="mt-1 text-sm font-bold text-slate-800">
                       Configurar datos tributarios y proveedor DTE.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
+              title="Estado DTE/SII"
+              description="Readiness tecnico para pre-certificacion; no representa aprobacion SII."
+              actions={
+                <div className="flex flex-wrap gap-2">
+                  {["LAB", "PRE-CERTIFICACION", "NO PRODUCTIVO", "PENDIENTE SII"].map(
+                    (badge) => (
+                      <span
+                        key={badge}
+                        className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-black uppercase text-amber-900"
+                      >
+                        {badge}
+                      </span>
+                    ),
+                  )}
+                </div>
+              }
+            >
+              <div className="grid gap-4">
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-black leading-6 text-red-900">
+                  No productivo. Este módulo aún no emite documentos tributarios
+                  legales hasta completar certificación/aprobación SII.
+                </div>
+
+                {dteReadinessError ? (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold text-amber-950">
+                    {dteReadinessError}
+                  </div>
+                ) : null}
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ["Laboratorio técnico", dteReadiness?.labScore ?? 0],
+                    ["Readiness certificación", dteReadiness?.certificationScore ?? 0],
+                    ["Producción técnica", dteReadiness?.productionTechnicalScore ?? 0],
+                    ["Estado global", dteReadiness?.globalStatus ?? "LAB / PENDIENTE / NO PRODUCTIVO"],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <div className="text-[11px] font-black uppercase text-slate-500">
+                        {label}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-slate-900">
+                        {typeof value === "number" ? `${value}/10` : value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {(dteReadiness?.items ?? [])
+                    .filter((item) =>
+                      [
+                        "xsd",
+                        "config:DTE_CAF_PATH",
+                        "config:DTE_CERT_PATH",
+                        "frmt",
+                        "xmldsig",
+                        "sii_client",
+                        "track_id",
+                        "sii_status_query",
+                        "printed_sample",
+                        "db_schema",
+                        "agenda_payments",
+                      ].includes(item.category),
+                    )
+                    .map((item) => (
+                      <div
+                        key={item.category}
+                        className={`rounded-2xl border p-3 ${readinessTone(item.status)}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[11px] font-black uppercase">
+                            {item.category.replace("config:", "")}
+                          </div>
+                          <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase">
+                            {readinessLabel(item.status)}
+                          </span>
+                        </div>
+                        <div className="mt-2 text-xs font-bold leading-5">
+                          {item.message}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-black uppercase text-slate-500">
+                      Bloqueantes
+                    </div>
+                    <div className="mt-2 grid gap-2 text-sm font-bold text-slate-700">
+                      {(dteReadiness?.blockers.length
+                        ? dteReadiness.blockers.slice(0, 5)
+                        : ["Sin bloqueantes locales para continuar laboratorio/pre-certificación."]
+                      ).map((blocker) => (
+                        <div key={blocker}>{blocker}</div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-black uppercase text-slate-500">
+                      Próximos pasos
+                    </div>
+                    <div className="mt-2 grid gap-2 text-sm font-bold text-slate-700">
+                      {(
+                        dteReadiness?.nextActions.slice(0, 6) ?? [
+                          "Conseguir certificado, CAF y acceso certificación SII.",
+                        ]
+                      ).map((action) => (
+                        <div key={action}>{action}</div>
+                      ))}
                     </div>
                   </div>
                 </div>

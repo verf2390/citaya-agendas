@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dte:lab": "node scripts/dte/generate-lab-xml.mjs --mode=lab",
+    "dte:xsd": "node scripts/dte/generate-lab-xml.mjs --mode=xsd-structure",
+    "dte:validate:xsd": "node scripts/dte/validate-xsd.mjs docs/dte-sii/samples/lab-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd",
+    "dte:precert": "node scripts/dte/precert-readiness.mjs",
+    "dte:certification": "DTE_MODE=certification node scripts/dte/generate-lab-xml.mjs --mode=certification",
+    "dte:test": "node --test scripts/dte/run-dte-tests.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",
