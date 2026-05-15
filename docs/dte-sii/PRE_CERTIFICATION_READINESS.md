@@ -92,8 +92,11 @@ Pre-certificacion ahora contempla:
 - RLS sugerida por tenant/platform admin.
 - Endpoints admin de trazas DTE/SII.
 - UI de trazas en `/admin/facturacion`.
+- Auditoria de compatibilidad `DTE_SCHEMA_COMPATIBILITY_AUDIT.md`.
+- Checks post-migracion `DTE_SUPABASE_POST_MIGRATION_CHECKS.sql`.
+- Plan de aplicacion controlada `DTE_SUPABASE_APPLY_PLAN.md`.
 
-Esto no sube el estado a productivo: no hay migracion aplicada automaticamente, no hay submit real al SII, no hay track_id real y no hay agenda/pagos conectados.
+Esto no sube el estado a productivo: no hay migracion aplicada automaticamente, no hay submit real al SII, no hay track_id real, no hay agenda/pagos conectados y RLS debe probarse con tenants reales de LAB antes de activar Supabase backend.
 
 ## Regla permanente
 

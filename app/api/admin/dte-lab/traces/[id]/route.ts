@@ -2,51 +2,10 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getDtePersistenceBackend, getDteRepository } from "@/lib/dte/persistence/get-dte-repository";
 import { redactSensitivePath } from "@/lib/dte/persistence/dte-redaction";
 import { DTE_SUPABASE_PERSISTENCE_NOT_READY } from "@/lib/dte/persistence/supabase-dte-repository";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-function getHostnameFromReq(req: Request): string {
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  return host.split(",")[0]?.trim().split(":")[0] ?? "";
-}
-
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return { ok: false as const, error: "Unauthorized", status: 401 };
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) return { ok: false as const, error: "Unauthorized", status: 401 };
-  return { ok: true as const };
-}
-
-async function validateTenantAccess(req: Request, tenantId: string, tenantSlugInput: string) {
-  const tenantSlug =
-    getTenantSlugFromHostname(getHostnameFromReq(req)) || tenantSlugInput.trim();
-  if (!tenantSlug) {
-    return { ok: false as const, error: "No se pudo detectar el tenant actual", status: 400 };
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("tenants")
-    .select("id, slug")
-    .eq("id", tenantId)
-    .eq("slug", tenantSlug)
-    .maybeSingle();
-
-  if (error || !data?.id) {
-    return { ok: false as const, error: "Tenant no autorizado o inexistente", status: 403 };
-  }
-
-  return { ok: true as const, tenantId: data.id as string };
-}
 
 function isNotReady(error: unknown): boolean {
   return error instanceof Error && error.message.includes(DTE_SUPABASE_PERSISTENCE_NOT_READY);
@@ -54,23 +13,12 @@ function isNotReady(error: unknown): boolean {
 
 export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const auth = await requireUser(req);
-    if (!auth.ok) {
-      return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-    }
-
     const { id } = await context.params;
     const url = new URL(req.url);
     const tenantId = String(url.searchParams.get("tenantId") ?? "").trim();
     const tenantSlug = String(url.searchParams.get("tenantSlug") ?? "").trim();
-    if (!tenantId) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId requerido para detalle DTE" },
-        { status: 400 },
-      );
-    }
 
-    const tenantAccess = await validateTenantAccess(req, tenantId, tenantSlug);
+    const tenantAccess = await requireTenantAdmin({ req, tenantId, tenantSlug });
     if (!tenantAccess.ok) {
       return NextResponse.json(
         { ok: false, error: tenantAccess.error },
@@ -114,7 +62,7 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
           .filter((item) => item.taxDocumentId === id)
           .map((item) => ({
             ...item,
-            tokenFingerprint: item.tokenFingerprint ? "[fingerprint-stored]" : null,
+            tokenFingerprint: undefined,
           })),
         auditLog: auditLog
           .filter((item) => item.taxDocumentId === id)

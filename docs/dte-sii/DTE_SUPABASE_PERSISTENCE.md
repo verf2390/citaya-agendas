@@ -20,6 +20,12 @@ La migracion revisable esta en `docs/dte-sii/DTE_SUPABASE_MIGRATION.sql` e inclu
 
 Todas usan `tenant_id`, UUID primary keys, timestamps, constraints de ambiente y estados, indices por tenant/status/folio/track_id y unique constraints para evitar doble folio o doble referencia.
 
+La migracion aun **no fue aplicada**. Antes de aplicarla se debe revisar:
+
+- `DTE_SCHEMA_COMPATIBILITY_AUDIT.md`
+- `DTE_SUPABASE_POST_MIGRATION_CHECKS.sql`
+- `DTE_SUPABASE_APPLY_PLAN.md`
+
 ## Que No Se Guarda
 
 - Private keys planas.
@@ -63,7 +69,7 @@ La migracion incluye RLS sugerida:
 - Inserts/updates quedan para backend controlado con service role.
 - Policies separadas para `select`; `insert/update` directo desde cliente queda bloqueado hasta disenar self-service estricto.
 
-Si el proyecto usa tablas distintas a `tenant_members` o `platform_admins`, ajustar las funciones `dte_current_user_is_tenant_admin` y `dte_current_user_is_platform_admin` antes de aplicar.
+El repo no incluye schema SQL confirmado para `tenant_members` ni `platform_admins`. La migracion endurecida usa guards: si esas tablas no existen, las funciones RLS retornan `false`. Si el proyecto usa tablas distintas, ajustar `dte_current_user_is_tenant_admin` y `dte_current_user_is_platform_admin` antes de aplicar.
 
 ## Como Probar Sin Produccion
 
@@ -73,7 +79,7 @@ npm run dte:persistence:trace
 node scripts/dte/sii-certification-smoke.mjs --dry-run
 ```
 
-Con Supabase activado, aplicar primero la migracion manualmente en un proyecto LAB/certification. No usar production.
+Con Supabase activado, aplicar primero la migracion manualmente en un proyecto LAB/certification y ejecutar los checks post-migracion. No usar production.
 
 ## Endpoints Admin
 

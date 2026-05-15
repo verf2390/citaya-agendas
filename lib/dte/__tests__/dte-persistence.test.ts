@@ -172,6 +172,30 @@ test("repository factory defaults to memory unless Supabase flag is explicit", (
   assert.ok(getDteRepository({}) instanceof InMemoryDteRepository);
 });
 
+test("repositories reject missing tenant_id before persistence operations", async () => {
+  const draft = {
+    tenantId: "",
+    documentType: "factura_afecta" as const,
+    folio: 1001,
+    emitterRut: "76.123.456-0",
+    emitterName: "Emisor Demo",
+    receiverRut: "11.111.111-1",
+    receiverName: "Cliente Demo",
+    issueDate: "2026-05-15",
+    totalAmount: 11900,
+    paymentReference: "missing-tenant",
+  };
+
+  const memory = new InMemoryDteRepository();
+  const memoryResult = await memory.createTaxDocumentDraft(draft);
+  assert.equal(memoryResult.ok, false);
+
+  const supabase = new SupabaseDteRepository({} as never);
+  const supabaseResult = await supabase.createTaxDocumentDraft(draft);
+  assert.equal(supabaseResult.ok, false);
+  if (!supabaseResult.ok) assert.match(supabaseResult.error, /tenantId requerido/);
+});
+
 test("SupabaseDteRepository fails controlled when env is not configured", () => {
   const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const oldKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -39,5 +39,9 @@ No permitido:
 - Inserts/updates quedan restringidos al backend con service role.
 - Service role no debe existir en cliente/browser.
 - Policies deben ajustarse al modelo real de membresia antes de aplicar.
+- Si `tenant_members` o `platform_admins` no existen, las funciones RLS endurecidas retornan `false`.
+- La migracion evita `on delete cascade` en documentos tributarios para no borrar auditoria por accidente.
 
 Las rutas `/api/admin/dte-lab/traces` validan usuario + tenant por host/slug y devuelven solo metadata redactada. Siguen siendo **LAB / PENDIENTE / NO PRODUCTIVO**.
+
+Pendiente antes de activar Supabase backend: aplicar en LAB/certification, ejecutar `DTE_SUPABASE_POST_MIGRATION_CHECKS.sql` y probar dos tenants distintos.

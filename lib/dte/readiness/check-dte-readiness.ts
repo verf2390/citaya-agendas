@@ -328,6 +328,48 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
       "No activar Supabase sin migracion, RLS revisada y tenant propio.",
     ),
     item(
+      "schema_compatibility_audit",
+      exists(repoRoot, "docs/dte-sii/DTE_SCHEMA_COMPATIBILITY_AUDIT.md") ? "OK" : "MISSING",
+      "Auditoria de compatibilidad DTE contra schema real documentada.",
+      "warning",
+      "Resolver TODO de tenant_members/platform_admins antes de aplicar migracion.",
+    ),
+    item(
+      "post_migration_checks",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_POST_MIGRATION_CHECKS.sql") ? "OK" : "MISSING",
+      "Checks post-migracion listos para validar tablas, RLS, indices y constraints.",
+      "warning",
+      "Ejecutar checks despues de aplicar manualmente en LAB/certification.",
+    ),
+    item(
+      "supabase_apply_plan",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_APPLY_PLAN.md") ? "OK" : "MISSING",
+      "Plan de aplicacion controlada y rollback documentado.",
+      "warning",
+      "Seguir plan antes de activar backend Supabase.",
+    ),
+    item(
+      "rls_hardened_real_schema",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") ? "WARNING" : "MISSING",
+      "RLS endurecida con guards para tenant_members/platform_admins, pendiente verificar DB real.",
+      "critical",
+      "Confirmar schema real de membresias antes de exponer consultas autenticadas.",
+    ),
+    item(
+      "no_cascade_delete_risk",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") ? "WARNING" : "MISSING",
+      "Migracion DTE documenta no borrar documentos tributarios en cascada.",
+      "critical",
+      "Revisar manualmente FK on delete restrict antes de aplicar.",
+    ),
+    item(
+      "tenant_isolation_verified_pending_db",
+      "WARNING",
+      "Aislamiento tenant queda pendiente de aplicar migracion y probar RLS en Supabase real.",
+      "critical",
+      "Ejecutar DTE_SUPABASE_POST_MIGRATION_CHECKS.sql con tenants LAB distintos.",
+    ),
+    item(
       "multi_tenant",
       exists(repoRoot, "docs/dte-sii/DTE_MULTI_TENANT_SECURITY.md")
         ? "OK"

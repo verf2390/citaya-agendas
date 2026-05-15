@@ -90,6 +90,8 @@ export class InMemoryDteRepository implements DteRepository {
   async createTaxDocumentDraft(
     draft: TaxDocumentDraftPersistence,
   ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    if (!draft.tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+
     const duplicate = await this.findByTenantAndFolio({
       tenantId: draft.tenantId,
       documentType: draft.documentType,
@@ -239,6 +241,7 @@ export class InMemoryDteRepository implements DteRepository {
     status?: TaxDocumentRecord["status"];
     siiStatus?: DteSiiStatus;
   }): Promise<TaxDocumentRecord[]> {
+    if (!input.tenantId.trim()) return [];
     return this.taxDocuments
       .filter(
         (item) =>
@@ -256,6 +259,7 @@ export class InMemoryDteRepository implements DteRepository {
     environment?: TaxDocumentSubmissionRecord["environment"];
     siiStatus?: DteSiiStatus;
   }): Promise<TaxDocumentSubmissionRecord[]> {
+    if (!input.tenantId.trim()) return [];
     return this.submissions
       .filter(
         (item) =>
@@ -271,6 +275,7 @@ export class InMemoryDteRepository implements DteRepository {
     tenantId: string;
     limit?: number;
   }): Promise<TaxDocumentAuditRecord[]> {
+    if (!input.tenantId.trim()) return [];
     return this.auditLog
       .filter((item) => item.tenantId === input.tenantId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))

@@ -118,6 +118,8 @@ export class SupabaseDteRepository implements DteRepository {
   async createTaxDocumentDraft(
     draft: TaxDocumentDraftPersistence,
   ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    if (!draft.tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+
     const now = new Date().toISOString();
     const row: TaxDocumentRow = {
       id: randomUUID(),
@@ -175,6 +177,8 @@ export class SupabaseDteRepository implements DteRepository {
   async createSiiSubmission(
     submission: TaxDocumentSubmissionRecord,
   ): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
+    if (!submission.tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+
     const row = submissionToRow(submission);
     const result = (await this.client
       .from("tax_document_sii_submissions")
@@ -229,6 +233,8 @@ export class SupabaseDteRepository implements DteRepository {
   async appendStatusHistory(
     history: TaxDocumentStatusHistoryRecord,
   ): Promise<DtePersistenceResult<TaxDocumentStatusHistoryRecord>> {
+    if (!history.tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+
     const row: StatusHistoryRow = {
       id: history.id,
       tenant_id: history.tenantId,
@@ -256,6 +262,8 @@ export class SupabaseDteRepository implements DteRepository {
   async appendAuditLog(
     audit: TaxDocumentAuditRecord,
   ): Promise<DtePersistenceResult<TaxDocumentAuditRecord>> {
+    if (!audit.tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+
     const row: AuditRow = {
       id: audit.id,
       tenant_id: audit.tenantId,
@@ -336,6 +344,7 @@ export class SupabaseDteRepository implements DteRepository {
     status?: TaxDocumentRecord["status"];
     siiStatus?: DteSiiStatus;
   }): Promise<TaxDocumentRecord[]> {
+    if (!input.tenantId.trim()) return [];
     let query = this.client
       .from("tax_documents")
       .select()
@@ -356,6 +365,7 @@ export class SupabaseDteRepository implements DteRepository {
     environment?: TaxDocumentSubmissionRecord["environment"];
     siiStatus?: DteSiiStatus;
   }): Promise<TaxDocumentSubmissionRecord[]> {
+    if (!input.tenantId.trim()) return [];
     let query = this.client
       .from("tax_document_sii_submissions")
       .select()
@@ -374,6 +384,7 @@ export class SupabaseDteRepository implements DteRepository {
     tenantId: string;
     limit?: number;
   }): Promise<TaxDocumentAuditRecord[]> {
+    if (!input.tenantId.trim()) return [];
     const result = (await this.client
       .from("tax_document_audit_log")
       .select()

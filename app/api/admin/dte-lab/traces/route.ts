@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getDtePersistenceBackend, getDteRepository } from "@/lib/dte/persistence/get-dte-repository";
 import { redactSensitivePath } from "@/lib/dte/persistence/dte-redaction";
 import type {
@@ -10,71 +11,11 @@ import type {
   TaxDocumentSubmissionRecord,
 } from "@/lib/dte/persistence/dte-persistence-types";
 import { DTE_SUPABASE_PERSISTENCE_NOT_READY } from "@/lib/dte/persistence/supabase-dte-repository";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type TraceRequest = {
   tenantId: string;
   tenantSlug?: string;
 };
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-function getHostnameFromReq(req: Request): string {
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  return host.split(",")[0]?.trim().split(":")[0] ?? "";
-}
-
-function getTenantSlugFromReq(req: Request, input: TraceRequest): string {
-  return (
-    getTenantSlugFromHostname(getHostnameFromReq(req)) ||
-    String(input.tenantSlug ?? "").trim()
-  );
-}
-
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return { ok: false as const, error: "Unauthorized", status: 401 };
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) {
-    return { ok: false as const, error: "Unauthorized", status: 401 };
-  }
-
-  return { ok: true as const };
-}
-
-async function validateTenantAccess(req: Request, input: TraceRequest) {
-  const tenantSlug = getTenantSlugFromReq(req, input);
-  if (!tenantSlug) {
-    return {
-      ok: false as const,
-      error: "No se pudo detectar el tenant actual",
-      status: 400,
-    };
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("tenants")
-    .select("id, slug")
-    .eq("id", input.tenantId)
-    .eq("slug", tenantSlug)
-    .maybeSingle();
-
-  if (error || !data?.id) {
-    return {
-      ok: false as const,
-      error: "Tenant no autorizado o inexistente",
-      status: 403,
-    };
-  }
-
-  return { ok: true as const, tenantId: data.id as string };
-}
 
 function safeDocument(record: TaxDocumentRecord) {
   return {
@@ -113,7 +54,6 @@ function safeSubmission(record: TaxDocumentSubmissionRecord) {
     requestXmlSha256: record.requestXmlSha256 ?? null,
     responseSha256: record.responseSha256 ?? null,
     rawResponseRedacted: record.rawResponseRedacted ?? null,
-    tokenFingerprint: record.tokenFingerprint ? "[fingerprint-stored]" : null,
     submittedAt: record.submittedAt ?? null,
     checkedAt: record.checkedAt ?? null,
     createdAt: record.createdAt,
@@ -137,27 +77,12 @@ function isNotReady(error: unknown): boolean {
 
 export async function GET(req: Request) {
   try {
-    const auth = await requireUser(req);
-    if (!auth.ok) {
-      return NextResponse.json(
-        { ok: false, error: auth.error },
-        { status: auth.status },
-      );
-    }
-
     const url = new URL(req.url);
     const input: TraceRequest = {
       tenantId: String(url.searchParams.get("tenantId") ?? "").trim(),
       tenantSlug: String(url.searchParams.get("tenantSlug") ?? "").trim(),
     };
-    if (!input.tenantId) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId requerido para trazas DTE" },
-        { status: 400 },
-      );
-    }
-
-    const tenantAccess = await validateTenantAccess(req, input);
+    const tenantAccess = await requireTenantAdmin({ req, ...input });
     if (!tenantAccess.ok) {
       return NextResponse.json(
         { ok: false, error: tenantAccess.error },
