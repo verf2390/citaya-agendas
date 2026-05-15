@@ -63,6 +63,22 @@ export interface DteRepository {
     documentType: string;
     folio: number;
   }): Promise<TaxDocumentRecord | null>;
+  listRecentByTenant(input: {
+    tenantId: string;
+    limit?: number;
+    status?: TaxDocumentRecord["status"];
+    siiStatus?: DteSiiStatus;
+  }): Promise<TaxDocumentRecord[]>;
+  listSubmissionsByTenant(input: {
+    tenantId: string;
+    limit?: number;
+    environment?: TaxDocumentSubmissionRecord["environment"];
+    siiStatus?: DteSiiStatus;
+  }): Promise<TaxDocumentSubmissionRecord[]>;
+  listAuditLogByTenant(input: {
+    tenantId: string;
+    limit?: number;
+  }): Promise<TaxDocumentAuditRecord[]>;
 }
 
 export class InMemoryDteRepository implements DteRepository {
@@ -217,6 +233,50 @@ export class InMemoryDteRepository implements DteRepository {
     );
   }
 
+  async listRecentByTenant(input: {
+    tenantId: string;
+    limit?: number;
+    status?: TaxDocumentRecord["status"];
+    siiStatus?: DteSiiStatus;
+  }): Promise<TaxDocumentRecord[]> {
+    return this.taxDocuments
+      .filter(
+        (item) =>
+          item.tenantId === input.tenantId &&
+          (!input.status || item.status === input.status) &&
+          (!input.siiStatus || item.siiStatus === input.siiStatus),
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, input.limit ?? 25);
+  }
+
+  async listSubmissionsByTenant(input: {
+    tenantId: string;
+    limit?: number;
+    environment?: TaxDocumentSubmissionRecord["environment"];
+    siiStatus?: DteSiiStatus;
+  }): Promise<TaxDocumentSubmissionRecord[]> {
+    return this.submissions
+      .filter(
+        (item) =>
+          item.tenantId === input.tenantId &&
+          (!input.environment || item.environment === input.environment) &&
+          (!input.siiStatus || item.siiStatus === input.siiStatus),
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, input.limit ?? 25);
+  }
+
+  async listAuditLogByTenant(input: {
+    tenantId: string;
+    limit?: number;
+  }): Promise<TaxDocumentAuditRecord[]> {
+    return this.auditLog
+      .filter((item) => item.tenantId === input.tenantId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, input.limit ?? 25);
+  }
+
   private async updateDocument(
     taxDocumentId: string,
     patch: Partial<
@@ -245,37 +305,4 @@ function mapSubmissionStatusToDocumentStatus(
   }
   if (submissionStatus === "failed" || siiStatus === "failed") return "failed";
   return "signed";
-}
-
-export class SupabaseDteRepository implements DteRepository {
-  async createTaxDocumentDraft(): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
-  }
-  async markXmlGenerated(): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
-  }
-  async markSigned(): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
-  }
-  async createSiiSubmission(): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
-    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
-  }
-  async updateSiiSubmissionStatus(): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
-    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
-  }
-  async appendStatusHistory(): Promise<DtePersistenceResult<TaxDocumentStatusHistoryRecord>> {
-    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
-  }
-  async appendAuditLog(): Promise<DtePersistenceResult<TaxDocumentAuditRecord>> {
-    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
-  }
-  async findByTrackId(): Promise<TaxDocumentSubmissionRecord | null> {
-    return null;
-  }
-  async findByDocumentReference(): Promise<TaxDocumentRecord | null> {
-    return null;
-  }
-  async findByTenantAndFolio(): Promise<TaxDocumentRecord | null> {
-    return null;
-  }
 }

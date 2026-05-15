@@ -29,3 +29,15 @@ No permitido:
 - `.pem`, `.pfx`, `.key`, CAF reales o XML sensibles dentro de `docs/`, `lib/`, `app/`, `scripts/`.
 - Contenido de llaves privadas en DB plana.
 - Certificados/CAF reales servidos por endpoints admin.
+
+## Supabase/RLS DTE
+
+`DTE_SUPABASE_MIGRATION.sql` propone RLS para todas las tablas DTE con estas reglas:
+
+- `tenant_members` owner/admin puede leer solo su `tenant_id`.
+- `platform_admins` puede revisar soporte con trazabilidad.
+- Inserts/updates quedan restringidos al backend con service role.
+- Service role no debe existir en cliente/browser.
+- Policies deben ajustarse al modelo real de membresia antes de aplicar.
+
+Las rutas `/api/admin/dte-lab/traces` validan usuario + tenant por host/slug y devuelven solo metadata redactada. Siguen siendo **LAB / PENDIENTE / NO PRODUCTIVO**.

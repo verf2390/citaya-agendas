@@ -52,6 +52,7 @@ npm run dte:precert
 npm run dte:certification
 npm run dte:sii:dry-run
 npm run dte:sii:dry-run:trace
+npm run dte:persistence:check
 ```
 
 ## Certification
@@ -80,6 +81,19 @@ No usar rutas como `./cert.pem`, `./private-key.pem`, `./caf.xml`, ni archivos d
 - Produccion tecnica: mide piezas necesarias para operar con tenant, folios, DB, auditoria e integraciones.
 
 El score **no significa aprobado SII**, no significa emision legal, no significa facturacion productiva. Solo significa preparacion tecnica.
+
+## Persistencia Supabase
+
+Pre-certificacion ahora contempla:
+
+- Migracion revisable `DTE_SUPABASE_MIGRATION.sql`.
+- `SupabaseDteRepository` detras de `DTE_PERSISTENCE_BACKEND=supabase`.
+- Factory `getDteRepository()` con default seguro `memory`.
+- RLS sugerida por tenant/platform admin.
+- Endpoints admin de trazas DTE/SII.
+- UI de trazas en `/admin/facturacion`.
+
+Esto no sube el estado a productivo: no hay migracion aplicada automaticamente, no hay submit real al SII, no hay track_id real y no hay agenda/pagos conectados.
 
 ## Regla permanente
 

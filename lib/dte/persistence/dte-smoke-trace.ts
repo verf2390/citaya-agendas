@@ -5,7 +5,7 @@ import { checkDteReadiness } from "../readiness/check-dte-readiness";
 import { buildAuditRecord } from "./dte-audit";
 import { sha256String } from "./dte-hash";
 import { safeJsonForAudit } from "./dte-redaction";
-import { InMemoryDteRepository } from "./dte-repository";
+import { getDtePersistenceBackend, getDteRepository } from "./get-dte-repository";
 import { buildStatusHistoryRecord } from "./dte-status-history";
 import { buildSubmissionRecord } from "./dte-submissions";
 import type { DtePersistenceTraceSummary } from "./dte-persistence-types";
@@ -31,7 +31,8 @@ export function readSmokeTrace(
 export async function writeSmokeTrace(
   input: SmokeTraceInput,
 ): Promise<DtePersistenceTraceSummary> {
-  const repo = new InMemoryDteRepository();
+  const repo = getDteRepository();
+  const backend = getDtePersistenceBackend();
   const readiness = checkDteReadiness({ repoRoot: input.repoRoot });
   const xmlSha256 = input.xml ? sha256String(input.xml) : null;
 
@@ -123,5 +124,12 @@ export async function writeSmokeTrace(
 
   mkdirSync(dirname(input.outputPath), { recursive: true });
   writeFileSync(input.outputPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  if (backend === "supabase") {
+    writeFileSync(
+      `${input.outputPath}.backend`,
+      "DTE_PERSISTENCE_BACKEND=supabase\n",
+      "utf8",
+    );
+  }
   return summary;
 }

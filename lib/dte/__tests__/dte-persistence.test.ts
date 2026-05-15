@@ -14,7 +14,15 @@ import {
   redactToken,
   safeJsonForAudit,
 } from "../persistence/dte-redaction";
+import {
+  getDtePersistenceBackend,
+  getDteRepository,
+} from "../persistence/get-dte-repository";
 import { InMemoryDteRepository } from "../persistence/dte-repository";
+import {
+  DTE_SUPABASE_PERSISTENCE_NOT_READY,
+  SupabaseDteRepository,
+} from "../persistence/supabase-dte-repository";
 import { buildStatusHistoryRecord } from "../persistence/dte-status-history";
 import { buildSubmissionRecord } from "../persistence/dte-submissions";
 
@@ -143,6 +151,59 @@ test("in-memory repository records document, submission, status history and audi
     }))?.id,
     draft.record.id,
   );
+
+  const recent = await repo.listRecentByTenant({ tenantId: "tenant-1", limit: 5 });
+  const submissions = await repo.listSubmissionsByTenant({
+    tenantId: "tenant-1",
+    environment: "certification",
+  });
+  const auditLog = await repo.listAuditLogByTenant({ tenantId: "tenant-1" });
+
+  assert.equal(recent.length, 1);
+  assert.equal(submissions.length, 1);
+  assert.equal(auditLog.length, 1);
+});
+
+test("repository factory defaults to memory unless Supabase flag is explicit", () => {
+  assert.equal(getDtePersistenceBackend({}), "memory");
+  assert.equal(getDtePersistenceBackend({ DTE_PERSISTENCE_BACKEND: "memory" }), "memory");
+  assert.equal(getDtePersistenceBackend({ DTE_PERSISTENCE_BACKEND: "disabled" }), "memory");
+  assert.equal(getDtePersistenceBackend({ DTE_PERSISTENCE_BACKEND: "supabase" }), "supabase");
+  assert.ok(getDteRepository({}) instanceof InMemoryDteRepository);
+});
+
+test("SupabaseDteRepository fails controlled when env is not configured", () => {
+  const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const oldKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  try {
+    assert.throws(
+      () => new SupabaseDteRepository(),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.message.includes(DTE_SUPABASE_PERSISTENCE_NOT_READY),
+    );
+  } finally {
+    if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
+    if (oldKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = oldKey;
+  }
+});
+
+test("redaction helpers keep admin trace payloads free of secrets and private paths", () => {
+  const safePath = redactSensitivePath("/vault/tenant/private/certification-token.xml");
+  assert.ok(safePath?.includes("certification-token.xml"));
+  assert.ok(!safePath?.includes("/vault/tenant/private"));
+
+  const audit = safeJsonForAudit({
+    token: "full-token",
+    authorization: "Bearer full-token",
+  });
+  assert.equal(audit.token, "[redacted]");
+  assert.equal(audit.authorization, "[redacted]");
 });
 
 test("smoke dry-run writes safe trace summary", async () => {

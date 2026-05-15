@@ -61,9 +61,23 @@ El schema propone unique constraints por:
 - `tenant_id + payment_reference + document_type`
 - `tenant_id + track_id`
 
-## Supabase futuro
+## Supabase LAB/certification
 
-`InMemoryDteRepository` sirve para tests/LAB. `SupabaseDteRepository` queda como placeholder controlado hasta aplicar migraciones, RLS y politicas por tenant.
+`InMemoryDteRepository` sigue siendo el default seguro para tests/LAB.
+`SupabaseDteRepository` esta implementado detras de:
+
+```bash
+DTE_PERSISTENCE_BACKEND=supabase
+```
+
+La migracion revisable vive en `DTE_SUPABASE_MIGRATION.sql` y la guia operativa en `DTE_SUPABASE_PERSISTENCE.md`. Si faltan tablas/configuracion, debe fallar con `DTE_SUPABASE_PERSISTENCE_NOT_READY`.
+
+Endpoints admin:
+
+- `GET /api/admin/dte-lab/traces`
+- `GET /api/admin/dte-lab/traces/[id]`
+
+Estos endpoints son solo para trazas LAB/certification, no devuelven XML completo, tokens completos ni rutas privadas completas.
 
 ## Regla
 

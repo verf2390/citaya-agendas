@@ -270,10 +270,62 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     ),
     item(
       "tenant_isolation_persistence",
-      "WARNING",
-      "Repositorio Supabase queda pendiente; aislamiento final depende de RLS por tenant_id.",
+      exists(repoRoot, "lib/dte/persistence/supabase-dte-repository.ts") ? "WARNING" : "MISSING",
+      "Repositorio Supabase implementado detras de feature flag; aislamiento final depende de migracion/RLS aplicada por tenant_id.",
       "critical",
-      "Implementar SupabaseDteRepository con politicas tenant antes de certification real.",
+      "Aplicar migracion revisada y validar RLS antes de certification real.",
+    ),
+    item(
+      "supabase_migration_documented",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") ? "OK" : "MISSING",
+      "Migracion Supabase DTE revisable y no aplicada automaticamente.",
+      "warning",
+      "Revisar/aplicar manualmente DTE_SUPABASE_MIGRATION.sql en Supabase.",
+    ),
+    item(
+      "supabase_repository",
+      exists(repoRoot, "lib/dte/persistence/supabase-dte-repository.ts") ? "OK" : "MISSING",
+      "SupabaseDteRepository disponible para LAB/certification con fallos controlados.",
+      "warning",
+      "Activar solo con DTE_PERSISTENCE_BACKEND=supabase tras migracion.",
+    ),
+    item(
+      "rls_documented",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") &&
+        exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_PERSISTENCE.md")
+        ? "OK"
+        : "WARNING",
+      "RLS sugerida por tenant/platform admin documentada; no aplicada automaticamente.",
+      "critical",
+      "Validar policies tenant_members/platform_admins antes de usar datos reales.",
+    ),
+    item(
+      "repository_factory",
+      exists(repoRoot, "lib/dte/persistence/get-dte-repository.ts") ? "OK" : "MISSING",
+      "Factory de repositorio mantiene memory por defecto y Supabase solo por feature flag.",
+      "warning",
+      "Mantener DTE_PERSISTENCE_BACKEND sin supabase en entornos sin migracion.",
+    ),
+    item(
+      "admin_trace_endpoints",
+      exists(repoRoot, "app/api/admin/dte-lab/traces/route.ts") ? "OK" : "WARNING",
+      "Endpoints admin de trazas DTE disponibles con respuesta redactada.",
+      "warning",
+      "Probar con tenant admin y revisar que no exponga XML, tokens ni rutas privadas.",
+    ),
+    item(
+      "ui_trace_viewer",
+      exists(repoRoot, "app/admin/facturacion/page.tsx") ? "WARNING" : "MISSING",
+      "UI muestra backend/trazas DTE como LAB/PENDIENTE/NO PRODUCTIVO.",
+      "warning",
+      "Usar vista solo como soporte pre-certificacion, no como emision legal.",
+    ),
+    item(
+      "persistence_backend_feature_flag",
+      "WARNING",
+      `DTE_PERSISTENCE_BACKEND=${env.DTE_PERSISTENCE_BACKEND ?? "memory(default)"}`,
+      "critical",
+      "No activar Supabase sin migracion, RLS revisada y tenant propio.",
     ),
     item(
       "multi_tenant",

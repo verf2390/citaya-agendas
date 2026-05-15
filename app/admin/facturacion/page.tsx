@@ -78,6 +78,49 @@ type DteSiiCertificationState = {
   };
 };
 
+type DteTraceDocument = {
+  id: string;
+  documentType: string;
+  folio: number;
+  status: string;
+  statusLabel: string;
+  siiStatus: string;
+  environmentLabel: string;
+  totalAmount: number;
+  xmlSha256: string | null;
+  createdAt: string;
+};
+
+type DteTraceSubmission = {
+  id: string;
+  taxDocumentId: string;
+  environment: string;
+  trackId: string | null;
+  submissionStatus: string;
+  siiStatus: string;
+  requestXmlSha256: string | null;
+  responseSha256: string | null;
+  createdAt: string;
+};
+
+type DteTraceAudit = {
+  id: string;
+  action: string;
+  actorType: string;
+  taxDocumentId?: string | null;
+  submissionId?: string | null;
+  createdAt: string;
+};
+
+type DteTracesState = {
+  globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO";
+  backend: "memory" | "supabase";
+  documents: DteTraceDocument[];
+  submissions: DteTraceSubmission[];
+  auditLog: DteTraceAudit[];
+  warnings: string[];
+};
+
 type DteLabResult = {
   xml: string;
   metadata: {
@@ -576,6 +619,8 @@ export default function AdminFacturacionPage() {
   const [dteReadinessError, setDteReadinessError] = useState("");
   const [dteSiiCertification, setDteSiiCertification] =
     useState<DteSiiCertificationState | null>(null);
+  const [dteTraces, setDteTraces] = useState<DteTracesState | null>(null);
+  const [dteTracesError, setDteTracesError] = useState("");
 
   useEffect(() => {
     const run = async () => {
@@ -661,6 +706,24 @@ export default function AdminFacturacionPage() {
       const certificationJson = await certificationRes.json().catch(() => null);
       if (certificationRes.ok && certificationJson?.ok) {
         setDteSiiCertification(certificationJson as DteSiiCertificationState);
+      }
+
+      const tracesParams = new URLSearchParams({
+        tenantId: tenant.id,
+        tenantSlug: slug,
+        limit: "10",
+      });
+      const tracesRes = await fetch(`/api/admin/dte-lab/traces?${tracesParams.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+        cache: "no-store",
+      });
+      const tracesJson = await tracesRes.json().catch(() => null);
+      if (tracesRes.ok && tracesJson?.ok) {
+        setDteTraces(tracesJson as DteTracesState);
+      } else {
+        setDteTracesError(tracesJson?.error ?? "No se pudieron cargar trazas DTE.");
       }
 
       setLoading(false);
@@ -1412,6 +1475,161 @@ export default function AdminFacturacionPage() {
                   No existe track_id real hasta enviar un set al ambiente de
                   certificación SII. Esta tabla muestra trazabilidad local LAB y no
                   acredita emisión tributaria.
+                </div>
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
+              title="Trazas DTE/SII"
+              description="Persistencia multi-tenant preparada para LAB/certification; sin emisión legal."
+              actions={<StatusBadge label="NO PRODUCTIVO" tone="amber" />}
+            >
+              <div className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ["Backend activo", dteTraces?.backend ?? "memory"],
+                    ["Estado", dteTraces?.globalStatus ?? "LAB / PENDIENTE / NO PRODUCTIVO"],
+                    ["Documentos LAB", String(dteTraces?.documents.length ?? 0)],
+                    ["Submissions", String(dteTraces?.submissions.length ?? 0)],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <div className="text-[11px] font-black uppercase text-slate-500">
+                        {label}
+                      </div>
+                      <div className="mt-1 break-words text-sm font-black text-slate-900">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {dteTracesError ? (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold text-amber-950">
+                    {dteTracesError}
+                  </div>
+                ) : null}
+
+                {(dteTraces?.warnings.length ?? 0) > 0 ? (
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
+                    {dteTraces?.warnings.join(" ")}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-black leading-6 text-red-900">
+                    Las trazas no acreditan emisión tributaria. Supabase queda bajo
+                    feature flag y la migración debe aplicarse manualmente.
+                  </div>
+                )}
+
+                <div className="grid gap-3 lg:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-black uppercase text-slate-500">
+                      Últimos documentos/trazas
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {(dteTraces?.documents.length
+                        ? dteTraces.documents.slice(0, 5)
+                        : [
+                            {
+                              id: "empty-docs",
+                              documentType: "LAB",
+                              folio: 0,
+                              statusLabel: "Sin trazas DB",
+                              siiStatus: "not_sent",
+                              totalAmount: 0,
+                              createdAt: "",
+                            } as DteTraceDocument,
+                          ]
+                      ).map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-black uppercase text-slate-600">
+                              {doc.documentType} {doc.folio ? `#${doc.folio}` : ""}
+                            </span>
+                            <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black uppercase text-amber-800">
+                              {doc.statusLabel}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs font-bold text-slate-600">
+                            SII: {doc.siiStatus} · ${doc.totalAmount.toLocaleString("es-CL")}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-black uppercase text-slate-500">
+                      Últimos submissions
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {(dteTraces?.submissions.length
+                        ? dteTraces.submissions.slice(0, 5)
+                        : [
+                            {
+                              id: "empty-submissions",
+                              taxDocumentId: "",
+                              environment: "certification",
+                              trackId: null,
+                              submissionStatus: "sin submit",
+                              siiStatus: "not_sent",
+                              requestXmlSha256: null,
+                              responseSha256: null,
+                              createdAt: "",
+                            } as DteTraceSubmission,
+                          ]
+                      ).map((submission) => (
+                        <div
+                          key={submission.id}
+                          className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+                        >
+                          <div className="text-xs font-black uppercase text-slate-600">
+                            {submission.environment} · {submission.submissionStatus}
+                          </div>
+                          <div className="mt-1 break-words text-xs font-bold text-slate-600">
+                            Track ID: {submission.trackId ?? "pendiente real"} · SII:{" "}
+                            {submission.siiStatus}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-black uppercase text-slate-500">
+                      Último audit log
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      {(dteTraces?.auditLog.length
+                        ? dteTraces.auditLog.slice(0, 5)
+                        : [
+                            {
+                              id: "empty-audit",
+                              action: "sin auditoría DB",
+                              actorType: "system",
+                              createdAt: "",
+                            } as DteTraceAudit,
+                          ]
+                      ).map((audit) => (
+                        <div
+                          key={audit.id}
+                          className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+                        >
+                          <div className="text-xs font-black uppercase text-slate-600">
+                            {audit.action}
+                          </div>
+                          <div className="mt-1 text-xs font-bold text-slate-600">
+                            Actor: {audit.actorType || "LAB"}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </AdminSectionCard>
