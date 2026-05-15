@@ -7,8 +7,8 @@ import { reserveFolio, type DteFolioLedgerEntry } from "../folios/reserve-folio"
 import {
   mapRawSiiStatus,
   mapSiiStatusToInternalStatus,
-  parseSiiResponse,
-} from "../sii/sii-certification-client";
+  parseSiiSubmissionResponse,
+} from "../sii/sii-status";
 
 const ledger: DteFolioLedgerEntry[] = [
   {
@@ -62,7 +62,7 @@ test("maps SII statuses to internal statuses", () => {
   assert.equal(mapSiiStatusToInternalStatus("processing"), "submitted");
   assert.equal(mapSiiStatusToInternalStatus("unknown"), "failed");
 
-  const parsed = parseSiiResponse({ TRACKID: "123", estado: "EPR" });
+  const parsed = parseSiiSubmissionResponse({ TRACKID: "123", estado: "EPR" });
   assert.equal(parsed.trackId, "123");
   assert.equal(parsed.status, "accepted");
 });

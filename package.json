@@ -12,7 +12,10 @@
     "dte:validate:xsd": "node scripts/dte/validate-xsd.mjs docs/dte-sii/samples/lab-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd",
     "dte:precert": "node scripts/dte/precert-readiness.mjs",
     "dte:certification": "DTE_MODE=certification node scripts/dte/generate-lab-xml.mjs --mode=certification",
-    "dte:test": "node --test scripts/dte/run-dte-tests.mjs"
+    "dte:test": "node --test scripts/dte/run-dte-tests.mjs",
+    "dte:sii:dry-run": "node scripts/dte/sii-certification-smoke.mjs --dry-run",
+    "dte:sii:submit": "node scripts/dte/sii-certification-smoke.mjs --submit",
+    "dte:sii:status": "node scripts/dte/sii-certification-smoke.mjs --status-only"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

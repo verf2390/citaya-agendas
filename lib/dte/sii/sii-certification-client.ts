@@ -1,11 +1,30 @@
+import { existsSync, readFileSync } from "node:fs";
+
 import type {
   SiiClientConfig,
   SiiRejectReason,
   SiiSendResult,
   SiiTrackStatusResult,
 } from "../types";
-
-import type { DteOperationalStatus } from "../status/dte-status";
+import {
+  SII_ERROR_CODES,
+  SiiCertificationError,
+  toSiiCertificationError,
+} from "./sii-errors";
+import { requestSeed, requestToken, signSeed } from "./sii-auth";
+import { submitCertificationSet as submitSet } from "./sii-submit";
+import {
+  getSubmissionStatus as getStatus,
+  mapRawSiiStatus,
+  mapSiiStatusToInternalStatus,
+  parseSiiStatusResponse,
+  parseSiiSubmissionResponse,
+} from "./sii-status";
+import type {
+  SiiCertificationConfig,
+  SiiParsedResponse,
+  SiiSubmitCertificationResult,
+} from "./sii-types";
 
 export const SII_CERTIFICATION_CLIENT_PENDING_REAL_INTEGRATION =
   "SII_CERTIFICATION_CLIENT_PENDING_REAL_INTEGRATION";
@@ -13,116 +32,184 @@ export const SII_CERTIFICATION_CLIENT_PENDING_REAL_INTEGRATION =
 export type SiiCertificationSubmitInput = {
   signedEnvioDteXml: string;
   fileName: string;
-  config: SiiClientConfig;
+  config: SiiClientConfig | SiiCertificationConfig;
 };
 
-export type SiiParsedResponse = {
-  trackId: string | null;
-  status: "sent" | "processing" | "accepted" | "accepted_with_observations" | "rejected" | "unknown";
-  rawCode?: string | null;
-  message?: string | null;
-};
-
-function pendingError(): Error {
-  return new Error(
-    `${SII_CERTIFICATION_CLIENT_PENDING_REAL_INTEGRATION}: integrar seed/token/upload/status reales del ambiente certificacion SII antes de enviar documentos.`,
-  );
+function envValue(name: string, env: NodeJS.ProcessEnv = process.env): string {
+  return String(env[name] ?? "").trim();
 }
 
-function missingConfig(config: SiiClientConfig): SiiRejectReason[] {
-  const errors: SiiRejectReason[] = [];
-  if (!config.baseUrl) errors.push({ code: "missing_base_url", message: "Falta URL base SII" });
-  if (!config.rutEmpresa) errors.push({ code: "missing_company_rut", message: "Falta RUT empresa SII" });
-  if (!config.rutUsuario) errors.push({ code: "missing_user_rut", message: "Falta RUT usuario SII" });
-  return errors;
+export function getSiiCertificationConfigFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): SiiCertificationConfig {
+  const rawEnvironment = envValue("DTE_SII_ENV", env) || "certification";
+  if (rawEnvironment === "production") {
+    throw new SiiCertificationError(
+      SII_ERROR_CODES.PRODUCTION_DISABLED,
+      "Production SII bloqueado hasta aprobacion real y feature flag futuro.",
+      "DTE_SII_ENV",
+    );
+  }
+
+  return {
+    environment: "certification",
+    seedUrl: envValue("DTE_SII_SEED_URL", env),
+    tokenUrl: envValue("DTE_SII_TOKEN_URL", env),
+    submitUrl: envValue("DTE_SII_SUBMIT_URL", env),
+    statusUrl: envValue("DTE_SII_STATUS_URL", env),
+    certPath: envValue("DTE_CERT_PATH", env) || null,
+    privateKeyPath: envValue("DTE_PRIVATE_KEY_PATH", env) || null,
+    cafPath: envValue("DTE_CAF_PATH", env) || null,
+    cafPrivateKeyPath: envValue("DTE_CAF_PRIVATE_KEY_PATH", env) || null,
+    rutEmpresa: envValue("SII_RUT_EMPRESA", env) || null,
+    rutUsuario: envValue("SII_RUT_USUARIO", env) || null,
+    timeoutMs: Number(envValue("DTE_SII_TIMEOUT_MS", env) || 30_000),
+    enableSubmit: envValue("DTE_SII_ENABLE_SUBMIT", env) === "true",
+  };
+}
+
+function toRejectReason(error: unknown): SiiRejectReason {
+  const siiError = toSiiCertificationError(error);
+  return {
+    code: siiError.code,
+    message: siiError.message,
+    field: siiError.field,
+  };
+}
+
+function normalizeConfig(
+  config: SiiClientConfig | SiiCertificationConfig,
+): SiiCertificationConfig {
+  if ("seedUrl" in config) return config;
+  if (config.environment === "production") {
+    throw new SiiCertificationError(
+      SII_ERROR_CODES.PRODUCTION_DISABLED,
+      "Production SII bloqueado hasta aprobacion real.",
+      "environment",
+    );
+  }
+  return {
+    environment: "certification",
+    seedUrl: config.baseUrl ?? "",
+    tokenUrl: config.baseUrl ?? "",
+    submitUrl: config.baseUrl ?? "",
+    statusUrl: config.baseUrl ?? "",
+    rutEmpresa: config.rutEmpresa ?? null,
+    rutUsuario: config.rutUsuario ?? null,
+    timeoutMs: config.timeoutMs ?? 30_000,
+    enableSubmit: false,
+  };
+}
+
+export async function prepareCertificationAuthFlow(
+  config: SiiCertificationConfig,
+  options: { dryRun?: boolean; seed?: string; privateKeyPem?: string | null } = {},
+) {
+  const seed =
+    options.seed ??
+    (await requestSeed(config, { dryRun: options.dryRun })).seed ??
+    "DRY-RUN-SEED-NO-SII-CONTACT";
+  const signedSeed = signSeed(seed, config, {
+    privateKeyPem:
+      options.privateKeyPem ??
+      (config.privateKeyPath && existsSync(config.privateKeyPath)
+        ? readFileSync(config.privateKeyPath, "utf8")
+        : null),
+  });
+  const token = await requestToken(signedSeed.signedSeed ?? "", config, {
+    dryRun: options.dryRun,
+  });
+
+  return { seed, signedSeed, token };
 }
 
 export async function submitCertificationSet(
-  input: SiiCertificationSubmitInput,
-): Promise<SiiSendResult> {
-  const errors = missingConfig(input.config);
-  if (!input.signedEnvioDteXml.trim()) {
-    errors.push({ code: "missing_signed_xml", message: "Falta EnvioDTE firmado" });
-  }
-  if (!input.fileName.trim()) {
-    errors.push({ code: "missing_file_name", message: "Falta nombre de archivo" });
-  }
-
-  if (errors.length > 0) {
+  input: SiiCertificationSubmitInput & {
+    token?: string | null;
+    issuerRut?: string | null;
+    companyRut?: string | null;
+    xmlPath?: string | null;
+    xsdValidated?: boolean;
+    dryRun?: boolean;
+  },
+): Promise<SiiSendResult | SiiSubmitCertificationResult> {
+  const config = normalizeConfig(input.config);
+  try {
+    return await submitSet(config, {
+      xml: input.signedEnvioDteXml,
+      xmlPath: input.xmlPath,
+      xsdValidated: Boolean(input.xsdValidated),
+      token: input.token,
+      issuerRut: input.issuerRut ?? config.rutEmpresa ?? "",
+      companyRut: input.companyRut ?? config.rutEmpresa ?? "",
+      fileName: input.fileName,
+      dryRun: input.dryRun,
+    });
+  } catch (error) {
     return {
       ok: false,
-      environment: input.config.environment,
+      environment: "certification",
       trackId: null,
-      status: "pending",
-      errors,
+      status: "error",
+      errors: [toRejectReason(error)],
       isProductionValid: false,
     };
   }
-
-  throw pendingError();
 }
 
 export async function getSubmissionStatus(
   trackId: string,
-  config: SiiClientConfig,
+  config: SiiClientConfig | SiiCertificationConfig,
+  options: { token?: string | null; dryRun?: boolean } = {},
 ): Promise<SiiTrackStatusResult> {
-  const errors = missingConfig(config);
-  if (!trackId.trim()) {
-    errors.push({ code: "missing_track_id", message: "Falta track_id" });
-  }
-
-  if (errors.length > 0) {
+  const normalized = normalizeConfig(config);
+  try {
+    const result = await getStatus(normalized, {
+      trackId,
+      token: options.token,
+      dryRun: options.dryRun,
+    });
+    return {
+      ok: result.ok,
+      environment: "certification",
+      trackId: result.trackId,
+      siiStatus:
+        result.siiStatus === "accepted"
+          ? "accepted"
+          : result.siiStatus === "rejected"
+            ? "rejected"
+            : result.siiStatus === "failed"
+              ? "error"
+              : result.siiStatus === "unknown"
+                ? "unknown"
+                : "pending",
+      errors: [],
+      checkedAt: result.checkedAt,
+      isProductionValid: false,
+    };
+  } catch (error) {
     return {
       ok: false,
-      environment: config.environment,
+      environment: "certification",
       trackId,
-      siiStatus: "unknown",
-      errors,
+      siiStatus: "error",
+      errors: [toRejectReason(error)],
       checkedAt: new Date().toISOString(),
       isProductionValid: false,
     };
   }
-
-  throw pendingError();
 }
 
 export function parseSiiResponse(rawResponse: unknown): SiiParsedResponse {
-  if (!rawResponse || typeof rawResponse !== "object") {
-    return { trackId: null, status: "unknown", message: "Respuesta SII vacia o no estructurada" };
-  }
-
-  const record = rawResponse as Record<string, unknown>;
-  const rawCode = String(record.status ?? record.estado ?? record.code ?? "").trim();
-  const trackId = String(record.trackId ?? record.track_id ?? record.TRACKID ?? "").trim();
-
-  return {
-    trackId: trackId || null,
-    status: mapRawSiiStatus(rawCode),
-    rawCode: rawCode || null,
-    message: String(record.message ?? record.glosa ?? "").trim() || null,
-  };
+  return parseSiiSubmissionResponse(rawResponse);
 }
 
-export function mapRawSiiStatus(
-  status: string,
-): SiiParsedResponse["status"] {
-  const normalized = status.trim().toUpperCase();
-  if (["EPR", "ACEPTADO", "ACCEPTED"].includes(normalized)) return "accepted";
-  if (["EOK", "ACEPTADO_CON_REPAROS", "ACCEPTED_WITH_OBSERVATIONS"].includes(normalized)) {
-    return "accepted_with_observations";
-  }
-  if (["RCH", "RECHAZADO", "REJECTED"].includes(normalized)) return "rejected";
-  if (["REC", "SENT"].includes(normalized)) return "sent";
-  if (["PDR", "PROCESSING", "PROCESANDO"].includes(normalized)) return "processing";
-  return "unknown";
-}
-
-export function mapSiiStatusToInternalStatus(
-  status: SiiParsedResponse["status"],
-): DteOperationalStatus {
-  if (status === "accepted") return "accepted";
-  if (status === "accepted_with_observations") return "accepted_with_observations";
-  if (status === "rejected") return "rejected";
-  if (status === "sent" || status === "processing") return "submitted";
-  return "failed";
-}
+export {
+  mapRawSiiStatus,
+  mapSiiStatusToInternalStatus,
+  parseSiiStatusResponse,
+  parseSiiSubmissionResponse,
+  requestSeed,
+  requestToken,
+  signSeed,
+};

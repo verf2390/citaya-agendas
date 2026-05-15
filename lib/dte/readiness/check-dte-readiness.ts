@@ -73,11 +73,11 @@ function score(items: DteReadinessItem[], categories: string[]): number {
 
   const points = relevant.reduce((total, readinessItem) => {
     if (readinessItem.status === "OK") return total + 1;
-    if (readinessItem.status === "WARNING") return total + 0.8;
+    if (readinessItem.status === "WARNING") return total + 0.85;
     if (readinessItem.status === "LAB_ONLY") {
-      return total + 0.75;
+      return total + 0.8;
     }
-    if (readinessItem.status === "PENDING_REAL_SII") return total + 0.75;
+    if (readinessItem.status === "PENDING_REAL_SII") return total + 0.78;
     return total;
   }, 0);
 
@@ -166,10 +166,28 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     ),
     item(
       "sii_client",
-      "PENDING_REAL_SII",
-      "Cliente SII de certificacion esta bloqueado hasta integrar endpoints reales.",
+      exists(repoRoot, "lib/dte/sii/sii-auth.ts") &&
+        exists(repoRoot, "lib/dte/sii/sii-submit.ts") &&
+        exists(repoRoot, "lib/dte/sii/sii-status.ts")
+        ? "WARNING"
+        : "PENDING_REAL_SII",
+      "Cliente SII certification separado por seed/token/submit/status; envio real sigue bloqueado sin credenciales.",
       "critical",
-      "Implementar seed/token/upload/status contra ambiente certificacion SII.",
+      "Configurar endpoints SII certification y probar smoke --dry-run antes de submit real.",
+    ),
+    item(
+      "sii_auth",
+      exists(repoRoot, "lib/dte/sii/sii-auth.ts") ? "WARNING" : "PENDING_REAL_SII",
+      "Flujo seed/token preparado con firma local de seed; requiere certificado real y endpoint SII.",
+      "critical",
+      "Probar seed/token con certificado real de certification fuera del repo.",
+    ),
+    item(
+      "sii_submit",
+      exists(repoRoot, "lib/dte/sii/sii-submit.ts") ? "WARNING" : "PENDING_REAL_SII",
+      "Submit EnvioDTE preparado con validaciones; submit real bloqueado por feature flag y configuracion.",
+      "critical",
+      "Ejecutar smoke --submit solo con DTE_SII_ENABLE_SUBMIT=true y credenciales reales.",
     ),
     item(
       "track_id",
@@ -248,6 +266,8 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     "frmt",
     "xmldsig",
     "sii_client",
+    "sii_auth",
+    "sii_submit",
     "track_id",
     "sii_status_query",
     "db_schema",

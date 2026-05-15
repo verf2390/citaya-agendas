@@ -137,14 +137,29 @@ create table if not exists tax_document_sii_submissions (
   tax_document_id uuid not null references tax_documents(id) on delete cascade,
   environment text not null check (environment in ('certification', 'production')),
   track_id text,
+  token_redacted text,
+  token_requested_at timestamptz,
   submitted_at timestamptz,
   checked_at timestamptz,
   sii_status text not null default 'unknown',
   request_storage_ref text,
   response_storage_ref text,
+  safe_raw_response jsonb,
   error_message text,
   created_at timestamptz not null default now(),
   unique (tenant_id, track_id)
+);
+
+create table if not exists tax_document_sii_status_history (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  sii_submission_id uuid not null references tax_document_sii_submissions(id) on delete cascade,
+  track_id text,
+  raw_status text,
+  internal_status text not null,
+  message text,
+  safe_raw_response jsonb,
+  checked_at timestamptz not null default now()
 );
 
 create table if not exists tax_document_print_samples (

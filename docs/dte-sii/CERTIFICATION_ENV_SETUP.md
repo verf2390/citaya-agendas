@@ -35,13 +35,22 @@ DTE_CERT_P12_PASSWORD=
 DTE_PUBLIC_CERT_PATH=/ruta/fuera/del/repo/cert.pem
 ```
 
-SII certification, para el siguiente bloque:
+SII certification:
 
 ```bash
-SII_ENV=certification
-SII_CERTIFICATION_BASE_URL=
+DTE_SII_ENV=certification
+DTE_SII_SEED_URL=
+DTE_SII_TOKEN_URL=
+DTE_SII_SUBMIT_URL=
+DTE_SII_STATUS_URL=
 SII_RUT_EMPRESA=
 SII_RUT_USUARIO=
+```
+
+`DTE_SII_ENV=production` esta bloqueado hasta aprobacion SII real:
+
+```text
+DTE_PRODUCTION_DISABLED_UNTIL_SII_APPROVAL
 ```
 
 ## .env local
@@ -74,6 +83,12 @@ Validar XSD:
 node scripts/dte/validate-xsd.mjs tmp/dte-certification/certification-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd
 ```
 
+Smoke SII certification sin enviar:
+
+```bash
+node scripts/dte/sii-certification-smoke.mjs --dry-run
+```
+
 ## Rollback seguro
 
 - Borrar `tmp/dte-certification/`.
@@ -86,4 +101,3 @@ node scripts/dte/validate-xsd.mjs tmp/dte-certification/certification-envio-dte.
 - XMLDSig usa Node crypto con serializacion estable controlada, pero la canonicalizacion debe verificarse contra SII.
 - No se envia XML al SII.
 - No se marca como produccion ni aprobado.
-

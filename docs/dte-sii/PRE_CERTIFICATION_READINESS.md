@@ -13,6 +13,8 @@ Citaya avanza bajo el enfoque `citaya_own_dte`: cada tenant emite con su propio 
 - FRMT y XMLDSig reales/controlados preparados para certification con secretos externos.
 - Falla segura si faltan CAF/certificado/llaves en modo `certification`.
 - Readiness tecnico por script y API admin.
+- Cliente SII certification separado en seed/token/submit/status con errores controlados.
+- Smoke test SII certification en dry-run por defecto, sin envio ni track_id simulado.
 - Base de muestra impresa/PDF LAB.
 - Schema futuro documentado, no aplicado.
 
@@ -47,6 +49,7 @@ npm run dte:xsd
 npm run dte:validate:xsd
 npm run dte:precert
 npm run dte:certification
+npm run dte:sii:dry-run
 ```
 
 ## Certification
@@ -59,6 +62,11 @@ DTE_CAF_PATH=/ruta/fuera/del/repo/caf.xml
 DTE_CAF_PRIVATE_KEY_PATH=/ruta/fuera/del/repo/caf-private-key.pem
 DTE_CERT_PATH=/ruta/fuera/del/repo/cert.pem
 DTE_PRIVATE_KEY_PATH=/ruta/fuera/del/repo/private-key.pem
+DTE_SII_ENV=certification
+DTE_SII_SEED_URL=
+DTE_SII_TOKEN_URL=
+DTE_SII_SUBMIT_URL=
+DTE_SII_STATUS_URL=
 ```
 
 No usar rutas como `./cert.pem`, `./private-key.pem`, `./caf.xml`, ni archivos dentro de `docs/`, `lib/`, `app/` o `scripts/`.

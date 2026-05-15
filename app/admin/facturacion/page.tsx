@@ -1266,6 +1266,48 @@ export default function AdminFacturacionPage() {
             </AdminSectionCard>
 
             <AdminSectionCard
+              title="Integración SII Certification"
+              description="Preparación técnica de seed, token, submit y consulta de estado para ambiente de certificación."
+              actions={<StatusBadge label="NO PRODUCTIVO" tone="amber" />}
+            >
+              <div className="grid gap-4">
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-black leading-6 text-red-900">
+                  Esta sección prepara conexión con ambiente de certificación SII. No
+                  emite documentos tributarios legales y no debe usarse en producción.
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {[
+                    ["Seed/token", "pendiente / configurable"],
+                    ["Submit certification set", "listo técnicamente / bloqueado UI"],
+                    ["Track ID", "pendiente hasta envío real"],
+                    ["Consulta estado", "lista técnicamente / requiere token"],
+                    ["Ambiente", "certification"],
+                    ["Producción", "bloqueada hasta aprobación"],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <div className="text-[11px] font-black uppercase text-slate-500">
+                        {label}
+                      </div>
+                      <div className="mt-1 text-sm font-black text-slate-900">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
+                  El smoke test por defecto es dry-run y no contacta SII. El submit
+                  real queda fuera de la UI hasta contar con CAF, certificado, token,
+                  XML validado, track_id real y autorización de certificación.
+                </div>
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
               title="Datos tributarios"
               description="Información base del emisor para boletas y facturas."
             >

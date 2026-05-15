@@ -30,6 +30,13 @@ const REQUIRED_CERTIFICATION_ENV = [
   "DTE_PRIVATE_KEY_PATH",
 ] as const;
 
+const REQUIRED_SII_CERTIFICATION_ENV = [
+  "DTE_SII_SEED_URL",
+  "DTE_SII_TOKEN_URL",
+  "DTE_SII_SUBMIT_URL",
+  "DTE_SII_STATUS_URL",
+] as const;
+
 const SECRET_ENV = [
   ...REQUIRED_CERTIFICATION_ENV,
   "DTE_CERT_PASSWORD",
@@ -95,6 +102,23 @@ export function validateDteConfig(
       : "Modo DTE no reconocido; usar lab, xsd-structure o certification.",
   });
 
+  const siiEnv = String(env.DTE_SII_ENV ?? "certification").trim();
+  items.push({
+    key: "DTE_SII_ENV",
+    status:
+      siiEnv === "production"
+        ? "DANGEROUS"
+        : siiEnv === "certification"
+          ? "OK"
+          : "WARNING",
+    message:
+      siiEnv === "production"
+        ? "DTE_PRODUCTION_DISABLED_UNTIL_SII_APPROVAL: production bloqueado hasta aprobacion SII real."
+        : siiEnv === "certification"
+          ? "Ambiente SII certification configurado para pre-certificacion."
+          : "Ambiente SII no reconocido; usar certification. Production esta bloqueado.",
+  });
+
   if (input.issuerRut !== undefined) {
     items.push({
       key: "issuerRut",
@@ -138,6 +162,17 @@ export function validateDteConfig(
       message: value
         ? `${name} configurado como ruta externa sin exponer contenido.`
         : `${name} pendiente; obligatorio solo en modo certification.`,
+    });
+  }
+
+  for (const name of REQUIRED_SII_CERTIFICATION_ENV) {
+    const value = String(env[name] ?? "").trim();
+    items.push({
+      key: name,
+      status: value ? "OK" : mode === "certification" ? "MISSING" : "WARNING",
+      message: value
+        ? `${name} configurado para ambiente SII certification.`
+        : `${name} pendiente para seed/token/submit/status SII certification.`,
     });
   }
 

@@ -1,8 +1,17 @@
-# Cliente SII certificacion
+# Cliente SII Certification
 
-Estado: scaffold serio / PENDIENTE / NO PRODUCTIVO.
+Estado: **LAB / PENDIENTE / NO PRODUCTIVO**.
 
-El modulo `lib/dte/sii/sii-client.certification.ts` define la ruta para operar contra ambiente de certificacion SII, pero bloquea envio real hasta que existan XML validado contra XSD, firma XML real y CAF/TED real. El setup local previo esta documentado en `docs/dte-sii/CERTIFICATION_ENV_SETUP.md`.
+El cliente queda separado por responsabilidades:
+
+- `lib/dte/sii/sii-auth.ts`: seed, firma de seed y token.
+- `lib/dte/sii/sii-submit.ts`: envio de set `EnvioDTE`.
+- `lib/dte/sii/sii-status.ts`: consulta y mapeo de estado.
+- `lib/dte/sii/sii-types.ts`: contratos internos.
+- `lib/dte/sii/sii-errors.ts`: errores controlados.
+- `lib/dte/sii/sii-certification-client.ts`: fachada compatible.
+
+No hay aprobacion SII, no hay emision legal y no hay produccion habilitada.
 
 ## Flujo esperado
 
@@ -19,13 +28,51 @@ El modulo `lib/dte/sii/sii-client.certification.ts` define la ruta para operar c
 
 ## Variables previstas
 
-- `SII_ENV=lab|certification|production`.
-- `SII_CERTIFICATION_BASE_URL`.
-- `SII_PRODUCTION_BASE_URL`.
+- `DTE_SII_ENV=certification`.
+- `DTE_SII_SEED_URL`.
+- `DTE_SII_TOKEN_URL`.
+- `DTE_SII_SUBMIT_URL`.
+- `DTE_SII_STATUS_URL`.
+- `DTE_SII_ENABLE_SUBMIT=true` solo para submit real controlado en certification.
 - `SII_RUT_EMPRESA`.
 - `SII_RUT_USUARIO`.
 
 No agregar valores reales al repositorio.
+
+Si `DTE_SII_ENV=production`, el sistema bloquea con:
+
+```text
+DTE_PRODUCTION_DISABLED_UNTIL_SII_APPROVAL
+```
+
+## Errores controlados
+
+- `SII_CERTIFICATION_ENDPOINT_MISSING`
+- `SII_CERTIFICATE_MISSING`
+- `SII_PRIVATE_KEY_MISSING`
+- `SII_TOKEN_PENDING_REAL_CERTIFICATION`
+- `SII_SUBMIT_PENDING_REAL_CERTIFICATION`
+- `SII_STATUS_PENDING_REAL_CERTIFICATION`
+
+## Smoke test
+
+Dry-run por defecto, sin contacto SII ni `track_id` simulado:
+
+```bash
+node scripts/dte/sii-certification-smoke.mjs --dry-run
+```
+
+Submit real de certification, solo con secretos reales y flag:
+
+```bash
+node scripts/dte/sii-certification-smoke.mjs --submit
+```
+
+Consulta de estado:
+
+```bash
+node scripts/dte/sii-certification-smoke.mjs --status-only --track-id=123456
+```
 
 ## Pruebas seguras
 
