@@ -15,6 +15,7 @@ Citaya avanza bajo el enfoque `citaya_own_dte`: cada tenant emite con su propio 
 - Readiness tecnico por script y API admin.
 - Cliente SII certification separado en seed/token/submit/status con errores controlados.
 - Smoke test SII certification en dry-run por defecto, sin envio ni track_id simulado.
+- Persistencia no productiva de dry-run/submissions/status/auditoria con hashes y redaccion.
 - Base de muestra impresa/PDF LAB.
 - Schema futuro documentado, no aplicado.
 
@@ -50,6 +51,7 @@ npm run dte:validate:xsd
 npm run dte:precert
 npm run dte:certification
 npm run dte:sii:dry-run
+npm run dte:sii:dry-run:trace
 ```
 
 ## Certification

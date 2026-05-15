@@ -62,6 +62,14 @@ Dry-run por defecto, sin contacto SII ni `track_id` simulado:
 node scripts/dte/sii-certification-smoke.mjs --dry-run
 ```
 
+El dry-run escribe trazabilidad segura en:
+
+```text
+tmp/dte-certification/smoke-submission-log.json
+```
+
+La traza contiene hashes, estado, readiness y configuracion redactada. No guarda token completo, certificados, llaves privadas ni CAF real.
+
 Submit real de certification, solo con secretos reales y flag:
 
 ```bash

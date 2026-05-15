@@ -96,21 +96,23 @@ create table if not exists tax_documents (
   document_type text not null,
   folio integer not null,
   status text not null check (status in ('draft', 'xml_generated', 'signed', 'submitted', 'accepted', 'accepted_with_observations', 'rejected', 'cancelled', 'failed')),
-  sii_status text not null default 'not_sent' check (sii_status in ('not_sent', 'sent', 'processing', 'accepted', 'accepted_with_observations', 'rejected', 'unknown')),
-  issuer_rut text not null,
-  recipient_rut text not null,
+  sii_status text not null default 'not_sent' check (sii_status in ('not_sent', 'sent', 'processing', 'accepted', 'accepted_with_observations', 'rejected', 'unknown', 'failed')),
+  emitter_rut text not null,
+  emitter_name text not null,
+  receiver_rut text not null,
+  receiver_name text not null,
   issue_date date not null,
-  net_amount integer default 0,
-  exempt_amount integer default 0,
-  tax_amount integer default 0,
   total_amount integer not null,
+  net_amount integer default 0,
+  tax_amount integer default 0,
+  exempt_amount integer default 0,
+  xml_storage_path text,
+  xml_sha256 text,
+  pdf_storage_path text,
   appointment_id uuid,
   payment_id uuid,
   payment_reference text,
   customer_id uuid,
-  xml_storage_ref text,
-  signed_xml_storage_ref text,
-  print_sample_storage_ref text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (tenant_id, document_type, folio),
@@ -124,10 +126,10 @@ create table if not exists tax_document_events (
   tenant_id uuid not null references tenants(id) on delete cascade,
   tax_document_id uuid not null references tax_documents(id) on delete cascade,
   event_type text not null,
-  from_status text,
-  to_status text,
+  previous_status text,
+  next_status text,
   message text,
-  metadata jsonb not null default '{}'::jsonb,
+  metadata_redacted jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -135,31 +137,36 @@ create table if not exists tax_document_sii_submissions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
   tax_document_id uuid not null references tax_documents(id) on delete cascade,
-  environment text not null check (environment in ('certification', 'production')),
+  environment text not null check (environment in ('lab', 'certification', 'production')),
   track_id text,
-  token_redacted text,
-  token_requested_at timestamptz,
+  submission_status text not null default 'draft' check (submission_status in ('draft', 'dry_run', 'blocked', 'submitted', 'failed')),
+  sii_status text not null default 'unknown' check (sii_status in ('not_sent', 'sent', 'processing', 'accepted', 'accepted_with_observations', 'rejected', 'unknown', 'failed')),
+  request_xml_sha256 text,
+  response_sha256 text,
+  raw_response_redacted jsonb,
+  token_fingerprint text,
   submitted_at timestamptz,
   checked_at timestamptz,
-  sii_status text not null default 'unknown',
   request_storage_ref text,
   response_storage_ref text,
-  safe_raw_response jsonb,
   error_message text,
   created_at timestamptz not null default now(),
   unique (tenant_id, track_id)
 );
 
-create table if not exists tax_document_sii_status_history (
+create table if not exists tax_document_status_history (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
-  sii_submission_id uuid not null references tax_document_sii_submissions(id) on delete cascade,
-  track_id text,
-  raw_status text,
-  internal_status text not null,
-  message text,
-  safe_raw_response jsonb,
-  checked_at timestamptz not null default now()
+  tax_document_id uuid not null references tax_documents(id) on delete cascade,
+  submission_id uuid references tax_document_sii_submissions(id) on delete set null,
+  previous_status text,
+  next_status text not null,
+  previous_sii_status text,
+  next_sii_status text not null,
+  reason text not null,
+  source text not null check (source in ('system', 'admin', 'sii', 'webhook', 'script')),
+  created_by uuid,
+  created_at timestamptz not null default now()
 );
 
 create table if not exists tax_document_print_samples (
@@ -176,11 +183,12 @@ create table if not exists tax_document_audit_log (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references tenants(id) on delete cascade,
   tax_document_id uuid,
-  actor_user_id uuid,
+  submission_id uuid,
   action text not null,
-  ip_address inet,
-  user_agent text,
-  metadata jsonb not null default '{}'::jsonb,
+  actor_type text not null check (actor_type in ('system', 'admin', 'tenant_user', 'script')),
+  actor_id uuid,
+  metadata_redacted jsonb not null default '{}'::jsonb,
+  ip_hash text,
   created_at timestamptz not null default now()
 );
 
@@ -190,6 +198,9 @@ create index if not exists idx_tax_documents_folio on tax_documents (tenant_id, 
 create index if not exists idx_tax_documents_appointment on tax_documents (tenant_id, appointment_id);
 create index if not exists idx_tax_documents_payment on tax_documents (tenant_id, payment_id);
 create index if not exists idx_sii_submissions_track_id on tax_document_sii_submissions (tenant_id, track_id);
+create index if not exists idx_sii_submissions_document on tax_document_sii_submissions (tenant_id, tax_document_id, created_at desc);
+create index if not exists idx_tax_document_status_history_document on tax_document_status_history (tenant_id, tax_document_id, created_at desc);
+create index if not exists idx_tax_document_audit_log_document on tax_document_audit_log (tenant_id, tax_document_id, created_at desc);
 
 -- RLS sugerido:
 -- alter table tenant_dte_settings enable row level security;

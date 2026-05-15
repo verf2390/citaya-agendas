@@ -1,0 +1,281 @@
+import type { DteOperationalStatus } from "../status/dte-status";
+import { sha256String } from "./dte-hash";
+import type {
+  DtePersistenceResult,
+  DteSiiStatus,
+  TaxDocumentAuditRecord,
+  TaxDocumentDraftPersistence,
+  TaxDocumentRecord,
+  TaxDocumentStatusHistoryRecord,
+  TaxDocumentSubmissionRecord,
+} from "./dte-persistence-types";
+
+export type MarkXmlGeneratedInput = {
+  taxDocumentId: string;
+  xml: string;
+  xmlStoragePath?: string | null;
+};
+
+export type MarkSignedInput = {
+  taxDocumentId: string;
+  signedXml?: string | null;
+};
+
+export type UpdateSiiSubmissionStatusInput = {
+  submissionId: string;
+  submissionStatus: TaxDocumentSubmissionRecord["submissionStatus"];
+  siiStatus: DteSiiStatus;
+  trackId?: string | null;
+  responseSha256?: string | null;
+  rawResponseRedacted?: TaxDocumentSubmissionRecord["rawResponseRedacted"];
+  checkedAt?: string | null;
+};
+
+export interface DteRepository {
+  createTaxDocumentDraft(
+    draft: TaxDocumentDraftPersistence,
+  ): Promise<DtePersistenceResult<TaxDocumentRecord>>;
+  markXmlGenerated(
+    input: MarkXmlGeneratedInput,
+  ): Promise<DtePersistenceResult<TaxDocumentRecord>>;
+  markSigned(input: MarkSignedInput): Promise<DtePersistenceResult<TaxDocumentRecord>>;
+  createSiiSubmission(
+    submission: TaxDocumentSubmissionRecord,
+  ): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>>;
+  updateSiiSubmissionStatus(
+    input: UpdateSiiSubmissionStatusInput,
+  ): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>>;
+  appendStatusHistory(
+    history: TaxDocumentStatusHistoryRecord,
+  ): Promise<DtePersistenceResult<TaxDocumentStatusHistoryRecord>>;
+  appendAuditLog(
+    audit: TaxDocumentAuditRecord,
+  ): Promise<DtePersistenceResult<TaxDocumentAuditRecord>>;
+  findByTrackId(trackId: string): Promise<TaxDocumentSubmissionRecord | null>;
+  findByDocumentReference(reference: {
+    tenantId: string;
+    paymentReference?: string | null;
+    paymentId?: string | null;
+    appointmentId?: string | null;
+  }): Promise<TaxDocumentRecord | null>;
+  findByTenantAndFolio(input: {
+    tenantId: string;
+    documentType: string;
+    folio: number;
+  }): Promise<TaxDocumentRecord | null>;
+}
+
+export class InMemoryDteRepository implements DteRepository {
+  taxDocuments: TaxDocumentRecord[] = [];
+  submissions: TaxDocumentSubmissionRecord[] = [];
+  statusHistory: TaxDocumentStatusHistoryRecord[] = [];
+  auditLog: TaxDocumentAuditRecord[] = [];
+
+  async createTaxDocumentDraft(
+    draft: TaxDocumentDraftPersistence,
+  ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    const duplicate = await this.findByTenantAndFolio({
+      tenantId: draft.tenantId,
+      documentType: draft.documentType,
+      folio: draft.folio,
+    });
+    if (duplicate) {
+      return { ok: false, error: "Duplicate tenant/document_type/folio" };
+    }
+
+    const byReference = await this.findByDocumentReference({
+      tenantId: draft.tenantId,
+      paymentReference: draft.paymentReference,
+      paymentId: draft.paymentId,
+      appointmentId: draft.appointmentId,
+    });
+    if (byReference) {
+      return { ok: false, error: "Duplicate document reference" };
+    }
+
+    const now = new Date().toISOString();
+    const record: TaxDocumentRecord = {
+      ...draft,
+      id: `taxdoc_${sha256String(`${draft.tenantId}:${draft.documentType}:${draft.folio}`).slice(0, 16)}`,
+      status: "draft",
+      siiStatus: "not_sent",
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.taxDocuments.push(record);
+    return { ok: true, record };
+  }
+
+  async markXmlGenerated(
+    input: MarkXmlGeneratedInput,
+  ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    return this.updateDocument(input.taxDocumentId, {
+      status: "xml_generated",
+      xmlSha256: sha256String(input.xml),
+      xmlStoragePath: input.xmlStoragePath ?? null,
+    });
+  }
+
+  async markSigned(input: MarkSignedInput): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    return this.updateDocument(input.taxDocumentId, {
+      status: "signed",
+      xmlSha256: input.signedXml ? sha256String(input.signedXml) : undefined,
+    });
+  }
+
+  async createSiiSubmission(
+    submission: TaxDocumentSubmissionRecord,
+  ): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
+    if (
+      submission.trackId &&
+      this.submissions.some(
+        (item) => item.tenantId === submission.tenantId && item.trackId === submission.trackId,
+      )
+    ) {
+      return { ok: false, error: "Duplicate track_id for tenant" };
+    }
+
+    this.submissions.push(submission);
+    return { ok: true, record: submission };
+  }
+
+  async updateSiiSubmissionStatus(
+    input: UpdateSiiSubmissionStatusInput,
+  ): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
+    const submission = this.submissions.find((item) => item.id === input.submissionId);
+    if (!submission) return { ok: false, error: "Submission not found" };
+
+    submission.submissionStatus = input.submissionStatus;
+    submission.siiStatus = input.siiStatus;
+    submission.trackId = input.trackId ?? submission.trackId;
+    submission.responseSha256 = input.responseSha256 ?? submission.responseSha256;
+    submission.rawResponseRedacted =
+      input.rawResponseRedacted ?? submission.rawResponseRedacted;
+    submission.checkedAt = input.checkedAt ?? submission.checkedAt;
+
+    const document = this.taxDocuments.find((item) => item.id === submission.taxDocumentId);
+    if (document) {
+      document.siiStatus = input.siiStatus;
+      document.status = mapSubmissionStatusToDocumentStatus(
+        input.submissionStatus,
+        input.siiStatus,
+      );
+      document.updatedAt = new Date().toISOString();
+    }
+
+    return { ok: true, record: submission };
+  }
+
+  async appendStatusHistory(
+    history: TaxDocumentStatusHistoryRecord,
+  ): Promise<DtePersistenceResult<TaxDocumentStatusHistoryRecord>> {
+    this.statusHistory.push(history);
+    return { ok: true, record: history };
+  }
+
+  async appendAuditLog(
+    audit: TaxDocumentAuditRecord,
+  ): Promise<DtePersistenceResult<TaxDocumentAuditRecord>> {
+    this.auditLog.push(audit);
+    return { ok: true, record: audit };
+  }
+
+  async findByTrackId(trackId: string): Promise<TaxDocumentSubmissionRecord | null> {
+    return this.submissions.find((item) => item.trackId === trackId) ?? null;
+  }
+
+  async findByDocumentReference(reference: {
+    tenantId: string;
+    paymentReference?: string | null;
+    paymentId?: string | null;
+    appointmentId?: string | null;
+  }): Promise<TaxDocumentRecord | null> {
+    return (
+      this.taxDocuments.find(
+        (item) =>
+          item.tenantId === reference.tenantId &&
+          ((reference.paymentReference &&
+            item.paymentReference === reference.paymentReference) ||
+            (reference.paymentId && item.paymentId === reference.paymentId) ||
+            (reference.appointmentId && item.appointmentId === reference.appointmentId)),
+      ) ?? null
+    );
+  }
+
+  async findByTenantAndFolio(input: {
+    tenantId: string;
+    documentType: string;
+    folio: number;
+  }): Promise<TaxDocumentRecord | null> {
+    return (
+      this.taxDocuments.find(
+        (item) =>
+          item.tenantId === input.tenantId &&
+          item.documentType === input.documentType &&
+          item.folio === input.folio,
+      ) ?? null
+    );
+  }
+
+  private async updateDocument(
+    taxDocumentId: string,
+    patch: Partial<
+      Pick<
+        TaxDocumentRecord,
+        "status" | "siiStatus" | "xmlSha256" | "xmlStoragePath" | "pdfStoragePath"
+      >
+    >,
+  ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    const record = this.taxDocuments.find((item) => item.id === taxDocumentId);
+    if (!record) return { ok: false, error: "Tax document not found" };
+    Object.assign(record, patch, { updatedAt: new Date().toISOString() });
+    return { ok: true, record };
+  }
+}
+
+function mapSubmissionStatusToDocumentStatus(
+  submissionStatus: TaxDocumentSubmissionRecord["submissionStatus"],
+  siiStatus: DteSiiStatus,
+): DteOperationalStatus {
+  if (siiStatus === "accepted") return "accepted";
+  if (siiStatus === "accepted_with_observations") return "accepted_with_observations";
+  if (siiStatus === "rejected") return "rejected";
+  if (submissionStatus === "submitted" || siiStatus === "sent" || siiStatus === "processing") {
+    return "submitted";
+  }
+  if (submissionStatus === "failed" || siiStatus === "failed") return "failed";
+  return "signed";
+}
+
+export class SupabaseDteRepository implements DteRepository {
+  async createTaxDocumentDraft(): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
+  }
+  async markXmlGenerated(): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
+  }
+  async markSigned(): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
+  }
+  async createSiiSubmission(): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
+    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
+  }
+  async updateSiiSubmissionStatus(): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
+    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
+  }
+  async appendStatusHistory(): Promise<DtePersistenceResult<TaxDocumentStatusHistoryRecord>> {
+    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
+  }
+  async appendAuditLog(): Promise<DtePersistenceResult<TaxDocumentAuditRecord>> {
+    return { ok: false, error: "SupabaseDteRepository pendiente de migracion real" };
+  }
+  async findByTrackId(): Promise<TaxDocumentSubmissionRecord | null> {
+    return null;
+  }
+  async findByDocumentReference(): Promise<TaxDocumentRecord | null> {
+    return null;
+  }
+  async findByTenantAndFolio(): Promise<TaxDocumentRecord | null> {
+    return null;
+  }
+}

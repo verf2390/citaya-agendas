@@ -15,7 +15,9 @@
     "dte:test": "node --test scripts/dte/run-dte-tests.mjs",
     "dte:sii:dry-run": "node scripts/dte/sii-certification-smoke.mjs --dry-run",
     "dte:sii:submit": "node scripts/dte/sii-certification-smoke.mjs --submit",
-    "dte:sii:status": "node scripts/dte/sii-certification-smoke.mjs --status-only"
+    "dte:sii:status": "node scripts/dte/sii-certification-smoke.mjs --status-only",
+    "dte:persistence:test": "npm run dte:test",
+    "dte:sii:dry-run:trace": "node scripts/dte/sii-certification-smoke.mjs --dry-run"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

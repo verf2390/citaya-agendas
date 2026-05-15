@@ -220,6 +220,62 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
       "Revisar y migrar con RLS antes de certification real.",
     ),
     item(
+      "persistence_schema",
+      exists(repoRoot, "docs/dte-sii/DTE_PRODUCTION_SCHEMA.sql") ? "OK" : "WARNING",
+      "Schema contempla tax_documents, submissions, status history y audit log.",
+      "warning",
+      "Aplicar migraciones reales solo despues de revision RLS.",
+    ),
+    item(
+      "submissions_persistence",
+      exists(repoRoot, "lib/dte/persistence/dte-submissions.ts") ? "OK" : "WARNING",
+      "Persistencia no productiva de submissions con hashes y respuesta redactada.",
+      "warning",
+      "Conectar repositorio Supabase cuando exista migracion DTE.",
+    ),
+    item(
+      "status_history",
+      exists(repoRoot, "lib/dte/persistence/dte-status-history.ts") ? "OK" : "WARNING",
+      "Status history registra transiciones internas/SII con fuente y razon.",
+      "warning",
+      "Persistir historial real por tenant/documento en DB.",
+    ),
+    item(
+      "audit_log",
+      exists(repoRoot, "lib/dte/persistence/dte-audit.ts") ? "OK" : "WARNING",
+      "Audit log redactado disponible para intentos LAB/certification.",
+      "warning",
+      "Agregar actor real y RLS antes de operaciones reales.",
+    ),
+    item(
+      "redaction",
+      exists(repoRoot, "lib/dte/persistence/dte-redaction.ts") ? "OK" : "WARNING",
+      "Redaccion evita guardar tokens completos, secretos, PEM y rutas sensibles.",
+      "critical",
+      "Mantener logs sin secretos y guardar solo fingerprints/hashes.",
+    ),
+    item(
+      "xml_hashing",
+      exists(repoRoot, "lib/dte/persistence/dte-hash.ts") ? "OK" : "WARNING",
+      "Hash SHA-256 disponible para XML/respuestas sin guardar contenido sensible.",
+      "warning",
+      "Usar xml_sha256 como evidencia y evitar duplicados.",
+    ),
+    item(
+      "blocked_submit_audit",
+      exists(repoRoot, "scripts/dte/sii-certification-smoke.mjs") ? "OK" : "WARNING",
+      "Smoke registra dry-run y submit bloqueado en traza no productiva.",
+      "warning",
+      "Persistir blocked submit en DB real cuando exista repositorio Supabase.",
+    ),
+    item(
+      "tenant_isolation_persistence",
+      "WARNING",
+      "Repositorio Supabase queda pendiente; aislamiento final depende de RLS por tenant_id.",
+      "critical",
+      "Implementar SupabaseDteRepository con politicas tenant antes de certification real.",
+    ),
+    item(
       "multi_tenant",
       exists(repoRoot, "docs/dte-sii/DTE_MULTI_TENANT_SECURITY.md")
         ? "OK"
@@ -271,12 +327,20 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     "track_id",
     "sii_status_query",
     "db_schema",
+    "persistence_schema",
+    "submissions_persistence",
+    "status_history",
+    "audit_log",
+    "redaction",
+    "xml_hashing",
+    "blocked_submit_audit",
     "multi_tenant",
   ];
   const productionCategories = [
     ...certificationCategories,
     "issuer",
     "folios",
+    "tenant_isolation_persistence",
     "agenda_payments",
   ];
 

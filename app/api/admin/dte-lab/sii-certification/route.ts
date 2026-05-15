@@ -1,7 +1,9 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { resolve } from "node:path";
 
+import { readSmokeTrace } from "@/lib/dte/persistence/dte-smoke-trace";
 import { getSubmissionStatus, getSiiCertificationConfigFromEnv } from "@/lib/dte/sii/sii-certification-client";
 import { SiiCertificationError } from "@/lib/dte/sii/sii-errors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -95,6 +97,20 @@ function configSnapshot() {
   };
 }
 
+function traceSnapshot() {
+  const tracePath = resolve(
+    process.cwd(),
+    "tmp/dte-certification/smoke-submission-log.json",
+  );
+  const lastDryRun = readSmokeTrace(tracePath);
+  return {
+    lastDryRun,
+    lastBlockedSubmitAttempt:
+      lastDryRun?.lastAuditAction === "sii_submit_blocked" ? lastDryRun : null,
+    statusCheckHistory: [],
+  };
+}
+
 export async function POST(req: Request) {
   try {
     const auth = await requireUser(req);
@@ -125,11 +141,13 @@ export async function POST(req: Request) {
     }
 
     if (operation === "submit") {
+      const history = traceSnapshot();
       return NextResponse.json(
         {
           ok: false,
           error:
             "SII_SUBMIT_PENDING_REAL_CERTIFICATION: submit real bloqueado desde UI.",
+          history,
         },
         { status: 423 },
       );
@@ -154,6 +172,7 @@ export async function POST(req: Request) {
       globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO",
       operation,
       certification: configSnapshot(),
+      history: traceSnapshot(),
       warning:
         "Esta API prepara certification SII. No emite documentos legales ni habilita produccion.",
     });

@@ -44,6 +44,10 @@ const { SiiCertificationError } = require(resolve(
   repoRoot,
   "lib/dte/sii/sii-errors.ts",
 ));
+const { writeSmokeTrace } = require(resolve(
+  repoRoot,
+  "lib/dte/persistence/dte-smoke-trace.ts",
+));
 
 function step(name, status, message) {
   return { name, status, message };
@@ -58,6 +62,45 @@ function print(steps) {
   for (const item of steps) {
     console.log(`[${item.status}] ${item.name}: ${item.message}`);
   }
+}
+
+function configSummary(config) {
+  return {
+    environment: config.environment,
+    hasSeedUrl: Boolean(config.seedUrl),
+    hasTokenUrl: Boolean(config.tokenUrl),
+    hasSubmitUrl: Boolean(config.submitUrl),
+    hasStatusUrl: Boolean(config.statusUrl),
+    hasCertPath: Boolean(config.certPath),
+    hasPrivateKeyPath: Boolean(config.privateKeyPath),
+    hasCafPath: Boolean(config.cafPath),
+    hasCafPrivateKeyPath: Boolean(config.cafPrivateKeyPath),
+    enableSubmit: Boolean(config.enableSubmit),
+    rutEmpresaConfigured: Boolean(config.rutEmpresa),
+  };
+}
+
+async function persistTrace(steps, config, options = {}) {
+  const outputPath = resolve(
+    repoRoot,
+    "tmp/dte-certification/smoke-submission-log.json",
+  );
+  const summary = await writeSmokeTrace({
+    repoRoot,
+    outputPath,
+    dryRun,
+    submitBlocked: Boolean(options.submitBlocked),
+    xml: options.xml ?? null,
+    configSummary: configSummary(config),
+    steps,
+  });
+  steps.push(
+    step(
+      "trace",
+      "ready",
+      `Trazabilidad no productiva guardada en ${outputPath} xml_sha256=${summary.xmlSha256 ?? "pendiente"}`,
+    ),
+  );
 }
 
 async function main() {
@@ -111,6 +154,7 @@ async function main() {
           "Status preparado; consulta real requiere token SII y endpoint configurado.",
         ),
       );
+      await persistTrace(steps, config);
       print(steps);
       process.exit(0);
     }
@@ -199,6 +243,10 @@ async function main() {
         "Submit real bloqueado en dry-run. No se genera track_id simulado.",
       ),
     );
+    const xml = existsSync(certificationXmlPath)
+      ? readFileSync(certificationXmlPath, "latin1")
+      : null;
+    await persistTrace(steps, config, { xml });
     print(steps);
     process.exit(0);
   }
@@ -221,6 +269,9 @@ async function main() {
     });
     const errorMessage = "errors" in result ? result.errors?.[0]?.message : result.message;
     steps.push(step("submit", result.ok ? "ready" : "blocked", errorMessage ?? "Submit finalizado."));
+    if (!result.ok) {
+      await persistTrace(steps, config, { xml, submitBlocked: true });
+    }
     print(steps);
     process.exit(result.ok ? 0 : 1);
   }

@@ -59,6 +59,25 @@ type DteReadinessResult = {
   nextActions: string[];
 };
 
+type DteTraceSummary = {
+  environment: string;
+  dryRun: boolean;
+  xmlSha256: string | null;
+  status: string;
+  siiStatus: string;
+  trackId: string | null;
+  generatedAt: string;
+  lastAuditAction?: string | null;
+};
+
+type DteSiiCertificationState = {
+  history?: {
+    lastDryRun?: DteTraceSummary | null;
+    lastBlockedSubmitAttempt?: DteTraceSummary | null;
+    statusCheckHistory?: unknown[];
+  };
+};
+
 type DteLabResult = {
   xml: string;
   metadata: {
@@ -555,6 +574,8 @@ export default function AdminFacturacionPage() {
   const [dteLabError, setDteLabError] = useState("");
   const [dteReadiness, setDteReadiness] = useState<DteReadinessResult | null>(null);
   const [dteReadinessError, setDteReadinessError] = useState("");
+  const [dteSiiCertification, setDteSiiCertification] =
+    useState<DteSiiCertificationState | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -622,6 +643,24 @@ export default function AdminFacturacionPage() {
         setDteReadinessError(
           readinessJson?.error ?? "No se pudo cargar readiness DTE.",
         );
+      }
+
+      const certificationRes = await fetch("/api/admin/dte-lab/sii-certification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+        cache: "no-store",
+        body: JSON.stringify({
+          tenantId: tenant.id,
+          tenantSlug: slug,
+          operation: "readiness",
+        }),
+      });
+      const certificationJson = await certificationRes.json().catch(() => null);
+      if (certificationRes.ok && certificationJson?.ok) {
+        setDteSiiCertification(certificationJson as DteSiiCertificationState);
       }
 
       setLoading(false);
@@ -1303,6 +1342,76 @@ export default function AdminFacturacionPage() {
                   El smoke test por defecto es dry-run y no contacta SII. El submit
                   real queda fuera de la UI hasta contar con CAF, certificado, token,
                   XML validado, track_id real y autorización de certificación.
+                </div>
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
+              title="Trazabilidad DTE / Certification"
+              description="Historial no productivo de dry-run, hashes, auditoria y estado SII pendiente."
+              actions={<StatusBadge label="LAB / PENDIENTE" tone="amber" />}
+            >
+              <div className="grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    [
+                      "Último dry-run",
+                      dteSiiCertification?.history?.lastDryRun?.generatedAt ??
+                        "Sin traza local",
+                    ],
+                    [
+                      "Hash XML",
+                      dteSiiCertification?.history?.lastDryRun?.xmlSha256 ??
+                        "pendiente",
+                    ],
+                    [
+                      "Estado interno",
+                      dteSiiCertification?.history?.lastDryRun?.status ?? "LAB",
+                    ],
+                    [
+                      "Estado SII",
+                      dteSiiCertification?.history?.lastDryRun?.siiStatus ??
+                        "not_sent",
+                    ],
+                    [
+                      "Ambiente",
+                      dteSiiCertification?.history?.lastDryRun?.environment ??
+                        "certification",
+                    ],
+                    [
+                      "Último submit",
+                      dteSiiCertification?.history?.lastBlockedSubmitAttempt
+                        ? "bloqueado auditado"
+                        : "sin intento real",
+                    ],
+                    [
+                      "Track ID",
+                      dteSiiCertification?.history?.lastDryRun?.trackId ??
+                        "pendiente real",
+                    ],
+                    [
+                      "Auditoría",
+                      dteSiiCertification?.history?.lastDryRun?.lastAuditAction ??
+                        "pendiente",
+                    ],
+                  ].map(([label, value]) => (
+                    <div
+                      key={label}
+                      className="rounded-2xl border border-slate-200 bg-white p-3"
+                    >
+                      <div className="text-[11px] font-black uppercase text-slate-500">
+                        {label}
+                      </div>
+                      <div className="mt-1 break-words text-xs font-black text-slate-900">
+                        {value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-950">
+                  No existe track_id real hasta enviar un set al ambiente de
+                  certificación SII. Esta tabla muestra trazabilidad local LAB y no
+                  acredita emisión tributaria.
                 </div>
               </div>
             </AdminSectionCard>
