@@ -24,8 +24,22 @@ export function readSmokeTrace(
   outputPath: string,
 ): DtePersistenceTraceSummary | null {
   if (!existsSync(outputPath)) return null;
-  const parsed = JSON.parse(readFileSync(outputPath, "utf8")) as DtePersistenceTraceSummary;
+  const parsed = JSON.parse(
+    readFileSync(outputPath, "utf8"),
+  ) as DtePersistenceTraceSummary;
   return parsed;
+}
+
+function getSmokeTenantId(backend: string): string {
+  const smokeTenantId = process.env.DTE_SMOKE_TENANT_ID || "tenant-smoke-lab";
+
+  if (backend === "supabase" && !process.env.DTE_SMOKE_TENANT_ID) {
+    throw new Error(
+      "DTE_SMOKE_TENANT_ID_REQUIRED_FOR_SUPABASE: define DTE_SMOKE_TENANT_ID en .env.dte-lab con el UUID real del tenant LAB.",
+    );
+  }
+
+  return smokeTenantId;
 }
 
 export async function writeSmokeTrace(
@@ -35,9 +49,10 @@ export async function writeSmokeTrace(
   const backend = getDtePersistenceBackend();
   const readiness = checkDteReadiness({ repoRoot: input.repoRoot });
   const xmlSha256 = input.xml ? sha256String(input.xml) : null;
+  const smokeTenantId = getSmokeTenantId(backend);
 
   const draft = await repo.createTaxDocumentDraft({
-    tenantId: "tenant-smoke-lab",
+    tenantId: smokeTenantId,
     documentType: "factura_afecta",
     folio: 1001,
     emitterRut: "76.123.456-0",
@@ -77,6 +92,7 @@ export async function writeSmokeTrace(
       message: "LAB / PENDIENTE / NO PRODUCTIVO",
     },
   });
+
   await repo.createSiiSubmission(submission);
 
   await repo.appendStatusHistory(
@@ -103,6 +119,7 @@ export async function writeSmokeTrace(
     actorType: "script",
     metadata: { config: input.configSummary, steps: input.steps },
   });
+
   await repo.appendAuditLog(audit);
 
   const summary: DtePersistenceTraceSummary = {
@@ -125,6 +142,7 @@ export async function writeSmokeTrace(
 
   mkdirSync(dirname(input.outputPath), { recursive: true });
   writeFileSync(input.outputPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+
   if (backend === "supabase") {
     writeFileSync(
       `${input.outputPath}.backend`,
@@ -132,5 +150,6 @@ export async function writeSmokeTrace(
       "utf8",
     );
   }
+
   return summary;
 }

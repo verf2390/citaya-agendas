@@ -22,14 +22,19 @@ require.extensions[".ts"] = (module, filename) => {
 };
 
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
-const { getDtePersistenceBackend, getDteRepository } = require(resolve(
-  repoRoot,
-  "lib/dte/persistence/get-dte-repository.ts",
-));
+const { getDtePersistenceBackend, getDteRepository } = require(
+  resolve(repoRoot, "lib/dte/persistence/get-dte-repository.ts"),
+);
 
 async function main() {
-  const migrationPath = resolve(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql");
-  const docsPath = resolve(repoRoot, "docs/dte-sii/DTE_SUPABASE_PERSISTENCE.md");
+  const migrationPath = resolve(
+    repoRoot,
+    "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql",
+  );
+  const docsPath = resolve(
+    repoRoot,
+    "docs/dte-sii/DTE_SUPABASE_PERSISTENCE.md",
+  );
   const backend = getDtePersistenceBackend();
 
   console.log("Citaya DTE Persistence Check");
@@ -44,8 +49,16 @@ async function main() {
 
   try {
     const repo = getDteRepository();
+    const smokeTenantId = process.env.DTE_SMOKE_TENANT_ID || "tenant-smoke-lab";
+
+    if (backend === "supabase" && !process.env.DTE_SMOKE_TENANT_ID) {
+      throw new Error(
+        "DTE_SMOKE_TENANT_ID_REQUIRED_FOR_SUPABASE: define DTE_SMOKE_TENANT_ID en .env.dte-lab con el UUID real del tenant LAB.",
+      );
+    }
+
     const documents = await repo.listRecentByTenant({
-      tenantId: "tenant-smoke-lab",
+      tenantId: smokeTenantId,
       limit: 1,
     });
     console.log(`traceListReady=true documents=${documents.length}`);
