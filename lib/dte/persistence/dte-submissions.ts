@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { sha256String } from "./dte-hash";
 import { fingerprintToken, redactSiiResponse } from "./dte-redaction";
 import type {
@@ -7,6 +9,7 @@ import type {
 } from "./dte-persistence-types";
 
 export type BuildSubmissionInput = {
+  id?: string;
   tenantId: string;
   taxDocumentId: string;
   environment: DtePersistenceEnvironment;
@@ -28,7 +31,7 @@ export function buildSubmissionRecord(
     input.response === undefined ? null : redactSiiResponse(input.response);
 
   return {
-    id: `submission_${sha256String(`${input.tenantId}:${input.taxDocumentId}:${input.now ?? Date.now()}`).slice(0, 16)}`,
+    id: input.id ?? randomUUID(),
     tenantId: input.tenantId,
     taxDocumentId: input.taxDocumentId,
     environment: input.environment,

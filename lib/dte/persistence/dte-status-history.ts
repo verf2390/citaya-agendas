@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
+
 import { assertValidDteStatusTransition } from "../status/dte-status";
-import { sha256String } from "./dte-hash";
 import type {
   DtePersistenceSource,
   DteSiiStatus,
@@ -8,6 +9,7 @@ import type {
 import type { DteOperationalStatus } from "../status/dte-status";
 
 export type BuildStatusHistoryInput = {
+  id?: string;
   tenantId: string;
   taxDocumentId: string;
   submissionId?: string | null;
@@ -29,7 +31,7 @@ export function buildStatusHistoryRecord(
   }
 
   return {
-    id: `status_${sha256String(`${input.tenantId}:${input.taxDocumentId}:${input.nextStatus}:${input.now ?? Date.now()}`).slice(0, 16)}`,
+    id: input.id ?? randomUUID(),
     tenantId: input.tenantId,
     taxDocumentId: input.taxDocumentId,
     submissionId: input.submissionId ?? null,

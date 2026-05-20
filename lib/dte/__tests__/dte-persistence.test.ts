@@ -25,6 +25,15 @@ import {
 } from "../persistence/supabase-dte-repository";
 import { buildStatusHistoryRecord } from "../persistence/dte-status-history";
 import { buildSubmissionRecord } from "../persistence/dte-submissions";
+import {
+  buildSmokeDocumentIdentity,
+  getSmokeTenantId,
+  writeSmokeTrace,
+} from "../persistence/dte-smoke-trace";
+import type { DteRepository } from "../persistence/dte-repository";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 test("hashes strings with stable SHA-256", () => {
   assert.equal(
@@ -86,6 +95,75 @@ test("builds status history with valid transitions", () => {
       reason: "bad jump",
       source: "script",
     }),
+  );
+});
+
+test("builders generate UUID-compatible ids for Supabase persistence", () => {
+  const submission = buildSubmissionRecord({
+    tenantId: "tenant-1",
+    taxDocumentId: "doc-1",
+    environment: "certification",
+    submissionStatus: "dry_run",
+    siiStatus: "not_sent",
+  });
+  const history = buildStatusHistoryRecord({
+    tenantId: "tenant-1",
+    taxDocumentId: "doc-1",
+    previousStatus: "draft",
+    nextStatus: "xml_generated",
+    previousSiiStatus: "not_sent",
+    nextSiiStatus: "not_sent",
+    reason: "xml generated",
+    source: "script",
+  });
+  const audit = buildAuditRecord({
+    tenantId: "tenant-1",
+    taxDocumentId: "doc-1",
+    action: "sii_dry_run_trace",
+    actorType: "script",
+  });
+
+  assert.match(submission.id, UUID_RE);
+  assert.match(history.id, UUID_RE);
+  assert.match(audit.id, UUID_RE);
+});
+
+test("builders preserve explicit ids for compatibility", () => {
+  assert.equal(
+    buildSubmissionRecord({
+      id: "00000000-0000-4000-8000-000000000001",
+      tenantId: "tenant-1",
+      taxDocumentId: "doc-1",
+      environment: "certification",
+      submissionStatus: "dry_run",
+      siiStatus: "not_sent",
+    }).id,
+    "00000000-0000-4000-8000-000000000001",
+  );
+
+  assert.equal(
+    buildStatusHistoryRecord({
+      id: "00000000-0000-4000-8000-000000000002",
+      tenantId: "tenant-1",
+      taxDocumentId: "doc-1",
+      previousStatus: "draft",
+      nextStatus: "xml_generated",
+      previousSiiStatus: "not_sent",
+      nextSiiStatus: "not_sent",
+      reason: "xml generated",
+      source: "script",
+    }).id,
+    "00000000-0000-4000-8000-000000000002",
+  );
+
+  assert.equal(
+    buildAuditRecord({
+      id: "00000000-0000-4000-8000-000000000003",
+      tenantId: "tenant-1",
+      action: "sii_dry_run_trace",
+      actorType: "script",
+    }).id,
+    "00000000-0000-4000-8000-000000000003",
   );
 });
 
@@ -270,6 +348,100 @@ test("redaction helpers keep admin trace payloads free of secrets and private pa
   assert.equal(audit.token, "[redacted]");
   assert.equal(audit.authorization, "[redacted]");
 });
+
+test("smoke trace requires a real tenant id when Supabase backend is active", () => {
+  assert.throws(
+    () => getSmokeTenantId("supabase", {}),
+    /DTE_SMOKE_TENANT_ID_REQUIRED_FOR_SUPABASE/,
+  );
+
+  assert.equal(
+    getSmokeTenantId("supabase", {
+      DTE_SMOKE_TENANT_ID: "84ce60a0-1eb0-426b-adbc-c9cfbc76807c",
+    }),
+    "84ce60a0-1eb0-426b-adbc-c9cfbc76807c",
+  );
+  assert.equal(getSmokeTenantId("memory", {}), "tenant-smoke-lab");
+});
+
+test("smoke trace generates repeatable-safe Supabase folio and reference", () => {
+  const first = buildSmokeDocumentIdentity("supabase", {}, 1_717_000_000_000, 1_001);
+  const second = buildSmokeDocumentIdentity("supabase", {}, 1_717_000_000_001, 1_002);
+
+  assert.notEqual(first.folio, second.folio);
+  assert.match(first.paymentReference, /^smoke-dry-run-\d+-1717000000000-1001$/);
+  assert.deepEqual(buildSmokeDocumentIdentity("memory", {}, 1, 1), {
+    folio: 1001,
+    paymentReference: "smoke-dry-run",
+  });
+  assert.equal(
+    buildSmokeDocumentIdentity(
+      "supabase",
+      { DTE_SMOKE_FOLIO: "7777" },
+      1_717_000_000_000,
+      1_001,
+    ).folio,
+    7777,
+  );
+});
+
+test("smoke trace fails when repository side effects fail", async () => {
+  for (const failingMethod of [
+    "createSiiSubmission",
+    "appendStatusHistory",
+    "appendAuditLog",
+  ] as const) {
+    const repo = buildFailingSmokeRepository(failingMethod);
+
+    await assert.rejects(
+      () =>
+        writeSmokeTrace({
+          repoRoot: process.cwd(),
+          outputPath: resolve(process.cwd(), `tmp/dte-certification/${failingMethod}.json`),
+          dryRun: true,
+          configSummary: {},
+          steps: [],
+          repository: repo,
+          backend: "memory",
+        }),
+      new RegExp(`${failingMethod} failed`),
+    );
+  }
+});
+
+function buildFailingSmokeRepository(
+  failingMethod: "createSiiSubmission" | "appendStatusHistory" | "appendAuditLog",
+): DteRepository {
+  const repo = new InMemoryDteRepository();
+  const failure = { ok: false as const, error: `${failingMethod} failed` };
+
+  return {
+    ...repo,
+    createTaxDocumentDraft: repo.createTaxDocumentDraft.bind(repo),
+    markXmlGenerated: repo.markXmlGenerated.bind(repo),
+    markSigned: repo.markSigned.bind(repo),
+    updateSiiSubmissionStatus: repo.updateSiiSubmissionStatus.bind(repo),
+    findByTrackId: repo.findByTrackId.bind(repo),
+    findTaxDocumentById: repo.findTaxDocumentById.bind(repo),
+    findByDocumentReference: repo.findByDocumentReference.bind(repo),
+    findByTenantAndFolio: repo.findByTenantAndFolio.bind(repo),
+    listRecentByTenant: repo.listRecentByTenant.bind(repo),
+    listSubmissionsByTenant: repo.listSubmissionsByTenant.bind(repo),
+    listAuditLogByTenant: repo.listAuditLogByTenant.bind(repo),
+    createSiiSubmission:
+      failingMethod === "createSiiSubmission"
+        ? async () => failure
+        : repo.createSiiSubmission.bind(repo),
+    appendStatusHistory:
+      failingMethod === "appendStatusHistory"
+        ? async () => failure
+        : repo.appendStatusHistory.bind(repo),
+    appendAuditLog:
+      failingMethod === "appendAuditLog"
+        ? async () => failure
+        : repo.appendAuditLog.bind(repo),
+  };
+}
 
 test("smoke dry-run writes safe trace summary", async () => {
   const tracePath = resolve(
