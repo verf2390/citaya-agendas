@@ -658,27 +658,6 @@ export default function CustomersPage() {
         </div>
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button
-            onClick={() => {
-              setBulkError("");
-              setBulkSuccess("");
-              setBulkOpen(true);
-            }}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid #111827",
-              background: "#111827",
-              color: "white",
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: 700,
-              boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
-            }}
-          >
-            Nuevo mensaje
-          </button>
-
           <Link
             href="/admin/campanas"
             style={{
@@ -1247,7 +1226,7 @@ export default function CustomersPage() {
             >
               <div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a" }}>
-                  Nuevo mensaje
+                  Campaña a clientes
                 </div>
                 <div style={{ marginTop: 6, fontSize: 14, color: "#64748b" }}>
                   La campaña se enviará a automatización para procesar el canal seleccionado.

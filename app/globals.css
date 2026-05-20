@@ -162,4 +162,179 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  .citaya-admin {
+    --admin-bg: #020617;
+    --admin-bg-soft: #07111f;
+    --admin-surface: rgba(15, 23, 42, 0.86);
+    --admin-surface-strong: rgba(15, 23, 42, 0.96);
+    --admin-surface-soft: rgba(30, 41, 59, 0.7);
+    --admin-border: rgba(96, 165, 250, 0.18);
+    --admin-primary: #2563eb;
+    --admin-primary-hover: #1d4ed8;
+    --admin-text: #f8fafc;
+    --admin-muted: #94a3b8;
+    --admin-shadow: 0 24px 70px rgba(0, 0, 0, 0.32);
+    background:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.24), transparent 28rem),
+      radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.12), transparent 30rem),
+      linear-gradient(135deg, var(--admin-bg) 0%, var(--admin-bg-soft) 55%, #030712 100%);
+    color: var(--admin-text);
+  }
+
+  html[data-citaya-admin-theme="light"] .citaya-admin {
+    --admin-bg: #f8fafc;
+    --admin-bg-soft: #eef2f7;
+    --admin-surface: rgba(255, 255, 255, 0.94);
+    --admin-surface-strong: #ffffff;
+    --admin-surface-soft: #f1f5f9;
+    --admin-border: #e2e8f0;
+    --admin-primary: #2563eb;
+    --admin-primary-hover: #1d4ed8;
+    --admin-text: #0f172a;
+    --admin-muted: #64748b;
+    --admin-shadow: 0 20px 50px rgba(15, 23, 42, 0.1);
+    background:
+      radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 28rem),
+      linear-gradient(180deg, #ffffff 0%, var(--admin-bg) 36%, #eef2f7 100%);
+  }
+
+  .citaya-admin .admin-sidebar-panel,
+  .citaya-admin .admin-section-card,
+  .citaya-admin .admin-kpi-card,
+  .citaya-admin .admin-empty-state,
+  .citaya-admin .bg-white,
+  .citaya-admin .bg-white\/90,
+  .citaya-admin .bg-white\/92 {
+    border-color: var(--admin-border);
+    background-color: var(--admin-surface);
+    color: var(--admin-text);
+    box-shadow: var(--admin-shadow);
+    backdrop-filter: blur(18px);
+  }
+
+  .citaya-admin .bg-slate-50,
+  .citaya-admin .bg-slate-100,
+  .citaya-admin .admin-section-card-header {
+    border-color: var(--admin-border);
+    background-color: var(--admin-surface-soft);
+  }
+
+  .citaya-admin .border,
+  .citaya-admin .border-slate-100,
+  .citaya-admin .border-slate-200,
+  .citaya-admin .border-slate-300 {
+    border-color: var(--admin-border);
+  }
+
+  .citaya-admin .text-slate-950,
+  .citaya-admin .text-slate-900,
+  .citaya-admin .text-slate-800,
+  .citaya-admin .text-zinc-900 {
+    color: var(--admin-text);
+  }
+
+  .citaya-admin .text-slate-700,
+  .citaya-admin .text-slate-600,
+  .citaya-admin .text-slate-500,
+  .citaya-admin .text-slate-400,
+  .citaya-admin .text-muted-foreground {
+    color: var(--admin-muted);
+  }
+
+  .citaya-admin input,
+  .citaya-admin select,
+  .citaya-admin textarea {
+    border-color: var(--admin-border);
+    background-color: var(--admin-surface-strong);
+    color: var(--admin-text);
+  }
+
+  .citaya-admin input::placeholder,
+  .citaya-admin textarea::placeholder {
+    color: var(--admin-muted);
+  }
+
+  .citaya-admin input:focus,
+  .citaya-admin select:focus,
+  .citaya-admin textarea:focus {
+    border-color: rgba(59, 130, 246, 0.75);
+    outline: 2px solid rgba(59, 130, 246, 0.24);
+    outline-offset: 1px;
+  }
+
+  .citaya-admin .bg-slate-900,
+  .citaya-admin .admin-primary-action {
+    border-color: rgba(59, 130, 246, 0.55);
+    background: linear-gradient(180deg, #3b82f6 0%, var(--admin-primary) 100%);
+    color: #ffffff;
+  }
+
+  .citaya-admin .bg-slate-900:hover,
+  .citaya-admin .admin-primary-action:hover {
+    background: linear-gradient(180deg, #2563eb 0%, var(--admin-primary-hover) 100%);
+  }
+
+  .citaya-admin .admin-secondary-action,
+  .citaya-admin .admin-theme-toggle {
+    border-color: var(--admin-border);
+    background-color: var(--admin-surface-soft);
+    color: var(--admin-text);
+  }
+
+  .citaya-admin .admin-theme-toggle:hover,
+  .citaya-admin .admin-secondary-action:hover {
+    border-color: rgba(59, 130, 246, 0.42);
+    background-color: rgba(37, 99, 235, 0.12);
+  }
+
+  .citaya-admin .admin-eyebrow {
+    border-color: rgba(59, 130, 246, 0.24);
+    background-color: rgba(37, 99, 235, 0.12);
+    color: #60a5fa;
+  }
+
+  .citaya-admin .admin-nav-item {
+    border-color: transparent;
+    color: var(--admin-muted);
+  }
+
+  .citaya-admin .admin-nav-item:hover {
+    border-color: var(--admin-border);
+    background-color: var(--admin-surface-soft);
+    color: var(--admin-text);
+  }
+
+  .citaya-admin .admin-nav-item-active {
+    border-color: rgba(59, 130, 246, 0.58);
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.22) 0%, rgba(37, 99, 235, 0.16) 100%);
+    color: var(--admin-text);
+    box-shadow: 0 12px 30px rgba(37, 99, 235, 0.18);
+  }
+
+  .citaya-admin .shadow-sm,
+  .citaya-admin .shadow {
+    box-shadow: 0 16px 40px rgba(2, 6, 23, 0.14);
+  }
+
+  html[data-citaya-admin-theme="light"] .citaya-admin .shadow-sm,
+  html[data-citaya-admin-theme="light"] .citaya-admin .shadow {
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  }
+
+  .citaya-admin .fc {
+    color: var(--admin-text);
+  }
+
+  .citaya-admin .fc .fc-scrollgrid,
+  .citaya-admin .fc td,
+  .citaya-admin .fc th {
+    border-color: var(--admin-border);
+  }
+
+  .citaya-admin .fc .fc-col-header-cell-cushion,
+  .citaya-admin .fc .fc-timegrid-slot-label,
+  .citaya-admin .fc .fc-timegrid-axis-cushion {
+    color: var(--admin-muted);
+  }
 }

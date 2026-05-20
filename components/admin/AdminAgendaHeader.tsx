@@ -48,7 +48,7 @@ export default function AdminAgendaHeader({
 
   return (
     <div className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
-      <div className="mx-auto w-full max-w-6xl px-4 py-2">
+      <div className="mx-auto w-full max-w-6xl px-4 py-2 lg:ml-72 lg:mr-6 lg:max-w-none">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           {/* IZQUIERDA */}
           <div className="min-w-0">

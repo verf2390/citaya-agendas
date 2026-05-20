@@ -1752,13 +1752,13 @@ export default function AgendaPage() {
   ===================================================== */
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.06),transparent_24%),linear-gradient(180deg,#eef3f8_0%,#f8fafc_22%,#eef3f8_100%)]">
+    <main className="citaya-admin min-h-screen overflow-x-clip">
       <style>{`
   .fc { font-family: system-ui; }
   .fc .fc-toolbar-title { font-size: 16px; font-weight: 800; }
   .fc .fc-timegrid-slot-label { font-size: 12px; opacity: 0.75; }
   .fc .fc-timegrid-axis-cushion { font-size: 12px; opacity: 0.75; }
-  .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; color: #111827; }
+  .fc .fc-col-header-cell-cushion { font-size: 12px; font-weight: 800; }
   .fc .fc-event {
     border-radius: 12px;
     border: 1px solid rgba(255,255,255,0.22);
@@ -1911,7 +1911,7 @@ export default function AgendaPage() {
         }
       />
 
-      <div className="mx-auto max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5">
+      <div className="mx-auto max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5 lg:ml-72 lg:mr-6">
         <AdminNav />
         {/* Selector profesional + Horarios base */}
         <div className="mt-3">

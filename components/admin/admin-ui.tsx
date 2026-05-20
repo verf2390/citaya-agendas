@@ -23,8 +23,8 @@ export function AdminPageShell({
   width = "wide",
 }: AdminPageShellProps) {
   return (
-    <main className="min-h-screen bg-[#f6f7fb] p-4 text-slate-950 sm:p-6">
-      <div className={cn("mx-auto min-w-0", widths[width], className)}>
+    <main className="citaya-admin min-h-screen overflow-x-clip p-4 text-slate-950 sm:p-6 lg:p-6">
+      <div className={cn("mx-auto min-w-0 lg:ml-72 lg:mr-0", widths[width], className)}>
         {children}
       </div>
     </main>
@@ -46,7 +46,7 @@ export function AdminPageHeader({
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow ? (
-          <div className="mb-2 inline-flex rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-500 shadow-sm">
+          <div className="admin-eyebrow mb-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-bold shadow-sm">
             {eyebrow}
           </div>
         ) : null}
@@ -84,7 +84,7 @@ export function AdminKpiCard({
   }[tone];
 
   return (
-    <div className={cn("rounded-2xl border p-4 shadow-sm", toneClass)}>
+    <div className={cn("admin-kpi-card rounded-2xl border p-4 shadow-sm", toneClass)}>
       <div className="text-xs font-bold uppercase text-slate-500">{label}</div>
       <div className="mt-2 text-2xl font-black text-slate-950">{value}</div>
       {hint ? <div className="mt-1 text-xs font-medium text-slate-500">{hint}</div> : null}
@@ -106,9 +106,9 @@ export function AdminSectionCard({
   className?: string;
 }) {
   return (
-    <section className={cn("rounded-2xl border border-slate-200 bg-white shadow-sm", className)}>
+    <section className={cn("admin-section-card rounded-2xl border border-slate-200 bg-white shadow-sm", className)}>
       {title || description || actions ? (
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="admin-section-card-header flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             {title ? <h2 className="font-black text-slate-950">{title}</h2> : null}
             {description ? (
@@ -139,7 +139,7 @@ export function EmptyState({
   icon?: ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+    <div className="admin-empty-state rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
       {Icon ? (
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 shadow-sm">
           <Icon className="h-5 w-5" />

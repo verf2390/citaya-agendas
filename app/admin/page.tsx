@@ -1,20 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowUpRight,
   CalendarDays,
+  CheckCircle2,
+  Clock,
   CreditCard,
   Megaphone,
+  ReceiptText,
   Settings,
+  Sparkles,
   UserPlus,
   Users,
 } from "lucide-react";
 
 import AdminNav from "@/components/admin/AdminNav";
 import {
-  AdminKpiCard,
   AdminPageHeader,
   AdminPageShell,
   AdminSectionCard,
@@ -51,6 +56,17 @@ type ActivityItem = {
   status?: string | null;
 };
 
+type PriorityAlert = {
+  id: string;
+  title: string;
+  count: number;
+  description: string;
+  href?: string;
+  actionLabel?: string;
+  severity: "success" | "info" | "warning" | "danger" | "neutral";
+  icon: ComponentType<{ className?: string }>;
+};
+
 function moneyNumber(value: unknown) {
   const amount = Number(value ?? 0);
   return Number.isFinite(amount) ? amount : 0;
@@ -81,6 +97,32 @@ function formatActivityDate(value: string | null) {
   });
 }
 
+function formatFriendlyDate(value: Date) {
+  return value.toLocaleDateString("es-CL", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    timeZone: "America/Santiago",
+  });
+}
+
+function formatTime(value: string | null) {
+  if (!value) return "Sin hora";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Sin hora";
+  return date.toLocaleTimeString("es-CL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Santiago",
+  });
+}
+
+function initials(value: string | null) {
+  const safe = value?.trim() || "Cliente";
+  const parts = safe.split(/\s+/).filter(Boolean);
+  return `${parts[0]?.[0] ?? "C"}${parts[1]?.[0] ?? ""}`.toUpperCase();
+}
+
 function isPendingPayment(row: AppointmentDashboardRow) {
   const paymentStatus = String(row.payment_status ?? "").toLowerCase();
   const bookingStatus = String(row.booking_status ?? "").toLowerCase();
@@ -92,6 +134,36 @@ function isPendingPayment(row: AppointmentDashboardRow) {
     bookingStatus === "pending_payment" ||
     status === "pending_payment"
   );
+}
+
+function isPendingAppointment(row: AppointmentDashboardRow) {
+  const bookingStatus = String(row.booking_status ?? "").toLowerCase();
+  const status = String(row.status ?? "").toLowerCase();
+  return bookingStatus === "pending" || status === "pending";
+}
+
+function hasPaymentInfo(row: AppointmentDashboardRow) {
+  return (
+    Boolean(row.payment_status) ||
+    moneyNumber(row.payment_paid_amount) > 0 ||
+    moneyNumber(row.payment_remaining_amount) > 0 ||
+    moneyNumber(row.payment_required_amount) > 0
+  );
+}
+
+function isCreatedThisWeek(value: string | null | undefined, nowMs: number) {
+  if (!value) return false;
+  const createdAt = new Date(value).getTime();
+  if (!Number.isFinite(createdAt)) return false;
+
+  const now = new Date(nowMs);
+  const weekStart = new Date(now);
+  const day = weekStart.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  weekStart.setDate(weekStart.getDate() + mondayOffset);
+  weekStart.setHours(0, 0, 0, 0);
+
+  return createdAt >= weekStart.getTime() && createdAt <= nowMs;
 }
 
 const quickActions = [
@@ -127,6 +199,74 @@ const quickActions = [
   },
 ] as const;
 
+const severityStyles: Record<
+  PriorityAlert["severity"],
+  {
+    icon: string;
+    badge: string;
+    dot: string;
+    label: string;
+  }
+> = {
+  success: {
+    icon: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    dot: "bg-emerald-500",
+    label: "Al día",
+  },
+  info: {
+    icon: "border-sky-200 bg-sky-50 text-sky-700",
+    badge: "border-sky-200 bg-sky-50 text-sky-700",
+    dot: "bg-sky-500",
+    label: "Revisar",
+  },
+  warning: {
+    icon: "border-amber-200 bg-amber-50 text-amber-800",
+    badge: "border-amber-200 bg-amber-50 text-amber-800",
+    dot: "bg-amber-500",
+    label: "Pendiente",
+  },
+  danger: {
+    icon: "border-red-200 bg-red-50 text-red-700",
+    badge: "border-red-200 bg-red-50 text-red-700",
+    dot: "bg-red-500",
+    label: "Urgente",
+  },
+  neutral: {
+    icon: "border-slate-200 bg-slate-50 text-slate-600",
+    badge: "border-slate-200 bg-slate-50 text-slate-600",
+    dot: "bg-slate-400",
+    label: "Info",
+  },
+};
+
+const metricCards = [
+  {
+    key: "today",
+    label: "Reservas de hoy",
+    icon: CalendarDays,
+    tone: "blue",
+  },
+  {
+    key: "upcoming",
+    label: "Confirmadas próximas",
+    icon: CheckCircle2,
+    tone: "green",
+  },
+  {
+    key: "pendingPayments",
+    label: "Pagos pendientes",
+    icon: CreditCard,
+    tone: "amber",
+  },
+  {
+    key: "customers",
+    label: "Clientes registrados",
+    icon: Users,
+    tone: "slate",
+  },
+] as const;
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [tenantId, setTenantId] = useState("");
@@ -136,6 +276,7 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [appointments, setAppointments] = useState<AppointmentDashboardRow[]>([]);
   const [customers, setCustomers] = useState<CustomerDashboardRow[]>([]);
+  const [nowMs] = useState(() => Date.now());
 
   useEffect(() => {
     const run = async () => {
@@ -230,7 +371,7 @@ export default function AdminDashboardPage() {
   }, [authChecked, tenantId]);
 
   const metrics = useMemo(() => {
-    const now = Date.now();
+    const now = nowMs;
     const today = dayKey(new Date());
 
     return appointments.reduce(
@@ -261,6 +402,95 @@ export default function AdminDashboardPage() {
         estimatedIncome: 0,
       },
     );
+  }, [appointments, nowMs]);
+
+  const priorityAlerts = useMemo<PriorityAlert[]>(() => {
+    const pendingAppointments = appointments.filter(isPendingAppointment).length;
+    const newCustomersThisWeek = customers.filter((customer) =>
+      isCreatedThisWeek(customer.created_at, nowMs),
+    ).length;
+
+    const alerts: PriorityAlert[] = [];
+
+    if (metrics.pendingPayments > 0) {
+      alerts.push({
+        id: "pending-payments",
+        title: "Pagos pendientes",
+        count: metrics.pendingPayments,
+        description: "Clientes con cobros pendientes.",
+        href: "/admin/pagos",
+        actionLabel: "Ver pagos",
+        severity: "warning",
+        icon: CreditCard,
+      });
+    }
+
+    if (pendingAppointments > 0) {
+      alerts.push({
+        id: "pending-appointments",
+        title: "Reservas pendientes",
+        count: pendingAppointments,
+        description: "Citas que requieren confirmacion.",
+        href: "/admin/agenda",
+        actionLabel: "Ver agenda",
+        severity: "info",
+        icon: CalendarDays,
+      });
+    }
+
+    if (metrics.today > 0) {
+      alerts.push({
+        id: "today-appointments",
+        title: "Citas de hoy",
+        count: metrics.today,
+        description: "Reservas programadas para hoy.",
+        href: "/admin/agenda",
+        actionLabel: "Ver agenda",
+        severity: "neutral",
+        icon: Clock,
+      });
+    }
+
+    if (newCustomersThisWeek > 0) {
+      alerts.push({
+        id: "new-customers",
+        title: "Clientes nuevos",
+        count: newCustomersThisWeek,
+        description: "Nuevos clientes esta semana.",
+        href: "/admin/customers",
+        actionLabel: "Ver clientes",
+        severity: "success",
+        icon: Users,
+      });
+    }
+
+    return alerts;
+  }, [appointments, customers, metrics.pendingPayments, metrics.today, nowMs]);
+
+  const todayAppointments = useMemo(() => {
+    const today = dayKey(new Date());
+    return appointments
+      .filter((row) => {
+        const start = row.start_at ? new Date(row.start_at) : null;
+        return start && dayKey(start) === today;
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.start_at || 0).getTime() -
+          new Date(b.start_at || 0).getTime(),
+      )
+      .slice(0, 5);
+  }, [appointments]);
+
+  const recentPayments = useMemo(() => {
+    return appointments
+      .filter(hasPaymentInfo)
+      .sort(
+        (a, b) =>
+          new Date(b.start_at || 0).getTime() -
+          new Date(a.start_at || 0).getTime(),
+      )
+      .slice(0, 5);
   }, [appointments]);
 
   const activity = useMemo<ActivityItem[]>(() => {
@@ -312,53 +542,259 @@ export default function AdminDashboardPage() {
     <AdminPageShell width="wide">
       <AdminNav />
       <AdminPageHeader
-        eyebrow="Panel Pro"
-        title="Panel de control"
-        description="Revisa tus reservas, clientes, pagos y acciones importantes desde un solo lugar."
+        eyebrow="Resumen operativo"
+        title="Resumen de hoy"
+        description="Estado operativo de tu agenda, clientes y pagos."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black capitalize text-slate-600 shadow-sm">
+              {formatFriendlyDate(new Date())}
+            </div>
+            <Link
+              href="/admin/agenda"
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
+            >
+              Ver agenda
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          </div>
+        }
       />
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <AdminKpiCard label="Citas de hoy" value={loading ? "..." : metrics.today} tone="blue" />
-        <AdminKpiCard label="Próximas citas" value={loading ? "..." : metrics.upcoming} />
-        <AdminKpiCard label="Pagos pendientes" value={loading ? "..." : metrics.pendingPayments} tone="amber" />
-        <AdminKpiCard label="Clientes registrados" value={loading ? "..." : customers.length} tone="green" />
-        <AdminKpiCard label="Ingresos estimados" value={loading ? "..." : formatCLP(metrics.estimatedIncome)} />
+      <section className="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">
+              <Sparkles className="h-3.5 w-3.5" />
+              Citaya Pro
+            </div>
+            <h2 className="mt-3 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
+              Operación lista para atender
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">
+              Revisa lo importante sin entrar a cada módulo: reservas, cobros y actividad reciente.
+            </p>
+          </div>
+          <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+            <span className="text-xs font-black uppercase text-slate-500">Ingresos estimados</span>
+            <span className="text-2xl font-black text-slate-950">
+              {loading ? "..." : formatCLP(metrics.estimatedIncome)}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {metricCards.map((metric) => {
+          const Icon = metric.icon;
+          const value =
+            metric.key === "today"
+              ? metrics.today
+              : metric.key === "upcoming"
+                ? metrics.upcoming
+                : metric.key === "pendingPayments"
+                  ? metrics.pendingPayments
+                  : customers.length;
+
+          const hint =
+            metric.key === "today"
+              ? "Agenda del día"
+              : metric.key === "upcoming"
+                ? "Reservas confirmadas"
+                : metric.key === "pendingPayments"
+                  ? "Requieren seguimiento"
+                  : "Base activa";
+
+          return (
+            <div
+              key={metric.key}
+              className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black uppercase text-slate-500">
+                    {metric.label}
+                  </div>
+                  <div className="mt-3 text-3xl font-black tracking-tight text-slate-950">
+                    {loading ? "..." : value}
+                  </div>
+                </div>
+                <div className="grid h-11 w-11 place-items-center rounded-2xl border border-blue-200 bg-blue-50 text-blue-600 shadow-sm transition group-hover:bg-blue-600 group-hover:text-white">
+                  <Icon className="h-5 w-5" />
+                </div>
+              </div>
+              <div className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-500">
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    metric.tone === "green"
+                      ? "bg-emerald-500"
+                      : metric.tone === "amber"
+                        ? "bg-amber-500"
+                        : "bg-blue-500"
+                  }`}
+                />
+                {hint}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
         <AdminSectionCard
-          title="Acciones rápidas"
-          description={`Atajos frecuentes para ${tenantSlug || "tu negocio"}.`}
+          title="Agenda del día"
+          description={`Reservas visibles para ${tenantSlug || "tu negocio"}.`}
+          actions={
+            <Link
+              href="/admin/agenda"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              Ver agenda completa
+              <ArrowUpRight className="h-4 w-4" />
+            </Link>
+          }
         >
-          <div className="grid gap-3 sm:grid-cols-2">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <Link
-                  key={action.href}
-                  href={action.href}
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+          {loading ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-500">
+              Cargando agenda...
+            </div>
+          ) : todayAppointments.length === 0 ? (
+            <EmptyState
+              title="No hay reservas para hoy"
+              description="Cuando entren citas del día, aparecerán ordenadas por hora."
+              icon={CalendarDays}
+            />
+          ) : (
+            <div className="grid gap-3">
+              {todayAppointments.map((row) => (
+                <div
+                  key={row.id}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-blue-300 hover:bg-white"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-900 text-white">
-                      <Icon className="h-4 w-4" />
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="grid h-12 w-16 shrink-0 place-items-center rounded-2xl border border-blue-200 bg-blue-50 text-sm font-black text-blue-700">
+                        {formatTime(row.start_at)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-black text-slate-950">
+                          {row.customer_name || "Cliente"}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm font-medium text-slate-500">
+                          <span>{row.service_name || "Servicio"}</span>
+                          <span className="hidden sm:inline">·</span>
+                          <span>{row.payment_status ? "Con pago asociado" : "Sin pago asociado"}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-black text-slate-950">{action.title}</div>
-                      <p className="mt-1 text-sm font-medium text-slate-500">
-                        {action.description}
-                      </p>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <StatusBadge status={row.status || row.booking_status} />
+                      {row.payment_status ? <StatusBadge status={row.payment_status} /> : null}
                     </div>
                   </div>
-                </Link>
-              );
-            })}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </AdminSectionCard>
 
-        <AdminSectionCard title="Actividad reciente">
+        <div className="grid gap-4">
+          <AdminSectionCard
+            title="Pagos recientes"
+            description="Cobros detectados desde las reservas."
+            actions={
+              <Link
+                href="/admin/pagos"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Ver pagos
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            }
+          >
+            {loading ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-500">
+                Cargando pagos...
+              </div>
+            ) : recentPayments.length === 0 ? (
+              <EmptyState
+                title="Sin pagos recientes"
+                description="Los pagos asociados a reservas aparecerán aquí."
+                icon={ReceiptText}
+              />
+            ) : (
+              <div className="grid gap-3">
+                {recentPayments.map((row) => (
+                  <div
+                    key={row.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 transition hover:border-blue-300 hover:bg-white"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-900 text-xs font-black text-white">
+                        {initials(row.customer_name)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate font-black text-slate-950">
+                          {row.customer_name || "Cliente"}
+                        </div>
+                        <div className="mt-1 text-xs font-medium text-slate-500">
+                          {formatActivityDate(row.start_at)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="font-black text-slate-950">
+                        {formatCLP(
+                          moneyNumber(row.payment_paid_amount) ||
+                            moneyNumber(row.payment_required_amount) ||
+                            moneyNumber(row.payment_remaining_amount),
+                        )}
+                      </div>
+                      <div className="mt-1 flex justify-end">
+                        <StatusBadge status={row.payment_status || row.booking_status || row.status} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </AdminSectionCard>
+
+          <AdminSectionCard title="Acciones rápidas" description={`Atajos frecuentes para ${tenantSlug || "tu negocio"}.`}>
+            <div className="grid gap-3">
+              {quickActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <Link
+                    key={action.href}
+                    href={action.href}
+                    className="group rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm transition hover:border-blue-300 hover:bg-white"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-900 text-white transition group-hover:scale-105">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="font-black text-slate-950">{action.title}</div>
+                        <p className="mt-1 text-sm font-medium text-slate-500">
+                          {action.description}
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </AdminSectionCard>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <AdminSectionCard title="Actividad reciente" description="Últimos movimientos relevantes del negocio.">
           {loading ? (
-            <div className="text-sm font-medium text-slate-500">Cargando actividad...</div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-500">
+              Cargando actividad...
+            </div>
           ) : activity.length === 0 ? (
             <EmptyState
               title="Todavía no hay actividad reciente"
@@ -370,12 +806,17 @@ export default function AdminDashboardPage() {
               {activity.map((item) => (
                 <div
                   key={item.id}
-                  className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 transition hover:bg-white sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
-                    <div className="font-black text-slate-950">{item.title}</div>
-                    <div className="mt-1 text-sm font-medium text-slate-500">
-                      {item.description} · {formatActivityDate(item.date)}
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500">
+                      <Clock className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-black text-slate-950">{item.title}</div>
+                      <div className="mt-1 text-sm font-medium text-slate-500">
+                        {item.description} · {formatActivityDate(item.date)}
+                      </div>
                     </div>
                   </div>
                   {item.status ? <StatusBadge status={item.status} /> : null}
@@ -384,51 +825,99 @@ export default function AdminDashboardPage() {
             </div>
           )}
         </AdminSectionCard>
-      </div>
 
-      <AdminSectionCard
-        className="mt-4"
-        title="Esto es tu negocio hoy"
-        description="Un resumen simple para tomar decisiones rápidas sin entrar a cada sección."
-        actions={
-          <Link
-            href="/admin/agenda"
-            className="rounded-xl border bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            Ver agenda
-          </Link>
-        }
-      >
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center gap-2 text-sm font-black text-slate-900">
-              <CalendarDays className="h-4 w-4" />
-              Reservas
+        <AdminSectionCard
+          title="Prioridades de hoy"
+          description="Alertas rápidas para saber dónde actuar primero."
+          className="overflow-hidden border-blue-200/70"
+        >
+          {loading ? (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-500">
+              Revisando alertas del negocio...
             </div>
-            <p className="mt-2 text-sm font-medium text-slate-500">
-              Revisa la carga del día y las próximas citas confirmadas.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center gap-2 text-sm font-black text-slate-900">
-              <Users className="h-4 w-4" />
-              Clientes
+          ) : priorityAlerts.length === 0 ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-200 bg-white text-emerald-700 shadow-sm">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-base font-black text-slate-950">Todo en orden</div>
+                    <p className="mt-1 text-sm font-medium text-slate-500">
+                      No hay alertas críticas por ahora. Revisa tu agenda o prepara una campaña para tus clientes.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Link
+                    href="/admin/agenda"
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  >
+                    Ver agenda
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    href="/admin/campanas"
+                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
+                  >
+                    Crear campaña
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
             </div>
-            <p className="mt-2 text-sm font-medium text-slate-500">
-              Mantén tu base ordenada para campañas y seguimiento.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center gap-2 text-sm font-black text-slate-900">
-              <CreditCard className="h-4 w-4" />
-              Cobros
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {priorityAlerts.map((alert) => {
+                const Icon = alert.icon;
+                const styles = severityStyles[alert.severity];
+
+                const content = (
+                  <div className="group h-full rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition hover:border-blue-300 hover:bg-white">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border ${styles.icon}`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-black text-slate-950">{alert.title}</div>
+                          <p className="mt-1 text-sm font-medium text-slate-500">{alert.description}</p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-3xl font-black leading-none tracking-tight text-slate-950">
+                          {alert.count}
+                        </div>
+                        <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-black uppercase ${styles.badge}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
+                          {styles.label}
+                        </span>
+                      </div>
+                    </div>
+                    {alert.href && alert.actionLabel ? (
+                      <div className="mt-4 inline-flex items-center gap-1 text-sm font-black text-blue-600 transition group-hover:text-blue-700">
+                        {alert.actionLabel}
+                        <ArrowUpRight className="h-4 w-4" />
+                      </div>
+                    ) : null}
+                  </div>
+                );
+
+                return alert.href ? (
+                  <Link key={alert.id} href={alert.href} className="block min-w-0">
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={alert.id} className="min-w-0">
+                    {content}
+                  </div>
+                );
+              })}
             </div>
-            <p className="mt-2 text-sm font-medium text-slate-500">
-              Detecta pagos pendientes y acciones de cobranza.
-            </p>
-          </div>
-        </div>
-      </AdminSectionCard>
+          )}
+        </AdminSectionCard>
+      </div>
     </AdminPageShell>
   );
 }
