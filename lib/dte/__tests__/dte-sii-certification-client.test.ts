@@ -16,6 +16,15 @@ import {
   parseSiiSubmissionResponse,
 } from "../sii/sii-status";
 
+test("blocks production DTE mode until real approval", () => {
+  assert.throws(
+    () => getSiiCertificationConfigFromEnv({ DTE_MODE: "production" }),
+    (error) =>
+      error instanceof SiiCertificationError &&
+      error.code === SII_ERROR_CODES.PRODUCTION_DISABLED,
+  );
+});
+
 test("blocks production SII environment until real approval", () => {
   assert.throws(
     () => getSiiCertificationConfigFromEnv({ DTE_SII_ENV: "production" }),
@@ -93,4 +102,6 @@ test("smoke dry-run exits without secrets or network", () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /LAB \/ PENDIENTE \/ NO PRODUCTIVO/);
   assert.match(result.stdout, /Submit real bloqueado en dry-run/);
+  assert.doesNotMatch(result.stdout, /MOCK-/);
+  assert.match(result.stdout, /No se genera track_id simulado/);
 });

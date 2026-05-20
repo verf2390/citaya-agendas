@@ -42,6 +42,15 @@ function envValue(name: string, env: NodeJS.ProcessEnv = process.env): string {
 export function getSiiCertificationConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): SiiCertificationConfig {
+  const rawMode = envValue("DTE_MODE", env) || "lab";
+  if (rawMode === "production") {
+    throw new SiiCertificationError(
+      SII_ERROR_CODES.PRODUCTION_DISABLED,
+      "DTE_MODE=production bloqueado hasta aprobacion SII real y feature flag futuro.",
+      "DTE_MODE",
+    );
+  }
+
   const rawEnvironment = envValue("DTE_SII_ENV", env) || "certification";
   if (rawEnvironment === "production") {
     throw new SiiCertificationError(

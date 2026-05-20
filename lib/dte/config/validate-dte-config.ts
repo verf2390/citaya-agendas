@@ -7,10 +7,31 @@ import type { DteXmlBuildMode } from "../types";
 
 export type DteConfigValidationStatus = "OK" | "WARNING" | "MISSING" | "DANGEROUS";
 
+export type DteCertificationReadinessStatus =
+  | "ready"
+  | "pending_config"
+  | "blocked_production"
+  | "missing_external_file";
+
 export type DteConfigValidationItem = {
   key: string;
   status: DteConfigValidationStatus;
   message: string;
+};
+
+export type DteCertificationReadiness = {
+  status: DteCertificationReadinessStatus;
+  globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO";
+  mode: string;
+  siiEnv: string;
+  items: DteConfigValidationItem[];
+  summary: {
+    ready: number;
+    pendingConfig: number;
+    blockedProduction: number;
+    missingExternalFile: number;
+    dangerous: number;
+  };
 };
 
 export type DteConfigValidationInput = {
@@ -42,6 +63,8 @@ const SECRET_ENV = [
   "DTE_CERT_PASSWORD",
   "DTE_PRIVATE_KEY_PASSWORD",
 ] as const;
+
+const EXTERNAL_FILE_ENV = new Set<string>(REQUIRED_CERTIFICATION_ENV);
 
 const REPO_SECRET_DIRS = ["docs", "lib", "app", "scripts"];
 
@@ -96,10 +119,14 @@ export function validateDteConfig(
 
   items.push({
     key: "DTE_MODE",
-    status: isDteXmlBuildMode(mode) ? "OK" : "WARNING",
-    message: isDteXmlBuildMode(mode)
-      ? `Modo DTE reconocido: ${mode}`
-      : "Modo DTE no reconocido; usar lab, xsd-structure o certification.",
+    status:
+      mode === "production" ? "DANGEROUS" : isDteXmlBuildMode(mode) ? "OK" : "WARNING",
+    message:
+      mode === "production"
+        ? "DTE_PRODUCTION_DISABLED_UNTIL_SII_APPROVAL: DTE_MODE=production bloqueado hasta aprobacion SII real."
+        : isDteXmlBuildMode(mode)
+          ? `Modo DTE reconocido: ${mode}`
+          : "Modo DTE no reconocido; usar lab, xsd-structure o certification. Production esta bloqueado.",
   });
 
   const siiEnv = String(env.DTE_SII_ENV ?? "certification").trim();
@@ -156,12 +183,24 @@ export function validateDteConfig(
   for (const name of REQUIRED_CERTIFICATION_ENV) {
     const value = String(env[name] ?? "").trim();
     const missingInCertification = mode === "certification" && !value;
+    const fileMissing = Boolean(value) && !existsSync(value);
+    const suspicious = Boolean(value) && isSecretPathSuspicious(value, repoRoot);
     items.push({
       key: name,
-      status: missingInCertification ? "MISSING" : value ? "OK" : "WARNING",
-      message: value
-        ? `${name} configurado como ruta externa sin exponer contenido.`
-        : `${name} pendiente; obligatorio solo en modo certification.`,
+      status: suspicious
+        ? "DANGEROUS"
+        : missingInCertification || fileMissing
+          ? "MISSING"
+          : value
+            ? "OK"
+            : "WARNING",
+      message: suspicious
+        ? `${name} debe apuntar a una ruta absoluta externa al repo; no usar secretos dentro de Citaya.`
+        : fileMissing
+          ? `${name} apunta a una ruta externa no encontrada; crear/proveer archivo fuera del repo antes de certification real.`
+          : value
+            ? `${name} configurado como ruta externa existente sin exponer contenido.`
+            : `${name} pendiente; obligatorio solo en modo certification.`,
     });
   }
 
@@ -177,6 +216,7 @@ export function validateDteConfig(
   }
 
   for (const name of SECRET_ENV) {
+    if (EXTERNAL_FILE_ENV.has(name)) continue;
     const value = String(env[name] ?? "").trim();
     if (!value) continue;
     if (isSecretPathSuspicious(value, repoRoot)) {
@@ -190,6 +230,48 @@ export function validateDteConfig(
   }
 
   return items;
+}
+
+export function buildDteCertificationReadiness(
+  input: DteConfigValidationInput = {},
+): DteCertificationReadiness {
+  const env = input.env ?? process.env;
+  const mode = String(input.mode ?? env.DTE_MODE ?? "lab").trim();
+  const siiEnv = String(env.DTE_SII_ENV ?? "certification").trim();
+  const items = validateDteConfig(input);
+  const productionBlocked =
+    mode === "production" ||
+    siiEnv === "production" ||
+    items.some(
+      (item) =>
+        item.status === "DANGEROUS" &&
+        (item.key === "DTE_MODE" || item.key === "DTE_SII_ENV"),
+    );
+  const dangerous = items.filter((item) => item.status === "DANGEROUS");
+  const missing = items.filter((item) => item.status === "MISSING");
+  const missingExternal = missing.filter((item) => EXTERNAL_FILE_ENV.has(item.key));
+  const status: DteCertificationReadinessStatus = productionBlocked
+    ? "blocked_production"
+    : dangerous.length > 0 || missingExternal.some((item) => /no encontrada|ruta externa/i.test(item.message))
+      ? "missing_external_file"
+      : missing.length > 0
+        ? "pending_config"
+        : "ready";
+
+  return {
+    status,
+    globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO",
+    mode,
+    siiEnv,
+    items,
+    summary: {
+      ready: items.filter((item) => item.status === "OK").length,
+      pendingConfig: missing.length + items.filter((item) => item.status === "WARNING").length,
+      blockedProduction: productionBlocked ? 1 : 0,
+      missingExternalFile: missingExternal.length,
+      dangerous: dangerous.length,
+    },
+  };
 }
 
 export function assertSafeDteConfig(input: DteConfigValidationInput = {}): void {
