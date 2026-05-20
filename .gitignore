@@ -56,3 +56,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .vscode
+.env.dte-lab
