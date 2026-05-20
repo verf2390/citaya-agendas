@@ -119,11 +119,15 @@ export async function GET(req: Request) {
       if (backend !== "supabase") {
         warnings.push("Persistencia Supabase no activada; backend memory/LAB por defecto.");
       }
+      if (tenantAccess.authMode === "legacy_host_tenant_match") {
+        warnings.push("Autorizacion admin usando fallback legacy host/tenant; confirmar tenant_members antes de activar Supabase.");
+      }
 
       return NextResponse.json({
         ok: true,
         globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO",
         backend,
+        authMode: tenantAccess.authMode,
         documents: documents.map(safeDocument),
         submissions: submissions.map(safeSubmission),
         auditLog: auditLog.map((item) => ({

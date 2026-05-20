@@ -295,9 +295,9 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
         exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_PERSISTENCE.md")
         ? "OK"
         : "WARNING",
-      "RLS sugerida por tenant/platform admin documentada; no aplicada automaticamente.",
+      "RLS DTE documentada con guards de tabla/columnas para tenant_members/platform_admins; no aplicada automaticamente.",
       "critical",
-      "Validar policies tenant_members/platform_admins antes de usar datos reales.",
+      "Validar policies con schema live antes de usar datos reales.",
     ),
     item(
       "repository_factory",
@@ -307,11 +307,18 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
       "Mantener DTE_PERSISTENCE_BACKEND sin supabase en entornos sin migracion.",
     ),
     item(
+      "require_tenant_admin",
+      exists(repoRoot, "lib/api/requireTenantAdmin.ts") ? "OK" : "WARNING",
+      "requireTenantAdmin valida JWT, tenant por host/slug/id y usa tenant_members/platform_admins cuando existen.",
+      "critical",
+      "Reemplazar fallback legacy cuando membresias admin esten confirmadas en DB real.",
+    ),
+    item(
       "admin_trace_endpoints",
       exists(repoRoot, "app/api/admin/dte-lab/traces/route.ts") ? "OK" : "WARNING",
-      "Endpoints admin de trazas DTE disponibles con respuesta redactada.",
+      "Endpoints admin de trazas DTE disponibles con tenant_id validado y respuesta redactada.",
       "warning",
-      "Probar con tenant admin y revisar que no exponga XML, tokens ni rutas privadas.",
+      "Probar con tenant admin y revisar que no exponga XML, tokenFingerprint, tokens ni rutas privadas.",
     ),
     item(
       "ui_trace_viewer",
@@ -330,9 +337,9 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     item(
       "schema_compatibility_audit",
       exists(repoRoot, "docs/dte-sii/DTE_SCHEMA_COMPATIBILITY_AUDIT.md") ? "OK" : "MISSING",
-      "Auditoria de compatibilidad DTE contra schema real documentada.",
+      "Auditoria de compatibilidad DTE contra evidencia real del repo documentada.",
       "warning",
-      "Resolver TODO de tenant_members/platform_admins antes de aplicar migracion.",
+      "Confirmar tenant_members/platform_admins contra DB live antes de aplicar migracion.",
     ),
     item(
       "post_migration_checks",
@@ -350,15 +357,15 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     ),
     item(
       "rls_hardened_real_schema",
-      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") ? "WARNING" : "MISSING",
-      "RLS endurecida con guards para tenant_members/platform_admins, pendiente verificar DB real.",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") ? "OK" : "MISSING",
+      "RLS endurecida en repo con guards de tabla/columnas y roles owner/admin; pendiente verificar DB real.",
       "critical",
       "Confirmar schema real de membresias antes de exponer consultas autenticadas.",
     ),
     item(
       "no_cascade_delete_risk",
-      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") ? "WARNING" : "MISSING",
-      "Migracion DTE documenta no borrar documentos tributarios en cascada.",
+      exists(repoRoot, "docs/dte-sii/DTE_SUPABASE_MIGRATION.sql") ? "OK" : "MISSING",
+      "Migracion DTE usa on delete restrict/no destructive cascade para documentos y auditoria tributaria.",
       "critical",
       "Revisar manualmente FK on delete restrict antes de aplicar.",
     ),
@@ -428,6 +435,7 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     "redaction",
     "xml_hashing",
     "blocked_submit_audit",
+    "require_tenant_admin",
     "multi_tenant",
   ];
   const productionCategories = [
@@ -435,6 +443,8 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
     "issuer",
     "folios",
     "tenant_isolation_persistence",
+    "rls_hardened_real_schema",
+    "no_cascade_delete_risk",
     "agenda_payments",
   ];
 

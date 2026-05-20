@@ -160,7 +160,7 @@ export class SupabaseDteRepository implements DteRepository {
   async markXmlGenerated(
     input: MarkXmlGeneratedInput,
   ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    return this.updateDocument(input.taxDocumentId, {
+    return this.updateDocument(input.tenantId, input.taxDocumentId, {
       status: "xml_generated",
       xml_sha256: sha256String(input.xml),
       xml_storage_path: input.xmlStoragePath ?? null,
@@ -168,7 +168,7 @@ export class SupabaseDteRepository implements DteRepository {
   }
 
   async markSigned(input: MarkSignedInput): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    return this.updateDocument(input.taxDocumentId, {
+    return this.updateDocument(input.tenantId, input.taxDocumentId, {
       status: "signed",
       ...(input.signedXml ? { xml_sha256: sha256String(input.signedXml) } : {}),
     });
@@ -202,10 +202,13 @@ export class SupabaseDteRepository implements DteRepository {
       checked_at: input.checkedAt ?? new Date().toISOString(),
     };
 
+    if (!input.tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+
     const result = (await this.client
       .from("tax_document_sii_submissions")
       .update(patch)
       .eq("id", input.submissionId)
+      .eq("tenant_id", input.tenantId)
       .select()
       .single()) as DbResult<SubmissionRow>;
 
@@ -286,11 +289,16 @@ export class SupabaseDteRepository implements DteRepository {
     return { ok: true, record: mapAuditRow(result.data ?? row) };
   }
 
-  async findByTrackId(trackId: string): Promise<TaxDocumentSubmissionRecord | null> {
+  async findByTrackId(input: {
+    tenantId: string;
+    trackId: string;
+  }): Promise<TaxDocumentSubmissionRecord | null> {
+    if (!input.tenantId.trim()) return null;
     const result = (await this.client
       .from("tax_document_sii_submissions")
       .select()
-      .eq("track_id", trackId)
+      .eq("tenant_id", input.tenantId)
+      .eq("track_id", input.trackId)
       .maybeSingle()) as DbResult<SubmissionRow>;
     if (result.error) throw notReady(result.error);
     return result.data ? mapSubmissionRow(result.data) : null;
@@ -410,12 +418,15 @@ export class SupabaseDteRepository implements DteRepository {
   }
 
   private async updateDocument(
+    tenantId: string,
     taxDocumentId: string,
     patch: Partial<TaxDocumentRow>,
   ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
+    if (!tenantId.trim()) return { ok: false, error: "tenantId requerido" };
     const result = (await this.client
       .from("tax_documents")
       .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("tenant_id", tenantId)
       .eq("id", taxDocumentId)
       .select()
       .single()) as DbResult<TaxDocumentRow>;

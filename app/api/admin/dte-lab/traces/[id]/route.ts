@@ -5,7 +5,70 @@ import { NextResponse } from "next/server";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getDtePersistenceBackend, getDteRepository } from "@/lib/dte/persistence/get-dte-repository";
 import { redactSensitivePath } from "@/lib/dte/persistence/dte-redaction";
+import type {
+  TaxDocumentAuditRecord,
+  TaxDocumentRecord,
+  TaxDocumentSubmissionRecord,
+} from "@/lib/dte/persistence/dte-persistence-types";
 import { DTE_SUPABASE_PERSISTENCE_NOT_READY } from "@/lib/dte/persistence/supabase-dte-repository";
+
+
+function safeDocument(record: TaxDocumentRecord) {
+  return {
+    id: record.id,
+    tenantId: record.tenantId,
+    documentType: record.documentType,
+    folio: record.folio,
+    status: record.status,
+    siiStatus: record.siiStatus,
+    environmentLabel: "LAB / PENDIENTE / NO PRODUCTIVO",
+    emitterRut: record.emitterRut,
+    receiverRut: record.receiverRut,
+    issueDate: record.issueDate,
+    totalAmount: record.totalAmount,
+    xmlSha256: record.xmlSha256 ?? null,
+    xmlStoragePath: redactSensitivePath(record.xmlStoragePath),
+    pdfStoragePath: redactSensitivePath(record.pdfStoragePath),
+    appointmentId: record.appointmentId ?? null,
+    paymentId: record.paymentId ?? null,
+    paymentReference: record.paymentReference ?? null,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function safeSubmission(record: TaxDocumentSubmissionRecord) {
+  return {
+    id: record.id,
+    tenantId: record.tenantId,
+    taxDocumentId: record.taxDocumentId,
+    environment: record.environment,
+    trackId: record.trackId ?? null,
+    submissionStatus: record.submissionStatus,
+    siiStatus: record.siiStatus,
+    requestXmlSha256: record.requestXmlSha256 ?? null,
+    responseSha256: record.responseSha256 ?? null,
+    rawResponseRedacted: record.rawResponseRedacted ?? null,
+    submittedAt: record.submittedAt ?? null,
+    checkedAt: record.checkedAt ?? null,
+    createdAt: record.createdAt,
+  };
+}
+
+function safeAuditLog(record: TaxDocumentAuditRecord) {
+  return {
+    id: record.id,
+    tenantId: record.tenantId,
+    taxDocumentId: record.taxDocumentId ?? null,
+    submissionId: record.submissionId ?? null,
+    action: record.action,
+    actorType: record.actorType,
+    actorId: record.actorId ?? null,
+    metadataRedacted: record.metadataRedacted,
+    ipHash: record.ipHash ? "[ip-hash-stored]" : null,
+    createdAt: record.createdAt,
+  };
+}
 
 function isNotReady(error: unknown): boolean {
   return error instanceof Error && error.message.includes(DTE_SUPABASE_PERSISTENCE_NOT_READY);
@@ -30,12 +93,10 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
     const repo = getDteRepository();
 
     try {
-      const [documents, submissions, auditLog] = await Promise.all([
-        repo.listRecentByTenant({ tenantId: tenantAccess.tenantId, limit: 100 }),
-        repo.listSubmissionsByTenant({ tenantId: tenantAccess.tenantId, limit: 100 }),
-        repo.listAuditLogByTenant({ tenantId: tenantAccess.tenantId, limit: 100 }),
-      ]);
-      const document = documents.find((item) => item.id === id);
+      const document = await repo.findTaxDocumentById({
+        tenantId: tenantAccess.tenantId,
+        id,
+      });
 
       if (!document) {
         return NextResponse.json(
@@ -49,31 +110,31 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
         );
       }
 
+      const [submissions, auditLog] = await Promise.all([
+        repo.listSubmissionsByTenant({ tenantId: tenantAccess.tenantId, limit: 100 }),
+        repo.listAuditLogByTenant({ tenantId: tenantAccess.tenantId, limit: 100 }),
+      ]);
+
       return NextResponse.json({
         ok: true,
         globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO",
         backend,
-        document: {
-          ...document,
-          xmlStoragePath: redactSensitivePath(document.xmlStoragePath),
-          pdfStoragePath: redactSensitivePath(document.pdfStoragePath),
-        },
+        authMode: tenantAccess.authMode,
+        document: safeDocument(document),
         submissions: submissions
           .filter((item) => item.taxDocumentId === id)
-          .map((item) => ({
-            ...item,
-            tokenFingerprint: undefined,
-          })),
+          .map(safeSubmission),
         auditLog: auditLog
           .filter((item) => item.taxDocumentId === id)
-          .map((item) => ({
-            ...item,
-            ipHash: item.ipHash ? "[ip-hash-stored]" : null,
-          })),
-        warnings:
-          backend === "supabase"
+          .map(safeAuditLog),
+        warnings: [
+          ...(backend === "supabase"
             ? []
-            : ["Persistencia Supabase no activada; detalle proviene de memory/LAB."],
+            : ["Persistencia Supabase no activada; detalle proviene de memory/LAB."]),
+          ...(tenantAccess.authMode === "legacy_host_tenant_match"
+            ? ["Autorizacion admin usando fallback legacy host/tenant; confirmar tenant_members antes de activar Supabase."]
+            : []),
+        ],
       });
     } catch (error) {
       if (!isNotReady(error)) throw error;

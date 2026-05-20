@@ -63,13 +63,15 @@ DTE_SUPABASE_PERSISTENCE_NOT_READY
 
 La migracion incluye RLS sugerida:
 
-- Tenant admin ve solo filas de su `tenant_id`.
-- Platform admin puede soporte/revision.
+- Tenant admin ve solo filas de su `tenant_id` si `tenant_members` existe con columnas esperadas.
+- Roles DTE iniciales: `owner`, `admin`; `staff`, `viewer` y `professional` no tienen DTE por defecto.
+- Platform admin puede soporte/revision si `platform_admins` existe con columnas esperadas.
+- Si existe columna `active`, debe ser true.
 - Ningun tenant ve certificados, CAF, folios, documentos o auditoria de otro tenant.
 - Inserts/updates quedan para backend controlado con service role.
 - Policies separadas para `select`; `insert/update` directo desde cliente queda bloqueado hasta disenar self-service estricto.
 
-El repo no incluye schema SQL confirmado para `tenant_members` ni `platform_admins`. La migracion endurecida usa guards: si esas tablas no existen, las funciones RLS retornan `false`. Si el proyecto usa tablas distintas, ajustar `dte_current_user_is_tenant_admin` y `dte_current_user_is_platform_admin` antes de aplicar.
+El repo no incluye schema SQL confirmado para `tenant_members` ni `platform_admins`. La migracion endurecida valida existencia de tabla y columnas; si faltan, las funciones RLS retornan `false`. Si el proyecto usa tablas distintas, ajustar `dte_current_user_is_tenant_admin` y `dte_current_user_is_platform_admin` antes de aplicar.
 
 ## Como Probar Sin Produccion
 
@@ -100,7 +102,7 @@ Respuesta base:
 }
 ```
 
-Las respuestas redactan paths, tokens, IP hash y no devuelven XML completo.
+Las respuestas redactan paths, tokens, IP hash, no devuelven `tokenFingerprint` y no devuelven XML completo. `requireTenantAdmin` valida JWT, tenant por host/slug/id, y usa `tenant_members`/`platform_admins` si existen; si no existen, mantiene fallback legacy solo para compatibilidad del admin actual en estado no productivo.
 
 ## Aplicacion Manual
 

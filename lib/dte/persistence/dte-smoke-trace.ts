@@ -58,6 +58,7 @@ export async function writeSmokeTrace(
 
   if (input.xml) {
     await repo.markXmlGenerated({
+      tenantId: draft.record.tenantId,
       taxDocumentId: draft.record.id,
       xml: input.xml,
       xmlStoragePath: null,

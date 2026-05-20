@@ -10,8 +10,8 @@
 -- - appointments/payments/customers exist in code/docs, but their canonical SQL schema is not
 --   present in this repo. Keep appointment_id/payment_id/customer_id nullable without FK until
 --   the live DB is inspected.
--- - tenant_members/platform_admins are referenced in docs but no SQL schema file exists here.
---   RLS functions below are guarded by to_regclass() and must be reviewed before applying.
+-- - tenant_members/platform_admins are referenced in docs/code comments but no canonical SQL schema exists here.
+--   RLS functions below guard table and column existence and return false when unconfirmed.
 -- - No DTE table below uses ON DELETE CASCADE from tenants or tax_documents. Tributary traces
 --   must not disappear by accidental tenant/document deletion.
 
@@ -303,56 +303,108 @@ alter table public.tax_document_sii_submissions enable row level security;
 alter table public.tax_document_status_history enable row level security;
 alter table public.tax_document_audit_log enable row level security;
 
-create or replace function dte_current_user_is_tenant_admin(row_tenant_id uuid)
+create or replace function public.dte_table_has_columns(target_table_name text, required_columns text[])
+returns boolean
+language sql
+stable
+as $$
+  select count(*) = cardinality(required_columns)
+  from information_schema.columns
+  where table_schema = 'public'
+    and table_name = target_table_name
+    and column_name = any(required_columns);
+$$;
+
+create or replace function public.dte_current_user_is_tenant_admin(row_tenant_id uuid)
 returns boolean
 language plpgsql
 stable
 as $$
 declare
   allowed boolean := false;
+  has_active boolean := false;
 begin
-  -- TODO antes de aplicar en production: confirmar schema real de tenant_members.
-  -- Supuesto documentado pero no confirmado en repo: tenant_members(tenant_id, user_id, role).
+  -- Repo evidence, 2026-05-20: no canonical tenant_members SQL exists in this repo.
+  -- This function only opens SELECT if the live DB has the expected columns.
+  -- DTE starts with owner/admin only; staff/viewer/professional are not allowed for DTE initially.
   if to_regclass('public.tenant_members') is null then
     return false;
   end if;
 
-  execute
-    'select exists (
-       select 1
-       from public.tenant_members tm
-       where tm.tenant_id = $1
-         and tm.user_id = auth.uid()
-         and tm.role in (''owner'', ''admin'')
-     )'
-    into allowed
-    using row_tenant_id;
+  if not public.dte_table_has_columns('tenant_members', array['tenant_id', 'user_id', 'role']) then
+    return false;
+  end if;
+
+  select public.dte_table_has_columns('tenant_members', array['active']) into has_active;
+
+  if has_active then
+    execute
+      'select exists (
+         select 1
+         from public.tenant_members tm
+         where tm.tenant_id = $1
+           and tm.user_id = auth.uid()
+           and tm.role in (''owner'', ''admin'')
+           and coalesce(tm.active, true) = true
+       )'
+      into allowed
+      using row_tenant_id;
+  else
+    execute
+      'select exists (
+         select 1
+         from public.tenant_members tm
+         where tm.tenant_id = $1
+           and tm.user_id = auth.uid()
+           and tm.role in (''owner'', ''admin'')
+       )'
+      into allowed
+      using row_tenant_id;
+  end if;
 
   return coalesce(allowed, false);
 end;
 $$;
 
-create or replace function dte_current_user_is_platform_admin()
+create or replace function public.dte_current_user_is_platform_admin()
 returns boolean
 language plpgsql
 stable
 as $$
 declare
   allowed boolean := false;
+  has_active boolean := false;
 begin
-  -- TODO antes de aplicar en production: confirmar schema real de platform_admins.
-  -- Supuesto documentado pero no confirmado en repo: platform_admins(user_id).
+  -- Repo evidence, 2026-05-20: no canonical platform_admins SQL exists in this repo.
+  -- Support SELECT opens only if the live DB has user_id, and active=true when active exists.
   if to_regclass('public.platform_admins') is null then
     return false;
   end if;
 
-  execute
-    'select exists (
-       select 1
-       from public.platform_admins pa
-       where pa.user_id = auth.uid()
-     )'
-    into allowed;
+  if not public.dte_table_has_columns('platform_admins', array['user_id']) then
+    return false;
+  end if;
+
+  select public.dte_table_has_columns('platform_admins', array['active']) into has_active;
+
+  if has_active then
+    execute
+      'select exists (
+         select 1
+         from public.platform_admins pa
+         where pa.user_id = auth.uid()
+           and coalesce(pa.active, true) = true
+       )'
+      into allowed;
+  else
+    execute
+      'select exists (
+         select 1
+         from public.platform_admins pa
+         where pa.user_id = auth.uid()
+       )'
+      into allowed;
+  end if;
 
   return coalesce(allowed, false);
 end;

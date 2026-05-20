@@ -11,17 +11,20 @@ import type {
 } from "./dte-persistence-types";
 
 export type MarkXmlGeneratedInput = {
+  tenantId: string;
   taxDocumentId: string;
   xml: string;
   xmlStoragePath?: string | null;
 };
 
 export type MarkSignedInput = {
+  tenantId: string;
   taxDocumentId: string;
   signedXml?: string | null;
 };
 
 export type UpdateSiiSubmissionStatusInput = {
+  tenantId: string;
   submissionId: string;
   submissionStatus: TaxDocumentSubmissionRecord["submissionStatus"];
   siiStatus: DteSiiStatus;
@@ -51,7 +54,14 @@ export interface DteRepository {
   appendAuditLog(
     audit: TaxDocumentAuditRecord,
   ): Promise<DtePersistenceResult<TaxDocumentAuditRecord>>;
-  findByTrackId(trackId: string): Promise<TaxDocumentSubmissionRecord | null>;
+  findByTrackId(input: {
+    tenantId: string;
+    trackId: string;
+  }): Promise<TaxDocumentSubmissionRecord | null>;
+  findTaxDocumentById(input: {
+    tenantId: string;
+    id: string;
+  }): Promise<TaxDocumentRecord | null>;
   findByDocumentReference(reference: {
     tenantId: string;
     paymentReference?: string | null;
@@ -127,7 +137,7 @@ export class InMemoryDteRepository implements DteRepository {
   async markXmlGenerated(
     input: MarkXmlGeneratedInput,
   ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    return this.updateDocument(input.taxDocumentId, {
+    return this.updateDocument(input.tenantId, input.taxDocumentId, {
       status: "xml_generated",
       xmlSha256: sha256String(input.xml),
       xmlStoragePath: input.xmlStoragePath ?? null,
@@ -135,7 +145,7 @@ export class InMemoryDteRepository implements DteRepository {
   }
 
   async markSigned(input: MarkSignedInput): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    return this.updateDocument(input.taxDocumentId, {
+    return this.updateDocument(input.tenantId, input.taxDocumentId, {
       status: "signed",
       xmlSha256: input.signedXml ? sha256String(input.signedXml) : undefined,
     });
@@ -160,7 +170,10 @@ export class InMemoryDteRepository implements DteRepository {
   async updateSiiSubmissionStatus(
     input: UpdateSiiSubmissionStatusInput,
   ): Promise<DtePersistenceResult<TaxDocumentSubmissionRecord>> {
-    const submission = this.submissions.find((item) => item.id === input.submissionId);
+    if (!input.tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+    const submission = this.submissions.find(
+      (item) => item.id === input.submissionId && item.tenantId === input.tenantId,
+    );
     if (!submission) return { ok: false, error: "Submission not found" };
 
     submission.submissionStatus = input.submissionStatus;
@@ -171,7 +184,9 @@ export class InMemoryDteRepository implements DteRepository {
       input.rawResponseRedacted ?? submission.rawResponseRedacted;
     submission.checkedAt = input.checkedAt ?? submission.checkedAt;
 
-    const document = this.taxDocuments.find((item) => item.id === submission.taxDocumentId);
+    const document = this.taxDocuments.find(
+      (item) => item.id === submission.taxDocumentId && item.tenantId === input.tenantId,
+    );
     if (document) {
       document.siiStatus = input.siiStatus;
       document.status = mapSubmissionStatusToDocumentStatus(
@@ -198,8 +213,28 @@ export class InMemoryDteRepository implements DteRepository {
     return { ok: true, record: audit };
   }
 
-  async findByTrackId(trackId: string): Promise<TaxDocumentSubmissionRecord | null> {
-    return this.submissions.find((item) => item.trackId === trackId) ?? null;
+  async findByTrackId(input: {
+    tenantId: string;
+    trackId: string;
+  }): Promise<TaxDocumentSubmissionRecord | null> {
+    if (!input.tenantId.trim()) return null;
+    return (
+      this.submissions.find(
+        (item) => item.tenantId === input.tenantId && item.trackId === input.trackId,
+      ) ?? null
+    );
+  }
+
+  async findTaxDocumentById(input: {
+    tenantId: string;
+    id: string;
+  }): Promise<TaxDocumentRecord | null> {
+    if (!input.tenantId.trim()) return null;
+    return (
+      this.taxDocuments.find(
+        (item) => item.tenantId === input.tenantId && item.id === input.id,
+      ) ?? null
+    );
   }
 
   async findByDocumentReference(reference: {
@@ -283,6 +318,7 @@ export class InMemoryDteRepository implements DteRepository {
   }
 
   private async updateDocument(
+    tenantId: string,
     taxDocumentId: string,
     patch: Partial<
       Pick<
@@ -291,7 +327,10 @@ export class InMemoryDteRepository implements DteRepository {
       >
     >,
   ): Promise<DtePersistenceResult<TaxDocumentRecord>> {
-    const record = this.taxDocuments.find((item) => item.id === taxDocumentId);
+    if (!tenantId.trim()) return { ok: false, error: "tenantId requerido" };
+    const record = this.taxDocuments.find(
+      (item) => item.id === taxDocumentId && item.tenantId === tenantId,
+    );
     if (!record) return { ok: false, error: "Tax document not found" };
     Object.assign(record, patch, { updatedAt: new Date().toISOString() });
     return { ok: true, record };

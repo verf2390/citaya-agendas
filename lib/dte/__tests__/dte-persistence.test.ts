@@ -112,6 +112,7 @@ test("in-memory repository records document, submission, status history and audi
 
   const xml = "<EnvioDTE>LAB</EnvioDTE>";
   const xmlGenerated = await repo.markXmlGenerated({
+    tenantId: draft.record.tenantId,
     taxDocumentId: draft.record.id,
     xml,
   });
@@ -194,6 +195,46 @@ test("repositories reject missing tenant_id before persistence operations", asyn
   const supabaseResult = await supabase.createTaxDocumentDraft(draft);
   assert.equal(supabaseResult.ok, false);
   if (!supabaseResult.ok) assert.match(supabaseResult.error, /tenantId requerido/);
+});
+
+test("repository update and track lookup require matching tenant_id", async () => {
+  const repo = new InMemoryDteRepository();
+  const draft = await repo.createTaxDocumentDraft({
+    tenantId: "tenant-a",
+    documentType: "factura_afecta",
+    folio: 2001,
+    emitterRut: "76.123.456-0",
+    emitterName: "Emisor Demo",
+    receiverRut: "11.111.111-1",
+    receiverName: "Cliente Demo",
+    issueDate: "2026-05-15",
+    totalAmount: 11900,
+  });
+  assert.equal(draft.ok, true);
+  if (!draft.ok) return;
+
+  const crossTenantUpdate = await repo.markXmlGenerated({
+    tenantId: "tenant-b",
+    taxDocumentId: draft.record.id,
+    xml: "<DTE />",
+  });
+  assert.equal(crossTenantUpdate.ok, false);
+
+  const submission = buildSubmissionRecord({
+    tenantId: "tenant-a",
+    taxDocumentId: draft.record.id,
+    environment: "certification",
+    trackId: "track-tenant-a",
+    submissionStatus: "submitted",
+    siiStatus: "sent",
+  });
+  await repo.createSiiSubmission(submission);
+
+  assert.equal(await repo.findByTrackId({ tenantId: "tenant-b", trackId: "track-tenant-a" }), null);
+  assert.equal(
+    (await repo.findByTrackId({ tenantId: "tenant-a", trackId: "track-tenant-a" }))?.id,
+    submission.id,
+  );
 });
 
 test("SupabaseDteRepository fails controlled when env is not configured", () => {
