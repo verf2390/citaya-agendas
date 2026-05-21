@@ -266,6 +266,14 @@ function buildCertificationOptions() {
     documentSignedAt: "2026-05-13T00:00:00",
     documentSignatureXml: documentSignature.signatureXml,
     envioSignatureXml: envioSignature.signatureXml,
+    xmlSignatureStatuses: [
+      `document=${documentSignature.xmlSignatureStatus ?? "unknown"}`,
+      `envio=${envioSignature.xmlSignatureStatus ?? "unknown"}`,
+    ],
+    xmlSignatureVerification: [
+      `document=${documentSignature.verification?.ok ? "ok" : "failed"}`,
+      `envio=${envioSignature.verification?.ok ? "ok" : "failed"}`,
+    ],
     warnings: [
       ...ted.warnings,
       ...frmt.warnings,
@@ -327,6 +335,12 @@ console.log(`mode=${mode}`);
 console.log(`warnings=${result.warnings.length}`);
 for (const warning of result.warnings) {
   console.log(`- ${warning}`);
+}
+for (const status of options.xmlSignatureStatuses ?? []) {
+  console.log(`xmlSignatureStatus=${status}`);
+}
+for (const verification of options.xmlSignatureVerification ?? []) {
+  console.log(`xmlSignatureVerification=${verification}`);
 }
 for (const warning of options.warnings ?? []) {
   console.log(`- ${warning}`);

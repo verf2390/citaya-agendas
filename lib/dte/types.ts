@@ -309,10 +309,13 @@ export type XmlDsigBuildInput = {
 
 export type XmlSignatureStatus =
   | "ready_controlled"
+  | "verified_controlled"
   | "pending_real_certification"
   | "missing_external_file"
   | "unsafe_repo_path"
   | "unsupported_certificate_format"
+  | "xsd_failed"
+  | "verification_failed"
   | "failed";
 
 export type XmlDsigBuildResult = {
@@ -327,6 +330,13 @@ export type XmlDsigBuildResult = {
   signatureMethod?: string;
   transforms?: string[];
   referenceUri?: string;
+  digestValueSha256?: string;
+  signatureValueSha256?: string;
+  verification?: {
+    attempted: boolean;
+    ok: boolean;
+    reason?: string;
+  };
   reason?: string | null;
 };
 

@@ -147,11 +147,17 @@ ${envioSignatureXml}
       status: "pending_signature",
       xml,
       warnings: [
-        "XML experimental no productivo.",
-        "SII-like XML laboratory format, no validado contra XSD oficial.",
-        options.mode === "xsd-structure"
-          ? "Modo xsd-structure: puede incluir TED/Signature sinteticos LAB sin validez criptografica."
-          : "No incluye CAF real, TED final ni firma XML real.",
+        options.mode === "certification"
+          ? "XML certification controlado: LAB / PENDIENTE / NO PRODUCTIVO hasta aprobacion SII."
+          : "XML experimental no productivo.",
+        options.mode === "certification"
+          ? "XML certification debe validarse contra XSD oficial antes de submit."
+          : "SII-like XML laboratory format, no validado contra XSD oficial.",
+        options.mode === "certification"
+          ? "Modo certification: puede incluir CAF/TED/XMLDSig externos controlados, sin validez legal aun."
+          : options.mode === "xsd-structure"
+            ? "Modo xsd-structure: puede incluir TED/Signature sinteticos LAB sin validez criptografica."
+            : "No incluye CAF real, TED final ni firma XML real.",
       ],
     };
   } catch (error) {

@@ -12,8 +12,10 @@ import {
 } from "../signing/sign-xml.placeholder";
 import {
   buildXmlDsigControlled,
+  canonicalizeXmlControlled,
   getRealXmlSigningConfigFromEnv,
   prepareRealXmlSigning,
+  verifyXmlSignatureControlled,
 } from "../signing/sign-xml.real";
 
 test("creates mock XML signature metadata for lab", () => {
@@ -115,17 +117,25 @@ test("XMLDSig preparation blocks missing and unsafe external files", () => {
   assert.equal(unsafe.status, "unsafe_repo_path");
 });
 
-test("XMLDSig controlled signs with PEM fixtures but remains non-production-valid", () => {
+test("XML canonicalization uses xmllint C14N with stable attribute ordering", () => {
+  const first = canonicalizeXmlControlled('<Documento z="2" a="1"><MntTotal>11900</MntTotal></Documento>');
+  const second = canonicalizeXmlControlled('<Documento a="1" z="2"><MntTotal>11900</MntTotal></Documento>');
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  if (first.ok && second.ok) {
+    assert.equal(first.canonicalXml, second.canonicalXml);
+    assert.match(first.canonicalXml, /a="1" z="2"/);
+  }
+});
+
+test("XMLDSig controlled signs and verifies with PEM fixtures but remains non-production-valid", () => {
   const root = mkdtempSync(join(tmpdir(), "citaya-dte-xmldsig-"));
-  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const keyPath = join(root, "private-key.pem");
   const certPath = join(root, "cert.pem");
   writeFileSync(keyPath, privateKey.export({ type: "pkcs1", format: "pem" }).toString(), "utf8");
-  writeFileSync(
-    certPath,
-    ["-----BEGIN CERTIFICATE-----", "QUJDREVGRw==", "-----END CERTIFICATE-----"].join("\n"),
-    "utf8",
-  );
+  writeFileSync(certPath, publicKey.export({ type: "spki", format: "pem" }).toString(), "utf8");
 
   const result = buildXmlDsigControlled(
     {
@@ -146,12 +156,32 @@ test("XMLDSig controlled signs with PEM fixtures but remains non-production-vali
   assert.equal(result.mode, "certification");
   assert.equal(result.isProductionValid, false);
   assert.equal(result.signed, true);
-  assert.equal(result.xmlSignatureStatus, "pending_real_certification");
+  assert.equal(result.xmlSignatureStatus, "verified_controlled");
+  assert.equal(result.verification?.attempted, true);
+  assert.equal(result.verification?.ok, true);
   assert.equal(result.canonicalizationMethod, "http://www.w3.org/TR/2001/REC-xml-c14n-20010315");
   assert.equal(result.digestMethod, "http://www.w3.org/2000/09/xmldsig#sha1");
   assert.equal(result.signatureMethod, "http://www.w3.org/2000/09/xmldsig#rsa-sha1");
   assert.deepEqual(result.transforms, ["http://www.w3.org/TR/2001/REC-xml-c14n-20010315"]);
   assert.match(result.signatureXml, /<Signature xmlns=/);
   assert.match(result.signatureXml, /<SignatureValue>/);
+  assert.ok(result.digestValueSha256);
+  assert.ok(result.signatureValueSha256);
   assert.doesNotMatch(result.signatureXml, /BEGIN RSA PRIVATE KEY/);
+  assert.doesNotMatch(result.signatureXml, /PRIVATE KEY/);
+});
+
+test("XMLDSig independent verification fails for tampered signature", () => {
+  const result = verifyXmlSignatureControlled({
+    signedInfoXml: [
+      '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">',
+      '<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod>',
+      '</SignedInfo>',
+    ].join(""),
+    signatureValue: "tampered",
+    certificatePem: "not-a-public-key",
+  });
+
+  assert.equal(result.attempted, true);
+  assert.equal(result.ok, false);
 });

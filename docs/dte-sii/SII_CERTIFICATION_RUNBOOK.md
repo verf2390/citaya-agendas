@@ -115,30 +115,39 @@ El comando nuevo reemplaza el submit manual de smoke para el primer contacto con
 
 ## XMLDSig, canonicalización y validación XSD
 
-Estado: `LAB / PENDIENTE / NO PRODUCTIVO`.
+Estado: `LAB / PENDIENTE / NO PRODUCTIVO`. Esta ruta acerca la firma a SII certification, pero no acredita emision legal ni produccion.
 
 XMLDSig controlado usa actualmente:
 
 - CanonicalizationMethod: `http://www.w3.org/TR/2001/REC-xml-c14n-20010315`.
+- Canonicalizacion efectiva: `xmllint --c14n` sobre XML parseado por libxml2; no canonicalizacion manual por string.
 - DigestMethod: `http://www.w3.org/2000/09/xmldsig#sha1`.
 - SignatureMethod: `http://www.w3.org/2000/09/xmldsig#rsa-sha1`.
-- Transforms: C14N 20010315.
+- Transforms: C14N 20010315. `enveloped-signature` queda pendiente de confirmacion contra la forma final SII.
 - Certificado soportado: PEM/CRT/CER externo.
 - Private key soportada: PEM/KEY externa.
 - PFX/P12: pendiente; se bloquea como `unsupported_certificate_format`.
 
-El resultado no se marca como real SII todavia. Hay firma criptografica controlada, pero falta validar canonicalizacion del nodo real, transforms finales, digest sobre DOM canonicalizado e insercion exacta de `Signature` con SII certification.
+La firma se construye con `SignedInfo`, `Reference URI`, `DigestValue`, `SignatureValue` y `KeyInfo/X509Data`. Luego se verifica localmente con `verifyXmlSignatureControlled`, usando el certificado o clave publica externa.
+
+Estados importantes:
+
+- `verified_controlled`: firma y digest verifican localmente con C14N y claves externas. No significa aprobado SII.
+- `verification_failed`: la verificacion independiente fallo; `certification-submit` debe bloquear.
+- `pending_real_certification`: falta canonicalizacion, archivos externos o una condicion verificable. No enviar a SII.
+- `xsd_failed`: el XML final no paso XSD local. No enviar a SII.
 
 Validar XML completo:
 
 ```bash
-DTE_MODE=certification npm run dte:certification
-npm run dte:certification:validate-xml
+npm run dte:certification:validate-xml -- tmp/dte-certification/certification-envio-dte.xml
+# o
+DTE_CERTIFICATION_XML_PATH=/ruta/externa/al/xml npm run dte:certification:validate-xml
 ```
 
-Si `xmllint` no existe, instalar `libxml2-utils` o usar un ambiente CI que lo incluya. Si XSD falla, `certification-submit` debe bloquear antes de seed/token/submit.
+Si `xmllint` no existe, instalar `libxml2-utils` o usar un ambiente CI que lo incluya. El comando reporta `xsd_valid=true` o `xsd_valid=false` y no imprime XML completo.
 
-`pending_real_certification` significa que la firma/XML no debe enviarse al SII todavia. No resolverlo con firmas fake, XML sintético ni `track_id` simulado.
+`certification-submit` debe bloquear antes de seed/token/submit si XMLDSig no es `verified_controlled`, si la verificacion falla, si XSD falla, si faltan CAF/cert/key o si falta `DTE_SII_ENABLE_SUBMIT=true`.
 
 Agenda/pagos siguen desconectados porque primero debe existir XML firmado, XSD valido, submit controlado y `track_id` real en certification por tenant. Este modulo no es productivo ni emite legalmente.
 
@@ -184,12 +193,12 @@ Interpretacion:
 - CAF real externo: se parsea y se valida contra RUT/tipo/folio del draft; no se guarda CAF completo en DB.
 - TED: se construye con `DD` y CAF embebido.
 - FRMT: se firma con `RSA-SHA1` usando la llave CAF externa. Si falta llave o formato, queda `pending_real_certification`/`failed`.
-- XMLDSig: actualmente firma con PEM externo en modo controlado, pero no se declara valido SII porque falta canonicalizacion robusta/insercion final validada. Por eso el submit debe seguir bloqueando si aparecen warnings de XMLDSig/canonicalizacion.
+- XMLDSig: firma con PEM externo en modo controlado, canonicaliza con `xmllint --c14n`, calcula digest y verifica localmente. Sigue sin declararse aprobado SII hasta validar insercion final, transforms y XSD con un set SII certification real.
 - XSD: si `xmllint` falla o no esta instalado, no hay XML listo para submit.
 
 `pending_real_certification` significa que hay una pieza real incompleta o aun no verificable ante SII. No se debe resolver con firmas fake, `track_id` fake ni desactivando bloqueos.
 
-Antes de submit real falta: XMLDSig canonicalizado y validado contra XSD/SII, endpoints reales de certification, tenant LAB real, Supabase LAB activo, `DTE_SII_ENABLE_SUBMIT=true`, y confirmacion de que no hay production ni agenda/pagos conectados.
+Antes de submit real falta: XML final validado contra XSD/SII certification, endpoints reales de certification, tenant LAB real, Supabase LAB activo, `DTE_SII_ENABLE_SUBMIT=true`, y confirmacion de que no hay production ni agenda/pagos conectados.
 
 No hacer todavia: no commitear CAF/cert/key, no imprimir XML completo con datos sensibles, no usar `DTE_SII_ENV=production`, no conectar pagos/citas, no decir que Citaya factura legalmente.
 

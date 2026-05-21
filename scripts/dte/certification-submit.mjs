@@ -229,6 +229,8 @@ function collectPreflightBlocks(readiness, backend) {
       blocks.push(step("external_file", "missing_external_file", `${name} no existe.`));
     } else if (state.status === "unsafe_repo_path") {
       blocks.push(step("external_file", "unsafe_repo_path", `${name} apunta dentro del repo.`));
+    } else if (state.status === "unsupported_certificate_format") {
+      blocks.push(step("external_file", "unsupported_certificate_format", `${name} tiene formato no soportado.`));
     } else if (state.status === "failed") {
       blocks.push(step("external_file", "failed", state.error ?? `${name} no es valido.`));
     }
@@ -294,10 +296,26 @@ function validateXsd(xmlPath) {
   return { ok: validated.status === 0, stdout: validated.stdout, stderr: validated.stderr };
 }
 
-function hasNonCertifiableWarnings(text) {
-  return /no equivale a aprobacion SII|no se marca como valida SII|XML experimental|NO PRODUCTIVO/i.test(
-    text,
-  );
+function classifyGeneratedXmlBlock(text) {
+  if (/xmlSignatureStatus=.*verification_failed|verification=failed/i.test(text)) {
+    return { status: "verification_failed", reason: "Verificacion independiente XMLDSig fallo." };
+  }
+  if (/xmlSignatureStatus=.*pending_real_certification/i.test(text)) {
+    return { status: "pending_real_certification", reason: "XMLDSig sigue pending_real_certification." };
+  }
+  if (/xmlSignatureStatus=.*missing_external_file/i.test(text)) {
+    return { status: "missing_external_file", reason: "Falta archivo externo para XMLDSig." };
+  }
+  if (/xmlSignatureStatus=.*unsafe_repo_path/i.test(text)) {
+    return { status: "unsafe_repo_path", reason: "Archivo XMLDSig apunta dentro del repo." };
+  }
+  if (/xmlSignatureStatus=.*unsupported_certificate_format/i.test(text)) {
+    return { status: "unsupported_certificate_format", reason: "Certificado XMLDSig en formato no soportado." };
+  }
+  if (/xsd_valid=false/i.test(text)) {
+    return { status: "xsd_failed", reason: "Validacion XSD local fallo." };
+  }
+  return null;
 }
 
 async function persistBlockedTrace(repo, draft, xml, steps, reason) {
@@ -439,12 +457,13 @@ async function main() {
     process.exit(1);
   }
 
-  if (hasNonCertifiableWarnings(`${generated.stdout}\n${generated.stderr}`)) {
+  const generatedXmlBlock = classifyGeneratedXmlBlock(`${generated.stdout}\n${generated.stderr}`);
+  if (generatedXmlBlock) {
     steps.push(
       step(
         "signing",
-        "pending_real_certification",
-        "Firma/XMLDSig aun no se marca como valida SII por canonicalizacion/XSD final; no se contacta SII.",
+        generatedXmlBlock.status,
+        `${generatedXmlBlock.reason} No se contacta SII.`,
       ),
     );
     const submission = await persistBlockedTrace(
@@ -452,7 +471,7 @@ async function main() {
       draft,
       xml,
       steps,
-      "Firma/XML certification pendiente de validacion real SII",
+      generatedXmlBlock.reason,
     );
     steps.push(
       step("trace", "ready", `Trazabilidad LAB guardada submission_id=${submission.id} track_id=null`),

@@ -1,10 +1,14 @@
-import { createHash, createSign } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { createHash, createSign, createVerify } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { validateExternalDteFile } from "../config/external-dte-files";
 import type {
   RealXmlSigningConfig,
   RealXmlSigningPreparationResult,
+  XmlSignatureStatus,
   XmlDsigBuildInput,
   XmlDsigBuildResult,
 } from "../types";
@@ -18,6 +22,93 @@ export const XMLDSIG_TRANSFORMS = [XMLDSIG_C14N_METHOD] as const;
 const C14N = XMLDSIG_C14N_METHOD;
 const RSA_SHA1 = XMLDSIG_RSA_SHA1_METHOD;
 const SHA1 = XMLDSIG_SHA1_METHOD;
+
+
+export type XmlCanonicalizationResult =
+  | { ok: true; canonicalXml: string; method: typeof XMLDSIG_C14N_METHOD }
+  | { ok: false; status: "pending_real_certification" | "failed"; reason: string };
+
+export type XmlSignatureVerificationResult = {
+  attempted: boolean;
+  ok: boolean;
+  reason?: string;
+};
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+export function canonicalizeXmlControlled(xml: string): XmlCanonicalizationResult {
+  if (!xml.trim()) {
+    return { ok: false, status: "failed", reason: "XML vacio para canonicalizacion." };
+  }
+
+  const check = spawnSync("xmllint", ["--version"], { encoding: "utf8" });
+  if (check.error || check.status !== 0) {
+    return {
+      ok: false,
+      status: "pending_real_certification",
+      reason: "xmllint con soporte C14N no esta disponible; no se canonicaliza manualmente.",
+    };
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), "citaya-dte-c14n-"));
+  const inputPath = join(dir, "input.xml");
+  try {
+    writeFileSync(inputPath, xml, "utf8");
+    const result = spawnSync("xmllint", ["--c14n", inputPath], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+    if (result.status !== 0 || !result.stdout.trim()) {
+      return {
+        ok: false,
+        status: "failed",
+        reason: "xmllint no pudo canonicalizar el XML proporcionado.",
+      };
+    }
+    return { ok: true, canonicalXml: result.stdout, method: XMLDSIG_C14N_METHOD };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export function verifyXmlSignatureControlled(input: {
+  signedInfoXml: string;
+  signatureValue: string;
+  certificatePem: string;
+  expectedDigestValue?: string | null;
+  canonicalizedReferenceXml?: string | null;
+}): XmlSignatureVerificationResult {
+  const canonicalSignedInfo = canonicalizeXmlControlled(input.signedInfoXml);
+  if (!canonicalSignedInfo.ok) {
+    return { attempted: true, ok: false, reason: canonicalSignedInfo.reason };
+  }
+
+  if (input.expectedDigestValue && input.canonicalizedReferenceXml) {
+    const digest = sha1Base64(input.canonicalizedReferenceXml);
+    if (digest !== input.expectedDigestValue) {
+      return { attempted: true, ok: false, reason: "DigestValue no coincide con el nodo canonicalizado." };
+    }
+  }
+
+  try {
+    const verifier = createVerify("RSA-SHA1");
+    verifier.update(canonicalSignedInfo.canonicalXml, "utf8");
+    const ok = verifier.verify(input.certificatePem, input.signatureValue, "base64");
+    return {
+      attempted: true,
+      ok,
+      reason: ok ? undefined : "SignatureValue no verifica con el certificado publico.",
+    };
+  } catch {
+    return {
+      attempted: true,
+      ok: false,
+      reason: "No se pudo verificar XMLDSig con el certificado externo.",
+    };
+  }
+}
 
 function envValue(name: string): string {
   return String(process.env[name] ?? "").trim();
@@ -132,12 +223,16 @@ function stripPem(value: string): string {
   return value
     .replace(/-----BEGIN CERTIFICATE-----/g, "")
     .replace(/-----END CERTIFICATE-----/g, "")
+    .replace(/-----BEGIN PUBLIC KEY-----/g, "")
+    .replace(/-----END PUBLIC KEY-----/g, "")
     .replace(/\s+/g, "");
 }
 
-export function getXmlDsigControlledMetadata(status = "pending_real_certification") {
+export function getXmlDsigControlledMetadata(
+  status: XmlSignatureStatus = "pending_real_certification",
+) {
   return {
-    signed: status === "ready_controlled",
+    signed: status === "ready_controlled" || status === "verified_controlled",
     xmlSignatureStatus: status,
     canonicalizationMethod: C14N,
     digestMethod: SHA1,
@@ -180,9 +275,27 @@ export function buildXmlDsigControlled(
 
   const privateKey = readFileSync(config.privateKeyPath, "utf8");
   const certificate = readFileSync(config.publicCertificatePath, "utf8");
-  const digest = sha1Base64(input.signedXmlFragment);
+  const canonicalReference = canonicalizeXmlControlled(input.signedXmlFragment);
+  if (!canonicalReference.ok) {
+    return {
+      signatureXml: "",
+      mode: "certification",
+      isProductionValid: false,
+      signed: false,
+      xmlSignatureStatus: canonicalReference.status,
+      canonicalizationMethod: C14N,
+      digestMethod: SHA1,
+      signatureMethod: RSA_SHA1,
+      transforms: [...XMLDSIG_TRANSFORMS],
+      referenceUri: input.referenceUri,
+      reason: canonicalReference.reason,
+      verification: { attempted: false, ok: false, reason: "No se firmo porque canonicalizacion fallo." },
+      warnings: [canonicalReference.reason],
+    };
+  }
+  const digest = sha1Base64(canonicalReference.canonicalXml);
   const signedInfo = [
-    "<SignedInfo>",
+    '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">',
     `  <CanonicalizationMethod Algorithm="${C14N}"></CanonicalizationMethod>`,
     `  <SignatureMethod Algorithm="${RSA_SHA1}"></SignatureMethod>`,
     `  <Reference URI="#${escapeXml(input.referenceUri)}">`,
@@ -194,33 +307,68 @@ export function buildXmlDsigControlled(
     "  </Reference>",
     "</SignedInfo>",
   ].join("\n");
+  const canonicalSignedInfo = canonicalizeXmlControlled(signedInfo);
+  if (!canonicalSignedInfo.ok) {
+    return {
+      signatureXml: "",
+      mode: "certification",
+      isProductionValid: false,
+      signed: false,
+      xmlSignatureStatus: canonicalSignedInfo.status,
+      canonicalizationMethod: C14N,
+      digestMethod: SHA1,
+      signatureMethod: RSA_SHA1,
+      transforms: [...XMLDSIG_TRANSFORMS],
+      referenceUri: input.referenceUri,
+      reason: canonicalSignedInfo.reason,
+      verification: { attempted: false, ok: false, reason: "No se firmo porque canonicalizacion de SignedInfo fallo." },
+      warnings: [canonicalSignedInfo.reason],
+    };
+  }
   let signatureValue: string;
   try {
     const signer = createSign("RSA-SHA1");
-    signer.update(signedInfo, "utf8");
+    signer.update(canonicalSignedInfo.canonicalXml, "utf8");
     signatureValue = signer.sign(privateKey, "base64");
   } catch {
     throw new Error("XMLDSig certification failed with external private key; revisar formato PEM y password/PFX no soportado.");
   }
+  const verification = verifyXmlSignatureControlled({
+    signedInfoXml: signedInfo,
+    signatureValue,
+    certificatePem: certificate,
+    expectedDigestValue: digest,
+    canonicalizedReferenceXml: canonicalReference.canonicalXml,
+  });
+  const xmlSignatureStatus: XmlSignatureStatus = verification.ok
+    ? "verified_controlled"
+    : "verification_failed";
 
   return {
     mode: "certification",
     isProductionValid: false,
     signed: true,
-    xmlSignatureStatus: "pending_real_certification",
+    xmlSignatureStatus,
     canonicalizationMethod: C14N,
     digestMethod: SHA1,
     signatureMethod: RSA_SHA1,
     transforms: [...XMLDSIG_TRANSFORMS],
     referenceUri: input.referenceUri,
-    reason: "Firma criptografica controlada generada, pero canonicalizacion/insercion aun no validada por SII.",
+    reason: verification.ok
+      ? "Firma criptografica controlada verificada localmente; falta validar insercion/XSD/SII certification."
+      : (verification.reason ?? "Verificacion XMLDSig controlada fallo."),
+    digestValueSha256: sha256Hex(digest),
+    signatureValueSha256: sha256Hex(signatureValue),
+    verification,
     warnings: [
-      "XMLDSig generado con Node crypto en modo certification controlado.",
-      "Canonicalizacion XML real debe validarse contra SII; esta ruta no se marca como valida SII.",
+      `XMLDSig status=${xmlSignatureStatus} verification=${verification.ok ? "ok" : "failed"}.`,
+      "XMLDSig generado con Node crypto + xmllint C14N en modo certification controlado.",
+      "XMLDSig controlado no equivale a aprobacion SII ni habilita produccion.",
     ],
     signatureXml: [
       '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">',
       signedInfo
+        .replace(/^<SignedInfo xmlns="http:\/\/www.w3.org\/2000\/09\/xmldsig#">/, "<SignedInfo>")
         .split("\n")
         .map((line) => `  ${line}`)
         .join("\n"),

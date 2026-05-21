@@ -2,20 +2,25 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
-const [xmlPath, schemaPath] = process.argv.slice(2);
+const [xmlPathArg, schemaPathArg] = process.argv.slice(2);
+const xmlPath = xmlPathArg || process.env.DTE_CERTIFICATION_XML_PATH || "tmp/dte-certification/certification-envio-dte.xml";
+const schemaPath = schemaPathArg || process.env.DTE_CERTIFICATION_XSD_PATH || "docs/dte-sii/xsd/EnvioDTE_v10.xsd";
 
 if (!xmlPath || !schemaPath) {
   console.error("Usage: node scripts/dte/validate-xsd.mjs <xml-file> <xsd-file>");
+  console.error("xsd_valid=false");
   process.exit(2);
 }
 
 if (!existsSync(xmlPath)) {
   console.error(`XML file not found: ${xmlPath}`);
+  console.error("xsd_valid=false");
   process.exit(2);
 }
 
 if (!existsSync(schemaPath)) {
   console.error(`XSD file not found: ${schemaPath}`);
+  console.error("xsd_valid=false");
   process.exit(2);
 }
 
@@ -34,6 +39,7 @@ if (check.error) {
       "Or use a CI image that includes xmllint.",
     ].join("\n"),
   );
+  console.error("xsd_valid=false");
   process.exit(3);
 }
 
@@ -45,5 +51,11 @@ const result = spawnSync(
     stdio: "inherit",
   },
 );
+
+if (result.status === 0) {
+  console.log("xsd_valid=true");
+} else {
+  console.error("xsd_valid=false");
+}
 
 process.exit(result.status ?? 1);
