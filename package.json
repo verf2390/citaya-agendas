@@ -13,6 +13,7 @@
     "dte:precert": "node scripts/dte/precert-readiness.mjs",
     "dte:certification": "DTE_MODE=certification node scripts/dte/generate-lab-xml.mjs --mode=certification",
     "dte:certification:readiness": "node scripts/dte/certification-readiness.mjs",
+    "dte:certification:submit": "node scripts/dte/certification-submit.mjs",
     "dte:test": "node --test scripts/dte/run-dte-tests.mjs",
     "dte:sii:dry-run": "node scripts/dte/sii-certification-smoke.mjs --dry-run",
     "dte:sii:submit": "node scripts/dte/sii-certification-smoke.mjs --submit",

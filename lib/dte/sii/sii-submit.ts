@@ -12,6 +12,13 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function withTimeout(config: SiiCertificationConfig, init: RequestInit = {}): RequestInit {
+  return {
+    ...init,
+    signal: AbortSignal.timeout(config.timeoutMs || 30_000),
+  };
+}
+
 export type SubmitCertificationSetOptions = {
   xml: string;
   xmlPath?: string | null;
@@ -79,14 +86,14 @@ export async function submitCertificationSet(
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(config.submitUrl, {
+  const response = await fetchImpl(config.submitUrl, withTimeout(config, {
     method: "POST",
     headers: {
       "content-type": "application/xml; charset=ISO-8859-1",
       cookie: `TOKEN=${options.token}`,
     },
     body: options.xml,
-  });
+  }));
   const raw = await response.text();
   const parsed = parseSiiSubmissionResponse(raw);
 

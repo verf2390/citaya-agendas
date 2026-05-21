@@ -11,6 +11,13 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function withTimeout(config: SiiCertificationConfig, init: RequestInit = {}): RequestInit {
+  return {
+    ...init,
+    signal: AbortSignal.timeout(config.timeoutMs || 30_000),
+  };
+}
+
 function valueFromRecord(record: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
     const value = record[key];
@@ -118,10 +125,10 @@ export async function getSubmissionStatus(
 
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = `${config.statusUrl}${config.statusUrl.includes("?") ? "&" : "?"}trackId=${encodeURIComponent(options.trackId)}`;
-  const response = await fetchImpl(url, {
+  const response = await fetchImpl(url, withTimeout(config, {
     method: "GET",
     headers: { cookie: `TOKEN=${options.token}` },
-  });
+  }));
   const raw = await response.text();
   const parsed = parseSiiStatusResponse(raw);
 

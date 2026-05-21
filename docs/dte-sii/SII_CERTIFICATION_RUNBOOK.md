@@ -105,10 +105,78 @@ npm run dte:sii:dry-run:trace
 Luego, para submit real al ambiente de certificacion SII, usar solamente LAB/certification y mantener `DTE_SII_ENV=certification`. El submit sigue bloqueado salvo que `DTE_SII_ENABLE_SUBMIT=true` este definido explicitamente.
 
 ```bash
-npm run dte:sii:submit
+npm run dte:certification:submit
 ```
 
-Si SII devuelve `track_id` real, guardarlo como evidencia del tenant. Si no hay `track_id` real, debe quedar `null`/pendiente.
+El comando nuevo reemplaza el submit manual de smoke para el primer contacto controlado. Si SII devuelve `track_id` real, se guarda como evidencia del tenant. Si no hay `track_id` real, debe quedar `null`/pendiente.
+
+
+## Primer submit real controlado en certification
+
+Estado actual obligatorio: `LAB / PENDIENTE / NO PRODUCTIVO`. Este flujo no activa produccion, no habilita emision legal y no conecta agenda/pagos.
+
+Variables requeridas antes de intentar el comando controlado:
+
+```bash
+set -a
+source .env.dte-lab
+set +a
+
+DTE_PERSISTENCE_BACKEND=supabase
+DTE_MODE=certification
+DTE_SII_ENV=certification
+DTE_SMOKE_TENANT_ID=<uuid-tenant-lab>
+NEXT_PUBLIC_SUPABASE_URL=<url-proyecto-lab>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-lab>
+DTE_SII_SEED_URL=<endpoint-seed-certification>
+DTE_SII_TOKEN_URL=<endpoint-token-certification>
+DTE_SII_SUBMIT_URL=<endpoint-submit-certification>
+DTE_SII_STATUS_URL=<endpoint-status-certification>
+DTE_CAF_PATH=/home/<user>/secure/citaya-dte/certification/<tenant-id>/caf.xml
+DTE_CAF_PRIVATE_KEY_PATH=/home/<user>/secure/citaya-dte/certification/<tenant-id>/caf-private-key.pem
+DTE_CERT_PATH=/home/<user>/secure/citaya-dte/certification/<tenant-id>/cert.pem
+DTE_PRIVATE_KEY_PATH=/home/<user>/secure/citaya-dte/certification/<tenant-id>/private-key.pem
+DTE_SII_ENABLE_SUBMIT=true
+```
+
+Rutas externas seguras: usar un directorio fuera de `/home/verf/apps/citaya-agendas`, por ejemplo `/home/verf/secure/citaya-dte/certification/<tenant-id>/`. No guardar CAF completo, certificados, llaves privadas, tokens ni passwords dentro del repo.
+
+Ejecucion recomendada:
+
+```bash
+npm run dte:certification:readiness
+npm run dte:certification:submit
+```
+
+El comando `dte:certification:submit` imprime un resumen seguro: modo, ambiente, backend, presencia de endpoints, presencia/existencia de archivos externos, si estan fuera del repo, si submit esta habilitado y `track_id_simulado=NO`. No imprime `SUPABASE_SERVICE_ROLE_KEY`, tokens, private keys, contenido CAF, certificados ni XML completo.
+
+Bloqueos esperados:
+
+- Sin `DTE_SII_ENABLE_SUBMIT=true`: `blocked_submit`; no contacta SII.
+- Con `DTE_MODE=production` o `DTE_SII_ENV=production`: `blocked_production`; no contacta SII.
+- Sin Supabase LAB o sin `DTE_SMOKE_TENANT_ID`: `pending_config`/`blocked_submit`; no contacta SII.
+- Con archivos faltantes o dentro del repo: `pending_real_certification`/`blocked_submit`; no contacta SII.
+- Si readiness no esta `ready`: `pending_config` o `pending_real_certification`; no contacta SII.
+- Si XML/firma aun no son marcables como reales ante SII: `pending_real_certification`; se guarda trazabilidad LAB si ya se creo documento, pero no se hace submit.
+
+Cuando SII entregue `track_id` real, se guarda en `tax_document_sii_submissions.track_id`. Si SII no entrega `track_id`, queda `null`; no se inventa ni se simula. Solo con `track_id` real el comando consulta status y guarda `checked_at`, respuesta redactada, status history y audit log.
+
+Despues de ejecutar, revisar en Supabase LAB:
+
+- `tax_documents`
+- `tax_document_sii_submissions`
+- `tax_document_status_history`
+- `tax_document_audit_log`
+
+Interpretacion de estados:
+
+- `ready`: configuracion local lista para el siguiente paso.
+- `pending_real_certification`: falta una pieza real o la firma/XML aun no deben enviarse a SII.
+- `blocked_submit`: falta flag explicito, backend Supabase LAB o condicion de seguridad.
+- `submitted`: hubo intento real a SII certification y se persistio respuesta redactada.
+- `accepted`/`rejected`/`failed`/`pending`: resultado de status real cuando existe `track_id`.
+
+Que NO hacer todavia: no usar production, no tocar Supabase productivo, no conectar agenda/pagos, no emitir automaticamente desde citas/pagos, no guardar secretos en repo, no imprimir tokens completos, no guardar tokens completos y no declarar facturacion legal hasta aprobacion SII real por tenant.
 
 ## 7. Revisar Supabase LAB
 

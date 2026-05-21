@@ -14,6 +14,13 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function withTimeout(config: SiiCertificationConfig, init: RequestInit = {}): RequestInit {
+  return {
+    ...init,
+    signal: AbortSignal.timeout(config.timeoutMs || 30_000),
+  };
+}
+
 function requireEndpoint(value: string, field: string): void {
   if (!value.trim()) {
     throw new SiiCertificationError(
@@ -74,14 +81,14 @@ export async function requestSeed(
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(config.seedUrl, { method: "GET" });
+  const response = await fetchImpl(config.seedUrl, withTimeout(config, { method: "GET" }));
   const text = await response.text();
   const seed = extractXmlValue(text, "SEMILLA") ?? extractXmlValue(text, "seed");
 
   if (!response.ok || !seed) {
     throw new SiiCertificationError(
       SII_ERROR_CODES.INVALID_RESPONSE,
-      "Respuesta seed SII no contiene SEMILLA clara.",
+      `Respuesta seed SII invalida status=${response.status}; no contiene SEMILLA clara.`,
     );
   }
 
@@ -164,18 +171,18 @@ export async function requestToken(
   }
 
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(config.tokenUrl, {
+  const response = await fetchImpl(config.tokenUrl, withTimeout(config, {
     method: "POST",
     headers: { "content-type": "application/xml; charset=ISO-8859-1" },
     body: signedSeed,
-  });
+  }));
   const text = await response.text();
   const token = extractXmlValue(text, "TOKEN") ?? extractXmlValue(text, "token");
 
   if (!response.ok || !token) {
     throw new SiiCertificationError(
       SII_ERROR_CODES.INVALID_RESPONSE,
-      "Respuesta token SII no contiene TOKEN claro.",
+      `Respuesta token SII invalida status=${response.status}; no contiene TOKEN claro.`,
     );
   }
 
