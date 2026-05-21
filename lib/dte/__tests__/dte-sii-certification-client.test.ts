@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { validateDteConfig } from "../config/validate-dte-config";
@@ -193,6 +196,95 @@ test("controlled certification submit blocks external files inside repo", () => 
 
   assert.equal(result.status, 1);
   assert.match(result.stdout, /apunta dentro del repo/);
+  assert.doesNotMatch(result.stdout, /secret-service-role/);
+});
+
+test("certification XML command blocks safely without external CAF/cert/key", () => {
+  const result = spawnSync("npm", ["run", "dte:certification:xml"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      DTE_CAF_PATH: "",
+      DTE_CAF_PRIVATE_KEY_PATH: "",
+      DTE_CERT_PATH: "",
+      DTE_PRIVATE_KEY_PATH: "",
+      SUPABASE_SERVICE_ROLE_KEY: "service-role-secret-must-not-print",
+    },
+  });
+
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /pending_real_certification/);
+  assert.match(result.stderr, /missing_external_files=/);
+  assert.match(result.stderr, /no se contacta SII/i);
+  assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /service-role-secret-must-not-print/);
+});
+
+test("certification XML command blocks production modes", () => {
+  const result = spawnSync(
+    "node",
+    ["scripts/dte/generate-lab-xml.mjs", "--mode=certification"],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: { ...process.env, DTE_MODE: "production", DTE_SII_ENV: "certification" },
+    },
+  );
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /blocked_production/);
+});
+
+test("certification validate-xml fails clearly when XML is missing", () => {
+  const result = spawnSync("npm", ["run", "dte:certification:validate-xml", "--", "/tmp/citaya-missing-certification.xml"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /XML file not found/);
+  assert.match(result.stderr, /xsd_valid=false/);
+});
+
+test("controlled certification submit suggests XML generation when artifact is missing", () => {
+  const root = mkdtempSync(join(tmpdir(), "citaya-dte-submit-missing-xml-"));
+  const cafPath = join(root, "caf.xml");
+  const cafKeyPath = join(root, "caf-key.pem");
+  const certPath = join(root, "cert.pem");
+  const keyPath = join(root, "private-key.pem");
+  const missingXmlPath = join(root, "missing-certification-envio-dte.xml");
+  writeFileSync(cafPath, "<CAF></CAF>", "utf8");
+  writeFileSync(cafKeyPath, "not-used-before-xml-check", "utf8");
+  writeFileSync(certPath, "not-used-before-xml-check", "utf8");
+  writeFileSync(keyPath, "not-used-before-xml-check", "utf8");
+
+  const result = spawnSync("npm", ["run", "dte:certification:submit"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      DTE_MODE: "certification",
+      DTE_SII_ENV: "certification",
+      DTE_SII_ENABLE_SUBMIT: "true",
+      DTE_PERSISTENCE_BACKEND: "supabase",
+      DTE_SMOKE_TENANT_ID: "84ce60a0-1eb0-426b-adbc-c9cfbc76807c",
+      NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_SERVICE_ROLE_KEY: "secret-service-role",
+      DTE_SII_SEED_URL: "https://sii.example/seed",
+      DTE_SII_TOKEN_URL: "https://sii.example/token",
+      DTE_SII_SUBMIT_URL: "https://sii.example/submit",
+      DTE_SII_STATUS_URL: "https://sii.example/status",
+      DTE_CAF_PATH: cafPath,
+      DTE_CAF_PRIVATE_KEY_PATH: cafKeyPath,
+      DTE_CERT_PATH: certPath,
+      DTE_PRIVATE_KEY_PATH: keyPath,
+      DTE_CERTIFICATION_OUTPUT_PATH: missingXmlPath,
+    },
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /npm run dte:certification:xml/);
+  assert.match(result.stdout, /pending_real_certification/);
   assert.doesNotMatch(result.stdout, /secret-service-role/);
 });
 

@@ -151,6 +151,70 @@ Si `xmllint` no existe, instalar `libxml2-utils` o usar un ambiente CI que lo in
 
 Agenda/pagos siguen desconectados porque primero debe existir XML firmado, XSD valido, submit controlado y `track_id` real en certification por tenant. Este modulo no es productivo ni emite legalmente.
 
+
+## Generar XML certification controlado
+
+Estado: `LAB / PENDIENTE / NO PRODUCTIVO`. Este comando genera un artefacto XML local para validacion tecnica; no contacta SII, no crea `track_id` y no habilita emision legal.
+
+Cargar ambiente LAB si corresponde:
+
+```bash
+set -a
+source .env.dte-lab
+set +a
+```
+
+Archivos externos requeridos, siempre fuera del repo:
+
+```bash
+DTE_CAF_PATH=/ruta/externa/citaya-dte/certification/<tenant-id>/caf.xml
+DTE_CAF_PRIVATE_KEY_PATH=/ruta/externa/citaya-dte/certification/<tenant-id>/caf-private-key.pem
+DTE_CERT_PATH=/ruta/externa/citaya-dte/certification/<tenant-id>/cert.pem
+DTE_PRIVATE_KEY_PATH=/ruta/externa/citaya-dte/certification/<tenant-id>/private-key.pem
+```
+
+Variables opcionales del draft certification:
+
+```bash
+DTE_CERTIFICATION_FOLIO=<folio-dentro-del-rango-CAF>
+DTE_CERTIFICATION_DOC_TYPE=factura_afecta
+DTE_CERTIFICATION_OUTPUT_PATH=tmp/dte-certification/certification-envio-dte.xml
+DTE_CERTIFICATION_ISSUE_DATE=YYYY-MM-DD
+```
+
+Si `DTE_CERTIFICATION_FOLIO` no existe, el generador usa el primer folio del rango CAF (`RNG/D`). Si el folio queda fuera del rango o el tipo DTE no coincide con el CAF, el comando bloquea con error claro.
+
+Generar XML:
+
+```bash
+npm run dte:certification:xml
+```
+
+Salida esperada cuando todo externo existe y verifica localmente:
+
+- `tmp/dte-certification/certification-envio-dte.xml`
+- `tmp/dte-certification/certification-envio-dte.xml.sha256`
+- `tmp/dte-certification/certification-envio-dte.xml.metadata.json`
+
+La salida de consola muestra ruta, modo, folio, tipo documento, hash corto, `sii_contact=no` y `track_id_simulado=NO`. No imprime CAF completo, certificado, private key ni XML completo.
+
+Validar XSD:
+
+```bash
+npm run dte:certification:validate-xml
+npm run dte:certification:validate-xml -- tmp/dte-certification/certification-envio-dte.xml
+DTE_CERTIFICATION_XML_PATH=/ruta/al/xml npm run dte:certification:validate-xml
+```
+
+Interpretacion:
+
+- `pending_real_certification`: faltan CAF/cert/key externos, folio/tipo no coincide, FRMT no se pudo firmar o XMLDSig no queda verificable. No enviar a SII.
+- `verified_controlled`: XMLDSig verifica localmente con C14N y certificado/clave publica externa. No significa aprobado SII.
+- `xsd_failed`: el XML no pasa XSD local; `certification-submit` debe bloquear.
+- `ready_for_submit`: solo puede considerarse despues de XMLDSig verificado, XSD valido, readiness listo, backend LAB y flag explicito.
+
+Antes del primer submit real falta confirmar el XML final con XSD oficial, revisar ubicacion exacta de `Signature`, confirmar transforms finales con SII certification, tener endpoints reales y activar `DTE_SII_ENABLE_SUBMIT=true` solo para certification.
+
 ## XML real, CAF, TED, FRMT y XMLDSig
 
 Estado: `LAB / PENDIENTE / NO PRODUCTIVO`. Esta seccion prepara XML certification controlado; no habilita emision legal ni production.

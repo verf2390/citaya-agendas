@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -273,17 +273,18 @@ async function assertTenantExists(tenantId) {
   if (!result.data) throw new Error("TENANT_NOT_FOUND_IN_SUPABASE_LAB");
 }
 
-function generateCertificationXml() {
-  const generated = spawnSync(
-    "node",
-    ["scripts/dte/generate-lab-xml.mjs", "--mode=certification"],
-    { cwd: repoRoot, encoding: "utf8" },
+function getCertificationXmlArtifact() {
+  const path = resolve(
+    repoRoot,
+    envValue("DTE_CERTIFICATION_OUTPUT_PATH") || "tmp/dte-certification/certification-envio-dte.xml",
   );
+  const metadataPath = `${path}.metadata.json`;
   return {
-    ok: generated.status === 0,
-    stdout: generated.stdout ?? "",
-    stderr: generated.stderr ?? "",
-    path: resolve(repoRoot, "tmp/dte-certification/certification-envio-dte.xml"),
+    ok: existsSync(path),
+    path,
+    metadataPath,
+    stdout: existsSync(metadataPath) ? readFileSync(metadataPath, "utf8") : "",
+    stderr: "",
   };
 }
 
@@ -413,6 +414,19 @@ async function main() {
     );
   }
 
+  const generated = getCertificationXmlArtifact();
+  if (!generated.ok) {
+    steps.push(
+      step(
+        "generate_xml",
+        "pending_real_certification",
+        "No existe XML certification generado. Ejecutar: npm run dte:certification:xml",
+      ),
+    );
+    print(summary, steps);
+    process.exit(1);
+  }
+
   const tenantId = getSmokeTenantId(backend, process.env);
   await assertTenantExists(tenantId);
   steps.push(step("tenant", "ready", "Tenant LAB existe en Supabase."));
@@ -427,19 +441,6 @@ async function main() {
     ),
   );
 
-  const generated = generateCertificationXml();
-  if (!generated.ok) {
-    steps.push(
-      step(
-        "generate_xml",
-        "pending_real_certification",
-        "XML certification no generado; revisar CAF/cert/key externos.",
-      ),
-    );
-    await persistBlockedTrace(repo, draft, null, steps, "XML certification pendiente");
-    print(summary, steps);
-    process.exit(1);
-  }
   const xml = readFileSync(generated.path, "latin1");
   steps.push(step("generate_xml", "ready", `XML generado hash=${sha256(xml).slice(0, 16)}`));
 

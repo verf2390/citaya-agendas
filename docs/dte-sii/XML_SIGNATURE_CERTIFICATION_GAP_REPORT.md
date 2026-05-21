@@ -66,6 +66,40 @@ Citaya mantiene enfoque `citaya_own_dte`: cada tenant debe emitir con su propio 
 Sin produccion, sin agenda/pagos, sin secretos en repo, sin token completo, sin `track_id` simulado y sin submit real mientras XML/firma no sean reales y validados.
 
 
+
+## Artefacto XML certification controlado
+
+Comando nuevo: `npm run dte:certification:xml`.
+
+Artefactos esperados cuando existen CAF/cert/key externos validos:
+
+- `tmp/dte-certification/certification-envio-dte.xml`
+- `tmp/dte-certification/certification-envio-dte.xml.sha256`
+- `tmp/dte-certification/certification-envio-dte.xml.metadata.json`
+
+Estado actual del artefacto:
+
+- Si faltan `DTE_CAF_PATH`, `DTE_CAF_PRIVATE_KEY_PATH`, `DTE_CERT_PATH` o `DTE_PRIVATE_KEY_PATH`, el comando bloquea en `pending_real_certification` y no genera XML real/controlado.
+- Si existen archivos externos, el flujo parsea CAF, valida tipo/folio, genera TED/DD, firma FRMT con RSA-SHA1, construye `DTE`/`EnvioDTE`, firma XMLDSig controlado y verifica localmente.
+- El folio se toma desde `DTE_CERTIFICATION_FOLIO` o desde `RNG/D` del CAF. Folio fuera de rango bloquea. Tipo documento distinto al CAF bloquea.
+- El XML no se imprime por consola. Solo se imprime ruta, hash corto, estado global, folio/tipo y metadata segura.
+
+Validacion XSD:
+
+- `npm run dte:certification:validate-xml` valida por defecto `tmp/dte-certification/certification-envio-dte.xml` contra `docs/dte-sii/xsd/EnvioDTE_v10.xsd`.
+- Tambien acepta ruta por argumento CLI o `DTE_CERTIFICATION_XML_PATH`.
+- Si el XML falta, devuelve `xsd_valid=false` y error claro.
+- Si XSD falla, devuelve `xsd_valid=false`; esa brecha bloquea submit como `xsd_failed`.
+- Si XSD pasa, devuelve `xsd_valid=true`.
+
+Brechas exactas restantes:
+
+- Validar el XML final real/controlado con CAF/cert/key reales del tenant; en este workspace no hay esos archivos externos cargados.
+- Confirmar la ubicacion final de `Signature`: hoy se inserta firma de documento despues de `</Documento>` dentro de `DTE` y firma de envio despues de `</SetDTE>` dentro de `EnvioDTE`.
+- Confirmar si SII exige transform `enveloped-signature` ademas de C14N en la forma final.
+- Validar `xmldsignature_v10.xsd` y `EnvioDTE_v10.xsd` con artefacto real/controlado.
+- PFX/P12 sigue pendiente; actualmente solo PEM/CRT/CER y PEM/KEY externos.
+
 ## XMLDSig: canonicalización, transforms, digest e inserción
 
 Implementacion actual: `lib/dte/signing/sign-xml.real.ts`. Estado: avanzado/controlado, todavia no productivo ni aprobado SII.
