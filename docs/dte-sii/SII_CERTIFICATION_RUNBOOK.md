@@ -112,6 +112,36 @@ El comando nuevo reemplaza el submit manual de smoke para el primer contacto con
 
 
 
+
+## XMLDSig, canonicalización y validación XSD
+
+Estado: `LAB / PENDIENTE / NO PRODUCTIVO`.
+
+XMLDSig controlado usa actualmente:
+
+- CanonicalizationMethod: `http://www.w3.org/TR/2001/REC-xml-c14n-20010315`.
+- DigestMethod: `http://www.w3.org/2000/09/xmldsig#sha1`.
+- SignatureMethod: `http://www.w3.org/2000/09/xmldsig#rsa-sha1`.
+- Transforms: C14N 20010315.
+- Certificado soportado: PEM/CRT/CER externo.
+- Private key soportada: PEM/KEY externa.
+- PFX/P12: pendiente; se bloquea como `unsupported_certificate_format`.
+
+El resultado no se marca como real SII todavia. Hay firma criptografica controlada, pero falta validar canonicalizacion del nodo real, transforms finales, digest sobre DOM canonicalizado e insercion exacta de `Signature` con SII certification.
+
+Validar XML completo:
+
+```bash
+DTE_MODE=certification npm run dte:certification
+npm run dte:certification:validate-xml
+```
+
+Si `xmllint` no existe, instalar `libxml2-utils` o usar un ambiente CI que lo incluya. Si XSD falla, `certification-submit` debe bloquear antes de seed/token/submit.
+
+`pending_real_certification` significa que la firma/XML no debe enviarse al SII todavia. No resolverlo con firmas fake, XML sintético ni `track_id` simulado.
+
+Agenda/pagos siguen desconectados porque primero debe existir XML firmado, XSD valido, submit controlado y `track_id` real en certification por tenant. Este modulo no es productivo ni emite legalmente.
+
 ## XML real, CAF, TED, FRMT y XMLDSig
 
 Estado: `LAB / PENDIENTE / NO PRODUCTIVO`. Esta seccion prepara XML certification controlado; no habilita emision legal ni production.

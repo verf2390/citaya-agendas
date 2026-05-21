@@ -11,9 +11,13 @@ import type {
 import { escapeXml } from "../xml/escape-xml";
 
 const REQUIRED_XMLDSIG_DEPENDENCY = "xml-crypto";
-const C14N = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
-const RSA_SHA1 = "http://www.w3.org/2000/09/xmldsig#rsa-sha1";
-const SHA1 = "http://www.w3.org/2000/09/xmldsig#sha1";
+export const XMLDSIG_C14N_METHOD = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
+export const XMLDSIG_RSA_SHA1_METHOD = "http://www.w3.org/2000/09/xmldsig#rsa-sha1";
+export const XMLDSIG_SHA1_METHOD = "http://www.w3.org/2000/09/xmldsig#sha1";
+export const XMLDSIG_TRANSFORMS = [XMLDSIG_C14N_METHOD] as const;
+const C14N = XMLDSIG_C14N_METHOD;
+const RSA_SHA1 = XMLDSIG_RSA_SHA1_METHOD;
+const SHA1 = XMLDSIG_SHA1_METHOD;
 
 function envValue(name: string): string {
   return String(process.env[name] ?? "").trim();
@@ -85,6 +89,9 @@ export function prepareRealXmlSigning(
   const unsafe = [certValidation, keyValidation, publicCertValidation].some(
     (item) => item.status === "unsafe_repo_path",
   );
+  const unsupported = [certValidation, keyValidation, publicCertValidation].some(
+    (item) => item.status === "unsupported_certificate_format",
+  );
   const failed = [certValidation, keyValidation, publicCertValidation].some(
     (item) => item.status === "failed",
   );
@@ -93,11 +100,13 @@ export function prepareRealXmlSigning(
     ok: false,
     status: unsafe
       ? "unsafe_repo_path"
-      : failed
-        ? "failed"
-        : missing.length > 0
-          ? "missing_secret"
-          : "pending_dependency",
+      : unsupported
+        ? "unsupported_certificate_format"
+        : failed
+          ? "failed"
+          : missing.length > 0
+            ? "missing_secret"
+            : "pending_dependency",
     mode: config.mode,
     isProductionValid: false,
     missing,
@@ -126,14 +135,32 @@ function stripPem(value: string): string {
     .replace(/\s+/g, "");
 }
 
+export function getXmlDsigControlledMetadata(status = "pending_real_certification") {
+  return {
+    signed: status === "ready_controlled",
+    xmlSignatureStatus: status,
+    canonicalizationMethod: C14N,
+    digestMethod: SHA1,
+    signatureMethod: RSA_SHA1,
+    transforms: [...XMLDSIG_TRANSFORMS],
+  };
+}
+
 export function buildXmlDsigControlled(
   input: XmlDsigBuildInput,
   config: RealXmlSigningConfig,
 ): XmlDsigBuildResult {
   const preparation = prepareRealXmlSigning(input.signedXmlFragment, config);
   if (preparation.missing.length > 0) {
+    const status = preparation.status === "unsafe_repo_path"
+      ? "unsafe_repo_path"
+      : preparation.status === "unsupported_certificate_format"
+        ? "unsupported_certificate_format"
+        : preparation.status === "failed"
+          ? "failed"
+          : "missing_external_file";
     throw new Error(
-      `XMLDSig certification requires external secrets. Missing: ${preparation.missing.join(", ")}`,
+      `XMLDSig certification requires external secrets. status=${status} missing=${preparation.missing.join(", ")}`,
     );
   }
 
@@ -179,6 +206,14 @@ export function buildXmlDsigControlled(
   return {
     mode: "certification",
     isProductionValid: false,
+    signed: true,
+    xmlSignatureStatus: "pending_real_certification",
+    canonicalizationMethod: C14N,
+    digestMethod: SHA1,
+    signatureMethod: RSA_SHA1,
+    transforms: [...XMLDSIG_TRANSFORMS],
+    referenceUri: input.referenceUri,
+    reason: "Firma criptografica controlada generada, pero canonicalizacion/insercion aun no validada por SII.",
     warnings: [
       "XMLDSig generado con Node crypto en modo certification controlado.",
       "Canonicalizacion XML real debe validarse contra SII; esta ruta no se marca como valida SII.",

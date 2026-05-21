@@ -78,6 +78,18 @@ test("external DTE file validation rejects repo paths and missing files safely",
   });
   assert.equal(missing.ok, false);
   assert.equal(missing.status, "missing_external_file");
+
+  const root = mkdtempSync(join(tmpdir(), "citaya-dte-unsupported-"));
+  const p12Path = join(root, "cert.p12");
+  writeFileSync(p12Path, "not-a-real-p12", "utf8");
+  const unsupported = validateExternalDteFile({
+    envName: "DTE_CERT_PATH",
+    pathValue: p12Path,
+    repoRoot: process.cwd(),
+    allowedExtensions: [".pem", ".crt", ".cer"],
+  });
+  assert.equal(unsupported.ok, false);
+  assert.equal(unsupported.status, "unsupported_certificate_format");
 });
 
 test("XMLDSig preparation blocks missing and unsafe external files", () => {
@@ -133,6 +145,12 @@ test("XMLDSig controlled signs with PEM fixtures but remains non-production-vali
 
   assert.equal(result.mode, "certification");
   assert.equal(result.isProductionValid, false);
+  assert.equal(result.signed, true);
+  assert.equal(result.xmlSignatureStatus, "pending_real_certification");
+  assert.equal(result.canonicalizationMethod, "http://www.w3.org/TR/2001/REC-xml-c14n-20010315");
+  assert.equal(result.digestMethod, "http://www.w3.org/2000/09/xmldsig#sha1");
+  assert.equal(result.signatureMethod, "http://www.w3.org/2000/09/xmldsig#rsa-sha1");
+  assert.deepEqual(result.transforms, ["http://www.w3.org/TR/2001/REC-xml-c14n-20010315"]);
   assert.match(result.signatureXml, /<Signature xmlns=/);
   assert.match(result.signatureXml, /<SignatureValue>/);
   assert.doesNotMatch(result.signatureXml, /BEGIN RSA PRIVATE KEY/);

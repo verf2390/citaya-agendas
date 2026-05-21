@@ -213,7 +213,7 @@ export type RealXmlSigningConfig = {
 
 export type RealXmlSigningPreparationResult = {
   ok: false;
-  status: "pending_dependency" | "missing_secret" | "unsafe_repo_path" | "failed" | "blocked";
+  status: "pending_dependency" | "missing_secret" | "unsafe_repo_path" | "unsupported_certificate_format" | "failed" | "blocked";
   mode: "lab" | "certification" | "production";
   isProductionValid: false;
   missing: string[];
@@ -293,7 +293,7 @@ export type FrmtSignatureResult =
     }
   | {
       ok: false;
-      status: "missing_secret" | "unsafe_repo_path" | "failed" | "blocked";
+      status: "missing_secret" | "unsafe_repo_path" | "unsupported_certificate_format" | "failed" | "blocked";
       mode: "lab" | "xsd-structure" | "certification" | "production";
       isProductionValid: false;
       missing: string[];
@@ -307,11 +307,27 @@ export type XmlDsigBuildInput = {
   signatureId?: string;
 };
 
+export type XmlSignatureStatus =
+  | "ready_controlled"
+  | "pending_real_certification"
+  | "missing_external_file"
+  | "unsafe_repo_path"
+  | "unsupported_certificate_format"
+  | "failed";
+
 export type XmlDsigBuildResult = {
   signatureXml: string;
   mode: "xsd-structure" | "certification";
   isProductionValid: false;
   warnings: string[];
+  signed?: boolean;
+  xmlSignatureStatus?: XmlSignatureStatus;
+  canonicalizationMethod?: string;
+  digestMethod?: string;
+  signatureMethod?: string;
+  transforms?: string[];
+  referenceUri?: string;
+  reason?: string | null;
 };
 
 export type SiiEnvironment = "lab" | "certification" | "production";

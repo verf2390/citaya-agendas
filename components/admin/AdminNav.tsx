@@ -16,6 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 
+import AdminLogoutButton from "@/components/admin/AdminLogoutButton";
 import AdminThemeToggle from "@/components/admin/AdminThemeToggle";
 import { StatusBadge } from "@/components/admin/admin-ui";
 import { supabase } from "@/lib/supabaseClient";
@@ -145,6 +146,7 @@ export default function AdminNav() {
           </nav>
 
           <div className="mt-4 flex flex-wrap gap-2 lg:grid">
+            <AdminLogoutButton />
             <AdminThemeToggle />
           </div>
         </div>

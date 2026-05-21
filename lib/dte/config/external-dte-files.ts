@@ -8,6 +8,7 @@ export type ExternalDteFileStatus =
   | "pending_config"
   | "missing_external_file"
   | "unsafe_repo_path"
+  | "unsupported_certificate_format"
   | "failed";
 
 export type ExternalDteFileValidation = {
@@ -102,7 +103,7 @@ export function validateExternalDteFile(
   if (allowed.length > 0 && !allowed.includes(extension)) {
     return {
       ok: false,
-      status: "failed",
+      status: "unsupported_certificate_format",
       pathConfigured: true,
       exists: true,
       outsideRepo: true,

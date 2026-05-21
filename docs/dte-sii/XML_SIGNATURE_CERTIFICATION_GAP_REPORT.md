@@ -64,3 +64,49 @@ Citaya mantiene enfoque `citaya_own_dte`: cada tenant debe emitir con su propio 
 `LAB / PENDIENTE / NO PRODUCTIVO`.
 
 Sin produccion, sin agenda/pagos, sin secretos en repo, sin token completo, sin `track_id` simulado y sin submit real mientras XML/firma no sean reales y validados.
+
+
+## Estado XMLDSig SII
+
+Implementacion actual: `lib/dte/signing/sign-xml.real.ts`.
+
+- Canonicalizacion declarada: `http://www.w3.org/TR/2001/REC-xml-c14n-20010315`.
+- Transforms declarados: canonicalizacion C14N 20010315. No se usa aun transform enveloped-signature.
+- Digest: `http://www.w3.org/2000/09/xmldsig#sha1` calculado localmente sobre el fragmento recibido por el builder, no sobre una canonicalizacion robusta del nodo XML parseado.
+- Signature method: `http://www.w3.org/2000/09/xmldsig#rsa-sha1` con private key PEM externa.
+- Insercion: el generador actual arma `Signature` como fragmento y `build-dte-envelope` lo ubica como firma de documento despues de `</Documento>` y firma de envio despues de `</SetDTE>`. Esto es controlado, pero aun debe verificarse contra la estructura exacta esperada por SII.
+- Referencia firmada: se pasa `referenceUri` del documento o set DTE. La firma actual no canonicaliza el nodo referenciado desde un DOM XML real.
+- Alcance: se intenta firmar Documento/DTE y EnvioDTE mediante fragmentos separados en `generate-lab-xml.mjs --mode=certification`.
+- XSD: el XML puede validarse con `scripts/dte/validate-xsd.mjs` si `xmllint` esta instalado. Si XSD falla, `certification-submit` bloquea antes de seed/token/submit.
+- Estado honesto: `pending_real_certification`. Aunque hay `SignatureValue` criptografico con PEM externo, no se considera XMLDSig real SII hasta validar canonicalizacion, transforms, digest e insercion con casos SII certification.
+
+Metadata segura devuelta por XMLDSig controlado:
+
+- `signed`
+- `xmlSignatureStatus`
+- `canonicalizationMethod`
+- `digestMethod`
+- `signatureMethod`
+- `transforms`
+- `referenceUri`
+- `reason`
+
+Formatos soportados:
+
+- Certificado publico: PEM/CRT/CER externo.
+- Private key: PEM/KEY externo.
+- PFX/P12: no soportado; se reporta `unsupported_certificate_format`.
+
+Riesgos tecnicos:
+
+- SII puede rechazar una firma que usa digest de string si el nodo canonicalizado real difiere.
+- La posicion de `Signature` debe confirmarse contra `DTE_v10.xsd`, `EnvioDTE_v10.xsd` y pruebas SII.
+- Falta extraer/validar certificado y llave desde PFX/P12 cuando el tenant no entregue PEM.
+- Falta validacion automatizada de XMLDSig con un verificador independiente.
+
+Siguiente paso concreto XMLDSig:
+
+1. Reemplazar digest de string por canonicalizacion DOM del nodo referenciado.
+2. Insertar `Signature` directamente en el nodo XML final y revalidar XSD completo.
+3. Agregar verificacion XMLDSig independiente antes de permitir `ready_for_submit`.
+4. Mantener `certification-submit` en bloqueo si `xmlSignatureStatus !== ready_controlled` o si XSD falla.

@@ -14,6 +14,7 @@
     "dte:certification": "DTE_MODE=certification node scripts/dte/generate-lab-xml.mjs --mode=certification",
     "dte:certification:readiness": "node scripts/dte/certification-readiness.mjs",
     "dte:certification:submit": "node scripts/dte/certification-submit.mjs",
+    "dte:certification:validate-xml": "node scripts/dte/validate-xsd.mjs tmp/dte-certification/certification-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd",
     "dte:test": "node --test scripts/dte/run-dte-tests.mjs",
     "dte:sii:dry-run": "node scripts/dte/sii-certification-smoke.mjs --dry-run",
     "dte:sii:submit": "node scripts/dte/sii-certification-smoke.mjs --submit",
