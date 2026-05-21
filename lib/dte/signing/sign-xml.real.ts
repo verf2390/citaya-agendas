@@ -1,6 +1,7 @@
 import { createHash, createSign } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
+import { validateExternalDteFile } from "../config/external-dte-files";
 import type {
   RealXmlSigningConfig,
   RealXmlSigningPreparationResult,
@@ -57,19 +58,46 @@ export function prepareRealXmlSigning(
   if (!config.privateKeyPath) missing.push("DTE_PRIVATE_KEY_PATH");
   if (!config.publicCertificatePath) missing.push("DTE_PUBLIC_CERT_PATH");
 
-  if (config.certificatePath && !existsSync(config.certificatePath)) {
-    missing.push("DTE_CERT_PATH:file_not_found");
+  const certValidation = validateExternalDteFile({
+    envName: "DTE_CERT_PATH",
+    pathValue: config.certificatePath,
+    allowedExtensions: [".pem", ".crt", ".cer"],
+  });
+  const keyValidation = validateExternalDteFile({
+    envName: "DTE_PRIVATE_KEY_PATH",
+    pathValue: config.privateKeyPath,
+    allowedExtensions: [".pem", ".key"],
+  });
+  const publicCertValidation = validateExternalDteFile({
+    envName: "DTE_PUBLIC_CERT_PATH",
+    pathValue: config.publicCertificatePath,
+    allowedExtensions: [".pem", ".crt", ".cer"],
+  });
+  for (const [name, validation] of [
+    ["DTE_CERT_PATH", certValidation],
+    ["DTE_PRIVATE_KEY_PATH", keyValidation],
+    ["DTE_PUBLIC_CERT_PATH", publicCertValidation],
+  ] as const) {
+    if (!validation.ok && validation.status !== "pending_config") {
+      missing.push(`${name}:${validation.status}`);
+    }
   }
-  if (config.privateKeyPath && !existsSync(config.privateKeyPath)) {
-    missing.push("DTE_PRIVATE_KEY_PATH:file_not_found");
-  }
-  if (config.publicCertificatePath && !existsSync(config.publicCertificatePath)) {
-    missing.push("DTE_PUBLIC_CERT_PATH:file_not_found");
-  }
+  const unsafe = [certValidation, keyValidation, publicCertValidation].some(
+    (item) => item.status === "unsafe_repo_path",
+  );
+  const failed = [certValidation, keyValidation, publicCertValidation].some(
+    (item) => item.status === "failed",
+  );
 
   return {
     ok: false,
-    status: missing.length > 0 ? "missing_secret" : "pending_dependency",
+    status: unsafe
+      ? "unsafe_repo_path"
+      : failed
+        ? "failed"
+        : missing.length > 0
+          ? "missing_secret"
+          : "pending_dependency",
     mode: config.mode,
     isProductionValid: false,
     missing,
@@ -117,6 +145,12 @@ export function buildXmlDsigControlled(
     throw new Error("XMLDSig certification requiere DTE_PRIVATE_KEY_PATH y DTE_PUBLIC_CERT_PATH");
   }
 
+  if (preparation.status === "unsafe_repo_path" || preparation.status === "failed") {
+    throw new Error(
+      `XMLDSig certification external file validation failed: ${preparation.status}`,
+    );
+  }
+
   const privateKey = readFileSync(config.privateKeyPath, "utf8");
   const certificate = readFileSync(config.publicCertificatePath, "utf8");
   const digest = sha1Base64(input.signedXmlFragment);
@@ -133,9 +167,14 @@ export function buildXmlDsigControlled(
     "  </Reference>",
     "</SignedInfo>",
   ].join("\n");
-  const signer = createSign("RSA-SHA1");
-  signer.update(signedInfo, "utf8");
-  const signatureValue = signer.sign(privateKey, "base64");
+  let signatureValue: string;
+  try {
+    const signer = createSign("RSA-SHA1");
+    signer.update(signedInfo, "utf8");
+    signatureValue = signer.sign(privateKey, "base64");
+  } catch {
+    throw new Error("XMLDSig certification failed with external private key; revisar formato PEM y password/PFX no soportado.");
+  }
 
   return {
     mode: "certification",

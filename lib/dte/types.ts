@@ -213,7 +213,7 @@ export type RealXmlSigningConfig = {
 
 export type RealXmlSigningPreparationResult = {
   ok: false;
-  status: "pending_dependency" | "missing_secret" | "blocked";
+  status: "pending_dependency" | "missing_secret" | "unsafe_repo_path" | "failed" | "blocked";
   mode: "lab" | "certification" | "production";
   isProductionValid: false;
   missing: string[];
@@ -293,7 +293,7 @@ export type FrmtSignatureResult =
     }
   | {
       ok: false;
-      status: "missing_secret" | "blocked";
+      status: "missing_secret" | "unsafe_repo_path" | "failed" | "blocked";
       mode: "lab" | "xsd-structure" | "certification" | "production";
       isProductionValid: false;
       missing: string[];

@@ -111,6 +111,58 @@ npm run dte:certification:submit
 El comando nuevo reemplaza el submit manual de smoke para el primer contacto controlado. Si SII devuelve `track_id` real, se guarda como evidencia del tenant. Si no hay `track_id` real, debe quedar `null`/pendiente.
 
 
+
+## XML real, CAF, TED, FRMT y XMLDSig
+
+Estado: `LAB / PENDIENTE / NO PRODUCTIVO`. Esta seccion prepara XML certification controlado; no habilita emision legal ni production.
+
+Archivos externos requeridos:
+
+- `DTE_CAF_PATH`: CAF XML real del tenant, fuera del repo.
+- `DTE_CAF_PRIVATE_KEY_PATH`: llave privada asociada al CAF en PEM/KEY externo para FRMT.
+- `DTE_CERT_PATH`: certificado digital del tenant en PEM/CRT/CER externo.
+- `DTE_PRIVATE_KEY_PATH`: llave privada del certificado en PEM/KEY externo.
+- Opcional `DTE_PUBLIC_CERT_PATH`: certificado publico PEM/CRT/CER si difiere de `DTE_CERT_PATH`.
+
+Formatos soportados actualmente:
+
+- CAF: `.xml`.
+- Llaves privadas: `.pem` o `.key` sin imprimir ni persistir contenido.
+- Certificados: `.pem`, `.crt` o `.cer`.
+- PFX/P12: no soportado todavia. Si el tenant entrega PFX/P12, extraer PEM fuera del repo o implementar soporte tecnico antes de usarlo.
+
+Ubicacion recomendada:
+
+```text
+/home/verf/secure/citaya-dte/certification/<tenant-id>/caf.xml
+/home/verf/secure/citaya-dte/certification/<tenant-id>/caf-private-key.pem
+/home/verf/secure/citaya-dte/certification/<tenant-id>/cert.pem
+/home/verf/secure/citaya-dte/certification/<tenant-id>/private-key.pem
+```
+
+Ejecucion segura:
+
+```bash
+npm run dte:certification:readiness
+DTE_MODE=certification npm run dte:certification
+node scripts/dte/validate-xsd.mjs tmp/dte-certification/certification-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd
+npm run dte:certification:submit
+```
+
+Interpretacion:
+
+- CAF real externo: se parsea y se valida contra RUT/tipo/folio del draft; no se guarda CAF completo en DB.
+- TED: se construye con `DD` y CAF embebido.
+- FRMT: se firma con `RSA-SHA1` usando la llave CAF externa. Si falta llave o formato, queda `pending_real_certification`/`failed`.
+- XMLDSig: actualmente firma con PEM externo en modo controlado, pero no se declara valido SII porque falta canonicalizacion robusta/insercion final validada. Por eso el submit debe seguir bloqueando si aparecen warnings de XMLDSig/canonicalizacion.
+- XSD: si `xmllint` falla o no esta instalado, no hay XML listo para submit.
+
+`pending_real_certification` significa que hay una pieza real incompleta o aun no verificable ante SII. No se debe resolver con firmas fake, `track_id` fake ni desactivando bloqueos.
+
+Antes de submit real falta: XMLDSig canonicalizado y validado contra XSD/SII, endpoints reales de certification, tenant LAB real, Supabase LAB activo, `DTE_SII_ENABLE_SUBMIT=true`, y confirmacion de que no hay production ni agenda/pagos conectados.
+
+No hacer todavia: no commitear CAF/cert/key, no imprimir XML completo con datos sensibles, no usar `DTE_SII_ENV=production`, no conectar pagos/citas, no decir que Citaya factura legalmente.
+
 ## Primer submit real controlado en certification
 
 Estado actual obligatorio: `LAB / PENDIENTE / NO PRODUCTIVO`. Este flujo no activa produccion, no habilita emision legal y no conecta agenda/pagos.

@@ -1,44 +1,63 @@
 import { createSign } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
+import { validateExternalDteFile } from "../config/external-dte-files";
 import type { FrmtSignatureInput, FrmtSignatureResult } from "../types";
 
-function readPrivateKey(input: FrmtSignatureInput): string | null {
-  if (input.privateKeyPem?.trim()) return input.privateKeyPem;
-  if (input.privateKeyPath?.trim() && existsSync(input.privateKeyPath)) {
-    return readFileSync(input.privateKeyPath, "utf8");
+function readPrivateKey(input: FrmtSignatureInput): {
+  key: string | null;
+  status?: "missing_secret" | "unsafe_repo_path" | "failed";
+  error?: string;
+} {
+  if (input.privateKeyPem?.trim()) return { key: input.privateKeyPem };
+  const validation = validateExternalDteFile({
+    envName: "DTE_CAF_PRIVATE_KEY_PATH",
+    pathValue: input.privateKeyPath,
+    allowedExtensions: [".pem", ".key"],
+  });
+  if (!validation.ok) {
+    return {
+      key: null,
+      status:
+        validation.status === "unsafe_repo_path"
+          ? "unsafe_repo_path"
+          : validation.status === "failed"
+            ? "failed"
+            : "missing_secret",
+      error: validation.error,
+    };
   }
-  return null;
+  return { key: readFileSync(String(input.privateKeyPath), "utf8") };
 }
 
 export function signFrmtControlled(
   input: FrmtSignatureInput,
 ): FrmtSignatureResult {
   const missing: string[] = [];
-  const key = readPrivateKey(input);
+  const keyResult = readPrivateKey(input);
 
   if (!input.ddXml.trim()) missing.push("ddXml");
-  if (!key) missing.push("DTE_CAF_PRIVATE_KEY_PATH");
+  if (!keyResult.key) missing.push("DTE_CAF_PRIVATE_KEY_PATH");
 
   if (missing.length > 0) {
     return {
       ok: false,
-      status: "missing_secret",
+      status: keyResult.status ?? "missing_secret",
       mode: input.mode,
       isProductionValid: false,
       missing,
       warnings: [
-        "FRMT real requiere clave privada asociada al CAF fuera del repositorio.",
+        keyResult.error ?? "FRMT real requiere clave privada asociada al CAF fuera del repositorio.",
         "No se genero FRMT productivo ni se usaron secretos.",
       ],
     };
   }
 
-  if (!key) {
+  if (!keyResult.key) {
     throw new Error("FRMT private key unexpectedly missing after validation");
   }
 
-  const privateKey: string = key;
+  const privateKey: string = keyResult.key;
 
   if (input.mode !== "certification") {
     return {
@@ -54,9 +73,24 @@ export function signFrmtControlled(
     };
   }
 
-  const signer = createSign("RSA-SHA1");
-  signer.update(input.ddXml, "utf8");
-  const signature = signer.sign(privateKey, "base64");
+  let signature: string;
+  try {
+    const signer = createSign("RSA-SHA1");
+    signer.update(input.ddXml, "utf8");
+    signature = signer.sign(privateKey, "base64");
+  } catch {
+    return {
+      ok: false,
+      status: "failed",
+      mode: input.mode,
+      isProductionValid: false,
+      missing: [],
+      warnings: [
+        "FRMT no pudo firmarse con la clave CAF externa; revisar formato PEM y correspondencia con CAF.",
+        "No se imprimio ni persistio la clave privada.",
+      ],
+    };
+  }
 
   return {
     ok: true,

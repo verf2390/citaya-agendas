@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -28,9 +28,13 @@ const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 process.env.DTE_MODE = process.env.DTE_MODE || "certification";
 process.env.DTE_SII_ENV = process.env.DTE_SII_ENV || "certification";
 
-const { buildDteCertificationReadiness, isPathInsideRepo } = require(resolve(
+const { buildDteCertificationReadiness } = require(resolve(
   repoRoot,
   "lib/dte/config/validate-dte-config.ts",
+));
+const { validateExternalDteFile } = require(resolve(
+  repoRoot,
+  "lib/dte/config/external-dte-files.ts",
 ));
 const {
   getSiiCertificationConfigFromEnv,
@@ -71,7 +75,12 @@ const REQUIRED_ENDPOINTS = [
   "DTE_SII_SUBMIT_URL",
   "DTE_SII_STATUS_URL",
 ];
-const REQUIRED_EXTERNAL_FILES = ["DTE_CAF_PATH", "DTE_CERT_PATH", "DTE_PRIVATE_KEY_PATH"];
+const REQUIRED_EXTERNAL_FILES = [
+  "DTE_CAF_PATH",
+  "DTE_CAF_PRIVATE_KEY_PATH",
+  "DTE_CERT_PATH",
+  "DTE_PRIVATE_KEY_PATH",
+];
 
 function envValue(name) {
   return String(process.env[name] ?? "").trim();
@@ -96,11 +105,25 @@ function boolLabel(value) {
   return value ? "si" : "no";
 }
 
+function allowedExtensionsFor(name) {
+  if (name === "DTE_CAF_PATH") return [".xml"];
+  if (name === "DTE_CERT_PATH") return [".pem", ".crt", ".cer"];
+  return [".pem", ".key"];
+}
+
 function pathState(name) {
-  const value = envValue(name);
-  const exists = Boolean(value) && existsSync(value);
-  const outsideRepo = Boolean(value) && !isPathInsideRepo(value, repoRoot);
-  return { configured: Boolean(value), exists, outsideRepo };
+  const result = validateExternalDteFile({
+    envName: name,
+    repoRoot,
+    allowedExtensions: allowedExtensionsFor(name),
+  });
+  return {
+    configured: result.pathConfigured,
+    exists: result.exists,
+    outsideRepo: result.outsideRepo,
+    status: result.status,
+    error: result.error,
+  };
 }
 
 function step(name, status, message) {
@@ -123,6 +146,7 @@ function print(summary, steps) {
 
 function buildSafeSummary(readiness, backend) {
   const caf = pathState("DTE_CAF_PATH");
+  const cafKey = pathState("DTE_CAF_PRIVATE_KEY_PATH");
   const cert = pathState("DTE_CERT_PATH");
   const key = pathState("DTE_PRIVATE_KEY_PATH");
   return {
@@ -136,6 +160,9 @@ function buildSafeSummary(readiness, backend) {
     caf_path_configurado: boolLabel(caf.configured),
     caf_existe: boolLabel(caf.exists),
     caf_fuera_repo: boolLabel(caf.outsideRepo),
+    caf_private_key_path_configurado: boolLabel(cafKey.configured),
+    caf_private_key_existe: boolLabel(cafKey.exists),
+    caf_private_key_fuera_repo: boolLabel(cafKey.outsideRepo),
     certificado_path_configurado: boolLabel(cert.configured),
     certificado_existe: boolLabel(cert.exists),
     certificado_fuera_repo: boolLabel(cert.outsideRepo),
@@ -198,10 +225,12 @@ function collectPreflightBlocks(readiness, backend) {
     const state = pathState(name);
     if (!state.configured) {
       blocks.push(step("external_file", "pending_config", `Falta ${name}.`));
-    } else if (!state.exists) {
-      blocks.push(step("external_file", "pending_real_certification", `${name} no existe.`));
-    } else if (!state.outsideRepo) {
-      blocks.push(step("external_file", "blocked_submit", `${name} apunta dentro del repo.`));
+    } else if (state.status === "missing_external_file") {
+      blocks.push(step("external_file", "missing_external_file", `${name} no existe.`));
+    } else if (state.status === "unsafe_repo_path") {
+      blocks.push(step("external_file", "unsafe_repo_path", `${name} apunta dentro del repo.`));
+    } else if (state.status === "failed") {
+      blocks.push(step("external_file", "failed", state.error ?? `${name} no es valido.`));
     }
   }
   if (readiness.status === "blocked_production") {
@@ -415,7 +444,7 @@ async function main() {
       step(
         "signing",
         "pending_real_certification",
-        "Firma/XML aun no se marca como valida SII; no se contacta SII.",
+        "Firma/XMLDSig aun no se marca como valida SII por canonicalizacion/XSD final; no se contacta SII.",
       ),
     );
     const submission = await persistBlockedTrace(
@@ -431,6 +460,14 @@ async function main() {
     print(summary, steps);
     process.exit(1);
   }
+
+  steps.push(
+    step(
+      "ready_for_submit",
+      "ready_for_submit",
+      "XML certification firmado y validado localmente; submit requiere flag y endpoints reales.",
+    ),
+  );
 
   const config = getSiiCertificationConfigFromEnv(process.env);
   const auth = await prepareCertificationAuthFlow(config);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { generateKeyPairSync } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -12,7 +13,8 @@ import {
   reserveControlledFolio,
 } from "../caf/folio-manager";
 import { parseCafLabXmlToData } from "../caf/parse-caf";
-import { parseCafRealControlledXml } from "../caf/parse-caf.real";
+import { signFrmtControlled } from "../caf/frmt-signature";
+import { parseCafRealControlledXml, validateCafForDraftOrThrow } from "../caf/parse-caf.real";
 import { buildTedControlled } from "../caf/ted-builder";
 
 const cafXml = `
@@ -96,4 +98,100 @@ test("reserves controlled CAF folio in memory", () => {
 
   assert.equal(reserved.reservation.folio, 1001);
   assert.equal(reserved.state.availableCount, 9);
+});
+
+
+test("rejects malformed controlled CAF", () => {
+  assert.throws(
+    () => parseCafRealControlledXml(cafXml.replace('<FRMA algoritmo="SHA1withRSA">AA==</FRMA>', ""), "tenant-lab"),
+    /falta <FRMA>/,
+  );
+});
+
+test("validates controlled CAF folio and document type against draft", () => {
+  const caf = parseCafRealControlledXml(cafXml, "tenant-lab");
+  const baseDraft = {
+    tenantId: "tenant-lab",
+    issueMode: "citaya_own_dte" as const,
+    documentType: "boleta_afecta" as const,
+    status: "draft" as const,
+    folio: 1001,
+    issueDate: "2026-05-08",
+    issuer: {
+      tenantId: "tenant-lab",
+      rut: "76.123.456-0",
+      legalName: "Empresa Demo Citaya SpA",
+      businessActivity: "Servicios",
+      address: "Av. Uno 123",
+      commune: "La Serena",
+      city: "La Serena",
+      dteEnvironment: "certification" as const,
+    },
+    recipient: { rut: "11.111.111-1", legalName: "Cliente Demo" },
+    lines: [{ name: "Reserva", quantity: 1, unitPrice: 10000, amount: 10000 }],
+    totalAmount: 11900,
+  };
+
+  assert.doesNotThrow(() => validateCafForDraftOrThrow(caf, baseDraft));
+  assert.throws(
+    () => validateCafForDraftOrThrow(caf, { ...baseDraft, folio: 999 }),
+    /fuera del rango CAF/,
+  );
+  assert.throws(
+    () => validateCafForDraftOrThrow(caf, { ...baseDraft, documentType: "factura_afecta" }),
+    /tipo DTE no coincide/,
+  );
+});
+
+test("FRMT does not generate real signature without CAF private key", () => {
+  const ted = buildTedControlled({
+    issuerRut: "76123456-0",
+    documentTypeCode: 39,
+    folio: 1001,
+    issueDate: "2026-05-08",
+    recipientRut: "11111111-1",
+    recipientLegalName: "Cliente Demo",
+    totalAmount: 11900,
+    firstItemName: "Reserva demo Citaya",
+    cafXml,
+    timestamp: "2026-05-08T12:00:00",
+  });
+
+  const frmt = signFrmtControlled({ ddXml: ted.ddXml, mode: "certification" });
+
+  assert.equal(frmt.ok, false);
+  if (!frmt.ok) {
+    assert.equal(frmt.status, "missing_secret");
+    assert.ok(frmt.missing.includes("DTE_CAF_PRIVATE_KEY_PATH"));
+  }
+  assert.equal(ted.frmtStatus, "pending_real_signature");
+});
+
+test("FRMT can sign DD with explicit external fixture key without printing it", () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const privateKeyPem = privateKey.export({ type: "pkcs1", format: "pem" }).toString();
+  const ted = buildTedControlled({
+    issuerRut: "76123456-0",
+    documentTypeCode: 39,
+    folio: 1001,
+    issueDate: "2026-05-08",
+    recipientRut: "11111111-1",
+    recipientLegalName: "Cliente Demo",
+    totalAmount: 11900,
+    firstItemName: "Reserva demo Citaya",
+    cafXml,
+    timestamp: "2026-05-08T12:00:00",
+  });
+
+  const frmt = signFrmtControlled({
+    ddXml: ted.ddXml,
+    privateKeyPem,
+    mode: "certification",
+  });
+
+  assert.equal(frmt.ok, true);
+  if (frmt.ok) {
+    assert.match(frmt.frmtXml, /<FRMT algoritmo="SHA1withRSA">/);
+    assert.doesNotMatch(frmt.frmtXml, /BEGIN RSA PRIVATE KEY/);
+  }
 });

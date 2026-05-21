@@ -40,8 +40,12 @@ export function buildTedControlled(input: TedInput): TedBuildResult {
     warnings: [
       frmtStatus === "synthetic_lab"
         ? "TED sintetico LAB solo para validar estructura XSD; FRMT no es real."
-        : "TED controlado no productivo: FRMT real pendiente.",
-      "Requiere firmar DD con clave privada asociada al CAF y validar contra XSD oficial.",
+        : frmtStatus === "real_controlled"
+          ? "TED con FRMT generado desde clave CAF externa en modo certification controlado; no implica aprobacion SII."
+          : "TED controlado no productivo: FRMT real pendiente.",
+      frmtStatus === "real_controlled"
+        ? "Requiere validar XML completo contra XSD oficial y ambiente SII certification."
+        : "Requiere firmar DD con clave privada asociada al CAF y validar contra XSD oficial.",
     ],
     isProductionValid: false,
   };

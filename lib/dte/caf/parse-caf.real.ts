@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
+import { assertExternalDteFileReady } from "../config/external-dte-files";
 import { getSiiDteTypeCode, SII_DTE_TYPE_CODES } from "../dte-types";
 import type { DteDocumentType } from "../dte-types";
 import { normalizeRut } from "../rut";
@@ -38,6 +39,18 @@ function hashXml(xml: string): string {
   return createHash("sha256").update(xml).digest("hex");
 }
 
+function assertBase64(value: string, field: string): void {
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(value) || value.replace(/\s+/g, "").length === 0) {
+    throw new Error(`CAF controlado invalido: <${field}> debe ser base64`);
+  }
+}
+
+function assertIsoDate(value: string, field: string): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`CAF controlado invalido: <${field}> debe tener formato YYYY-MM-DD`);
+  }
+}
+
 function extractCafXml(xml: string): string {
   const match = xml.match(/<CAF(?:\s[^>]*)?>[\s\S]*<\/CAF>/i);
   if (!match) throw new Error("CAF controlado debe incluir nodo <CAF>");
@@ -67,6 +80,10 @@ export function parseCafRealControlledXml(
   if (rangeFrom > rangeTo) {
     throw new Error("CAF controlado invalido: rango desde/hasta inconsistente");
   }
+  assertIsoDate(authorizationDate, "FA");
+  assertBase64(publicKeyModulus, "M");
+  assertBase64(publicKeyExponent, "E");
+  assertBase64(cafSignature, "FRMA");
 
   return {
     tenantId,
@@ -91,10 +108,15 @@ export function parseCafRealControlledXml(
 export function loadCafRealControlledFromFile(
   path: string,
   tenantId: string,
+  repoRoot = process.cwd(),
 ): CafRealData {
-  if (!path.trim()) throw new Error("DTE_CAF_PATH requerido");
-  if (!existsSync(path)) throw new Error("DTE_CAF_PATH no existe");
-  return parseCafRealControlledXml(readFileSync(path, "utf8"), tenantId);
+  const safePath = assertExternalDteFileReady({
+    envName: "DTE_CAF_PATH",
+    pathValue: path,
+    repoRoot,
+    allowedExtensions: [".xml"],
+  });
+  return parseCafRealControlledXml(readFileSync(safePath, "utf8"), tenantId);
 }
 
 export function loadCafRealControlledFromEnv(tenantId: string): CafRealData {
