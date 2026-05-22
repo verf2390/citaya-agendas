@@ -2,7 +2,12 @@
 
 import { useMemo } from "react";
 import type React from "react";
-import { ChevronLeft, ChevronRight, CalendarPlus } from "lucide-react";
+import {
+  CalendarDays,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 type Props = {
   tenantName?: string | null;
@@ -31,6 +36,43 @@ const fmtDay = (d?: Date) => {
   }).format(d);
 };
 
+const getMondayStart = (d: Date) => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const day = x.getDay();
+  const diffToMonday = (day + 6) % 7;
+  x.setDate(x.getDate() - diffToMonday);
+  return x;
+};
+
+const fmtWeekRange = (d?: Date) => {
+  if (!d) return "Semana actual";
+
+  const start = getMondayStart(d);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  const dayFmt = new Intl.DateTimeFormat("es-CL", {
+    timeZone: "America/Santiago",
+    day: "numeric",
+  });
+  const monthFmt = new Intl.DateTimeFormat("es-CL", {
+    timeZone: "America/Santiago",
+    month: "long",
+  });
+
+  const startDay = dayFmt.format(start);
+  const endDay = dayFmt.format(end);
+  const startMonth = monthFmt.format(start);
+  const endMonth = monthFmt.format(end);
+
+  if (startMonth === endMonth) {
+    return `Semana del ${startDay} al ${endDay} de ${endMonth}`;
+  }
+
+  return `Semana del ${startDay} de ${startMonth} al ${endDay} de ${endMonth}`;
+};
+
 export default function AdminAgendaHeader({
   tenantName,
   tenantLogoUrl,
@@ -43,13 +85,14 @@ export default function AdminAgendaHeader({
   subSlot,
 }: Props) {
   const prettyDate = useMemo(() => fmtDay(date), [date]);
+  const weekRange = useMemo(() => fmtWeekRange(date), [date]);
   const name = tenantName?.trim() ? tenantName : "Tu negocio";
   const logo = tenantLogoUrl?.trim() || null;
 
   return (
     <div className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
-      <div className="mx-auto w-full max-w-6xl px-4 py-2 lg:ml-72 lg:mr-6 lg:max-w-none">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mx-auto max-w-[1280px] px-3 py-3 sm:px-4 lg:ml-72 lg:mr-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           {/* IZQUIERDA */}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -76,8 +119,11 @@ export default function AdminAgendaHeader({
               <h1 className="truncate text-lg font-semibold">{name}</h1>
               <span className="text-xs text-muted-foreground">•</span>
               <span className="truncate text-sm capitalize text-muted-foreground">
-                {prettyDate}
+                {weekRange}
               </span>
+            </div>
+            <div className="mt-0.5 text-xs capitalize text-muted-foreground">
+              Inicia: {prettyDate}
             </div>
 
             {subSlot ? (
@@ -86,35 +132,38 @@ export default function AdminAgendaHeader({
           </div>
 
           {/* DERECHA */}
-          <div className="flex flex-col items-start gap-2 sm:items-end">
+          <div className="flex min-w-0 flex-col items-start gap-2 lg:items-end">
             {/* Navegación + CTA */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex max-w-full flex-wrap items-center gap-2 overflow-x-auto pb-1">
               <button
                 type="button"
                 onClick={onPrevDay}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border bg-white hover:bg-muted"
-                aria-label="Día anterior"
-                title="Día anterior"
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-white px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
+                aria-label="Semana anterior"
+                title="Semana anterior"
               >
                 <ChevronLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Semana anterior</span>
               </button>
 
               <button
                 type="button"
                 onClick={onToday}
-                className="inline-flex h-9 items-center justify-center rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
-                title="Ir a hoy"
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
+                title="Volver a semana actual"
               >
-                Hoy
+                <CalendarDays className="h-4 w-4" />
+                <span>Hoy</span>
               </button>
 
               <button
                 type="button"
                 onClick={onNextDay}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border bg-white hover:bg-muted"
-                aria-label="Día siguiente"
-                title="Día siguiente"
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-white px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
+                aria-label="Semana siguiente"
+                title="Semana siguiente"
               >
+                <span className="hidden sm:inline">Semana siguiente</span>
                 <ChevronRight className="h-4 w-4" />
               </button>
 

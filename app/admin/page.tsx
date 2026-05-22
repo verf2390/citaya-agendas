@@ -45,6 +45,8 @@ type AppointmentDashboardRow = {
 type CustomerDashboardRow = {
   id: string;
   full_name: string;
+  email?: string | null;
+  phone?: string | null;
   created_at?: string | null;
 };
 
@@ -81,8 +83,11 @@ function formatCLP(value: number) {
   });
 }
 
+const ADMIN_TIMEZONE = "America/Santiago";
+const CANCELED_STATUSES = new Set(["canceled", "cancelled", "cancelada"]);
+
 function dayKey(value: Date) {
-  return value.toLocaleDateString("en-CA", { timeZone: "America/Santiago" });
+  return value.toLocaleDateString("en-CA", { timeZone: ADMIN_TIMEZONE });
 }
 
 function formatActivityDate(value: string | null) {
@@ -102,7 +107,7 @@ function formatFriendlyDate(value: Date) {
     weekday: "long",
     day: "2-digit",
     month: "long",
-    timeZone: "America/Santiago",
+    timeZone: ADMIN_TIMEZONE,
   });
 }
 
@@ -113,7 +118,7 @@ function formatTime(value: string | null) {
   return date.toLocaleTimeString("es-CL", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "America/Santiago",
+    timeZone: ADMIN_TIMEZONE,
   });
 }
 
@@ -136,7 +141,24 @@ function isPendingPayment(row: AppointmentDashboardRow) {
   );
 }
 
+function appointmentStatuses(row: AppointmentDashboardRow) {
+  return [row.status, row.booking_status]
+    .map((value) => String(value ?? "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isCanceledAppointment(row: AppointmentDashboardRow) {
+  return appointmentStatuses(row).some((status) => CANCELED_STATUSES.has(status));
+}
+
+function isTodayActiveAppointment(row: AppointmentDashboardRow, today: string) {
+  if (isCanceledAppointment(row)) return false;
+  const start = row.start_at ? new Date(row.start_at) : null;
+  return Boolean(start && !Number.isNaN(start.getTime()) && dayKey(start) === today);
+}
+
 function isPendingAppointment(row: AppointmentDashboardRow) {
+  if (isCanceledAppointment(row)) return false;
   const bookingStatus = String(row.booking_status ?? "").toLowerCase();
   const status = String(row.status ?? "").toLowerCase();
   return bookingStatus === "pending" || status === "pending";
@@ -151,19 +173,75 @@ function hasPaymentInfo(row: AppointmentDashboardRow) {
   );
 }
 
+function addDaysToDateKey(key: string, days: number) {
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function chileWeekday(value: Date) {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: ADMIN_TIMEZONE,
+    weekday: "short",
+  }).format(value);
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(
+    weekday,
+  );
+}
+
+function chileWeekStartKey(now: Date) {
+  const today = dayKey(now);
+  const day = chileWeekday(now);
+  const diffToMonday = ((day < 0 ? now.getDay() : day) + 6) % 7;
+  return addDaysToDateKey(today, -diffToMonday);
+}
+
+function normalizeCustomerValue(value: string | null | undefined) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizePhoneKey(value: string | null | undefined) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function customerDedupeKey(customer: CustomerDashboardRow) {
+  const id = normalizeCustomerValue(customer.id);
+  if (id) return `id:${id}`;
+
+  const email = normalizeCustomerValue(customer.email);
+  if (email) return `email:${email}`;
+
+  const phone = normalizePhoneKey(customer.phone);
+  if (phone) return `phone:${phone}`;
+
+  const name = normalizeCustomerValue(customer.full_name).replace(/\s+/g, " ");
+  return name ? `name:${name}` : "";
+}
+
 function isCreatedThisWeek(value: string | null | undefined, nowMs: number) {
   if (!value) return false;
-  const createdAt = new Date(value).getTime();
-  if (!Number.isFinite(createdAt)) return false;
+  const createdAt = new Date(value);
+  if (Number.isNaN(createdAt.getTime())) return false;
 
   const now = new Date(nowMs);
-  const weekStart = new Date(now);
-  const day = weekStart.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  weekStart.setDate(weekStart.getDate() + mondayOffset);
-  weekStart.setHours(0, 0, 0, 0);
+  const createdKey = dayKey(createdAt);
+  return createdKey >= chileWeekStartKey(now) && createdKey <= dayKey(now);
+}
 
-  return createdAt >= weekStart.getTime() && createdAt <= nowMs;
+function countUniqueCustomersCreatedThisWeek(
+  customers: CustomerDashboardRow[],
+  nowMs: number,
+) {
+  const seen = new Set<string>();
+
+  for (const customer of customers) {
+    if (!isCreatedThisWeek(customer.created_at, nowMs)) continue;
+    const key = customerDedupeKey(customer);
+    if (key) seen.add(key);
+  }
+
+  return seen.size;
 }
 
 const quickActions = [
@@ -379,9 +457,15 @@ export default function AdminDashboardPage() {
         const start = row.start_at ? new Date(row.start_at) : null;
         const startMs = start?.getTime() ?? Number.NaN;
         const status = String(row.status ?? row.booking_status ?? "").toLowerCase();
+        const isCanceled = isCanceledAppointment(row);
 
-        if (start && dayKey(start) === today) acc.today += 1;
-        if (Number.isFinite(startMs) && startMs > now && status === "confirmed") {
+        if (isTodayActiveAppointment(row, today)) acc.today += 1;
+        if (
+          !isCanceled &&
+          Number.isFinite(startMs) &&
+          startMs > now &&
+          status === "confirmed"
+        ) {
           acc.upcoming += 1;
         }
         if (isPendingPayment(row)) acc.pendingPayments += 1;
@@ -406,9 +490,10 @@ export default function AdminDashboardPage() {
 
   const priorityAlerts = useMemo<PriorityAlert[]>(() => {
     const pendingAppointments = appointments.filter(isPendingAppointment).length;
-    const newCustomersThisWeek = customers.filter((customer) =>
-      isCreatedThisWeek(customer.created_at, nowMs),
-    ).length;
+    const newCustomersThisWeek = countUniqueCustomersCreatedThisWeek(
+      customers,
+      nowMs,
+    );
 
     const alerts: PriorityAlert[] = [];
 
@@ -438,31 +523,27 @@ export default function AdminDashboardPage() {
       });
     }
 
-    if (metrics.today > 0) {
-      alerts.push({
-        id: "today-appointments",
-        title: "Citas de hoy",
-        count: metrics.today,
-        description: "Reservas programadas para hoy.",
-        href: "/admin/agenda",
-        actionLabel: "Ver agenda",
-        severity: "neutral",
-        icon: Clock,
-      });
-    }
+    alerts.push({
+      id: "today-appointments",
+      title: "Citas de hoy",
+      count: metrics.today,
+      description: "Reservas activas programadas para hoy.",
+      href: "/admin/agenda",
+      actionLabel: "Ver agenda",
+      severity: metrics.today > 0 ? "neutral" : "success",
+      icon: Clock,
+    });
 
-    if (newCustomersThisWeek > 0) {
-      alerts.push({
-        id: "new-customers",
-        title: "Clientes nuevos",
-        count: newCustomersThisWeek,
-        description: "Nuevos clientes esta semana.",
-        href: "/admin/customers",
-        actionLabel: "Ver clientes",
-        severity: "success",
-        icon: Users,
-      });
-    }
+    alerts.push({
+      id: "new-customers",
+      title: "Clientes nuevos",
+      count: newCustomersThisWeek,
+      description: "Nuevos clientes esta semana.",
+      href: "/admin/customers",
+      actionLabel: "Ver clientes",
+      severity: newCustomersThisWeek > 0 ? "success" : "neutral",
+      icon: Users,
+    });
 
     return alerts;
   }, [appointments, customers, metrics.pendingPayments, metrics.today, nowMs]);
@@ -470,10 +551,7 @@ export default function AdminDashboardPage() {
   const todayAppointments = useMemo(() => {
     const today = dayKey(new Date());
     return appointments
-      .filter((row) => {
-        const start = row.start_at ? new Date(row.start_at) : null;
-        return start && dayKey(start) === today;
-      })
+      .filter((row) => isTodayActiveAppointment(row, today))
       .sort(
         (a, b) =>
           new Date(a.start_at || 0).getTime() -
