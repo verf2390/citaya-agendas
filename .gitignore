@@ -57,3 +57,14 @@ yarn-error.log*
 next-env.d.ts
 .vscode
 .env.dte-lab
+
+# DTE/SII local certification artifacts and real secrets
+/tmp/dte-certification/*.xml
+/tmp/dte-certification/*.sha256
+/tmp/dte-certification/*.metadata.json
+/tmp/dte-certification/**
+/secure/
+/dte-lab/
+/dte-secrets/
+/.env.dte-lab
+/.env.dte-lab.*

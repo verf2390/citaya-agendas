@@ -1,5 +1,5 @@
 import { existsSync, statSync } from "node:fs";
-import { extname, resolve } from "node:path";
+import { extname, isAbsolute, resolve } from "node:path";
 
 import { isPathInsideRepo } from "./validate-dte-config";
 
@@ -46,11 +46,23 @@ export function validateExternalDteFile(
       pathConfigured: false,
       exists: false,
       outsideRepo: false,
-      error: required ? `${input.envName} no configurado.` : undefined,
+      error: required ? `${input.envName} no configurado. Ver docs/dte-sii/EXTERNAL_DTE_FILES_SETUP.md. No se genero XML y no se contacto SII.` : undefined,
     };
   }
 
   const exists = existsSync(pathValue);
+
+  if (!isAbsolute(pathValue)) {
+    return {
+      ok: false,
+      status: "unsafe_repo_path",
+      pathConfigured: true,
+      exists,
+      outsideRepo: false,
+      error: `${input.envName} debe apuntar a una ruta absoluta externa al repo. Ver docs/dte-sii/EXTERNAL_DTE_FILES_SETUP.md. No se genero XML y no se contacto SII.`,
+    };
+  }
+
   const outsideRepo = !isPathInsideRepo(pathValue, repoRoot);
 
   if (!outsideRepo) {
@@ -60,7 +72,7 @@ export function validateExternalDteFile(
       pathConfigured: true,
       exists,
       outsideRepo: false,
-      error: `${input.envName} debe apuntar a una ruta externa al repo.`,
+      error: `${input.envName} debe apuntar a una ruta absoluta externa al repo. Ver docs/dte-sii/EXTERNAL_DTE_FILES_SETUP.md. No se genero XML y no se contacto SII.`,
     };
   }
 
@@ -71,7 +83,7 @@ export function validateExternalDteFile(
       pathConfigured: true,
       exists: false,
       outsideRepo: true,
-      error: `${input.envName} apunta a un archivo externo no encontrado.`,
+      error: `${input.envName} apunta a un archivo externo no encontrado. Ver docs/dte-sii/EXTERNAL_DTE_FILES_SETUP.md. No se genero XML y no se contacto SII.`,
     };
   }
 
@@ -84,7 +96,7 @@ export function validateExternalDteFile(
         pathConfigured: true,
         exists: true,
         outsideRepo: true,
-        error: `${input.envName} debe ser un archivo regular externo.`,
+        error: `${input.envName} debe ser un archivo regular externo. No se genero XML y no se contacto SII.`,
       };
     }
   } catch {
@@ -94,7 +106,7 @@ export function validateExternalDteFile(
       pathConfigured: true,
       exists: true,
       outsideRepo: true,
-      error: `${input.envName} no pudo validarse como archivo externo.`,
+      error: `${input.envName} no pudo validarse como archivo externo. No se genero XML y no se contacto SII.`,
     };
   }
 
@@ -107,7 +119,7 @@ export function validateExternalDteFile(
       pathConfigured: true,
       exists: true,
       outsideRepo: true,
-      error: `${input.envName} tiene extension no soportada para este flujo.`,
+      error: `${input.envName} tiene extension no soportada para este flujo. Ver docs/dte-sii/EXTERNAL_DTE_FILES_SETUP.md. No se genero XML y no se contacto SII.`,
     };
   }
 

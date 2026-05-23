@@ -66,7 +66,17 @@ const { buildFacturaXmlLab } = require(resolve(
   repoRoot,
   "lib/dte/xml/build-factura.ts",
 ));
-const { getSiiDteTypeCode, isSupportedDteDocumentType } = require(resolve(
+const { buildBoletaXmlLab } = require(resolve(
+  repoRoot,
+  "lib/dte/xml/build-boleta.ts",
+));
+const {
+  SII_DTE_TYPE_CODES,
+  getSiiDteTypeCode,
+  isBoletaType,
+  isInvoiceType,
+  isSupportedDteDocumentType,
+} = require(resolve(
   repoRoot,
   "lib/dte/dte-types.ts",
 ));
@@ -137,11 +147,43 @@ const defaultDraft = {
 
 let draft = defaultDraft;
 
-function buildCertificationDraftFromCaf(caf) {
-  const requestedType = envValue("DTE_CERTIFICATION_DOC_TYPE") || caf.documentType;
-  if (!isSupportedDteDocumentType(requestedType)) {
-    throw new Error(`DTE_CERTIFICATION_DOC_TYPE no soportado: ${requestedType}`);
+
+function resolveCertificationDocumentType(value, fallback) {
+  const requested = String(value || fallback || "").trim();
+  if (isSupportedDteDocumentType(requested)) return requested;
+
+  const numericCode = Number(requested);
+  if (Number.isInteger(numericCode)) {
+    const match = Object.entries(SII_DTE_TYPE_CODES).find(([, code]) => code === numericCode);
+    if (match) return match[0];
   }
+
+  throw new Error(`DTE_CERTIFICATION_DOC_TYPE no soportado: ${requested}. Use codigo SII 33/34/39/41/56/61 o nombre interno soportado.`);
+}
+
+function buildXmlForDraft(draft, options) {
+  if (isInvoiceType(draft.documentType)) return buildFacturaXmlLab(draft, options);
+  if (isBoletaType(draft.documentType)) return buildBoletaXmlLab(draft, options);
+  return {
+    ok: false,
+    status: "error",
+    error: `Tipo DTE no soportado para XML certification: ${draft.documentType}`,
+  };
+}
+
+function assertVerifiedXmlDsig(label, signature) {
+  if (!signature.signatureXml || signature.xmlSignatureStatus !== "verified_controlled" || !signature.verification?.ok) {
+    throw new Error(
+      `XMLDSig ${label} no quedo verified_controlled; no se genera XML certification. status=${signature.xmlSignatureStatus ?? "unknown"}`
+    );
+  }
+}
+
+function buildCertificationDraftFromCaf(caf) {
+  const requestedType = resolveCertificationDocumentType(
+    envValue("DTE_CERTIFICATION_DOC_TYPE"),
+    caf.documentType,
+  );
   const folio = envValue("DTE_CERTIFICATION_FOLIO")
     ? parsePositiveInteger(envValue("DTE_CERTIFICATION_FOLIO"), "DTE_CERTIFICATION_FOLIO")
     : caf.rangeFrom;
@@ -333,6 +375,9 @@ function buildCertificationOptions() {
     envioSigningConfig,
   );
 
+  assertVerifiedXmlDsig("document", documentSignature);
+  assertVerifiedXmlDsig("envio", envioSignature);
+
   return {
     mode: "certification",
     tedXml: ted.tedXml,
@@ -347,6 +392,11 @@ function buildCertificationOptions() {
       `document=${documentSignature.verification?.ok ? "ok" : "failed"}`,
       `envio=${envioSignature.verification?.ok ? "ok" : "failed"}`,
     ],
+    tedStatus: ted.frmtStatus,
+    frmtStatus: frmt.ok ? "real_controlled" : frmt.status,
+    cafXmlSha256: caf.cafXmlHash,
+    cafFolioRange: `${caf.rangeFrom}-${caf.rangeTo}`,
+    cafIssuerRut: caf.issuerRut,
     warnings: [
       ...ted.warnings,
       ...frmt.warnings,
@@ -367,7 +417,8 @@ if (mode === "certification") {
   if (missing.length > 0) {
     console.error("pending_real_certification: faltan archivos externos para XML certification controlado.");
     console.error(`missing_external_files=${missing.join(",")}`);
-    console.error("No se genera XML certification real/controlado y no se contacta SII.");
+    console.error("setup_doc=docs/dte-sii/EXTERNAL_DTE_FILES_SETUP.md");
+    console.error("no se genero XML certification real/controlado y no se contacta SII.");
     process.exit(3);
   }
 }
@@ -388,7 +439,7 @@ try {
   );
   process.exit(3);
 }
-const result = buildFacturaXmlLab(draft, options);
+const result = buildXmlForDraft(draft, options);
 
 if (!result.ok) {
   console.error(result.error);
@@ -415,8 +466,14 @@ if (mode === "certification") {
         xmlSha256,
         folio: draft.folio,
         documentType: draft.documentType,
+        tedStatus: options.tedStatus ?? null,
+        frmtStatus: options.frmtStatus ?? null,
+        cafXmlSha256: options.cafXmlSha256 ?? null,
+        cafFolioRange: options.cafFolioRange ?? null,
+        cafIssuerRut: options.cafIssuerRut ?? null,
         xmlSignatureStatuses: options.xmlSignatureStatuses ?? [],
         xmlSignatureVerification: options.xmlSignatureVerification ?? [],
+        xsdValidated: false,
         warnings: [...result.warnings, ...(options.warnings ?? [])],
         siiContact: false,
         trackIdSimulated: false,
