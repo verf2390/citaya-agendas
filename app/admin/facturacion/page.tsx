@@ -121,6 +121,90 @@ type DteTracesState = {
   warnings: string[];
 };
 
+type DteStatusValue = "ready" | "pending" | "blocked" | "unknown" | "not_configured";
+
+type DteStatusChecklistItem = {
+  label: string;
+  status: DteStatusValue | string;
+  detail: string;
+};
+
+type DteAdminStatus = {
+  globalStatus: "LAB / PENDIENTE / NO PRODUCTIVO";
+  mode: string;
+  siiEnv: string;
+  backend: "memory" | "supabase";
+  production: {
+    enabled: boolean;
+    approvedBySii: boolean;
+    legalIssuingEnabled: boolean;
+  };
+  readiness: {
+    score: number;
+    labScore: number;
+    certificationScore: number;
+    productionTechnicalScore: number;
+    cafConfigured: boolean;
+    cafExists: boolean;
+    cafOutsideRepo: boolean;
+    cafPrivateKeyConfigured: boolean;
+    cafPrivateKeyExists: boolean;
+    certConfigured: boolean;
+    certExists: boolean;
+    privateKeyConfigured: boolean;
+    privateKeyExists: boolean;
+    endpointsConfigured: boolean;
+    submitEnabled: boolean;
+    productionBlocked: boolean;
+    configStatus: string;
+  };
+  artifacts: {
+    xmlExists: boolean;
+    xmlFileName: string;
+    xmlUpdatedAt: string | null;
+    xmlSizeBytes: number | null;
+    xmlSha256Exists: boolean;
+    xmlSha256FileName: string;
+    xmlSha256: string | null;
+    metadataExists: boolean;
+    metadataFileName: string;
+    metadataUpdatedAt: string | null;
+    xsdValid: boolean | null;
+    xmlSignatureStatus: string | null;
+    verificationOk: boolean | null;
+    siiContact: boolean | null;
+    trackIdSimulated: boolean | null;
+    folio: number | null;
+    documentType: string | null;
+  };
+  checklist: {
+    base: DteStatusChecklistItem[];
+    externalFiles: DteStatusChecklistItem[];
+    xmlSignature: DteStatusChecklistItem[];
+    siiCertification: DteStatusChecklistItem[];
+  };
+  lastTrace: {
+    taxDocumentId: string | null;
+    folio: number | null;
+    documentType: string | null;
+    status: string | null;
+    siiStatus: string | null;
+    trackId: string | null;
+    submissionStatus: string | null;
+    lastAuditAction: string | null;
+    statusHistory: null;
+    updatedAt: string | null;
+  };
+  safeActions: {
+    readiness: string;
+    generateXmlCommand: string;
+    validateXmlCommand: string;
+    submitCertification: "blocked";
+    submitBlockedReasons: string[];
+  };
+  warnings: string[];
+};
+
 type DteLabResult = {
   xml: string;
   metadata: {
@@ -554,6 +638,42 @@ function readinessLabel(status: DteReadinessItem["status"]) {
   return "PENDIENTE";
 }
 
+function dteChecklistTone(status: string) {
+  if (status === "ready") return "border-emerald-100 bg-emerald-50 text-emerald-900";
+  if (status === "blocked") return "border-red-100 bg-red-50 text-red-900";
+  if (status === "not_configured") return "border-slate-200 bg-slate-50 text-slate-700";
+  return "border-amber-100 bg-amber-50 text-amber-950";
+}
+
+function dteChecklistLabel(status: string) {
+  if (status === "ready") return "Listo";
+  if (status === "blocked") return "Bloqueado";
+  if (status === "not_configured") return "No configurado";
+  if (status === "unknown") return "Unknown";
+  return "Pendiente";
+}
+
+function artifactState(exists: boolean) {
+  return exists ? "Listo" : "Pendiente";
+}
+
+function formatSafeDate(value: string | null) {
+  if (!value) return "pendiente";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "pendiente";
+  return date.toLocaleString("es-CL", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function shortHash(value: string | null) {
+  if (!value) return "pendiente";
+  return `${value.slice(0, 12)}...${value.slice(-8)}`;
+}
+
 function getRecordValue(input: unknown, key: string): unknown {
   if (!input || typeof input !== "object") return undefined;
   return (input as Record<string, unknown>)[key];
@@ -621,6 +741,8 @@ export default function AdminFacturacionPage() {
     useState<DteSiiCertificationState | null>(null);
   const [dteTraces, setDteTraces] = useState<DteTracesState | null>(null);
   const [dteTracesError, setDteTracesError] = useState("");
+  const [dteAdminStatus, setDteAdminStatus] = useState<DteAdminStatus | null>(null);
+  const [dteAdminStatusError, setDteAdminStatusError] = useState("");
 
   useEffect(() => {
     const run = async () => {
@@ -671,6 +793,28 @@ export default function AdminFacturacionPage() {
       }
 
       setSettings(normalizeSettings(json.settings, tenant.id));
+
+      const statusParams = new URLSearchParams({
+        tenantId: tenant.id,
+        tenantSlug: slug,
+      });
+      const dteStatusRes = await fetch(
+        `/api/admin/dte-lab/status?${statusParams.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${sessionData.session.access_token}`,
+          },
+          cache: "no-store",
+        },
+      );
+      const dteStatusJson = await dteStatusRes.json().catch(() => null);
+      if (dteStatusRes.ok && dteStatusJson?.ok) {
+        setDteAdminStatus(dteStatusJson as DteAdminStatus);
+      } else {
+        setDteAdminStatusError(
+          dteStatusJson?.error ?? "No se pudo cargar estado DTE/SII.",
+        );
+      }
 
       const readinessRes = await fetch("/api/admin/dte-lab/readiness", {
         method: "POST",
@@ -973,6 +1117,167 @@ export default function AdminFacturacionPage() {
           tone={hasTaxIdentity ? "green" : "amber"}
         />
       </div>
+
+      {!loading ? (
+        <AdminSectionCard
+          className="mt-5 border-blue-200/70"
+          title="Estado de Facturación DTE/SII"
+          description="Centro de control de preparación por tenant: readiness, artefactos, firma, XSD, trazabilidad y submit bloqueado."
+          actions={
+            <div className="flex flex-wrap gap-2">
+              {["LAB", "PENDIENTE", "NO PRODUCTIVO", "SII no aprobado", "Submit bloqueado"].map((badge) => (
+                <span
+                  key={badge}
+                  className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-black uppercase text-blue-800"
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
+          }
+        >
+          <div className="grid gap-5">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-black leading-6 text-amber-950">
+              Citaya aún no emite documentos legales en producción. Este módulo está en preparación/certificación: sin aprobación SII, sin emisión legal, sin agenda/pagos conectados y sin track_id real simulado.
+            </div>
+
+            {dteAdminStatusError ? (
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-900">
+                {dteAdminStatusError}
+              </div>
+            ) : null}
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              {[
+                ["Estado global", dteAdminStatus?.globalStatus ?? "LAB / PENDIENTE / NO PRODUCTIVO"],
+                ["Modo", dteAdminStatus?.mode ?? "lab"],
+                ["Ambiente SII", dteAdminStatus?.siiEnv ?? "certification"],
+                ["Backend", dteAdminStatus?.backend ?? "memory"],
+                ["Aprobación SII", dteAdminStatus?.production.approvedBySii ? "aprobado" : "no aprobado"],
+                ["Track ID real", dteAdminStatus?.lastTrace.trackId ?? "pendiente/null"],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-[11px] font-black uppercase text-slate-500">{label}</div>
+                  <div className="mt-1 break-words text-sm font-black text-slate-950">{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="grid gap-4">
+                <div>
+                  <div className="text-sm font-black text-slate-950">Checklist readiness</div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["Base técnica", dteAdminStatus?.checklist.base ?? []],
+                      ["Archivos externos", dteAdminStatus?.checklist.externalFiles ?? []],
+                      ["XML/Firma", dteAdminStatus?.checklist.xmlSignature ?? []],
+                      ["SII Certification", dteAdminStatus?.checklist.siiCertification ?? []],
+                    ].map(([group, items]) => (
+                      <div key={group as string} className="rounded-2xl border border-slate-200 bg-white p-3">
+                        <div className="text-xs font-black uppercase text-slate-500">{group as string}</div>
+                        <div className="mt-3 grid gap-2">
+                          {(items as DteStatusChecklistItem[]).map((item) => (
+                            <div key={`${group}-${item.label}`} className={`rounded-xl border p-2 ${dteChecklistTone(item.status)}`}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="text-xs font-black">{item.label}</div>
+                                <span className="shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase">
+                                  {dteChecklistLabel(item.status)}
+                                </span>
+                              </div>
+                              <div className="mt-1 break-words text-[11px] font-bold opacity-80">{item.detail}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-sm font-black text-slate-950">Artefactos XML certification</div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["XML", artifactState(Boolean(dteAdminStatus?.artifacts.xmlExists)), dteAdminStatus?.artifacts.xmlFileName ?? "certification-envio-dte.xml"],
+                      ["SHA-256", artifactState(Boolean(dteAdminStatus?.artifacts.xmlSha256Exists)), shortHash(dteAdminStatus?.artifacts.xmlSha256 ?? null)],
+                      ["Metadata", artifactState(Boolean(dteAdminStatus?.artifacts.metadataExists)), dteAdminStatus?.artifacts.metadataFileName ?? "metadata.json"],
+                      ["XSD", dteAdminStatus?.artifacts.xsdValid === true ? "Listo" : dteAdminStatus?.artifacts.xsdValid === false ? "Fallido" : "Pendiente", "xsd_valid"],
+                      ["XMLDSig", dteAdminStatus?.artifacts.xmlSignatureStatus ?? "pendiente", "firma controlada"],
+                      ["Verificación", dteAdminStatus?.artifacts.verificationOk === true ? "ok" : dteAdminStatus?.artifacts.verificationOk === false ? "fallida" : "pendiente", "local independiente"],
+                      ["Última metadata", formatSafeDate(dteAdminStatus?.artifacts.metadataUpdatedAt ?? null), "sin ruta privada"],
+                      ["Track simulado", dteAdminStatus?.artifacts.trackIdSimulated === false ? "NO" : "pendiente", "no simular track_id"],
+                    ].map(([label, value, hint]) => (
+                      <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="text-[11px] font-black uppercase text-slate-500">{label}</div>
+                        <div className="mt-1 break-words text-sm font-black text-slate-950">{value}</div>
+                        <div className="mt-1 break-words text-[11px] font-bold text-slate-500">{hint}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 content-start">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-black uppercase text-slate-500">Última traza DTE</div>
+                  <div className="mt-3 grid gap-2 text-sm font-bold text-slate-700">
+                    <div>Documento: {dteAdminStatus?.lastTrace.documentType ?? "pendiente"} {dteAdminStatus?.lastTrace.folio ? `#${dteAdminStatus.lastTrace.folio}` : ""}</div>
+                    <div>Status: {dteAdminStatus?.lastTrace.status ?? "pendiente"}</div>
+                    <div>SII: {dteAdminStatus?.lastTrace.siiStatus ?? "not_sent"}</div>
+                    <div>Submission: {dteAdminStatus?.lastTrace.submissionStatus ?? "pendiente"}</div>
+                    <div>Track ID: {dteAdminStatus?.lastTrace.trackId ?? "Pendiente real / no simulado"}</div>
+                    <div>Audit: {dteAdminStatus?.lastTrace.lastAuditAction ?? "pendiente"}</div>
+                    <div>Actualizado: {formatSafeDate(dteAdminStatus?.lastTrace.updatedAt ?? null)}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs font-black uppercase text-slate-500">Acciones seguras</div>
+                  <div className="mt-3 grid gap-2">
+                    {[
+                      ["Ver readiness", "Se carga desde /api/admin/dte-lab/status y /readiness"],
+                      ["Generar XML certification", dteAdminStatus?.safeActions.generateXmlCommand ?? "npm run dte:certification:xml"],
+                      ["Validar XML", dteAdminStatus?.safeActions.validateXmlCommand ?? "npm run dte:certification:validate-xml"],
+                      ["Ver últimas trazas", "Panel inferior / endpoint traces"],
+                      ["Ver runbook", "docs/dte-sii/SII_CERTIFICATION_RUNBOOK.md"],
+                      ["Ver gap report", "docs/dte-sii/XML_SIGNATURE_CERTIFICATION_GAP_REPORT.md"],
+                    ].map(([label, detail]) => (
+                      <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                        <div className="text-xs font-black text-slate-950">{label}</div>
+                        <code className="mt-1 block break-words text-[11px] font-bold text-slate-600">{detail}</code>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-bold leading-6 text-red-900">
+                  Submit certification bloqueado hasta completar XML, XSD, firma, endpoints SII, CAF/cert/key externos y autorización operativa. Razones: {(dteAdminStatus?.safeActions.submitBlockedReasons.length ? dteAdminStatus.safeActions.submitBlockedReasons : ["pendiente de configuración real"]).join("; ")}.
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-black text-slate-950">Qué falta para emitir legalmente</div>
+              <div className="mt-3 grid gap-2 text-sm font-bold text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  "CAF real por tenant",
+                  "Certificado digital real por tenant",
+                  "Llaves externas seguras",
+                  "XML validado XSD",
+                  "Firma XMLDSig verificada",
+                  "Endpoints SII certification",
+                  "Submit real controlado",
+                  "Track ID real",
+                  "Aprobación/certificación SII",
+                  "Recién después conectar agenda/pagos",
+                ].map((item) => (
+                  <div key={item} className="rounded-xl border border-white bg-white px-3 py-2">{item}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </AdminSectionCard>
+      ) : null}
 
       {loading ? (
         <AdminSectionCard className="mt-5">

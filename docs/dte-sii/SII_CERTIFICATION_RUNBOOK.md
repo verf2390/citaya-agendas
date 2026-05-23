@@ -368,3 +368,28 @@ No borrar tablas inmediatamente. Revisar logs, policies, constraints y trazas LA
 - No guardar CAF/certificados/llaves/tokens en repo.
 - No simular `track_id`.
 - No decir que facturacion esta lista para produccion.
+
+## 10. Panel admin de facturacion
+
+La vista `/admin/facturacion` funciona como centro de control **LAB / PENDIENTE / NO PRODUCTIVO** para el avance DTE/SII por tenant. No ejecuta comandos de shell, no hace submit real, no contacta SII y no expone secretos.
+
+Muestra de forma segura:
+
+- Estado global: `LAB / PENDIENTE / NO PRODUCTIVO`, SII no aprobado, produccion deshabilitada y submit bloqueado.
+- Readiness visual por bloques: base tecnica, archivos externos, XML/firma y SII certification.
+- Artefactos locales de certification si existen: nombre de archivo, existencia, hash SHA-256, metadata resumida, `xmlSignatureStatus`, verificacion local y XSD pendiente/true/false.
+- Ultimas trazas DTE por tenant desde el repositorio configurado: ultimo documento, submission, audit log y `track_id` real si existe.
+- Acciones seguras como instrucciones: `npm run dte:certification:xml`, `npm run dte:certification:validate-xml`, runbook y gap report.
+
+No hace todavia:
+
+- No genera XML certification desde la UI.
+- No valida XSD desde la UI.
+- No hace submit certification desde la UI.
+- No crea ni simula `track_id`.
+- No conecta agenda/pagos ni emite automaticamente.
+- No muestra XML completo, CAF, certificados, private keys, tokens ni rutas privadas completas de secretos.
+
+El endpoint de soporte es `/api/admin/dte-lab/status`. Requiere admin de tenant, usa `requireTenantAdmin`, devuelve solo resumen seguro y mantiene production deshabilitado. Si alguna evidencia no existe en el entorno actual, la UI debe mostrar `pendiente` o `unknown`, nunca inventar datos.
+
+Submit permanece bloqueado hasta completar, como minimo: CAF real externo por tenant, llave CAF externa, certificado y private key externos, XML certification generado, XMLDSig `verified_controlled`, verificacion local OK, XSD valido, endpoints SII certification configurados, `DTE_SII_ENABLE_SUBMIT=true`, Supabase LAB con persistencia validada y autorizacion operativa para primer envio real a certification.

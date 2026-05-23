@@ -156,3 +156,32 @@ Siguiente paso concreto XMLDSig:
 2. Validar XML final firmado con `npm run dte:certification:validate-xml -- <ruta-xml>`.
 3. Si XSD pasa y `xmlSignatureStatus=verified_controlled`, ejecutar readiness completo sin production.
 4. Solo despues, habilitar `DTE_SII_ENABLE_SUBMIT=true` para primer submit controlado a SII certification.
+
+## Panel admin de facturacion
+
+`/admin/facturacion` ahora resume el estado operativo DTE/SII sin convertirlo en produccion. El panel consume `/api/admin/dte-lab/status`, que agrega readiness, artefactos locales y trazas del repositorio DTE con respuesta redactada.
+
+Que muestra:
+
+- Badges `LAB`, `PENDIENTE`, `NO PRODUCTIVO`, `SII no aprobado` y `Submit bloqueado`.
+- Checklist visual de base tecnica, archivos externos, XML/firma y SII certification.
+- Existencia de `certification-envio-dte.xml`, `.sha256` y `.metadata.json` sin exponer XML completo ni rutas privadas.
+- `xmlSignatureStatus`, verificacion local, XSD true/false/pendiente y `track_id` real pendiente/null cuando no existe.
+- Ultima traza DTE LAB/certification: documento, submission y audit log.
+
+Que no hace:
+
+- No ejecuta `npm run` desde frontend.
+- No contacta SII.
+- No desbloquea submit real.
+- No guarda ni muestra CAF/cert/key/tokens.
+- No conecta agenda/pagos.
+- No declara validez legal ni aprobacion SII.
+
+Uso recomendado:
+
+1. Revisar `/admin/facturacion` para detectar faltantes sin exponer secretos.
+2. Ejecutar manualmente `npm run dte:certification:xml` en entorno controlado con archivos externos reales.
+3. Ejecutar manualmente `npm run dte:certification:validate-xml`.
+4. Confirmar en el panel que XML/metadata/hash existen, XMLDSig esta `verified_controlled` y XSD esta valido.
+5. Solo despues evaluar primer submit real a SII certification mediante comandos controlados, nunca desde la UI en esta etapa.
