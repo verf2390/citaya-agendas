@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -76,13 +77,13 @@ export default function AdminNav() {
   const businessName = tenant?.name || "Citaya Admin";
 
   return (
-    <div className="admin-nav mb-5 lg:mb-0">
-      <aside className="admin-sidebar lg:fixed lg:inset-y-4 lg:left-4 lg:z-40 lg:flex lg:w-64 lg:flex-col">
-        <div className="admin-sidebar-panel rounded-2xl border p-3 shadow-2xl lg:flex lg:min-h-[calc(100vh-2rem)] lg:flex-col">
+    <div className="admin-nav mb-5 min-w-0 max-w-full lg:mb-0">
+      <aside className="admin-sidebar min-w-0 max-w-full lg:fixed lg:inset-y-4 lg:left-4 lg:z-40 lg:flex lg:w-64 lg:flex-col">
+        <div className="admin-sidebar-panel min-w-0 max-w-full overflow-hidden rounded-2xl border p-3 shadow-2xl lg:flex lg:min-h-[calc(100vh-2rem)] lg:flex-col">
           <div className="flex items-center gap-3 border-b border-white/10 pb-4">
             <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl border text-sm font-black text-white shadow-lg">
               {tenant?.logo_url ? (
-                <img src={tenant.logo_url} alt={businessName} className="h-full w-full object-cover" />
+                <Image src={tenant.logo_url} alt={businessName} width={44} height={44} unoptimized className="h-full w-full object-cover" />
               ) : (
                 initials(businessName)
               )}
@@ -98,31 +99,31 @@ export default function AdminNav() {
           </div>
 
           <div className="mt-4 rounded-2xl border p-3">
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-bold text-slate-500 sm:justify-start">
               <span>Agenda activa</span>
               <StatusBadge status="active" />
               <StatusBadge tone="dark">Pro</StatusBadge>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-2">
+          <div className="mt-4 grid gap-2 min-[390px]:grid-cols-2 lg:grid-cols-1">
             <Link
               href="/admin/agenda"
-              className="admin-primary-action inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-black text-white shadow-lg transition"
+              className="admin-primary-action inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-black text-white shadow-lg transition"
             >
               <CalendarPlus className="h-4 w-4" />
               Nueva cita
             </Link>
             <Link
               href="/admin/campanas"
-              className="admin-secondary-action inline-flex items-center justify-center rounded-xl border px-3 py-2.5 text-sm font-black shadow-sm transition"
+              className="admin-secondary-action inline-flex min-h-11 items-center justify-center rounded-xl border px-3 py-2.5 text-sm font-black shadow-sm transition"
             >
               Crear campaña
             </Link>
           </div>
 
-          <nav className="mt-4 min-w-0 lg:flex-1">
-            <div className="flex min-w-max gap-1 overflow-x-auto pb-1 lg:grid lg:min-w-0 lg:gap-1.5 lg:overflow-visible lg:pb-0">
+          <nav className="mt-4 min-w-0 max-w-full overflow-hidden lg:flex-1">
+            <div className="no-scrollbar flex w-full max-w-full gap-1 overflow-x-auto overscroll-x-contain pb-1 [-webkit-overflow-scrolling:touch] lg:grid lg:min-w-0 lg:gap-1.5 lg:overflow-visible lg:pb-0">
               {ITEMS.map((item) => {
                 const active =
                   pathname === item.href ||
@@ -133,19 +134,19 @@ export default function AdminNav() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`admin-nav-item inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition ${
+                    className={`admin-nav-item inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border px-3 text-sm font-bold transition lg:h-10 lg:shrink ${
                       active ? "admin-nav-item-active" : ""
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    {item.label}
+                    <span>{item.label}</span>
                   </Link>
                 );
               })}
             </div>
           </nav>
 
-          <div className="mt-4 flex flex-wrap gap-2 lg:grid">
+          <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-1">
             <AdminLogoutButton />
             <AdminThemeToggle />
           </div>

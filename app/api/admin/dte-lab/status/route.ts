@@ -245,7 +245,7 @@ export async function GET(req: Request) {
     }
 
     if (backend !== "supabase") {
-      warnings.push("Backend DTE actual: memory. No es Supabase LAB persistente.");
+      warnings.push("Persistencia DTE actual: LAB local (memory). No es Supabase LAB persistente.");
     }
 
     const lastDocument = documents[0] ?? null;
@@ -322,7 +322,7 @@ export async function GET(req: Request) {
       },
       checklist: {
         base: [
-          statusItem("Supabase LAB/persistencia", backend === "supabase" ? "ready" : "pending", backend),
+          statusItem("Persistencia LAB", backend === "supabase" ? "ready" : "pending", backend === "supabase" ? "Supabase LAB" : "LAB local (memory)"),
           statusItem("Persistencia DTE disponible", documents.length + submissions.length + auditLog.length > 0 ? "ready" : "pending", "tax_documents/submissions/status/audit"),
           statusItem("RLS/constraints", "pending", "documentado; validar en Supabase LAB"),
           statusItem("Produccion bloqueada", "blocked", "sin aprobacion SII ni feature flag productivo"),

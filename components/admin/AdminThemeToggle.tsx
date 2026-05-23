@@ -51,7 +51,7 @@ export default function AdminThemeToggle() {
       type="button"
       onClick={toggleTheme}
       aria-label={isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
-      className="admin-theme-toggle inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-transparent"
+      className="admin-theme-toggle inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border px-3 text-sm font-black transition focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-transparent"
       title={isDark ? "Modo claro" : "Modo oscuro"}
     >
       {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

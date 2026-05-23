@@ -624,13 +624,13 @@ export default function AdminDashboardPage() {
         title="Resumen de hoy"
         description="Estado operativo de tu agenda, clientes y pagos."
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-black capitalize text-slate-600 shadow-sm">
+          <div className="grid w-full min-w-0 gap-2 min-[390px]:grid-cols-[1fr_auto] sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+            <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-center text-sm font-black capitalize text-slate-600 shadow-sm sm:text-left">
               {formatFriendlyDate(new Date())}
             </div>
             <Link
               href="/admin/agenda"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
             >
               Ver agenda
               <ArrowUpRight className="h-4 w-4" />
@@ -639,10 +639,10 @@ export default function AdminDashboardPage() {
         }
       />
 
-      <section className="mt-5 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">
+      <section className="mt-5 min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 text-center shadow-sm sm:text-left md:p-5">
+        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <div className="inline-flex max-w-full items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black uppercase text-blue-700">
               <Sparkles className="h-3.5 w-3.5" />
               Citaya Pro
             </div>
@@ -653,7 +653,7 @@ export default function AdminDashboardPage() {
               Revisa lo importante sin entrar a cada módulo: reservas, cobros y actividad reciente.
             </p>
           </div>
-          <div className="grid gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+          <div className="grid min-w-0 gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm sm:min-w-64">
             <span className="text-xs font-black uppercase text-slate-500">Ingresos estimados</span>
             <span className="text-2xl font-black text-slate-950">
               {loading ? "..." : formatCLP(metrics.estimatedIncome)}
@@ -686,7 +686,7 @@ export default function AdminDashboardPage() {
           return (
             <div
               key={metric.key}
-              className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg"
+              className="group min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -718,7 +718,7 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
+      <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
         <AdminSectionCard
           title="Agenda del día"
           description={`Reservas visibles para ${tenantSlug || "tu negocio"}.`}
@@ -776,7 +776,7 @@ export default function AdminDashboardPage() {
           )}
         </AdminSectionCard>
 
-        <div className="grid gap-4">
+        <div className="grid min-w-0 gap-4">
           <AdminSectionCard
             title="Pagos recientes"
             description="Cobros detectados desde las reservas."
@@ -867,7 +867,7 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <AdminSectionCard title="Actividad reciente" description="Últimos movimientos relevantes del negocio.">
           {loading ? (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium text-slate-500">

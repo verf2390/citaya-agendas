@@ -23,8 +23,8 @@ export function AdminPageShell({
   width = "wide",
 }: AdminPageShellProps) {
   return (
-    <main className="citaya-admin min-h-screen overflow-x-clip p-4 text-slate-950 sm:p-6 lg:p-6">
-      <div className={cn("mx-auto min-w-0 lg:ml-72 lg:mr-0", widths[width], className)}>
+    <main className="citaya-admin min-h-screen max-w-full overflow-x-clip p-3 text-slate-950 sm:p-6 lg:p-6">
+      <div className={cn("mx-auto min-w-0 max-w-full lg:ml-72 lg:mr-0", widths[width], className)}>
         {children}
       </div>
     </main>
@@ -43,14 +43,14 @@ export function AdminPageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow ? (
           <div className="admin-eyebrow mb-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-bold shadow-sm">
             {eyebrow}
           </div>
         ) : null}
-        <h1 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+        <h1 className="break-words text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
           {title}
         </h1>
         {description ? (
@@ -59,7 +59,7 @@ export function AdminPageHeader({
           </p>
         ) : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      {actions ? <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">{actions}</div> : null}
     </div>
   );
 }
@@ -106,19 +106,19 @@ export function AdminSectionCard({
   className?: string;
 }) {
   return (
-    <section className={cn("admin-section-card rounded-2xl border border-slate-200 bg-white shadow-sm", className)}>
+    <section className={cn("admin-section-card min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm", className)}>
       {title || description || actions ? (
-        <div className="admin-section-card-header flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="admin-section-card-header flex min-w-0 flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             {title ? <h2 className="font-black text-slate-950">{title}</h2> : null}
             {description ? (
               <p className="mt-1 text-sm font-medium text-slate-500">{description}</p>
             ) : null}
           </div>
-          {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+          {actions ? <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">{actions}</div> : null}
         </div>
       ) : null}
-      <div className="p-4">{children}</div>
+      <div className="min-w-0 p-4">{children}</div>
     </section>
   );
 }
@@ -218,7 +218,7 @@ export function StatusBadge({
   }[resolvedTone];
 
   return (
-    <span className={cn("inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-black", toneClass, className)}>
+    <span className={cn("inline-flex max-w-full items-center rounded-full border px-2.5 py-1 text-xs font-black leading-snug", toneClass, className)}>
       {children ?? label ?? mapped?.label ?? status ?? ""}
     </span>
   );

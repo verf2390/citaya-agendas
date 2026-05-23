@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo } from "react";
 import type React from "react";
 import {
@@ -90,18 +91,20 @@ export default function AdminAgendaHeader({
   const logo = tenantLogoUrl?.trim() || null;
 
   return (
-    <div className="sticky top-0 z-30 border-b bg-background/85 backdrop-blur">
+    <div className="sticky top-0 z-30 max-w-full overflow-hidden border-b bg-background/90 backdrop-blur">
       <div className="mx-auto max-w-[1280px] px-3 py-3 sm:px-4 lg:ml-72 lg:mr-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           {/* IZQUIERDA */}
-          <div className="min-w-0">
+          <div className="min-w-0 max-w-full">
             <div className="flex items-center gap-2">
               {logo ? (
-                <img
+                <Image
                   src={logo}
                   alt={`Logo ${name}`}
+                  width={28}
+                  height={28}
+                  unoptimized
                   className="h-7 w-7 rounded-md border bg-white object-contain p-1"
-                  loading="lazy"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     // si falla el logo, lo ocultamos sin romper layout
@@ -115,10 +118,10 @@ export default function AdminAgendaHeader({
               </div>
             </div>
 
-            <div className="mt-0.5 flex flex-wrap items-baseline gap-2">
-              <h1 className="truncate text-lg font-semibold">{name}</h1>
-              <span className="text-xs text-muted-foreground">•</span>
-              <span className="truncate text-sm capitalize text-muted-foreground">
+            <div className="mt-1 flex min-w-0 flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-2">
+              <h1 className="min-w-0 break-words text-xl font-semibold leading-tight sm:truncate sm:text-lg">{name}</h1>
+              <span className="hidden text-xs text-muted-foreground sm:inline">•</span>
+              <span className="min-w-0 text-sm capitalize leading-snug text-muted-foreground sm:truncate">
                 {weekRange}
               </span>
             </div>
@@ -127,18 +130,18 @@ export default function AdminAgendaHeader({
             </div>
 
             {subSlot ? (
-              <div className="mt-2 flex flex-wrap gap-2">{subSlot}</div>
+              <div className="mt-2 flex min-w-0 max-w-full flex-wrap gap-2">{subSlot}</div>
             ) : null}
           </div>
 
           {/* DERECHA */}
-          <div className="flex min-w-0 flex-col items-start gap-2 lg:items-end">
+          <div className="flex w-full min-w-0 flex-col items-stretch gap-2 lg:w-auto lg:items-end">
             {/* Navegación + CTA */}
-            <div className="flex max-w-full flex-wrap items-center gap-2 overflow-x-auto pb-1">
+            <div className="grid w-full grid-cols-[44px_minmax(0,1fr)_44px] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
               <button
                 type="button"
                 onClick={onPrevDay}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-white px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
+                className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border bg-white px-2.5 text-sm font-medium hover:bg-muted sm:h-9 sm:px-3"
                 aria-label="Semana anterior"
                 title="Semana anterior"
               >
@@ -149,7 +152,7 @@ export default function AdminAgendaHeader({
               <button
                 type="button"
                 onClick={onToday}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-white px-3 text-sm font-medium hover:bg-muted"
+                className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border bg-white px-3 text-sm font-medium hover:bg-muted sm:h-9"
                 title="Volver a semana actual"
               >
                 <CalendarDays className="h-4 w-4" />
@@ -159,7 +162,7 @@ export default function AdminAgendaHeader({
               <button
                 type="button"
                 onClick={onNextDay}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-white px-2.5 text-sm font-medium hover:bg-muted sm:px-3"
+                className="inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border bg-white px-2.5 text-sm font-medium hover:bg-muted sm:h-9 sm:px-3"
                 aria-label="Semana siguiente"
                 title="Semana siguiente"
               >
@@ -170,7 +173,7 @@ export default function AdminAgendaHeader({
               <button
                 type="button"
                 onClick={onNewAppointment}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-black px-4 text-sm font-semibold text-white hover:opacity-90"
+                className="col-span-3 inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl bg-black px-4 text-sm font-semibold text-white shadow-sm hover:opacity-90 sm:col-span-auto sm:h-9"
                 title="Crear nueva cita"
               >
                 <CalendarPlus className="h-4 w-4" />
@@ -180,7 +183,7 @@ export default function AdminAgendaHeader({
 
             {/* Clientes / Cerrar sesión */}
             {rightSlot ? (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex w-full min-w-0 flex-wrap items-center gap-2 [&>button]:h-10 [&>button]:w-full [&>button]:rounded-xl sm:w-auto sm:[&>button]:w-auto">
                 {rightSlot}
               </div>
             ) : null}

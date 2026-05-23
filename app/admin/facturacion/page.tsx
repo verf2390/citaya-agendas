@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   Clipboard,
   Code2,
   Eraser,
@@ -638,40 +640,44 @@ function readinessLabel(status: DteReadinessItem["status"]) {
   return "PENDIENTE";
 }
 
-function dteChecklistTone(status: string) {
-  if (status === "ready") return "border-emerald-100 bg-emerald-50 text-emerald-900";
-  if (status === "blocked") return "border-red-100 bg-red-50 text-red-900";
-  if (status === "not_configured") return "border-slate-200 bg-slate-50 text-slate-700";
-  return "border-amber-100 bg-amber-50 text-amber-950";
+function persistenceBusinessLabel(backend?: "memory" | "supabase" | null) {
+  if (backend === "supabase") return "Persistencia: Supabase LAB";
+  return "Persistencia: LAB local / no conectada";
 }
 
-function dteChecklistLabel(status: string) {
-  if (status === "ready") return "Listo";
-  if (status === "blocked") return "Bloqueado";
-  if (status === "not_configured") return "No configurado";
-  if (status === "unknown") return "Unknown";
-  return "Pendiente";
+function readinessBusinessLabel(ready?: boolean) {
+  return ready ? "Configurado para LAB" : "Pendiente";
 }
 
-function artifactState(exists: boolean) {
-  return exists ? "Listo" : "Pendiente";
+function simpleReadyTone(ready?: boolean) {
+  return ready ? "border-emerald-100 bg-emerald-50 text-emerald-900" : "border-amber-100 bg-amber-50 text-amber-950";
 }
 
-function formatSafeDate(value: string | null) {
-  if (!value) return "pendiente";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "pendiente";
-  return date.toLocaleString("es-CL", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function shortHash(value: string | null) {
-  if (!value) return "pendiente";
-  return `${value.slice(0, 12)}...${value.slice(-8)}`;
+function AdvancedDisclosure({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <details className="group rounded-2xl border border-slate-200 bg-white shadow-sm lg:col-span-2">
+      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-4 marker:hidden sm:p-5">
+        <span className="min-w-0">
+          <span className="block text-base font-black text-slate-950">{title}</span>
+          <span className="mt-1 block text-sm font-medium leading-6 text-slate-500">
+            {description}
+          </span>
+        </span>
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500 transition group-open:rotate-180">
+          <ChevronDown className="h-4 w-4" />
+        </span>
+      </summary>
+      <div className="grid gap-4 border-t border-slate-100 p-4 sm:p-5">{children}</div>
+    </details>
+  );
 }
 
 function getRecordValue(input: unknown, key: string): unknown {
@@ -1078,7 +1084,7 @@ export default function AdminFacturacionPage() {
       <AdminPageHeader
         eyebrow="Tributario"
         title="Facturación electrónica"
-        description="Prepara la emisión de boletas y facturas para tus pagos y reservas."
+        description="Prepara datos tributarios, certificación SII y trazabilidad DTE sin habilitar emisión legal."
         actions={
           <button
             type="button"
@@ -1094,9 +1100,9 @@ export default function AdminFacturacionPage() {
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <AdminKpiCard
-          label="Estado"
+          label="Configuración"
           value={providerStatusLabel(settings.providerStatus)}
-          hint="Proveedor DTE/API"
+          hint="Proveedor DTE/API futuro"
           tone={statusTone === "green" ? "green" : statusTone === "red" ? "red" : "amber"}
         />
         <AdminKpiCard
@@ -1106,9 +1112,9 @@ export default function AdminFacturacionPage() {
           tone="blue"
         />
         <AdminKpiCard
-          label="Emisión"
-          value={settings.autoIssueOnPaid ? "Auto" : "Manual"}
-          hint={autoModeLabel}
+          label="Emisión legal"
+          value="No activa"
+          hint={settings.autoIssueOnPaid ? "Automatización futura preparada" : autoModeLabel}
         />
         <AdminKpiCard
           label="Datos"
@@ -1122,7 +1128,7 @@ export default function AdminFacturacionPage() {
         <AdminSectionCard
           className="mt-5 border-blue-200/70"
           title="Estado de Facturación DTE/SII"
-          description="Centro de control de preparación por tenant: readiness, artefactos, firma, XSD, trazabilidad y submit bloqueado."
+          description="Vista ejecutiva del estado tributario: qué está listo, qué falta y por qué no existe emisión legal todavía."
           actions={
             <div className="flex flex-wrap gap-2">
               {["LAB", "PENDIENTE", "NO PRODUCTIVO", "SII no aprobado", "Submit bloqueado"].map((badge) => (
@@ -1138,7 +1144,7 @@ export default function AdminFacturacionPage() {
         >
           <div className="grid gap-5">
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-black leading-6 text-amber-950">
-              Citaya aún no emite documentos legales en producción. Este módulo está en preparación/certificación: sin aprobación SII, sin emisión legal, sin agenda/pagos conectados y sin track_id real simulado.
+              Estado controlado de laboratorio: Citaya no emite DTE legales, no tiene aprobación SII productiva, no genera track_id real y mantiene el submit bloqueado.
             </div>
 
             {dteAdminStatusError ? (
@@ -1147,131 +1153,78 @@ export default function AdminFacturacionPage() {
               </div>
             ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
-                ["Estado global", dteAdminStatus?.globalStatus ?? "LAB / PENDIENTE / NO PRODUCTIVO"],
-                ["Modo", dteAdminStatus?.mode ?? "lab"],
-                ["Ambiente SII", dteAdminStatus?.siiEnv ?? "certification"],
-                ["Backend", dteAdminStatus?.backend ?? "memory"],
-                ["Aprobación SII", dteAdminStatus?.production.approvedBySii ? "aprobado" : "no aprobado"],
-                ["Track ID real", dteAdminStatus?.lastTrace.trackId ?? "pendiente/null"],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                ["Estado de facturación", dteAdminStatus?.globalStatus ?? "LAB / PENDIENTE / NO PRODUCTIVO", "Preparación interna, no productiva"],
+                ["Estado SII", dteAdminStatus?.production.approvedBySii ? "Aprobado" : "No aprobado", "Certificación pendiente"],
+                ["Emisión legal", dteAdminStatus?.production.legalIssuingEnabled ? "Habilitada" : "No habilitada", "Sin documentos tributarios reales"],
+                ["Submit a SII", "Bloqueado", "No hay envío real desde UI"],
+                ["Persistencia", persistenceBusinessLabel(dteAdminStatus?.backend), "Detalle técnico disponible abajo"],
+                ["CAF y folios", readinessBusinessLabel(dteAdminStatus?.readiness.cafExists), "CAF real pendiente por tenant"],
+                ["Certificado digital", readinessBusinessLabel(dteAdminStatus?.readiness.certExists), "Firma real pendiente"],
+                ["Agenda y pagos", "Pendiente", "No conectado a emisión"],
+              ].map(([label, value, hint]) => (
+                <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-[11px] font-black uppercase text-slate-500">{label}</div>
-                  <div className="mt-1 break-words text-sm font-black text-slate-950">{value}</div>
+                  <div className="mt-1 break-words text-base font-black text-slate-950">{value}</div>
+                  <div className="mt-1 text-xs font-bold leading-5 text-slate-500">{hint}</div>
                 </div>
               ))}
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="grid gap-4">
-                <div>
-                  <div className="text-sm font-black text-slate-950">Checklist readiness</div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    {[
-                      ["Base técnica", dteAdminStatus?.checklist.base ?? []],
-                      ["Archivos externos", dteAdminStatus?.checklist.externalFiles ?? []],
-                      ["XML/Firma", dteAdminStatus?.checklist.xmlSignature ?? []],
-                      ["SII Certification", dteAdminStatus?.checklist.siiCertification ?? []],
-                    ].map(([group, items]) => (
-                      <div key={group as string} className="rounded-2xl border border-slate-200 bg-white p-3">
-                        <div className="text-xs font-black uppercase text-slate-500">{group as string}</div>
-                        <div className="mt-3 grid gap-2">
-                          {(items as DteStatusChecklistItem[]).map((item) => (
-                            <div key={`${group}-${item.label}`} className={`rounded-xl border p-2 ${dteChecklistTone(item.status)}`}>
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="text-xs font-black">{item.label}</div>
-                                <span className="shrink-0 rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase">
-                                  {dteChecklistLabel(item.status)}
-                                </span>
-                              </div>
-                              <div className="mt-1 break-words text-[11px] font-bold opacity-80">{item.detail}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-sm font-black text-slate-950">Artefactos XML certification</div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    {[
-                      ["XML", artifactState(Boolean(dteAdminStatus?.artifacts.xmlExists)), dteAdminStatus?.artifacts.xmlFileName ?? "certification-envio-dte.xml"],
-                      ["SHA-256", artifactState(Boolean(dteAdminStatus?.artifacts.xmlSha256Exists)), shortHash(dteAdminStatus?.artifacts.xmlSha256 ?? null)],
-                      ["Metadata", artifactState(Boolean(dteAdminStatus?.artifacts.metadataExists)), dteAdminStatus?.artifacts.metadataFileName ?? "metadata.json"],
-                      ["XSD", dteAdminStatus?.artifacts.xsdValid === true ? "Listo" : dteAdminStatus?.artifacts.xsdValid === false ? "Fallido" : "Pendiente", "xsd_valid"],
-                      ["XMLDSig", dteAdminStatus?.artifacts.xmlSignatureStatus ?? "pendiente", "firma controlada"],
-                      ["Verificación", dteAdminStatus?.artifacts.verificationOk === true ? "ok" : dteAdminStatus?.artifacts.verificationOk === false ? "fallida" : "pendiente", "local independiente"],
-                      ["Última metadata", formatSafeDate(dteAdminStatus?.artifacts.metadataUpdatedAt ?? null), "sin ruta privada"],
-                      ["Track simulado", dteAdminStatus?.artifacts.trackIdSimulated === false ? "NO" : "pendiente", "no simular track_id"],
-                    ].map(([label, value, hint]) => (
-                      <div key={label} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="text-[11px] font-black uppercase text-slate-500">{label}</div>
-                        <div className="mt-1 break-words text-sm font-black text-slate-950">{value}</div>
-                        <div className="mt-1 break-words text-[11px] font-bold text-slate-500">{hint}</div>
-                      </div>
-                    ))}
-                  </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-black text-slate-950">Qué falta para emitir legalmente</div>
+                <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
+                  Esta lista separa preparación técnica de autorización real. Ningún paso activa producción por sí solo.
+                </p>
+                <div className="mt-3 grid gap-2 text-sm font-bold text-slate-600 sm:grid-cols-2">
+                  {[
+                    "CAF real por tenant",
+                    "Certificado digital real",
+                    "Folios válidos y controlados",
+                    "Endpoints SII certification configurados",
+                    "XML validado por XSD oficial",
+                    "Firma real XMLDSig verificada",
+                    "Submit real controlado a SII",
+                    "Track ID real devuelto por SII",
+                    "Aprobación/certificación SII",
+                    "Después, integración con agenda/pagos",
+                  ].map((item) => (
+                    <div key={item} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      {item}
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="grid gap-4 content-start">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs font-black uppercase text-slate-500">Última traza DTE</div>
-                  <div className="mt-3 grid gap-2 text-sm font-bold text-slate-700">
-                    <div>Documento: {dteAdminStatus?.lastTrace.documentType ?? "pendiente"} {dteAdminStatus?.lastTrace.folio ? `#${dteAdminStatus.lastTrace.folio}` : ""}</div>
-                    <div>Status: {dteAdminStatus?.lastTrace.status ?? "pendiente"}</div>
-                    <div>SII: {dteAdminStatus?.lastTrace.siiStatus ?? "not_sent"}</div>
-                    <div>Submission: {dteAdminStatus?.lastTrace.submissionStatus ?? "pendiente"}</div>
-                    <div>Track ID: {dteAdminStatus?.lastTrace.trackId ?? "Pendiente real / no simulado"}</div>
-                    <div>Audit: {dteAdminStatus?.lastTrace.lastAuditAction ?? "pendiente"}</div>
-                    <div>Actualizado: {formatSafeDate(dteAdminStatus?.lastTrace.updatedAt ?? null)}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs font-black uppercase text-slate-500">Acciones seguras</div>
-                  <div className="mt-3 grid gap-2">
-                    {[
-                      ["Ver readiness", "Se carga desde /api/admin/dte-lab/status y /readiness"],
-                      ["Generar XML certification", dteAdminStatus?.safeActions.generateXmlCommand ?? "npm run dte:certification:xml"],
-                      ["Validar XML", dteAdminStatus?.safeActions.validateXmlCommand ?? "npm run dte:certification:validate-xml"],
-                      ["Ver últimas trazas", "Panel inferior / endpoint traces"],
-                      ["Ver runbook", "docs/dte-sii/SII_CERTIFICATION_RUNBOOK.md"],
-                      ["Ver gap report", "docs/dte-sii/XML_SIGNATURE_CERTIFICATION_GAP_REPORT.md"],
-                    ].map(([label, detail]) => (
-                      <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                        <div className="text-xs font-black text-slate-950">{label}</div>
-                        <code className="mt-1 block break-words text-[11px] font-bold text-slate-600">{detail}</code>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-bold leading-6 text-red-900">
-                  Submit certification bloqueado hasta completar XML, XSD, firma, endpoints SII, CAF/cert/key externos y autorización operativa. Razones: {(dteAdminStatus?.safeActions.submitBlockedReasons.length ? dteAdminStatus.safeActions.submitBlockedReasons : ["pendiente de configuración real"]).join("; ")}.
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-black text-slate-950">Qué falta para emitir legalmente</div>
-              <div className="mt-3 grid gap-2 text-sm font-bold text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid content-start gap-3">
                 {[
-                  "CAF real por tenant",
-                  "Certificado digital real por tenant",
-                  "Llaves externas seguras",
-                  "XML validado XSD",
-                  "Firma XMLDSig verificada",
-                  "Endpoints SII certification",
-                  "Submit real controlado",
-                  "Track ID real",
-                  "Aprobación/certificación SII",
-                  "Recién después conectar agenda/pagos",
+                  {
+                    label: "Datos tributarios",
+                    value: hasTaxIdentity ? "Base cargada" : "Pendientes",
+                    ready: hasTaxIdentity,
+                  },
+                  {
+                    label: "Proveedor/modo",
+                    value: providerStatusLabel(settings.providerStatus),
+                    ready: settings.providerStatus === "connected",
+                  },
+                  {
+                    label: "XSD",
+                    value: dteAdminStatus?.artifacts.xsdValid === true ? "Validado LAB" : "Pendiente",
+                    ready: dteAdminStatus?.artifacts.xsdValid === true,
+                  },
+                  {
+                    label: "Track ID",
+                    value: dteAdminStatus?.lastTrace.trackId ? "Real disponible" : "Sin track_id real",
+                    ready: Boolean(dteAdminStatus?.lastTrace.trackId),
+                  },
                 ].map((item) => (
-                  <div key={item} className="rounded-xl border border-white bg-white px-3 py-2">{item}</div>
+                  <div key={item.label} className={`rounded-2xl border p-3 ${simpleReadyTone(item.ready)}`}>
+                    <div className="text-[11px] font-black uppercase opacity-75">{item.label}</div>
+                    <div className="mt-1 break-words text-sm font-black">{item.value}</div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1335,6 +1288,299 @@ export default function AdminFacturacionPage() {
               </div>
             </AdminSectionCard>
 
+            <AdminSectionCard
+              title="Datos tributarios"
+              description="Información base del emisor para boletas y facturas."
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-1 text-sm font-bold text-slate-700 sm:col-span-2">
+                  Razón social
+                  <input
+                    value={settings.legalName}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, legalName: e.target.value }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
+                    placeholder="Ej: Centro Psicológico Armonía SpA"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-700">
+                  RUT empresa
+                  <input
+                    value={settings.taxId}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, taxId: e.target.value }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
+                    placeholder="76.123.456-7"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-700">
+                  Giro
+                  <input
+                    value={settings.businessActivity}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        businessActivity: e.target.value,
+                      }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
+                    placeholder="Servicios profesionales"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-700 sm:col-span-2">
+                  Dirección tributaria
+                  <input
+                    value={settings.taxAddress}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, taxAddress: e.target.value }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
+                    placeholder="Calle, número, oficina"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-700">
+                  Región
+                  <select
+                    value={selectedRegion?.name ?? ""}
+                    onChange={(e) =>
+                      setSettings((prev) => {
+                        const nextRegion = findRegionByName(e.target.value);
+                        const nextCommunes = nextRegion?.communes ?? [];
+                        const previousCommuneIsValid = nextCommunes.some(
+                          (commune) =>
+                            normalizeLocation(commune) ===
+                            normalizeLocation(prev.taxCommune),
+                        );
+
+                        return {
+                          ...prev,
+                          taxCity: nextRegion?.name ?? "",
+                          taxCommune: previousCommuneIsValid ? prev.taxCommune : "",
+                        };
+                      })
+                    }
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 font-semibold outline-none focus:border-slate-400"
+                  >
+                    <option value="">Selecciona una región</option>
+                    {CHILE_REGIONS.map((region) => (
+                      <option key={region.name} value={region.name}>
+                        {region.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-700">
+                  Comuna
+                  <select
+                    value={
+                      selectedCommunes.some(
+                        (commune) =>
+                          normalizeLocation(commune) ===
+                          normalizeLocation(settings.taxCommune),
+                      )
+                        ? settings.taxCommune
+                        : ""
+                    }
+                    disabled={!selectedRegion}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, taxCommune: e.target.value }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 font-semibold outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                  >
+                    <option value="">
+                      {selectedRegion
+                        ? "Selecciona una comuna"
+                        : "Selecciona una región primero"}
+                    </option>
+                    {selectedCommunes.map((commune) => (
+                      <option key={commune} value={commune}>
+                        {commune}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-700">
+                  Email tributario
+                  <input
+                    value={settings.taxEmail}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, taxEmail: e.target.value }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
+                    placeholder="facturacion@negocio.cl"
+                    inputMode="email"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-bold text-slate-700">
+                  Teléfono
+                  <input
+                    value={settings.taxPhone}
+                    onChange={(e) =>
+                      setSettings((prev) => ({ ...prev, taxPhone: e.target.value }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
+                    placeholder="+56 9..."
+                  />
+                </label>
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
+              title="Emisión de documentos"
+              description="Define cómo se comportará Citaya cuando la emisión quede conectada."
+            >
+              <div className="grid gap-4">
+                <label className="grid gap-1 text-sm font-bold text-slate-700">
+                  Tipo de documento por defecto
+                  <select
+                    value={settings.defaultDocumentType}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        defaultDocumentType: e.target.value as DocumentType,
+                      }))
+                    }
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 font-semibold outline-none focus:border-slate-400"
+                  >
+                    <option value="boleta">Boleta</option>
+                    <option value="factura">Factura</option>
+                    <option value="exenta">Exenta</option>
+                  </select>
+                </label>
+
+                <label className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <span>
+                    <span className="block text-sm font-black text-slate-900">
+                      Emitir documento automáticamente al pago aprobado
+                    </span>
+                    <span className="mt-1 block text-sm font-semibold text-slate-500">
+                      Queda preparado para una etapa posterior; hoy no emite documentos.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={settings.autoIssueOnPaid}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        autoIssueOnPaid: e.target.checked,
+                      }))
+                    }
+                    className="mt-1 h-5 w-5 rounded border-slate-300"
+                  />
+                </label>
+
+                <label className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <span>
+                    <span className="block text-sm font-black text-slate-900">
+                      Solicitar datos tributarios al cliente cuando pida factura
+                    </span>
+                    <span className="mt-1 block text-sm font-semibold text-slate-500">
+                      Permitirá capturar razón social, RUT y giro del receptor.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={settings.allowInvoiceRequest}
+                    onChange={(e) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        allowInvoiceRequest: e.target.checked,
+                      }))
+                    }
+                    className="mt-1 h-5 w-5 rounded border-slate-300"
+                  />
+                </label>
+              </div>
+            </AdminSectionCard>
+          </div>
+
+          <div className="grid gap-4 content-start">
+            <AdminSectionCard
+              title="Proveedor DTE"
+              description="Selector preparado para futura conexión."
+            >
+              <div className="grid gap-3">
+                {providerOptions.map((option) => {
+                  const Icon = option.icon;
+                  const active = settings.provider === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() =>
+                        setSettings((prev) => ({
+                          ...prev,
+                          provider: option.id,
+                          providerStatus:
+                            option.id === "none" ? "not_configured" : prev.providerStatus,
+                        }))
+                      }
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        active
+                          ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span
+                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${
+                            active ? "bg-white/15" : "bg-slate-50"
+                          }`}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span>
+                          <span className="block text-sm font-black">{option.title}</span>
+                          <span
+                            className={`mt-1 block text-xs font-semibold leading-5 ${
+                              active ? "text-slate-200" : "text-slate-500"
+                            }`}
+                          >
+                            {option.text}
+                          </span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-900">
+                  La conexión automática se hará en una etapa posterior con un proveedor DTE/API.
+                </div>
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard title="Vista futura">
+              <div className="grid gap-2">
+                {roadmap.map((item) => (
+                  <div key={item} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard title="Integración con pagos">
+              <div className="grid gap-3 text-sm font-bold text-slate-600">
+                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <ReceiptText className="h-4 w-4 text-slate-500" />
+                  Emitir documento manual desde Pagos
+                </div>
+                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <FileCheck2 className="h-4 w-4 text-slate-500" />
+                  Asociar documento a pago o reserva
+                </div>
+              </div>
+            </AdminSectionCard>
+          </div>
+
+            <AdvancedDisclosure
+              title="Modo técnico avanzado / Certificación SII"
+              description="XML, XSD, XMLDSig, trazas, runbook, gap report y laboratorio quedan separados de la vista ejecutiva. Sigue siendo LAB / PENDIENTE / NO PRODUCTIVO."
+            >
             <AdminSectionCard
               title="Estado DTE/SII"
               description="Readiness tecnico para pre-certificacion; no representa aprobacion SII."
@@ -1939,294 +2185,8 @@ export default function AdminFacturacionPage() {
               </div>
             </AdminSectionCard>
 
-            <AdminSectionCard
-              title="Datos tributarios"
-              description="Información base del emisor para boletas y facturas."
-            >
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm font-bold text-slate-700 sm:col-span-2">
-                  Razón social
-                  <input
-                    value={settings.legalName}
-                    onChange={(e) =>
-                      setSettings((prev) => ({ ...prev, legalName: e.target.value }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
-                    placeholder="Ej: Centro Psicológico Armonía SpA"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold text-slate-700">
-                  RUT empresa
-                  <input
-                    value={settings.taxId}
-                    onChange={(e) =>
-                      setSettings((prev) => ({ ...prev, taxId: e.target.value }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
-                    placeholder="76.123.456-7"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold text-slate-700">
-                  Giro
-                  <input
-                    value={settings.businessActivity}
-                    onChange={(e) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        businessActivity: e.target.value,
-                      }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
-                    placeholder="Servicios profesionales"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold text-slate-700 sm:col-span-2">
-                  Dirección tributaria
-                  <input
-                    value={settings.taxAddress}
-                    onChange={(e) =>
-                      setSettings((prev) => ({ ...prev, taxAddress: e.target.value }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
-                    placeholder="Calle, número, oficina"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold text-slate-700">
-                  Región
-                  <select
-                    value={selectedRegion?.name ?? ""}
-                    onChange={(e) =>
-                      setSettings((prev) => {
-                        const nextRegion = findRegionByName(e.target.value);
-                        const nextCommunes = nextRegion?.communes ?? [];
-                        const previousCommuneIsValid = nextCommunes.some(
-                          (commune) =>
-                            normalizeLocation(commune) ===
-                            normalizeLocation(prev.taxCommune),
-                        );
+            </AdvancedDisclosure>
 
-                        return {
-                          ...prev,
-                          taxCity: nextRegion?.name ?? "",
-                          taxCommune: previousCommuneIsValid ? prev.taxCommune : "",
-                        };
-                      })
-                    }
-                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 font-semibold outline-none focus:border-slate-400"
-                  >
-                    <option value="">Selecciona una región</option>
-                    {CHILE_REGIONS.map((region) => (
-                      <option key={region.name} value={region.name}>
-                        {region.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-bold text-slate-700">
-                  Comuna
-                  <select
-                    value={
-                      selectedCommunes.some(
-                        (commune) =>
-                          normalizeLocation(commune) ===
-                          normalizeLocation(settings.taxCommune),
-                      )
-                        ? settings.taxCommune
-                        : ""
-                    }
-                    disabled={!selectedRegion}
-                    onChange={(e) =>
-                      setSettings((prev) => ({ ...prev, taxCommune: e.target.value }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 font-semibold outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-                  >
-                    <option value="">
-                      {selectedRegion
-                        ? "Selecciona una comuna"
-                        : "Selecciona una región primero"}
-                    </option>
-                    {selectedCommunes.map((commune) => (
-                      <option key={commune} value={commune}>
-                        {commune}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-bold text-slate-700">
-                  Email tributario
-                  <input
-                    value={settings.taxEmail}
-                    onChange={(e) =>
-                      setSettings((prev) => ({ ...prev, taxEmail: e.target.value }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
-                    placeholder="facturacion@negocio.cl"
-                    inputMode="email"
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold text-slate-700">
-                  Teléfono
-                  <input
-                    value={settings.taxPhone}
-                    onChange={(e) =>
-                      setSettings((prev) => ({ ...prev, taxPhone: e.target.value }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 px-3 font-semibold outline-none focus:border-slate-400"
-                    placeholder="+56 9..."
-                  />
-                </label>
-              </div>
-            </AdminSectionCard>
-
-            <AdminSectionCard
-              title="Emisión de documentos"
-              description="Define cómo se comportará Citaya cuando la emisión quede conectada."
-            >
-              <div className="grid gap-4">
-                <label className="grid gap-1 text-sm font-bold text-slate-700">
-                  Tipo de documento por defecto
-                  <select
-                    value={settings.defaultDocumentType}
-                    onChange={(e) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        defaultDocumentType: e.target.value as DocumentType,
-                      }))
-                    }
-                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 font-semibold outline-none focus:border-slate-400"
-                  >
-                    <option value="boleta">Boleta</option>
-                    <option value="factura">Factura</option>
-                    <option value="exenta">Exenta</option>
-                  </select>
-                </label>
-
-                <label className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <span>
-                    <span className="block text-sm font-black text-slate-900">
-                      Emitir documento automáticamente al pago aprobado
-                    </span>
-                    <span className="mt-1 block text-sm font-semibold text-slate-500">
-                      Queda preparado para una etapa posterior; hoy no emite documentos.
-                    </span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={settings.autoIssueOnPaid}
-                    onChange={(e) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        autoIssueOnPaid: e.target.checked,
-                      }))
-                    }
-                    className="mt-1 h-5 w-5 rounded border-slate-300"
-                  />
-                </label>
-
-                <label className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <span>
-                    <span className="block text-sm font-black text-slate-900">
-                      Solicitar datos tributarios al cliente cuando pida factura
-                    </span>
-                    <span className="mt-1 block text-sm font-semibold text-slate-500">
-                      Permitirá capturar razón social, RUT y giro del receptor.
-                    </span>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={settings.allowInvoiceRequest}
-                    onChange={(e) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        allowInvoiceRequest: e.target.checked,
-                      }))
-                    }
-                    className="mt-1 h-5 w-5 rounded border-slate-300"
-                  />
-                </label>
-              </div>
-            </AdminSectionCard>
-          </div>
-
-          <div className="grid gap-4 content-start">
-            <AdminSectionCard
-              title="Proveedor DTE"
-              description="Selector preparado para futura conexión."
-            >
-              <div className="grid gap-3">
-                {providerOptions.map((option) => {
-                  const Icon = option.icon;
-                  const active = settings.provider === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() =>
-                        setSettings((prev) => ({
-                          ...prev,
-                          provider: option.id,
-                          providerStatus:
-                            option.id === "none" ? "not_configured" : prev.providerStatus,
-                        }))
-                      }
-                      className={`rounded-2xl border p-4 text-left transition ${
-                        active
-                          ? "border-slate-900 bg-slate-900 text-white shadow-sm"
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span
-                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl ${
-                            active ? "bg-white/15" : "bg-slate-50"
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span>
-                          <span className="block text-sm font-black">{option.title}</span>
-                          <span
-                            className={`mt-1 block text-xs font-semibold leading-5 ${
-                              active ? "text-slate-200" : "text-slate-500"
-                            }`}
-                          >
-                            {option.text}
-                          </span>
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-900">
-                  La conexión automática se hará en una etapa posterior con un proveedor DTE/API.
-                </div>
-              </div>
-            </AdminSectionCard>
-
-            <AdminSectionCard title="Vista futura">
-              <div className="grid gap-2">
-                {roadmap.map((item) => (
-                  <div key={item} className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </AdminSectionCard>
-
-            <AdminSectionCard title="Integración con pagos">
-              <div className="grid gap-3 text-sm font-bold text-slate-600">
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <ReceiptText className="h-4 w-4 text-slate-500" />
-                  Emitir documento manual desde Pagos
-                </div>
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <FileCheck2 className="h-4 w-4 text-slate-500" />
-                  Asociar documento a pago o reserva
-                </div>
-              </div>
-            </AdminSectionCard>
-          </div>
         </div>
       )}
     </AdminPageShell>

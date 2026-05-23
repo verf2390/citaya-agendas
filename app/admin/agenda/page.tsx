@@ -86,20 +86,6 @@ type Service = {
   is_active: boolean | null;
 };
 
-type TenantPaymentMode = "none" | "optional" | "required";
-type TenantDepositType = "fixed" | "percentage" | null;
-type TenantChargeType = "none" | "full" | "fixed" | "percentage";
-type TenantChargeUiType = "none" | "full" | "deposit";
-type TenantDepositUiType = "fixed" | "percentage";
-type PaymentProviderId = "mercadopago" | "webpay" | "khipu" | "manual";
-
-const PAYMENT_PROVIDER_LABELS: Record<PaymentProviderId, string> = {
-  mercadopago: "Mercado Pago",
-  webpay: "Webpay Plus",
-  khipu: "Khipu",
-  manual: "Transferencia/manual",
-};
-
 type CalendarEvent = {
   id: string;
   title: string;
@@ -125,6 +111,45 @@ type AvailabilityBlock = {
   is_active: boolean;
 };
 
+
+type AppointmentRangeRow = {
+  id: string;
+  start_at: string | null;
+  end_at: string | null;
+  professional_id: string;
+  service_id: string | null;
+  customer_phone: string | null;
+  customer_name: string | null;
+  customer_id: string | null;
+  status: AppointmentStatus | string | null;
+};
+
+type ServiceRuleUpsertItem = {
+  id?: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  is_active: boolean;
+};
+
+function getCalendarOrderStatus(input: unknown): AppointmentStatus {
+  if (!input || typeof input !== "object") return "confirmed";
+  const extendedProps = (input as { extendedProps?: unknown }).extendedProps;
+  if (!extendedProps || typeof extendedProps !== "object") return "confirmed";
+  const status = (extendedProps as { status?: unknown }).status;
+  return status === "completed" || status === "canceled" || status === "no_show"
+    ? status
+    : "confirmed";
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getErrorName(error: unknown) {
+  return error instanceof Error ? error.name : "";
+}
+
 /* =====================================================
    ✅ TZ / ISO NORMALIZATION
 ===================================================== */
@@ -135,7 +160,7 @@ type AvailabilityBlock = {
  * - Lo convertimos a ISO real: "YYYY-MM-DDTHH:MM:SS+00:00"
  * - Si viene sin TZ, lo convertimos vía Date() a ISOZ (mejor que dejarlo ambiguo).
  */
-function normalizeISO(input: any) {
+function normalizeISO(input: unknown) {
   if (!input) return "";
   const s = String(input).trim();
 
@@ -151,7 +176,7 @@ function normalizeISO(input: any) {
 
   return s;
 }
-function toIsoZ(input: any) {
+function toIsoZ(input: unknown) {
   const isoLike = normalizeISO(input);
   const d = new Date(isoLike);
   if (isNaN(d.getTime())) return "";
@@ -314,7 +339,7 @@ function normalizeDowToJs0_6(dow: number) {
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border bg-white px-3 py-1 text-xs font-semibold text-zinc-900">
+    <span className="inline-flex max-w-full min-w-0 items-center gap-1 whitespace-normal break-words rounded-full border bg-white px-3 py-1 text-left text-xs font-semibold leading-snug text-zinc-900">
       {children}
     </span>
   );
@@ -322,12 +347,12 @@ function Badge({ children }: { children: React.ReactNode }) {
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border bg-white shadow-sm">{children}</div>
+    <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border bg-white shadow-sm">{children}</div>
   );
 }
 
 function CardBody({ children }: { children: React.ReactNode }) {
-  return <div className="p-3">{children}</div>;
+  return <div className="min-w-0 p-3 sm:p-4">{children}</div>;
 }
 
 function SecondaryButton({
@@ -361,7 +386,7 @@ function PrimaryButton({
     <button
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-9 items-center justify-center rounded-xl bg-zinc-900 px-3 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
+      className="inline-flex h-10 w-full items-center justify-center rounded-xl bg-zinc-900 px-3 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60 sm:h-9 sm:w-auto"
       type="button"
     >
       {children}
@@ -388,34 +413,6 @@ export default function AgendaPage() {
   const [loadingTenant, setLoadingTenant] = useState(true);
   const [tenantLogoUrl, setTenantLogoUrl] = useState("");
   const [tenantName, setTenantName] = useState("");
-  const [tenantPaymentMode, setTenantPaymentMode] =
-    useState<TenantPaymentMode>("none");
-  const [tenantChargeType, setTenantChargeType] =
-    useState<TenantChargeType>("none");
-  const [tenantDepositValue, setTenantDepositValue] = useState("");
-  const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState<
-    PaymentProviderId[]
-  >(["mercadopago"]);
-  const [webpayCommerceCode, setWebpayCommerceCode] = useState("");
-  const [webpayApiKey, setWebpayApiKey] = useState("");
-  const [webpayApiKeyPreview, setWebpayApiKeyPreview] = useState("");
-  const [webpayEnvironment, setWebpayEnvironment] = useState<
-    "integration" | "production"
-  >("integration");
-  const [khipuReceiverId, setKhipuReceiverId] = useState("");
-  const [khipuSecret, setKhipuSecret] = useState("");
-  const [khipuSecretPreview, setKhipuSecretPreview] = useState("");
-  const [khipuEnvironment, setKhipuEnvironment] = useState<
-    "development" | "production"
-  >("development");
-  const [bankName, setBankName] = useState("");
-  const [bankAccountType, setBankAccountType] = useState("");
-  const [bankAccountNumber, setBankAccountNumber] = useState("");
-  const [bankAccountHolder, setBankAccountHolder] = useState("");
-  const [bankRut, setBankRut] = useState("");
-  const [bankEmail, setBankEmail] = useState("");
-  const [savingPaymentMode, setSavingPaymentMode] = useState(false);
-
   // auth
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -461,6 +458,8 @@ export default function AgendaPage() {
     start: string;
     end: string;
   } | null>(null);
+  const visibleStart = visibleRange?.start;
+  const visibleEnd = visibleRange?.end;
 
   // modals
   const [createOpen, setCreateOpen] = useState(false);
@@ -481,13 +480,6 @@ export default function AgendaPage() {
   const isDebug =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("debug") === "1";
-
-  const tenantChargeUiType: TenantChargeUiType =
-    tenantChargeType === "fixed" || tenantChargeType === "percentage"
-      ? "deposit"
-      : tenantChargeType;
-  const tenantDepositUiType: TenantDepositUiType =
-    tenantChargeType === "percentage" ? "percentage" : "fixed";
 
   const apptAbortRef = useRef<AbortController | null>(null);
 
@@ -566,84 +558,6 @@ export default function AgendaPage() {
     run();
   }, [router, loadingTenant, tenantError, tenantId]);
 
-  useEffect(() => {
-    const run = async () => {
-      if (!authChecked || !tenantId) return;
-
-      try {
-        const res = await fetch(
-          `/api/admin/payment-settings?tenantId=${encodeURIComponent(tenantId)}`,
-          { cache: "no-store" },
-        );
-        const json = await res.json().catch(() => null);
-
-        if (!res.ok || !json?.ok) {
-          throw new Error(json?.error ?? "No se pudo cargar payment settings");
-        }
-
-        setTenantPaymentMode(
-          (json.settings?.paymentMode as TenantPaymentMode | undefined) ?? "none",
-        );
-        const depositType =
-          (json.settings?.depositType as TenantDepositType | undefined) ?? null;
-        const depositValue = json.settings?.depositValue;
-        const paymentMode =
-          (json.settings?.paymentMode as TenantPaymentMode | undefined) ?? "none";
-
-        setTenantChargeType(
-          paymentMode === "none"
-            ? "none"
-            : depositType === "fixed"
-              ? "fixed"
-              : depositType === "percentage"
-                ? "percentage"
-                : "full",
-        );
-        setTenantDepositValue(
-          depositValue !== null && depositValue !== undefined
-            ? String(depositValue)
-            : "",
-        );
-        const methods = Array.isArray(json.settings?.paymentMethodsEnabled)
-          ? json.settings.paymentMethodsEnabled.filter(
-              (method: unknown): method is PaymentProviderId =>
-                method === "mercadopago" ||
-                method === "webpay" ||
-                method === "khipu" ||
-                method === "manual",
-            )
-          : [];
-        setPaymentMethodsEnabled(methods.length > 0 ? methods : ["mercadopago"]);
-        setWebpayCommerceCode(json.settings?.webpayCommerceCode ?? "");
-        setWebpayApiKey("");
-        setWebpayApiKeyPreview(json.settings?.webpayApiKeyPreview ?? "");
-        setWebpayEnvironment(
-          json.settings?.webpayEnvironment === "production"
-            ? "production"
-            : "integration",
-        );
-        setKhipuReceiverId(json.settings?.khipuReceiverId ?? "");
-        setKhipuSecret("");
-        setKhipuSecretPreview(json.settings?.khipuSecretPreview ?? "");
-        setKhipuEnvironment(
-          json.settings?.khipuEnvironment === "production"
-            ? "production"
-            : "development",
-        );
-        setBankName(json.settings?.bankName ?? "");
-        setBankAccountType(json.settings?.bankAccountType ?? "");
-        setBankAccountNumber(json.settings?.bankAccountNumber ?? "");
-        setBankAccountHolder(json.settings?.bankAccountHolder ?? "");
-        setBankRut(json.settings?.bankRut ?? "");
-        setBankEmail(json.settings?.bankEmail ?? "");
-      } catch (error) {
-        console.error("[admin/agenda] payment settings error:", error);
-      }
-    };
-
-    void run();
-  }, [authChecked, tenantId]);
-
   /* =====================================================
      LOADERS
   ===================================================== */
@@ -718,8 +632,8 @@ export default function AgendaPage() {
       }));
 
       setCustomers(list);
-    } catch (e: any) {
-      console.error("Error loading customers (fetch):", e?.message || e);
+    } catch (e: unknown) {
+      console.error("Error loading customers (fetch):", getErrorMessage(e, "Error cargando clientes"));
       setCustomers([]);
     }
   }, [tenantId]);
@@ -800,11 +714,11 @@ export default function AgendaPage() {
         description: "Disponibilidad actualizada.",
       });
       await loadAvailability(selectedProfessionalId);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       toast({
         title: "Error guardando horarios",
-        description: e?.message ?? "No se pudo guardar",
+        description: getErrorMessage(e, "No se pudo guardar"),
         variant: "destructive",
       });
     } finally {
@@ -844,11 +758,10 @@ export default function AgendaPage() {
           return;
         }
 
-        const visibleItems = (json?.items ?? []).filter(
-          (a: any) => a.status !== "canceled",
-        );
+        const items = (json?.items ?? []) as AppointmentRangeRow[];
+        const visibleItems = items.filter((a) => a.status !== "canceled");
 
-        const mapped: CalendarEvent[] = visibleItems.map((a: any) => {
+        const mapped: CalendarEvent[] = visibleItems.map((a) => {
           const titleBase = a.customer_name ?? "Cita";
           const status = (a.status ?? "confirmed") as AppointmentStatus;
 
@@ -870,8 +783,8 @@ export default function AgendaPage() {
         });
 
         setEvents(mapped);
-      } catch (e: any) {
-        if (e?.name !== "AbortError") {
+      } catch (e: unknown) {
+        if (getErrorName(e) !== "AbortError") {
           console.error("loadAppointments error:", e);
           setEvents([]);
         }
@@ -908,11 +821,11 @@ export default function AgendaPage() {
         if (prev && active.some((s) => s.id === prev)) return prev;
         return active[0]?.id ?? "";
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("loadServices error:", e);
       setServices([]);
       setSelectedServiceId("");
-      setServiceRulesError(e?.message ?? "No se pudieron cargar servicios.");
+      setServiceRulesError(getErrorMessage(e, "No se pudieron cargar servicios."));
     } finally {
       setLoadingServices(false);
     }
@@ -962,11 +875,11 @@ export default function AgendaPage() {
         }));
 
         setServiceRulesBlocks(blocks);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error("loadServiceRules error:", e);
         setServiceRulesBlocks([]);
         setServiceRulesError(
-          e?.message ?? "No se pudieron cargar reglas por servicio.",
+          getErrorMessage(e, "No se pudieron cargar reglas por servicio."),
         );
       } finally {
         setLoadingServiceRules(false);
@@ -996,16 +909,13 @@ export default function AgendaPage() {
         tenantId,
         professionalId: selectedProfessionalId,
         serviceId: selectedServiceId,
-        items: serviceRulesBlocks.map((b) => {
-          const row: any = {
-            day_of_week: normalizeDowToJs0_6(b.day_of_week),
-            start_time: (b.start_time || "").slice(0, 5),
-            end_time: (b.end_time || "").slice(0, 5),
-            is_active: !!b.is_active,
-          };
-          if (b.id) row.id = b.id;
-          return row;
-        }),
+        items: serviceRulesBlocks.map((b): ServiceRuleUpsertItem => ({
+          ...(b.id ? { id: b.id } : {}),
+          day_of_week: normalizeDowToJs0_6(b.day_of_week),
+          start_time: (b.start_time || "").slice(0, 5),
+          end_time: (b.end_time || "").slice(0, 5),
+          is_active: !!b.is_active,
+        })),
       };
 
       const res = await fetch("/api/admin/service-rules/upsert", {
@@ -1023,15 +933,15 @@ export default function AgendaPage() {
         description: "Horario por servicio actualizado.",
       });
       await loadServiceRules(selectedProfessionalId, selectedServiceId);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("saveServiceRules error:", e);
       toast({
         title: "Error guardando reglas",
-        description: e?.message ?? "No se pudo guardar reglas por servicio.",
+        description: getErrorMessage(e, "No se pudo guardar reglas por servicio."),
         variant: "destructive",
       });
       setServiceRulesError(
-        e?.message ?? "No se pudo guardar reglas por servicio.",
+        getErrorMessage(e, "No se pudo guardar reglas por servicio."),
       );
     } finally {
       setSavingServiceRules(false);
@@ -1083,10 +993,10 @@ export default function AgendaPage() {
     if (!tenantId) return;
     if (!selectedProfessionalId) return;
 
-    if (visibleRange)
+    if (visibleStart && visibleEnd)
       loadAppointments(
-        visibleRange.start,
-        visibleRange.end,
+        visibleStart,
+        visibleEnd,
         selectedProfessionalId,
       );
     else loadAppointments(undefined, undefined, selectedProfessionalId);
@@ -1094,8 +1004,8 @@ export default function AgendaPage() {
     authChecked,
     tenantId,
     selectedProfessionalId,
-    visibleRange?.start,
-    visibleRange?.end,
+    visibleStart,
+    visibleEnd,
     loadAppointments,
   ]);
 
@@ -1274,11 +1184,11 @@ export default function AgendaPage() {
       await createAppointmentViaApi(payload);
 
       toast({ title: "Cita creada", description: "Se guardó correctamente." });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       toast({
         title: "No se pudo crear la cita",
-        description: e?.message ?? "Error creando cita",
+        description: getErrorMessage(e, "Error creando cita"),
         variant: "destructive",
       });
       return;
@@ -1502,15 +1412,20 @@ export default function AgendaPage() {
           selectedProfessionalId,
         );
       else await loadAppointments(undefined, undefined, selectedProfessionalId);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       toast({
         title: "Error de conexión",
-        description: e?.message ?? "Error cancelando cita",
+        description: getErrorMessage(e, "Error cancelando cita"),
         variant: "destructive",
       });
     }
   }
+
+  const handleDatesSet = useCallback((arg: DatesSetArg) => {
+    setVisibleRange({ start: arg.startStr, end: arg.endStr });
+    setViewDate(getMondayStart(arg.start));
+  }, []);
 
   const handleEventClick = async (clickInfo: EventClickArg) => {
     const id = clickInfo.event.id;
@@ -1537,138 +1452,6 @@ export default function AgendaPage() {
     });
     setActionOpen(true);
   };
-
-  const saveTenantPaymentMode = async () => {
-    if (!tenantId || savingPaymentMode) return;
-
-    const nextPaymentMode: TenantPaymentMode =
-      tenantChargeType === "none"
-        ? "none"
-        : tenantPaymentMode === "none"
-          ? "required"
-          : tenantPaymentMode;
-    const nextDepositType: TenantDepositType =
-      tenantChargeType === "fixed"
-        ? "fixed"
-        : tenantChargeType === "percentage"
-          ? "percentage"
-          : null;
-    const rawDepositValue = tenantDepositValue.trim();
-    const nextDepositValue =
-      nextDepositType && rawDepositValue ? Number(rawDepositValue) : null;
-    const paymentCollectionMode =
-      tenantChargeType === "none"
-        ? "none"
-        : tenantChargeType === "full"
-          ? "full"
-          : "deposit";
-
-    if (paymentMethodsEnabled.length === 0) {
-      toast({
-        title: "Método de pago requerido",
-        description: "Selecciona al menos un método de pago.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (nextDepositType) {
-      const numericDepositValue = Number(nextDepositValue);
-
-      if (!Number.isFinite(numericDepositValue) || numericDepositValue <= 0) {
-        toast({
-          title: "Monto inválido",
-          description:
-            nextDepositType === "fixed"
-              ? "Ingresa un abono fijo mayor a 0."
-              : "Ingresa un porcentaje mayor a 0.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (nextDepositType === "percentage" && numericDepositValue > 100) {
-        toast({
-          title: "Porcentaje inválido",
-          description: "El abono por porcentaje no puede ser mayor a 100%.",
-          variant: "destructive",
-        });
-        return;
-      }
-    }
-
-    setSavingPaymentMode(true);
-
-    try {
-      const res = await fetch("/api/admin/payment-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tenantId,
-          paymentMode: nextPaymentMode,
-          depositType: nextDepositType,
-          depositValue: nextDepositValue,
-          paymentMethodsEnabled,
-          paymentCollectionMode,
-          webpayCommerceCode,
-          webpayApiKey,
-          webpayEnvironment,
-          khipuReceiverId,
-          khipuSecret,
-          khipuEnvironment,
-          bankName,
-          bankAccountType,
-          bankAccountNumber,
-          bankAccountHolder,
-          bankRut,
-          bankEmail,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok || !json?.ok) {
-        throw new Error(json?.error ?? "No se pudo guardar payment_mode");
-      }
-
-      toast({
-        title: "Cobros actualizados",
-        description:
-          nextPaymentMode === "none"
-            ? "El tenant quedó sin pago online."
-            : nextPaymentMode === "optional"
-              ? "El tenant quedó con pago online opcional."
-              : "El tenant quedó con pago online obligatorio.",
-      });
-      setTenantPaymentMode(nextPaymentMode);
-    } catch (error: unknown) {
-      console.error("[admin/agenda] save payment settings error:", error);
-      toast({
-        title: "No se pudo guardar",
-        description:
-          error instanceof Error ? error.message : "Error guardando payment_mode",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingPaymentMode(false);
-    }
-  };
-
-  const handleDatesSet = (arg: DatesSetArg) => {
-    const startStr = arg.startStr;
-    const datePart = startStr.slice(0, 10);
-    const [y, m, d] = datePart.split("-").map(Number);
-
-    const safeLocal = new Date(y, (m || 1) - 1, d || 1, 12, 0, 0, 0);
-    const monday = getMondayStart(safeLocal);
-
-    setViewDate((prev) => (weekKey(prev) === weekKey(monday) ? prev : monday));
-    setVisibleRange({ start: arg.startStr, end: arg.endStr });
-  };
-
-  /* =====================================================
-     RENDER guards
-  ===================================================== */
 
   if (tenantError) {
     return (
@@ -1879,7 +1662,7 @@ export default function AgendaPage() {
 `}</style>
 
       <AdminAgendaHeader
-        tenantName={tenantSlug}
+        tenantName={tenantName || tenantSlug}
         tenantLogoUrl={tenantLogoUrl}
         date={viewDate}
         onToday={() => calendarRef.current?.getApi()?.today()}
@@ -1911,14 +1694,14 @@ export default function AgendaPage() {
         }
       />
 
-      <div className="mx-auto max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5 lg:ml-72 lg:mr-6">
+      <div className="mx-auto min-w-0 max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5 lg:ml-72 lg:mr-6">
         <AdminNav />
         {/* Selector profesional + Horarios base */}
         <div className="mt-3">
           <Card>
             <CardBody>
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="min-w-[280px]">
+              <div className="flex min-w-0 flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+                <div className="min-w-0 sm:min-w-[280px] sm:flex-1">
                   <div className="mb-2 text-xs font-extrabold text-muted-foreground">
                     Profesional
                   </div>
@@ -1935,7 +1718,7 @@ export default function AgendaPage() {
                   </select>
                 </div>
 
-                <div className="flex-1" />
+                <div className="hidden flex-1 sm:block" />
 
                 <PrimaryButton
                   onClick={saveAvailability}
@@ -1973,8 +1756,8 @@ export default function AgendaPage() {
         <div className="mt-4">
           <Card>
             <CardBody>
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="min-w-[320px]">
+              <div className="flex min-w-0 flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+                <div className="min-w-0 sm:min-w-[320px] sm:flex-1">
                   <div className="mb-2 text-xs font-extrabold text-muted-foreground">
                     Reglas por Servicio (opcional)
                   </div>
@@ -2010,7 +1793,7 @@ export default function AgendaPage() {
                   </div>
                 </div>
 
-                <div className="flex-1" />
+                <div className="hidden flex-1 sm:block" />
 
                 <PrimaryButton
                   onClick={saveServiceRules}
@@ -2071,11 +1854,11 @@ export default function AgendaPage() {
         <div className="mt-4">
           <Card>
             <CardBody>
-              <div className="overflow-x-auto">
+              <div className="no-scrollbar max-w-full overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
                 <div className="min-w-[820px]">
               <FullCalendar
                 plugins={[timeGridPlugin, interactionPlugin, luxonPlugin]}
-                initialView={UI_CONFIG.CALENDAR_VIEW as any}
+                initialView={UI_CONFIG.CALENDAR_VIEW}
                 timeZone={UI_CONFIG.ADMIN_TIMEZONE}
                 locale={esLocale}
                 firstDay={1}
@@ -2092,15 +1875,9 @@ export default function AgendaPage() {
                 slotMaxTime={UI_CONFIG.SLOT_MAX_TIME}
                 slotEventOverlap
                 eventOrderStrict
-                eventOrder={(a: any, b: any) => {
-                  const aStatus =
-                    typeof a.extendedProps?.status === "string"
-                      ? a.extendedProps.status
-                      : "confirmed";
-                  const bStatus =
-                    typeof b.extendedProps?.status === "string"
-                      ? b.extendedProps.status
-                      : "confirmed";
+                eventOrder={(a: unknown, b: unknown) => {
+                  const aStatus = getCalendarOrderStatus(a);
+                  const bStatus = getCalendarOrderStatus(b);
 
                   if (aStatus === bStatus) return 0;
                   if (aStatus === "canceled") return 1;
