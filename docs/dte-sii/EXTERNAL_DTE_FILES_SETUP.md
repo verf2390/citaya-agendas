@@ -98,7 +98,17 @@ cp docs/dte-sii/env.dte-lab.example /tmp/env.dte-lab.local
 
 ## Conversion de certificados
 
-El flujo controlado espera certificado y private key en archivos PEM legibles por Node/OpenSSL. Si recibes un `.p12`/`.pfx`, conviertelo fuera del repo y guarda solo los PEM resultantes en `/home/verf/secure/dte-lab/`:
+Runbook completo: `docs/dte-sii/REAL_DTE_FILES_RUNBOOK.md`.
+
+El flujo controlado espera certificado y private key en archivos PEM legibles por Node/OpenSSL. Si recibes un `.p12`/`.pfx`, puedes usar el script seguro:
+
+```bash
+DTE_CERT_P12_PATH=/ruta/externa/certificado.p12 DTE_CERT_P12_PASSWORD='password-temporal' npm run dte:cert:convert
+```
+
+El script escribe solo en `/home/verf/secure/dte-lab/certs` y `/home/verf/secure/dte-lab/private`, aplica `chmod 600` a la private key y no imprime certificado completo, private key ni password.
+
+Comandos equivalentes manuales:
 
 ```bash
 openssl pkcs12 -in certificado-digital.p12 -clcerts -nokeys -out /home/verf/secure/dte-lab/certs/certificado-digital.pem
@@ -111,7 +121,15 @@ Si el PEM queda cifrado con password, validar primero compatibilidad del flujo a
 ## Flujo de prueba local sin SII
 
 1. Configurar variables desde `docs/dte-sii/env.dte-lab.example` en un entorno local ignorado.
-2. Ejecutar readiness:
+2. Diagnosticar archivos externos sin imprimir secretos:
+
+```bash
+npm run dte:external:check
+```
+
+El diagnostico debe reportar `readyForXml=true` solo cuando CAF, llave CAF, certificado y private key existan fuera del repo, tengan formato/permisos razonables y el CAF coincida con folio/tipo configurados.
+
+3. Ejecutar readiness:
 
 ```bash
 npm run dte:certification:readiness
@@ -119,7 +137,7 @@ npm run dte:certification:readiness
 
 El output debe separar `labReady`, `certificationFilesReady`, `xmlGenerationReady`, `siiEndpointsReady` y `submitReady`. Mientras falten archivos o endpoints, el estado global sigue `LAB / PENDIENTE / NO PRODUCTIVO`.
 
-3. Generar XML certification controlado:
+4. Generar XML certification controlado:
 
 ```bash
 npm run dte:certification:xml
@@ -135,7 +153,7 @@ tmp/dte-certification/certification-envio-dte.xml.metadata.json
 
 La metadata solo puede contener hashes/fingerprints parciales, folio, tipo, modo, ambiente, estados TED/FRMT/XMLDSig, timestamps y warnings seguros. No debe contener CAF completo, XML completo, private keys, certificado completo, tokens ni passwords.
 
-4. Validar XSD local:
+5. Validar XSD local:
 
 ```bash
 npm run dte:certification:validate-xml
@@ -145,9 +163,10 @@ Este paso usa los XSD versionados en `docs/dte-sii/xsd/`. Si el XML no existe o 
 
 ## Verificaciones antes de generar XML certification
 
-Comprobar estado:
+Comprobar archivos externos y estado:
 
 ```bash
+npm run dte:external:check
 npm run dte:certification:readiness
 ```
 

@@ -23,7 +23,9 @@
     "dte:persistence:trace": "node scripts/dte/sii-certification-smoke.mjs --dry-run",
     "dte:persistence:check": "node scripts/dte/dte-persistence-check.mjs",
     "dte:sii:dry-run:trace": "node scripts/dte/sii-certification-smoke.mjs --dry-run",
-    "dte:certification:xml": "DTE_MODE=lab DTE_SII_ENV=certification node scripts/dte/generate-lab-xml.mjs --mode=certification"
+    "dte:certification:xml": "DTE_MODE=lab DTE_SII_ENV=certification node scripts/dte/generate-lab-xml.mjs --mode=certification",
+    "dte:external:check": "node scripts/dte/check-external-dte-files.mjs",
+    "dte:cert:convert": "node scripts/dte/convert-cert-to-pem.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

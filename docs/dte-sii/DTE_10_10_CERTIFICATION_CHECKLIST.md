@@ -22,6 +22,8 @@ Este checklist mide preparacion tecnica para certificacion real SII. No declara 
 - Metadata no contiene CAF completo, XML completo, private keys, certificado completo, tokens ni passwords.
 - Submit certification sigue bloqueado salvo flag explicito, endpoints, backend LAB, XML existente, XSD valido y firma sin bloqueos.
 - Produccion sigue bloqueada.
+- `npm run dte:external:check` diagnostica CAF/cert/key externos sin imprimir secretos.
+- `npm run dte:cert:convert` convierte P12/PFX externos a PEM en `/home/verf/secure/dte-lab/` sin guardar passwords.
 
 ## Pendiente para primer XML certification real
 
@@ -31,6 +33,7 @@ Este checklist mide preparacion tecnica para certificacion real SII. No declara 
 - Colocar private key del certificado fuera del repo.
 - Confirmar que el tipo DTE del CAF coincide con `DTE_CERTIFICATION_DOC_TYPE`.
 - Confirmar que `DTE_CERTIFICATION_FOLIO` pertenece al rango CAF.
+- Ejecutar `npm run dte:external:check` hasta obtener `readyForXml=true`.
 - Ejecutar generacion y revisar que XMLDSig quede `verified_controlled`.
 - Ejecutar validacion XSD sobre `tmp/dte-certification/certification-envio-dte.xml`.
 
@@ -78,6 +81,7 @@ Produccion queda bloqueada hasta cumplir todo:
 ## Comandos exactos
 
 ```bash
+npm run dte:external:check
 npm run dte:certification:readiness
 npm run dte:certification:xml
 npm run dte:certification:validate-xml
@@ -97,6 +101,7 @@ npm run dte:certification:submit
 
 ## Resultado aceptable sin archivos reales
 
+- `dte:external:check` muestra `readyForXml=false`.
 - Readiness muestra LAB listo, pero `certificationFilesReady=false`, `xmlGenerationReady=false`, `submitReady=false`.
 - XML bloquea con variables faltantes y doc de setup.
 - Validate XML falla porque no existe artefacto.
