@@ -17,11 +17,12 @@ Citaya avanza bajo el enfoque `citaya_own_dte`: cada tenant emite con su propio 
 - Smoke test SII certification en dry-run por defecto, sin envio ni track_id simulado.
 - Persistencia no productiva de dry-run/submissions/status/auditoria con hashes y redaccion.
 - Base de muestra impresa/PDF LAB.
+- Set de Boletas Electronicas tipo 39 modelado para CASO-1..CASO-5, sobre unico dry-run y RCOF LAB asociado.
 - Schema futuro documentado, no aplicado.
 
 ## Que falta para SII real
 
-- CAF real de certificacion por tenant.
+- CAF real de certificacion por tenant, pendiente para boletas tipo 39; no bajarlo hasta validar dry-run y disponibilidad de ventana 24 horas.
 - Certificado digital real por tenant.
 - FRMT real probado contra CAF real.
 - XMLDSig real validado contra reglas SII.
@@ -50,6 +51,7 @@ npm run dte:xsd
 npm run dte:validate:xsd
 npm run dte:precert
 npm run dte:certification
+npm run dte:boleta:certification:dry-run
 npm run dte:sii:dry-run
 npm run dte:sii:dry-run:trace
 npm run dte:persistence:check

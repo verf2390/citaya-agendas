@@ -92,6 +92,51 @@ npm run dte:persistence:trace
 
 Dry-run no contacta SII, no genera `track_id` simulado y deja trazabilidad no productiva en Supabase LAB si `DTE_PERSISTENCE_BACKEND=supabase` esta activo.
 
+
+## 5A. Dry-run set de boletas tipo 39 antes de CAF
+
+Estado: `LAB / PENDIENTE / NO PRODUCTIVO`.
+
+Antes de bajar CAF de boletas en certificacion, generar la estructura previa del set oficial y RCOF:
+
+```bash
+npm run dte:boleta:certification:dry-run
+```
+
+Salida local ignorada por git:
+
+- `tmp/dte-certification/boleta-set-dry-run/boletas-tipo-39-set-dry-run.xml`
+- `tmp/dte-certification/boleta-set-dry-run/rcof-boletas-tipo-39-dry-run.xml`
+- `tmp/dte-certification/boleta-set-dry-run/metadata.json`
+
+Este dry-run no usa CAF, no genera TED real, no firma XML, no contacta SII, no crea `track_id` y no habilita produccion. Sirve para confirmar que Citaya ya puede armar `CASO-1` a `CASO-5`, referencias `CodRef=SET` / `RazonRef=CASO-X`, sobre unico y RCOF asociado.
+
+Solo bajar CAF de boletas cuando este dry-run este correcto, los datos reales del emisor esten listos fuera del repo y haya disponibilidad para terminar la generacion real controlada dentro de la ventana de 24 horas.
+
+
+### Semaforo final PRE-CAF
+
+El dry-run de boletas tipo 39 lee datos reales del emisor desde variables de entorno o desde el archivo externo por defecto:
+
+```text
+/home/verf/secure/dte-lab/issuer-certification.env
+```
+
+El repo no debe contener el `.env` real. Para apuntar a otra ruta externa:
+
+```bash
+DTE_BOLETA_PRE_CAF_ENV_PATH=/ruta/externa/issuer-certification.env npm run dte:boleta:certification:dry-run
+```
+
+Luego ejecutar:
+
+```bash
+npm run dte:boleta:pre-caf-check
+```
+
+Resultado permitido antes de iniciar la ventana CAF: `OK PARA BAJAR CAF`. Cualquier `NO BAJAR CAF` debe corregirse antes de descargar CAF. El checker valida que el emisor sea R&G SpA / 78195645-7 / Coquimbo, que DIVIR SpA no aparezca como emisor, que no existan placeholders demo, que CAF siga ausente, y que submit/produccion/track_id simulado esten bloqueados.
+
+
 ## 6. Certification real controlada
 
 Solo cuando readiness este `ready` y las credenciales externas sean reales del tenant:

@@ -4,6 +4,47 @@ Estado obligatorio durante este runbook: `LAB / PENDIENTE / NO PRODUCTIVO`.
 
 Codex no puede inventar CAF, certificado digital, llaves privadas, aprobacion SII ni `track_id`. Este flujo solo prepara y valida archivos reales cuando el responsable los obtenga desde SII/certificado digital.
 
+
+## Semaforo PRE-CAF boletas tipo 39
+
+Estado obligatorio: `LAB / PENDIENTE / NO PRODUCTIVO`.
+
+Antes de bajar CAF de boletas, dejar los datos del emisor en un archivo externo ignorado por git. Ruta por defecto:
+
+```text
+/home/verf/secure/dte-lab/issuer-certification.env
+```
+
+Variables esperadas:
+
+```bash
+DTE_ISSUER_RUT=78195645-7
+DTE_ISSUER_RAZON_SOCIAL=R&G SpA
+DTE_ISSUER_GIRO=Servicios digitales
+DTE_ISSUER_DIRECCION=Regimiento Arica Nro 301 depto/local 215
+DTE_ISSUER_COMUNA=Coquimbo
+DTE_ISSUER_CIUDAD=Coquimbo
+DTE_ISSUER_REGION=Coquimbo
+DTE_ISSUER_SOFTWARE=CITAYA
+DTE_ISSUER_URL=https://www.citaya.online
+DTE_CERT_REPRESENTATIVE_NAME=<representante-autorizado-certificado>
+DTE_CERT_REPRESENTATIVE_RUT=<rut-representante-autorizado>
+DTE_CERTIFICATION_EMAIL=<correo-certificacion>
+```
+
+El emisor DTE para certification es R&G SpA. DIVIR SpA corresponde solo a antecedente contractual/arriendo y no debe aparecer como emisor en XML DTE.
+
+Ejecutar el semaforo:
+
+```bash
+npm run dte:boleta:certification:dry-run
+npm run dte:boleta:pre-caf-check
+```
+
+`dte:boleta:pre-caf-check` solo puede imprimir `OK PARA BAJAR CAF` si el set tiene CASO-1..CASO-5, `CodRef=SET`, `RazonRef=CASO-X`, RCOF tipo 39 con rango 1..5, totales consistentes, emisor R&G SpA / 78195645-7 / Coquimbo, CAF ausente, submit bloqueado, `production=false` y `trackIdSimulated=false`.
+
+Si aparece dato demo, placeholder, Providencia/Santiago como emisor, DIVIR como emisor, CAF ya presente, submit habilitado o production, el resultado debe ser `NO BAJAR CAF`.
+
 ## Que necesitas conseguir
 
 - Certificado digital real del contribuyente o representante autorizado.

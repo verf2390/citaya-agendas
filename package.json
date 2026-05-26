@@ -25,7 +25,9 @@
     "dte:sii:dry-run:trace": "node scripts/dte/sii-certification-smoke.mjs --dry-run",
     "dte:certification:xml": "DTE_MODE=lab DTE_SII_ENV=certification node scripts/dte/generate-lab-xml.mjs --mode=certification",
     "dte:external:check": "node scripts/dte/check-external-dte-files.mjs",
-    "dte:cert:convert": "node scripts/dte/convert-cert-to-pem.mjs"
+    "dte:cert:convert": "node scripts/dte/convert-cert-to-pem.mjs",
+    "dte:boleta:certification:dry-run": "node scripts/dte/generate-boleta-certification-dry-run.mjs",
+    "dte:boleta:pre-caf-check": "node scripts/dte/boleta-pre-caf-check.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

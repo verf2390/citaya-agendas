@@ -72,6 +72,14 @@ export type TaxDocumentLine = {
   unitPrice: number;
   amount: number;
   exempt?: boolean;
+  unitOfMeasure?: string | null;
+};
+
+export type TaxDocumentReference = {
+  code: string;
+  reason: string;
+  documentType?: string | null;
+  folio?: string | null;
 };
 
 export type DteDocumentDetailLab = TaxDocumentLine;
@@ -136,6 +144,7 @@ export type TaxDocumentDraft = {
   issuer: TenantTaxProfile;
   recipient: TaxDocumentRecipient;
   lines: TaxDocumentLine[];
+  references?: TaxDocumentReference[];
   netAmount?: number | null;
   taxAmount?: number | null;
   exemptAmount?: number | null;

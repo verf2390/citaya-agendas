@@ -25,6 +25,31 @@ Este checklist mide preparacion tecnica para certificacion real SII. No declara 
 - `npm run dte:external:check` diagnostica CAF/cert/key externos sin imprimir secretos.
 - `npm run dte:cert:convert` convierte P12/PFX externos a PEM en `/home/verf/secure/dte-lab/` sin guardar passwords.
 
+
+## Set de Boletas Electronicas tipo 39
+
+Estado: `LAB / PENDIENTE / NO PRODUCTIVO`.
+
+Preparado antes de bajar CAF de boletas:
+
+- Set oficial modelado desde `docs/dte-sii/certification-sets/set-prueba-boleta-electronica.txt`.
+- Fixtures `CASO-1` a `CASO-5` disponibles en `lib/dte/certification/boleta-electronica-set.ts`.
+- Boletas tipo 39 generan referencia del set con `CodRef=SET` y `RazonRef=CASO-X`.
+- `CASO-4` conserva linea afecta y linea exenta.
+- `CASO-5` informa unidad de medida `Kg`.
+- Dry-run genera sobre unico SetDTE con cinco boletas y RCOF asociado en `tmp/dte-certification/boleta-set-dry-run/`.
+- Semaforo PRE-CAF `npm run dte:boleta:pre-caf-check` valida emisor real R&G SpA / 78195645-7 / Coquimbo y bloquea datos demo, DIVIR como emisor, CAF presente, submit, production o `track_id` simulado.
+
+Comando seguro antes de CAF:
+
+```bash
+npm run dte:boleta:certification:dry-run
+```
+
+Puede generar ahora sin CAF: fixtures, XML LAB del sobre unico, RCOF LAB, hashes y metadata. Queda bloqueado hasta tener CAF real tipo 39: TED real, FRMT, XMLDSig controlado, validacion XSD final, seed/token/submit/status SII y cualquier `track_id` real.
+
+No bajar CAF de boletas hasta que este dry-run pase, los datos reales del emisor esten configurados fuera del repo y exista tiempo operativo para completar TED/FRMT/XMLDSig/XSD y submit de certification dentro de la ventana de 24 horas.
+
 ## Pendiente para primer XML certification real
 
 - Colocar CAF real de certificacion fuera del repo.
@@ -83,6 +108,8 @@ Produccion queda bloqueada hasta cumplir todo:
 ```bash
 npm run dte:external:check
 npm run dte:certification:readiness
+npm run dte:boleta:certification:dry-run
+npm run dte:boleta:pre-caf-check
 npm run dte:certification:xml
 npm run dte:certification:validate-xml
 npm run dte:certification:submit
@@ -118,3 +145,11 @@ npm run dte:certification:submit
 - XSD pasa o reporta errores reales entendibles.
 - No se contacta SII.
 - No se simula `track_id`.
+
+
+## Resultado aceptable PRE-CAF boletas tipo 39
+
+- `npm run dte:boleta:certification:dry-run` genera set y RCOF sin CAF, sin SII y sin submit.
+- `npm run dte:boleta:pre-caf-check` imprime `OK PARA BAJAR CAF` solo si todo esta listo salvo CAF/llave CAF.
+- Si faltan variables reales del emisor o aparecen placeholders/demo, imprime `NO BAJAR CAF`.
+- El XML dry-run no debe mostrar `76123456-0`, `Empresa Demo Citaya SpA`, giros/direcciones pendientes, Providencia/Santiago como emisor ni DIVIR SpA como emisor.
