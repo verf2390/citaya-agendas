@@ -11,7 +11,13 @@ import {
   SiiCertificationError,
   toSiiCertificationError,
 } from "./sii-errors";
-import { requestSeed, requestToken, signSeed } from "./sii-auth";
+import {
+  SII_CERTIFICATION_SEED_URL,
+  SII_CERTIFICATION_TOKEN_URL,
+  requestSeed,
+  requestToken,
+  signSeed,
+} from "./sii-auth";
 import { submitCertificationSet as submitSet } from "./sii-submit";
 import {
   getSubmissionStatus as getStatus,
@@ -62,16 +68,17 @@ export function getSiiCertificationConfigFromEnv(
 
   return {
     environment: "certification",
-    seedUrl: envValue("DTE_SII_SEED_URL", env),
-    tokenUrl: envValue("DTE_SII_TOKEN_URL", env),
+    seedUrl: envValue("DTE_SII_SEED_URL", env) || SII_CERTIFICATION_SEED_URL,
+    tokenUrl: envValue("DTE_SII_TOKEN_URL", env) || SII_CERTIFICATION_TOKEN_URL,
     submitUrl: envValue("DTE_SII_SUBMIT_URL", env),
     statusUrl: envValue("DTE_SII_STATUS_URL", env),
     certPath: envValue("DTE_CERT_PATH", env) || null,
     privateKeyPath: envValue("DTE_PRIVATE_KEY_PATH", env) || null,
     cafPath: envValue("DTE_CAF_PATH", env) || null,
     cafPrivateKeyPath: envValue("DTE_CAF_PRIVATE_KEY_PATH", env) || null,
-    rutEmpresa: envValue("SII_RUT_EMPRESA", env) || null,
-    rutUsuario: envValue("SII_RUT_USUARIO", env) || null,
+    rutEmpresa: envValue("SII_RUT_EMPRESA", env) || envValue("DTE_ISSUER_RUT", env) || null,
+    rutUsuario:
+      envValue("SII_RUT_USUARIO", env) || envValue("DTE_CERT_REPRESENTATIVE_RUT", env) || null,
     timeoutMs: Number(envValue("DTE_SII_TIMEOUT_MS", env) || 30_000),
     enableSubmit: envValue("DTE_SII_ENABLE_SUBMIT", env) === "true",
   };

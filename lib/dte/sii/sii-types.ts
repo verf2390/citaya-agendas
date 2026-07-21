@@ -36,6 +36,8 @@ export type SiiCertificationStepStatus =
 export type SiiSeedResult = {
   ok: boolean;
   seed?: string;
+  estado?: string | null;
+  glosa?: string | null;
   status: SiiCertificationStepStatus;
   message: string;
   requestedAt: string;
@@ -45,6 +47,7 @@ export type SiiSeedResult = {
 export type SiiSignedSeedResult = {
   ok: boolean;
   signedSeed?: string;
+  signedXml?: string;
   status: SiiCertificationStepStatus;
   message: string;
   signedAt: string;
@@ -55,6 +58,9 @@ export type SiiTokenResult = {
   ok: boolean;
   token?: string;
   redactedToken?: string | null;
+  tokenFingerprint?: string | null;
+  estado?: string | null;
+  glosa?: string | null;
   status: SiiCertificationStepStatus;
   message: string;
   requestedAt: string;

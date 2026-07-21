@@ -73,6 +73,8 @@ export type TaxDocumentLine = {
   amount: number;
   exempt?: boolean;
   unitOfMeasure?: string | null;
+  discountPercent?: number | null;
+  discountAmount?: number | null;
 };
 
 export type TaxDocumentReference = {
@@ -80,6 +82,8 @@ export type TaxDocumentReference = {
   reason: string;
   documentType?: string | null;
   folio?: string | null;
+  date?: string | null;
+  isGlobal?: boolean | null;
 };
 
 export type DteDocumentDetailLab = TaxDocumentLine;
@@ -145,6 +149,7 @@ export type TaxDocumentDraft = {
   recipient: TaxDocumentRecipient;
   lines: TaxDocumentLine[];
   references?: TaxDocumentReference[];
+  globalDiscount?: { discountType: "D" | "R"; valueType: "%" | "$"; value: number; appliesTo: "affected" | "exempt" } | null;
   netAmount?: number | null;
   taxAmount?: number | null;
   exemptAmount?: number | null;
@@ -171,6 +176,11 @@ export type DteEnvelopeBuildOptions = {
   documentSignatureXml?: string | null;
   envioSignatureXml?: string | null;
   documentSignedAt?: string | null;
+  rutEnvia?: string | null;
+  setDteId?: string | null;
+  perDocumentXml?: Record<number, { tedXml?: string | null; documentSignatureXml?: string | null; documentSignedAt?: string | null }> | null;
+  globalDiscount?: { discountType: "D" | "R"; valueType: "%" | "$"; value: number; appliesTo: "affected" | "exempt" } | null;
+  preserveTedWhitespace?: boolean | null;
 };
 
 export type DteXmlLabResult = DteGenerationResult;
@@ -275,6 +285,7 @@ export type TedInput = {
   timestamp?: string;
   frmtXml?: string | null;
   frmtStatus?: "synthetic_lab" | "pending_real_signature" | "real_controlled";
+  compact?: boolean;
 };
 
 export type TedBuildResult = {
@@ -287,6 +298,7 @@ export type TedBuildResult = {
 
 export type FrmtSignatureInput = {
   ddXml: string;
+  inputEncoding?: "utf8" | "latin1";
   privateKeyPem?: string | null;
   privateKeyPath?: string | null;
   mode: "lab" | "xsd-structure" | "certification" | "production";

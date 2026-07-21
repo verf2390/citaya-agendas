@@ -36,11 +36,13 @@ function buildDetailXml(draft: TaxDocumentDraft): string {
         line.description
           ? `        <DscItem>${escapeXml(line.description)}</DscItem>`
           : null,
-        `        <QtyItem>${line.quantity}</QtyItem>`,
-        line.unitOfMeasure
+        line.amount > 0 ? `        <QtyItem>${line.quantity}</QtyItem>` : null,
+        line.amount > 0 && line.unitOfMeasure
           ? `        <UnmdItem>${escapeXml(line.unitOfMeasure)}</UnmdItem>`
           : null,
-        `        <PrcItem>${line.unitPrice}</PrcItem>`,
+        line.amount > 0 ? `        <PrcItem>${line.unitPrice}</PrcItem>` : null,
+        line.discountPercent != null && line.discountPercent > 0 ? `        <DescuentoPct>${line.discountPercent}</DescuentoPct>` : null,
+        line.discountAmount != null && line.discountAmount > 0 ? `        <DescuentoMonto>${line.discountAmount}</DescuentoMonto>` : null,
         `        <MontoItem>${line.amount}</MontoItem>`,
         "      </Detalle>",
       ]
@@ -48,6 +50,21 @@ function buildDetailXml(draft: TaxDocumentDraft): string {
         .join("\n");
     })
     .join("\n");
+}
+
+function buildGlobalDiscountXml(draft: TaxDocumentDraft): string {
+  const discount = draft.globalDiscount;
+  if (!discount) return "";
+  return [
+    "      <DscRcgGlobal>",
+    "        <NroLinDR>1</NroLinDR>",
+    `        <TpoMov>${discount.discountType}</TpoMov>`,
+    "        <GlosaDR>DESCUENTO GLOBAL AFECTO</GlosaDR>",
+    `        <TpoValor>${discount.valueType}</TpoValor>`,
+    `        <ValorDR>${discount.value}</ValorDR>`,
+    discount.appliesTo === "exempt" ? "        <IndExeDR>1</IndExeDR>" : null,
+    "      </DscRcgGlobal>",
+  ].filter(Boolean).join("\n");
 }
 
 function buildReferenceXml(draft: TaxDocumentDraft): string {
@@ -59,10 +76,12 @@ function buildReferenceXml(draft: TaxDocumentDraft): string {
         reference.documentType
           ? `        <TpoDocRef>${escapeXml(reference.documentType)}</TpoDocRef>`
           : null,
+        reference.isGlobal ? "        <IndGlobal>1</IndGlobal>" : null,
         reference.folio
           ? `        <FolioRef>${escapeXml(reference.folio)}</FolioRef>`
           : null,
-        `        <CodRef>${escapeXml(reference.code)}</CodRef>`,
+        reference.date ? `        <FchRef>${escapeXml(formatDate(reference.date))}</FchRef>` : null,
+        reference.code ? `        <CodRef>${escapeXml(reference.code)}</CodRef>` : null,
         `        <RazonRef>${escapeXml(reference.reason)}</RazonRef>`,
         "      </Referencia>",
       ]
@@ -80,6 +99,10 @@ function indentXml(xml: string, spaces: number): string {
     .join("\n");
 }
 
+export function buildDteDocumentId(draft: TaxDocumentDraft): string {
+  return `CitayaDocLab-${getSiiDteTypeCode(draft.documentType)}-${draft.folio}`;
+}
+
 function buildDocumentoXml(
   draft: TaxDocumentDraft,
   options: DteEnvelopeBuildOptions = {},
@@ -88,15 +111,19 @@ function buildDocumentoXml(
   const recipientRut = normalizeRut(draft.recipient.rut);
   const documentTypeCode = getSiiDteTypeCode(draft.documentType);
   const issueDate = formatDate(draft.issueDate);
-  const documentId = `CitayaDocLab-${documentTypeCode}-${draft.folio}`;
+  const documentId = buildDteDocumentId(draft);
   const documentSignedAt = formatDateTime(
     options.documentSignedAt ?? draft.issueDate,
   );
   const tedXml = options.tedXml
-    ? `\n${indentXml(options.tedXml, 8)}\n        <TmstFirma>${documentSignedAt}</TmstFirma>`
+    ? options.preserveTedWhitespace
+      ? `\n${options.tedXml}\n        <TmstFirma>${documentSignedAt}</TmstFirma>`
+      : `\n${indentXml(options.tedXml, 8)}\n        <TmstFirma>${documentSignedAt}</TmstFirma>`
     : "";
   const documentSignatureXml = options.documentSignatureXml
-    ? `\n${indentXml(options.documentSignatureXml, 6)}`
+    ? options.preserveTedWhitespace
+      ? `\n${options.documentSignatureXml}`
+      : `\n${indentXml(options.documentSignatureXml, 6)}`
     : "";
   const referencesXml = buildReferenceXml(draft);
 
@@ -120,8 +147,8 @@ function buildDocumentoXml(
           <Receptor>
             <RUTRecep>${escapeXml(recipientRut)}</RUTRecep>
             <RznSocRecep>${escapeXml(draft.recipient.legalName)}</RznSocRecep>
-            <GiroRecep>${escapeXml(draft.recipient.businessActivity)}</GiroRecep>
-            <CorreoRecep>${escapeXml(draft.recipient.email)}</CorreoRecep>
+            <GiroRecep>${escapeXml(String(draft.recipient.businessActivity ?? "").slice(0, 40))}</GiroRecep>
+            ${draft.recipient.email ? `<CorreoRecep>${escapeXml(draft.recipient.email)}</CorreoRecep>` : ""}
             <DirRecep>${escapeXml(draft.recipient.address)}</DirRecep>
             <CmnaRecep>${escapeXml(draft.recipient.commune)}</CmnaRecep>
             <CiudadRecep>${escapeXml(draft.recipient.city)}</CiudadRecep>
@@ -129,17 +156,18 @@ function buildDocumentoXml(
           <Totales>
             <MntNeto>${draft.netAmount ?? 0}</MntNeto>
             <MntExe>${draft.exemptAmount ?? 0}</MntExe>
+            <TasaIVA>19</TasaIVA>
             <IVA>${draft.taxAmount ?? 0}</IVA>
             <MntTotal>${draft.totalAmount}</MntTotal>
           </Totales>
         </Encabezado>
-${buildDetailXml(draft)}${referencesXml ? `\n${referencesXml}` : ""}
+${buildDetailXml(draft)}${buildGlobalDiscountXml(draft) ? `\n${buildGlobalDiscountXml(draft)}` : ""}${referencesXml ? `\n${referencesXml}` : ""}
 ${tedXml}
       </Documento>${documentSignatureXml}
     </DTE>`;
 }
 
-function buildCaratulaXml(drafts: TaxDocumentDraft[]): string {
+function buildCaratulaXml(drafts: TaxDocumentDraft[], options: DteEnvelopeBuildOptions = {}): string {
   const firstDraft = drafts[0];
   const issuerRut = normalizeRut(firstDraft.issuer.rut);
   const subtotals = new Map<number, number>();
@@ -160,13 +188,40 @@ function buildCaratulaXml(drafts: TaxDocumentDraft[]): string {
 
   return `    <Caratula version="1.0">
       <RutEmisor>${escapeXml(issuerRut)}</RutEmisor>
-      <RutEnvia>${escapeXml(issuerRut)}</RutEnvia>
+      <RutEnvia>${escapeXml(normalizeRut(options.rutEnvia ?? issuerRut))}</RutEnvia>
       <RutReceptor>60803000-K</RutReceptor>
       <FchResol>${escapeXml(firstDraft.issuer.siiResolutionDate ?? "2006-01-01")}</FchResol>
       <NroResol>${escapeXml(firstDraft.issuer.siiResolutionNumber ?? "0")}</NroResol>
       <TmstFirmaEnv>${formatDateTime(firstDraft.issueDate)}</TmstFirmaEnv>
 ${subtotalsXml}
     </Caratula>`;
+}
+
+export function buildDteDocumentoXmlLab(
+  draft: TaxDocumentDraft,
+  options: DteEnvelopeBuildOptions = {},
+): string {
+  validateDteDraftForXmlLab(draft);
+  return buildDocumentoXml(draft, options);
+}
+
+export function buildDteSetDteXmlLab(
+  drafts: TaxDocumentDraft[],
+  options: DteSetEnvelopeBuildOptions = {},
+): string {
+  if (drafts.length === 0) throw new Error("At least one DTE draft is required for SetDTE");
+  drafts.forEach(validateDteDraftForXmlLab);
+  const firstDraft = drafts[0];
+  const setDteId =
+    options.setDteId ??
+    `CitayaDteLab-${escapeXml(firstDraft.tenantId)}-set-${formatDate(firstDraft.issueDate)}`;
+  return `  <SetDTE ID="${setDteId}">
+${buildCaratulaXml(drafts, options)}
+${drafts.map((draft) => buildDocumentoXml(draft, {
+  ...options,
+  ...(options.perDocumentXml?.[draft.folio] ?? {}),
+})).join("\n")}
+  </SetDTE>`;
 }
 
 function warningsForMode(mode: DteEnvelopeBuildOptions["mode"]): string[] {
@@ -207,7 +262,7 @@ export function buildDteEnvelopeXmlLab(
 -->
 <EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">
   <SetDTE ID="${setDteId}">
-${buildCaratulaXml([draft])}
+${buildCaratulaXml([draft], options)}
 ${buildDocumentoXml(draft, options)}
   </SetDTE>${envioSignatureXml}
 </EnvioDTE>`;
@@ -248,6 +303,7 @@ export function buildDteSetEnvelopeXmlLab(
       ? `\n${indentXml(options.envioSignatureXml, 2)}`
       : "";
 
+    const setDteXml = buildDteSetDteXmlLab(drafts, { ...options, setDteId });
     const xml = `<?xml version="1.0" encoding="ISO-8859-1"?>
 <!--
   Citaya DTE Lab XML - sobre unico SetDTE - NO PRODUCTIVO.
@@ -255,10 +311,7 @@ export function buildDteSetEnvelopeXmlLab(
   No contactar SII con este archivo.
 -->
 <EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">
-  <SetDTE ID="${setDteId}">
-${buildCaratulaXml(drafts)}
-${drafts.map((draft) => buildDocumentoXml(draft, options)).join("\n")}
-  </SetDTE>${envioSignatureXml}
+${setDteXml}${envioSignatureXml}
 </EnvioDTE>`;
 
     return {

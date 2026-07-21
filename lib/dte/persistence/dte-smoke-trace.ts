@@ -69,13 +69,10 @@ export function buildSmokeDocumentIdentity(
 ): SmokeDocumentIdentity {
   const configuredFolio = parseSmokeFolio(env.DTE_SMOKE_FOLIO);
 
-  if (configuredFolio !== null) {
+  if (backend !== "supabase" && configuredFolio !== null) {
     return {
       folio: configuredFolio,
-      paymentReference:
-        backend === "supabase"
-          ? `smoke-dry-run-${configuredFolio}-${nowMs}-${entropy}`
-          : "smoke-dry-run",
+      paymentReference: "smoke-dry-run",
     };
   }
 
@@ -83,7 +80,8 @@ export function buildSmokeDocumentIdentity(
     return { folio: MEMORY_SMOKE_FOLIO, paymentReference: "smoke-dry-run" };
   }
 
-  const folio = 100_000 + ((nowMs + entropy) % 800_000);
+  const baseFolio = configuredFolio ?? 100_000;
+  const folio = baseFolio + ((nowMs + entropy) % 800_000);
   return {
     folio,
     paymentReference: `smoke-dry-run-${folio}-${nowMs}-${entropy}`,

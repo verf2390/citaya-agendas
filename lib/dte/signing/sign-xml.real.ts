@@ -1,4 +1,4 @@
-import { createHash, createSign, createVerify } from "node:crypto";
+import { createHash, createPublicKey, createSign, createVerify, X509Certificate } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,10 +61,11 @@ export function canonicalizeXmlControlled(xml: string): XmlCanonicalizationResul
       maxBuffer: 1024 * 1024,
     });
     if (result.status !== 0 || !result.stdout.trim()) {
+      const detail = (result.stderr || result.stdout || "").trim().split(/\r?\n/)[0];
       return {
         ok: false,
         status: "failed",
-        reason: "xmllint no pudo canonicalizar el XML proporcionado.",
+        reason: detail ? `xmllint no pudo canonicalizar el XML proporcionado: ${detail}` : "xmllint no pudo canonicalizar el XML proporcionado.",
       };
     }
     return { ok: true, canonicalXml: result.stdout, method: XMLDSIG_C14N_METHOD };
@@ -228,6 +229,40 @@ function stripPem(value: string): string {
     .replace(/\s+/g, "");
 }
 
+function base64UrlToBase64(value: string): string {
+  return Buffer.from(value, "base64url").toString("base64");
+}
+
+function extractRsaKeyInfo(certificate: string): {
+  modulus: string;
+  exponent: string;
+  x509Certificate: string;
+} {
+  try {
+    const x509 = new X509Certificate(certificate);
+    const jwk = x509.publicKey.export({ format: "jwk" }) as { kty?: string; n?: string; e?: string };
+    if (jwk.kty !== "RSA" || !jwk.n || !jwk.e) {
+      throw new Error("Certificado XMLDSig no contiene public key RSA.");
+    }
+    return {
+      modulus: base64UrlToBase64(jwk.n),
+      exponent: base64UrlToBase64(jwk.e),
+      x509Certificate: x509.raw.toString("base64"),
+    };
+  } catch {
+    const publicKey = createPublicKey(certificate);
+    const jwk = publicKey.export({ format: "jwk" }) as { kty?: string; n?: string; e?: string };
+    if (jwk.kty !== "RSA" || !jwk.n || !jwk.e) {
+      throw new Error("XMLDSig certification requiere certificado/public key RSA valida.");
+    }
+    return {
+      modulus: base64UrlToBase64(jwk.n),
+      exponent: base64UrlToBase64(jwk.e),
+      x509Certificate: stripPem(certificate),
+    };
+  }
+}
+
 export function getXmlDsigControlledMetadata(
   status: XmlSignatureStatus = "pending_real_certification",
 ) {
@@ -296,15 +331,15 @@ export function buildXmlDsigControlled(
   const digest = sha1Base64(canonicalReference.canonicalXml);
   const signedInfo = [
     '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">',
-    `  <CanonicalizationMethod Algorithm="${C14N}"></CanonicalizationMethod>`,
-    `  <SignatureMethod Algorithm="${RSA_SHA1}"></SignatureMethod>`,
-    `  <Reference URI="#${escapeXml(input.referenceUri)}">`,
-    "    <Transforms>",
-    `      <Transform Algorithm="${C14N}"></Transform>`,
-    "    </Transforms>",
-    `    <DigestMethod Algorithm="${SHA1}"></DigestMethod>`,
-    `    <DigestValue>${digest}</DigestValue>`,
-    "  </Reference>",
+    `<CanonicalizationMethod Algorithm="${C14N}"></CanonicalizationMethod>`,
+    `<SignatureMethod Algorithm="${RSA_SHA1}"></SignatureMethod>`,
+    `<Reference URI="#${escapeXml(input.referenceUri)}">`,
+    "<Transforms>",
+    `<Transform Algorithm="${C14N}"></Transform>`,
+    "</Transforms>",
+    `<DigestMethod Algorithm="${SHA1}"></DigestMethod>`,
+    `<DigestValue>${digest}</DigestValue>`,
+    "</Reference>",
     "</SignedInfo>",
   ].join("\n");
   const canonicalSignedInfo = canonicalizeXmlControlled(signedInfo);
@@ -340,6 +375,7 @@ export function buildXmlDsigControlled(
     expectedDigestValue: digest,
     canonicalizedReferenceXml: canonicalReference.canonicalXml,
   });
+  const keyInfo = extractRsaKeyInfo(certificate);
   const xmlSignatureStatus: XmlSignatureStatus = verification.ok
     ? "verified_controlled"
     : "verification_failed";
@@ -367,23 +403,19 @@ export function buildXmlDsigControlled(
     ],
     signatureXml: [
       '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">',
-      signedInfo
-        .replace(/^<SignedInfo xmlns="http:\/\/www.w3.org\/2000\/09\/xmldsig#">/, "<SignedInfo>")
-        .split("\n")
-        .map((line) => `  ${line}`)
-        .join("\n"),
-      `  <SignatureValue>${signatureValue}</SignatureValue>`,
-      "  <KeyInfo>",
-      "    <KeyValue>",
-      "      <RSAKeyValue>",
-      "        <Modulus>AA==</Modulus>",
-      "        <Exponent>AQAB</Exponent>",
-      "      </RSAKeyValue>",
-      "    </KeyValue>",
-      "    <X509Data>",
-      `      <X509Certificate>${stripPem(certificate)}</X509Certificate>`,
-      "    </X509Data>",
-      "  </KeyInfo>",
+      signedInfo,
+      `<SignatureValue>${signatureValue}</SignatureValue>`,
+      "<KeyInfo>",
+      "<KeyValue>",
+      "<RSAKeyValue>",
+      `<Modulus>${keyInfo.modulus}</Modulus>`,
+      `<Exponent>${keyInfo.exponent}</Exponent>`,
+      "</RSAKeyValue>",
+      "</KeyValue>",
+      "<X509Data>",
+      `<X509Certificate>${keyInfo.x509Certificate}</X509Certificate>`,
+      "</X509Data>",
+      "</KeyInfo>",
       "</Signature>",
     ].join("\n"),
   };

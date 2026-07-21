@@ -76,7 +76,7 @@ export function signFrmtControlled(
   let signature: string;
   try {
     const signer = createSign("RSA-SHA1");
-    signer.update(input.ddXml, "utf8");
+    signer.update(Buffer.from(input.ddXml, input.inputEncoding ?? "utf8"));
     signature = signer.sign(privateKey, "base64");
   } catch {
     return {

@@ -13,29 +13,31 @@ export function buildTedControlled(input: TedInput): TedBuildResult {
   const frmtStatus =
     input.frmtStatus ??
     (input.frmtXml ? "real_controlled" : "pending_real_signature");
+  const separator = input.compact ? "" : "\n";
+  const indent = input.compact ? "" : "  ";
   const ddXml = [
     "<DD>",
-    `  <RE>${escapeXml(input.issuerRut)}</RE>`,
-    `  <TD>${input.documentTypeCode}</TD>`,
-    `  <F>${input.folio}</F>`,
-    `  <FE>${escapeXml(input.issueDate)}</FE>`,
-    `  <RR>${escapeXml(input.recipientRut)}</RR>`,
-    `  <RSR>${escapeXml(truncateTedText(input.recipientLegalName, 40))}</RSR>`,
-    `  <MNT>${input.totalAmount}</MNT>`,
-    `  <IT1>${escapeXml(truncateTedText(input.firstItemName, 40))}</IT1>`,
+    `${indent}<RE>${escapeXml(input.issuerRut)}</RE>`,
+    `${indent}<TD>${input.documentTypeCode}</TD>`,
+    `${indent}<F>${input.folio}</F>`,
+    `${indent}<FE>${escapeXml(input.issueDate)}</FE>`,
+    `${indent}<RR>${escapeXml(input.recipientRut)}</RR>`,
+    `${indent}<RSR>${escapeXml(truncateTedText(input.recipientLegalName, 40))}</RSR>`,
+    `${indent}<MNT>${input.totalAmount}</MNT>`,
+    `${indent}<IT1>${escapeXml(truncateTedText(input.firstItemName, 40))}</IT1>`,
     input.cafXml.trim(),
-    `  <TSTED>${escapeXml(timestamp)}</TSTED>`,
+    `${indent}<TSTED>${escapeXml(timestamp)}</TSTED>`,
     "</DD>",
-  ].join("\n");
+  ].join(separator);
 
   return {
     ddXml,
     tedXml: [
       '<TED version="1.0">',
       ddXml,
-      `  ${frmtXml}`,
+      `${indent}${frmtXml}`,
       "</TED>",
-    ].join("\n"),
+    ].join(separator),
     frmtStatus,
     warnings: [
       frmtStatus === "synthetic_lab"

@@ -1,227 +1,102 @@
-INDICACIONES GENERALES:
+SET VIGENTE CERTIFICACION DTE R&G SPA
 
-Se debe adjuntar ejemplar tributario y cedible de los documentos: Factura Electrónica, Factura No Afecta o Exenta Electrónica, Guía de Despacho Electrónica y Factura de Compra Electrónica.
+obtenido: 2026-07-19
+ambiente: certification
+estado: PRE_CAF_NOT_READY
 
-Para consultar los datos del contribuyente, como el giro, razón social, direcciones y sucursales, Dirección Regional o Unidad debe ingresar en la opción "Mi SII" de la página del SII.
+atenciones:
+- set basico: 4959698
+- libro ventas: 4959699
+- libro compras: 4959700
 
-Además se les recomienda no utilizar abreviaciones en los giros y no agregar textos que informen arreglos de contrato con los clientes.
+sets anulados:
+- guia de despacho: anulado
+- factura exenta independiente: anulado
+- libro de guias: anulado
 
+SET BASICO - ATENCION 4959698
 
-SET BASICO - NUMERO DE ATENCION: 4846562
+Caso 4959698-1
+Tipo 33, Factura Electrónica:
+- Cajón AFECTO: cantidad 118, precio unitario 628
+- Relleno AFECTO: cantidad 51, precio unitario 976
 
-IMPORTANTE: Considerar que los descuentos por línea o globales deben ser indicados en las representaciones impresas. Además, señalar las cifras con separador de miles con ".".
+Caso 4959698-2
+Tipo 33:
+- Pañuelo AFECTO: cantidad 175, precio unitario 1473, descuento de línea 3%
+- ITEM 2 AFECTO: cantidad 99, precio unitario 538, descuento de línea 3%
 
+Caso 4959698-3
+Tipo 33, factura mixta:
+- Pintura B&W AFECTO: cantidad 23, precio unitario 1299
+- ITEM 2 AFECTO: cantidad 139, precio unitario 2915
+- ITEM 3 SERVICIO EXENTO: cantidad 1, precio unitario 34637
 
-CASO 4846562-1
-==============
-DOCUMENTO	FACTURA ELECTRONICA
+Caso 4959698-4
+Tipo 33, factura mixta:
+- ITEM 1 AFECTO: cantidad 43, precio unitario 1185
+- ITEM 2 AFECTO: cantidad 19, precio unitario 739
+- ITEM 3 SERVICIO EXENTO: cantidad 2, precio unitario 6760
+- descuento global de 5% aplicado solamente a ítems afectos
 
-ITEM			CANTIDAD	PRECIO UNITARIO
-Cajón AFECTO		    140		   1851
-Relleno AFECTO		     60		   3043
+Caso 4959698-5
+Tipo 61, Nota de Crédito:
+- referencia a la factura del caso 4959698-1
+- razón: CORRIGE GIRO DEL RECEPTOR
 
+Caso 4959698-6
+Tipo 61:
+- referencia a factura del caso 4959698-2
+- razón: DEVOLUCION DE MERCADERIAS
+- Pañuelo AFECTO: cantidad devuelta 64
+- ITEM 2 AFECTO: cantidad devuelta 67
+- conservar precios unitarios y descuentos correspondientes a la factura original
 
-CASO 4846562-2
-==============
-DOCUMENTO	FACTURA ELECTRONICA
+Caso 4959698-7
+Tipo 61:
+- referencia a factura del caso 4959698-3
+- razón: ANULA FACTURA
 
-ITEM			CANTIDAD	PRECIO UNITARIO		DESCUENTO ITEM
-Pañuelo AFECTO		    424		   3354			      6%
-ITEM 2 AFECTO		    357		   2413			     12%
+Caso 4959698-8
+Tipo 56, Nota de Débito:
+- referencia a la nota de crédito del caso 4959698-5
+- razón: ANULA NOTA DE CREDITO ELECTRONICA
 
+LIBRO DE VENTAS - ATENCION 4959699
 
-CASO 4846562-3
-==============
-DOCUMENTO	FACTURA ELECTRONICA
+Debe construirse usando exclusivamente los ocho documentos del set basico:
+- 4 facturas tipo 33
+- 3 notas de crédito tipo 61
+- 1 nota de débito tipo 56
 
-ITEM			CANTIDAD	PRECIO UNITARIO
-Pintura B&W AFECTO	     32		   3846
-ITEM 2 AFECTO		    180		   3266
-ITEM 3 SERVICIO EXENTO	      1		  34917
+LIBRO DE COMPRAS - ATENCION 4959700
 
+1. Factura folio 234
+- factura del giro con derecho a crédito
+- monto afecto 5031
 
-CASO 4846562-4
-==============
-DOCUMENTO	FACTURA ELECTRONICA
+2. Factura electrónica folio 32
+- factura del giro con derecho a crédito
+- monto exento 7933
+- monto afecto 4010
 
-ITEM			CANTIDAD	PRECIO UNITARIO
-ITEM 1 AFECTO		    202		   3208
-ITEM 2 AFECTO		     86		   3502
-ITEM 3 SERVICIO EXENTO	      2		   6791
+3. Factura folio 781
+- factura con IVA de uso común
+- monto afecto 29589
+- factor de proporcionalidad 0.60
 
-DESCUENTO GLOBAL ITEMES AFECTOS		     12%
+4. Nota de crédito folio 451
+- descuento a factura 234
+- monto afecto 2612
 
+5. Factura electrónica folio 67
+- entrega gratuita del proveedor
+- monto afecto 8952
 
-CASO 4846562-5
-==============
-DOCUMENTO		NOTA DE CREDITO ELECTRONICA
-REFERENCIA		FACTURA ELECTRONICA CORRESPONDIENTE A CASO 4846562-1
-RAZON REFERENCIA	CORRIGE GIRO DEL RECEPTOR
+6. Factura de compra electrónica folio 9
+- compra con retención total del IVA
+- monto afecto 9037
 
-
-CASO 4846562-6
-==============
-DOCUMENTO		NOTA DE CREDITO ELECTRONICA
-REFERENCIA		FACTURA  ELECTRONICA CORRESPONDIENTE A CASO 4846562-2
-RAZON REFERENCIA	DEVOLUCION DE MERCADERIAS
-
-ITEM			CANTIDAD
-Pañuelo AFECTO		    156
-ITEM 2 AFECTO		    242
-
-
-CASO 4846562-7
-==============
-DOCUMENTO		NOTA DE CREDITO ELECTRONICA
-REFERENCIA		FACTURA ELECTRONICA CORRESPONDIENTE A CASO 4846562-3
-RAZON REFERENCIA	ANULA FACTURA
-
-
-CASO 4846562-8
-==============
-DOCUMENTO		NOTA DE DEBITO ELECTRONICA
-REFERENCIA		NOTA DE CREDITO ELECTRONICA CORRESPONDIENTE A CASO 4846562-5
-RAZON REFERENCIA	ANULA NOTA DE CREDITO ELECTRONICA
---------------------------------------------------------------------------------
-SET LIBRO DE VENTAS - NUMERO DE ATENCION: 4846563
-
-CONSTRUYA EL LIBRO DE VENTAS CON LOS DOCUMENTOS CON QUE GENERO
-EL SET BASICO O EL SET DE FACTURA EXENTA, SEGUN CORRESPONDA.
-SI OBTUVO AMBOS SET, UTILICE LOS DOCUMENTOS DEL SET BASICO PARA
-CONSTRUIR EL LIBRO DE VENTAS.
---------------------------------------------------------------------------------
-SET LIBRO DE COMPRAS - NUMERO DE ATENCION: 4846564
- 
-==========================================================================
-TIPO DOCUMENTO				FOLIO
-OBSERVACIONES
-MONTO EXENTO	MONTO AFECTO
-==========================================================================
-FACTURA					234
-FACTURA DEL GIRO CON DERECHO A CREDITO
-		  30325
-
-FACTURA ELECTRONICA 			 32
-FACTURA DEL GIRO CON DERECHO A CREDITO
-   9349		   7925
-
-FACTURA					781
-FACTURA CON IVA USO COMUN
-		  29894
-
-NOTA DE CREDITO				451
-NOTA DE CREDITO POR DESCUENTO A FACTURA 234
-		   2778
-
-FACTURA ELECTRONICA			 67
-ENTREGA GRATUITA DEL PROVEEDOR
-		  10622
-
-FACTURA DE COMPRA ELECTRONICA		  9
-COMPRA CON RETENCION TOTAL DEL IVA
-		   9873
-
-NOTA DE CREDITO				211
-NOTA DE CREDITO POR DESCUENTO FACTURA ELECTRONICA 32
-		   5761
-==========================================================================
-
-OBSERVACIONES GENERALES
------------------------
-EN FACTURA CON IVA USO COMUN CONSIDERE QUE EL FACTOR DE PROPORCIONALIDAD 
-DEL IVA ES DE 0.60
---------------------------------------------------------------------------------
-SET GUIA DE DESPACHO - NUMERO DE ATENCIÓN: 4846565
-
-IMPORTANTE: Se debe señalar el tipo de traslado en todos los documentos de Guía de Despacho Electrónica. Además, se les indica que cuando una Guía de Despacho Electrónica señala un Traslado Interno, los datos del receptor deben coincidir con los del emisor, además una operación que no constituye venta, el ejemplar cedible es inoficioso.
-
-CASO 4846565-1
-==============
-DOCUMENTO	GUIA DE DESPACHO
-MOTIVO:		TRASLADO DE MATERIALES ENTRE BODEGAS DE LA EMPRESA
-
-ITEM		CANTIDAD	
-ITEM 1		     67		
-ITEM 2		     89		
-ITEM 3		     53
-
-
-CASO 4846565-2
-==============
-DOCUMENTO	GUIA DE DESPACHO
-MOTIVO:		VENTA
-TRASLADO POR: 	EMISOR DEL DOCUMENTO AL LOCAL DEL CLIENTE
-
-ITEM		CANTIDAD	PRECIO UNITARIO
-ITEM 1		    209		   4546
-ITEM 2		    397		   1280
-
-
-CASO 4846565-3
-==============
-DOCUMENTO	GUIA DE DESPACHO
-MOTIVO:		VENTA
-TRASLADO POR: 	CLIENTE
-
-ITEM		CANTIDAD	PRECIO UNITARIO
-ITEM 1		    126		   1528
-ITEM 2		    256		   3582
---------------------------------------------------------------------------------
-SET LIBRO DE GUIAS - NUMERO DE ATENCION: 4846566
-
-CONSTRUYA EL LIBRO CON LAS GUIAS CON QUE GENERO EL SET GUIA DE DESPACHO, 
-TENIENDO EN CUENTA LAS SIGUIENTES CONSIDERACIONES
-
-- EL CASO 2 CORRESPONDE A UNA GUIA QUE SE FACTURO EN EL PERIODO
-- EL CASO 3 CORRESPONDE A UNA GUIA ANULADA
---------------------------------------------------------------------------------
-SET FACTURA EXENTA - NUMERO DE ATENCIÓN: 4846567
-INDICACIÓN: No se debe señalar el monto IVA 19% en los documentos de Factura No Afecta o Exenta Electrónica (sólo monto Exento y monto Total).
-CASO 4846567-1
-==============
-DOCUMENTO	FACTURA NO AFECTA O EXENTA ELECTRONICA
-ITEM			CANTIDAD	UNIDAD MEDIDA	VALOR UNITARIO
-HORAS PROGRAMADOR	      9		Hora		   5675
-CASO 4846567-2
-==============
-DOCUMENTO		NOTA DE CREDITO ELECTRONICA
-REFERENCIA		FACTURA NO AFECTA O EXENTA ELECTRONICA CORRESPONDIENTE A CASO 4846567-1
-RAZON REFERENCIA	MODIFICA MONTO
-ITEM			VALOR UNITARIO
-HORAS PROGRAMADOR 	    709
-CASO 4846567-3
-==============
-DOCUMENTO	FACTURA NO AFECTA O EXENTA ELECTRONICA
-ITEM					CANTIDAD	VALOR UNITARIO
-SERV CONSULTORIA FACT ELECTRONICA	1		 306744
-SERV CONSULTORIA GUIA DESPACHO ELECT	1		 242443
-CASO 4846567-4
-==============
-DOCUMENTO		NOTA DE CREDITO ELECTRONICA
-REFERENCIA		FACTURA NO AFECTA O EXENTA ELECTRONICA CORRESPONDIENTE A CASO 4846567-3
-RAZON REFERENCIA	CORRIGE GIRO
-CASO 4846567-5
-==============
-DOCUMENTO		NOTA DE DEBITO ELECTRONICA
-REFERENCIA		NOTA DE CREDITO ELECTRONICA CORRESPONDIENTE A CASO 4846567-4
-RAZON REFERENCIA	ANULA NOTA DE CREDITO ELECTRONICA
-CASO 4846567-6
-==============
-DOCUMENTO	FACTURA NO AFECTA O EXENTA ELECTRONICA
-ITEM				CANTIDAD	VALOR UNITARIO
-CAPACITACION USO CIGUEÑALES	1		 327414
-CAPACITACION USO PLC's CNC	1		 219410
-CASO 4846567-7
-==============
-DOCUMENTO		NOTA DE CREDITO ELECTRONICA
-REFERENCIA		FACTURA NO AFECTA O EXENTA ELECTRONICA CORRESPONDIENTE A CASO 4846567-6
-RAZON REFERENCIA	MODIFICA MONTO
-ITEM				VALOR UNITARIO
-CAPACITACION USO CIGUEÑALES	 163707
-CASO 4846567-8
-==============
-DOCUMENTO		NOTA DE DEBITO ELECTRONICA
-REFERENCIA		FACTURA NO AFECTA O EXENTA ELECTRONICA CORRESPONDIENTE A CASO 4846567-6
-RAZON REFERENCIA	MODIFICA MONTO
-ITEM				VALOR UNITARIO
-CAPACITACION USO PLC's CNC	  43882
+7. Nota de crédito folio 211
+- descuento a factura electrónica 32
+- monto afecto 2130

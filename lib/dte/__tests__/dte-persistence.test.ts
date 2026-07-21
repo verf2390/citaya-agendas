@@ -367,16 +367,24 @@ test("smoke trace requires a real tenant id when Supabase backend is active", ()
 test("smoke trace generates repeatable-safe Supabase folio and reference", () => {
   const first = buildSmokeDocumentIdentity("supabase", {}, 1_717_000_000_000, 1_001);
   const second = buildSmokeDocumentIdentity("supabase", {}, 1_717_000_000_001, 1_002);
+  const configured = buildSmokeDocumentIdentity(
+    "supabase",
+    { DTE_SMOKE_FOLIO: "7777" },
+    1_717_000_000_000,
+    1_001,
+  );
 
   assert.notEqual(first.folio, second.folio);
   assert.match(first.paymentReference, /^smoke-dry-run-\d+-1717000000000-1001$/);
+  assert.notEqual(configured.folio, 7777);
+  assert.match(configured.paymentReference, /^smoke-dry-run-\d+-1717000000000-1001$/);
   assert.deepEqual(buildSmokeDocumentIdentity("memory", {}, 1, 1), {
     folio: 1001,
     paymentReference: "smoke-dry-run",
   });
   assert.equal(
     buildSmokeDocumentIdentity(
-      "supabase",
+      "memory",
       { DTE_SMOKE_FOLIO: "7777" },
       1_717_000_000_000,
       1_001,
