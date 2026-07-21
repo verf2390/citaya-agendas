@@ -15,7 +15,7 @@ import { validateRut } from "@/lib/dte/rut";
 import { signXmlMockForLab } from "@/lib/dte/signing/sign-xml.placeholder";
 import { buildBoletaXmlLab } from "@/lib/dte/xml/build-boleta";
 import { buildFacturaXmlLab } from "@/lib/dte/xml/build-factura";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type DteLabRequest = {
@@ -36,12 +36,6 @@ const LAB_RECIPIENT_RUT = "11.111.111-1";
 const LAB_FOLIO_FROM = 1001;
 const LAB_FOLIO_TO = 1010;
 
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
 function getHostnameFromReq(req: Request): string {
   const host =
     req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
@@ -59,62 +53,8 @@ function getTenantSlugFromReq(
   );
 }
 
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return { ok: false as const, error: "Unauthorized", status: 401 };
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) {
-    return { ok: false as const, error: "Unauthorized", status: 401 };
-  }
-
-  return { ok: true as const };
-}
-
-/**
- * LAB security guard:
- * - validates authenticated request separately with requireUser()
- * - forces tenantId to match the tenant resolved from current host/subdomain
- * - accepts body.tenantSlug only as fallback when host cannot resolve tenant
- *
- * This is still not a full tenant-members authorization system.
- * Future hardening should replace this with requireTenantAdmin/tenant_members.
- */
-async function validateTenantAccess(
-  req: Request,
-  tenantId: string,
-  body?: DteLabRequest | null,
-) {
-  const tenantSlug = getTenantSlugFromReq(req, body);
-
-  if (!tenantSlug) {
-    return {
-      ok: false as const,
-      error: "No se pudo detectar el tenant actual",
-      status: 400,
-    };
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("tenants")
-    .select("id, slug")
-    .eq("id", tenantId)
-    .eq("slug", tenantSlug)
-    .maybeSingle();
-
-  if (error || !data?.id) {
-    return {
-      ok: false as const,
-      error: "Tenant no autorizado o inexistente",
-      status: 403,
-    };
-  }
-
-  return {
-    ok: true as const,
-    tenantId: data.id as string,
-    tenantSlug: data.slug as string,
-  };
+async function validateTenantAccess(req: Request, tenantId: string, body?: { tenantSlug?: string } | null) {
+  return requireTenantAdmin({ req, tenantId, tenantSlug: getTenantSlugFromReq(req, body) });
 }
 
 function textOrFallback(value: unknown, fallback: string): string {
@@ -206,14 +146,6 @@ function buildDraft(body: DteLabRequest, folio: number): TaxDocumentDraft {
 
 export async function POST(req: Request) {
   try {
-    const auth = await requireUser(req);
-    if (!auth.ok) {
-      return NextResponse.json(
-        { ok: false, error: auth.error },
-        { status: auth.status },
-      );
-    }
-
     const body = (await req.json().catch(() => null)) as DteLabRequest | null;
     const tenantId = String(body?.tenantId ?? "").trim();
 

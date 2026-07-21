@@ -1,6 +1,7 @@
 // app/api/appointments/reschedule-by-id/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
@@ -39,6 +40,12 @@ export async function POST(req: Request) {
     if (!isUuid(appointment_id)) {
       return NextResponse.json({ ok: false, error: "Invalid appointment_id" }, { status: 400 });
     }
+
+    if (!tenant_id_from_body || !isUuid(tenant_id_from_body)) {
+      return NextResponse.json({ ok: false, error: "Invalid tenant_id" }, { status: 400 });
+    }
+    const access = await requireTenantAdmin({ req, tenantId: tenant_id_from_body });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     // ✅ Normalizar fechas y validar rango
     const new_start_at = new Date(new_start_at_raw).toISOString();
@@ -122,6 +129,7 @@ export async function POST(req: Request) {
         rescheduled_at,
       })
       .eq("id", appointment_id)
+      .eq("tenant_id", tenant_id_from_body)
       .select("id, tenant_id, professional_id, start_at, end_at, status, booking_status, rescheduled_at")
       .single();
 

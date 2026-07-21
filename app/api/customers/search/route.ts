@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -29,6 +30,9 @@ export async function GET(req: Request) {
     if (!tenantId || !isUuid(tenantId)) {
       return NextResponse.json({ ok: false, error: "tenantId requerido o inválido" }, { status: 400 });
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
     if (q.length < 2) {
       return NextResponse.json({ ok: true, customers: [] });
     }

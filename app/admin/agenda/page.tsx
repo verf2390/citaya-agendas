@@ -8,6 +8,8 @@
 
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 /**
  * =====================================================
  * ADMIN AGENDA — MULTI-TENANT (subdominio)
@@ -564,7 +566,7 @@ export default function AgendaPage() {
 
   const loadProfessionals = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/professionals/list`, {
+      const res = await adminFetch(`/api/admin/professionals/list`, {
         cache: "no-store",
       });
       const json = await res.json().catch(() => null);
@@ -603,7 +605,7 @@ export default function AgendaPage() {
         return;
       }
 
-      const res = await fetch(`/api/customers/list?tenantId=${tenantId}`, {
+      const res = await adminFetch(`/api/customers/list?tenantId=${tenantId}`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -645,7 +647,7 @@ export default function AgendaPage() {
         qs.set("professionalId", professionalId);
         qs.set("tenantId", tenantId);
 
-        const res = await fetch(
+        const res = await adminFetch(
           `/api/admin/availability/list?${qs.toString()}`,
           { cache: "no-store" },
         );
@@ -699,7 +701,7 @@ export default function AgendaPage() {
         })),
       };
 
-      const res = await fetch("/api/admin/availability/upsert", {
+      const res = await adminFetch("/api/admin/availability/upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -742,7 +744,7 @@ export default function AgendaPage() {
         if (start) qs.set("start", start);
         if (end) qs.set("end", end);
 
-        const res = await fetch(
+        const res = await adminFetch(
           `/api/admin/appointments/range?${qs.toString()}`,
           {
             cache: "no-store",
@@ -805,7 +807,7 @@ export default function AgendaPage() {
       const qs = new URLSearchParams();
       qs.set("tenantId", tenantId);
 
-      const res = await fetch(`/api/admin/services/list?${qs.toString()}`, {
+      const res = await adminFetch(`/api/admin/services/list?${qs.toString()}`, {
         cache: "no-store",
       });
       const json = await res.json().catch(() => null);
@@ -847,7 +849,7 @@ export default function AgendaPage() {
         qs.set("professionalId", professionalId);
         qs.set("serviceId", serviceId);
 
-        const res = await fetch(
+        const res = await adminFetch(
           `/api/admin/service-rules/list?${qs.toString()}`,
           { cache: "no-store" },
         );
@@ -918,7 +920,7 @@ export default function AgendaPage() {
         })),
       };
 
-      const res = await fetch("/api/admin/service-rules/upsert", {
+      const res = await adminFetch("/api/admin/service-rules/upsert", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
@@ -1122,7 +1124,7 @@ export default function AgendaPage() {
 
     serviceId?: string | null;
   }) {
-    const res = await fetch("/api/appointments/create", {
+    const res = await adminFetch("/api/appointments/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -1258,7 +1260,7 @@ export default function AgendaPage() {
       qs.set("professionalId", selectedProfessionalId);
       qs.set("serviceId", eventServiceId);
 
-      const res = await fetch(
+      const res = await adminFetch(
         `/api/admin/service-rules/list?${qs.toString()}`,
         {
           cache: "no-store",
@@ -1334,7 +1336,7 @@ export default function AgendaPage() {
     }
 
     try {
-      const res = await fetch("/api/appointments/reschedule-by-id", {
+      const res = await adminFetch("/api/appointments/reschedule-by-id", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -1379,7 +1381,7 @@ export default function AgendaPage() {
 
   async function cancelAppointment(appointmentId: string) {
     try {
-      const res = await fetch("/api/appointments/cancel-by-id", {
+      const res = await adminFetch("/api/appointments/cancel-by-id", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

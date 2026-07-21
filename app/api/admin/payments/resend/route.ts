@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type PaymentResendPayload = {
   appointmentId?: string;
@@ -135,6 +136,9 @@ export async function POST(req: Request) {
 
     const tenant = await fetchTenantBranding(payload.tenantSlug);
     if (!tenant?.id) return badRequest("tenantSlug invalido");
+
+    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug: payload.tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const { data: appointment } = await supabaseAdmin
       .from("appointments")

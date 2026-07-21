@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useMemo, useState } from "react";
 import { Image as ImageIcon, RefreshCw, Send, Upload, Video, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -376,7 +378,7 @@ export default function AdminCampanasPage() {
           templateKey,
           segmentKey,
         });
-        const res = await fetch(`/api/admin/campaigns/send?${params.toString()}`, {
+        const res = await adminFetch(`/api/admin/campaigns/send?${params.toString()}`, {
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         });
@@ -471,7 +473,7 @@ export default function AdminCampanasPage() {
       formData.append("file", file);
       formData.append("tenantSlug", tenantSlug);
 
-      const res = await fetch("/api/admin/campaigns/upload-media", {
+      const res = await adminFetch("/api/admin/campaigns/upload-media", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
@@ -540,7 +542,7 @@ export default function AdminCampanasPage() {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
 
-      const res = await fetch("/api/admin/campaigns/send", {
+      const res = await adminFetch("/api/admin/campaigns/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

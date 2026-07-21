@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type CampaignRecipient = {
   customer_id?: string;
@@ -88,6 +89,9 @@ export async function POST(req: Request) {
     if (payload.channel === "email" && !payload.subject) {
       return badRequest("subject requerido para email");
     }
+
+    const access = await requireTenantAdmin({ req, tenantId: payload.tenant_id, tenantSlug: payload.tenant_slug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const webhookUrl = process.env.N8N_CAMPAIGN_WEBHOOK_URL;
     if (!webhookUrl) {

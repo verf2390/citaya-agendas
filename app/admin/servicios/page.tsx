@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -127,7 +129,7 @@ export default function ServiciosPage() {
       return;
     }
 
-    const res = await fetch(`/api/admin/services?tenantId=${encodeURIComponent(tenantId)}`, {
+    const res = await adminFetch(`/api/admin/services?tenantId=${encodeURIComponent(tenantId)}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
@@ -193,7 +195,7 @@ export default function ServiciosPage() {
       return;
     }
 
-    const res = await fetch("/api/admin/services", {
+    const res = await adminFetch("/api/admin/services", {
       method: isEditing ? "PATCH" : "POST",
       headers: {
         "Content-Type": "application/json",
@@ -239,7 +241,7 @@ export default function ServiciosPage() {
       return;
     }
 
-    const res = await fetch("/api/admin/services", {
+    const res = await adminFetch("/api/admin/services", {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",

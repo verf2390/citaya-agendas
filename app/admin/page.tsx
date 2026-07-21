@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import Link from "next/link";
@@ -413,11 +415,11 @@ export default function AdminDashboardPage() {
       });
 
       const [appointmentsRes, customersRes] = await Promise.all([
-        fetch(`/api/admin/appointments/range?${params.toString()}`, {
+        adminFetch(`/api/admin/appointments/range?${params.toString()}`, {
           cache: "no-store",
         }),
         token
-          ? fetch(`/api/customers/list?tenantId=${tenantId}`, {
+          ? adminFetch(`/api/customers/list?tenantId=${tenantId}`, {
               headers: { Authorization: `Bearer ${token}` },
               cache: "no-store",
             })

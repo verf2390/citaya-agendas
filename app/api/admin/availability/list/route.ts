@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 function getHostnameFromReq(req: Request) {
@@ -62,6 +63,9 @@ export async function GET(req: Request) {
 
       tenantId = tenant.id;
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
     // ✅ Verifica que el profesional pertenece al tenant (seguridad multi-tenant)
     const { data: prof, error: profErr } = await supabaseAdmin

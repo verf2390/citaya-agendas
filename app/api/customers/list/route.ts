@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -41,6 +42,9 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     // ✅ Listar customers por tenant (service role)
     const { data: customers, error } = await supabaseAdmin

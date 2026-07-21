@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 const DocumentTypeSchema = z.enum(["boleta", "factura", "exenta"]);
 const ProviderSchema = z.enum(["none", "manual_sii", "api_provider"]);
@@ -91,43 +92,8 @@ function schemaHint(error: { message?: string }) {
   return null;
 }
 
-function getBearerToken(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return { ok: false as const, error: "Unauthorized", status: 401 };
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) {
-    return { ok: false as const, error: "Unauthorized", status: 401 };
-  }
-
-  return { ok: true as const };
-}
-
-async function validateTenant(tenantId: string, tenantSlug?: string | null) {
-  let query = supabaseAdmin.from("tenants").select("id, slug").eq("id", tenantId);
-  if (tenantSlug) query = query.eq("slug", tenantSlug);
-
-  const { data, error } = await query.maybeSingle();
-  if (error || !data?.id) return false;
-  return true;
-}
-
 export async function GET(req: Request) {
   try {
-    const auth = await requireUser(req);
-    if (!auth.ok) {
-      return NextResponse.json(
-        { ok: false, error: auth.error },
-        { status: auth.status },
-      );
-    }
-
     const { searchParams } = new URL(req.url);
     const tenantId = String(searchParams.get("tenantId") ?? "").trim();
     const tenantSlug = String(searchParams.get("tenantSlug") ?? "").trim();
@@ -139,12 +105,8 @@ export async function GET(req: Request) {
       );
     }
 
-    if (!(await validateTenant(tenantId, tenantSlug || null))) {
-      return NextResponse.json(
-        { ok: false, error: "Tenant no autorizado o inexistente" },
-        { status: 403 },
-      );
-    }
+    const access = await requireTenantAdmin({ req, tenantId, tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const { data, error } = await supabaseAdmin
       .from("tenant_billing_settings")
@@ -179,14 +141,6 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const auth = await requireUser(req);
-    if (!auth.ok) {
-      return NextResponse.json(
-        { ok: false, error: auth.error },
-        { status: auth.status },
-      );
-    }
-
     const body = await req.json().catch(() => null);
     const parsed = BillingSettingsSchema.safeParse(body);
 
@@ -198,12 +152,8 @@ export async function PUT(req: Request) {
     }
 
     const settings = parsed.data;
-    if (!(await validateTenant(settings.tenantId, settings.tenantSlug ?? null))) {
-      return NextResponse.json(
-        { ok: false, error: "Tenant no autorizado o inexistente" },
-        { status: 403 },
-      );
-    }
+    const access = await requireTenantAdmin({ req, tenantId: settings.tenantId, tenantSlug: settings.tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const taxEmail = emptyToNull(settings.taxEmail);
     const taxId = emptyToNull(settings.taxId);

@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -96,7 +98,7 @@ export default function ConfiguracionPage() {
       }
       setAuthChecked(true);
 
-      const res = await fetch(
+      const res = await adminFetch(
         `/api/admin/tenant?tenantSlug=${encodeURIComponent(slug)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -150,7 +152,7 @@ export default function ConfiguracionPage() {
       return;
     }
 
-    const res = await fetch("/api/admin/tenant", {
+    const res = await adminFetch("/api/admin/tenant", {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 function getHostnameFromReq(req: Request) {
@@ -63,6 +64,9 @@ export async function GET(req: Request) {
 
       tenantId = tenant.id;
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
     // 2) Listar profesionales SOLO del tenant
     const { data, error } = await supabaseAdmin

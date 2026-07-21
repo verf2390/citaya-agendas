@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -98,7 +100,7 @@ export function AvailabilityEditor({
     setError(null);
     setOkMsg(null);
 
-    fetch(
+    adminFetch(
       `/api/admin/availability/list?professionalId=${encodeURIComponent(
         professionalId
       )}`
@@ -276,7 +278,7 @@ export function AvailabilityEditor({
         })),
       };
 
-      const res = await fetch("/api/admin/availability/upsert", {
+      const res = await adminFetch("/api/admin/availability/upsert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useMemo, useState } from "react";
 import { normalizeCLPhone } from "@/app/lib/phone";
 import { toast } from "@/components/ui/use-toast";
@@ -77,7 +79,7 @@ export default function CustomerUpsertModal(props: {
         return;
       }
 
-      const res = await fetch("/api/customers/create", {
+      const res = await adminFetch("/api/customers/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -311,7 +311,7 @@ export function checkDteReadiness(options: CheckOptions = {}): DteReadinessResul
       exists(repoRoot, "lib/api/requireTenantAdmin.ts") ? "OK" : "WARNING",
       "requireTenantAdmin valida JWT, tenant por host/slug/id y usa tenant_members/platform_admins cuando existen.",
       "critical",
-      "Reemplazar fallback legacy cuando membresias admin esten confirmadas en DB real.",
+      "Autorizacion admin fail-closed basada en tenant_members/platform_admins confirmadas.",
     ),
     item(
       "admin_trace_endpoints",

@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type TenantResolution = {
@@ -15,12 +16,6 @@ const SERVICE_SELECT =
   "id, tenant_id, name, description, duration_min, price, currency, is_active, created_at";
 const SERVICE_SELECT_NO_CREATED =
   "id, tenant_id, name, description, duration_min, price, currency, is_active";
-
-function getBearerToken(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
 
 function getHostnameFromReq(req: Request) {
   const host =
@@ -66,14 +61,6 @@ function normalizeService(row: Record<string, any>) {
 
 function jsonError(error: string, status: number) {
   return NextResponse.json({ ok: false, error }, { status });
-}
-
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return false;
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  return !error && !!data?.user;
 }
 
 async function resolveTenantId(
@@ -143,10 +130,10 @@ async function selectChangedService(id: string, tenantId: string) {
 
 export async function GET(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
     const tenant = await resolveTenantId(req);
     if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
+    if (!access.ok) return jsonError(access.error, access.status);
 
     const withCreated = await supabaseAdmin
       .from("services")
@@ -177,11 +164,11 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
     const body = await req.json().catch(() => null);
     const tenant = await resolveTenantId(req, body);
     if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
+    if (!access.ok) return jsonError(access.error, access.status);
 
     const name = cleanText(body?.name);
     const description = cleanText(body?.description);
@@ -235,11 +222,11 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
     const body = await req.json().catch(() => null);
     const tenant = await resolveTenantId(req, body);
     if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
+    if (!access.ok) return jsonError(access.error, access.status);
 
     const serviceId = cleanText(body?.id ?? body?.serviceId);
     if (!serviceId || !isUuid(serviceId)) {
@@ -330,12 +317,12 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    if (!(await requireUser(req))) return jsonError("Unauthorized", 401);
-
     const url = new URL(req.url);
     const body = await req.json().catch(() => null);
     const tenant = await resolveTenantId(req, body);
     if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
+    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
+    if (!access.ok) return jsonError(access.error, access.status);
 
     const serviceId =
       cleanText(body?.id ?? body?.serviceId) || cleanText(url.searchParams.get("id"));

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:admin-auth": "node scripts/run-admin-auth-tests.mjs",
     "dte:lab": "node scripts/dte/generate-lab-xml.mjs --mode=lab",
     "dte:xsd": "node scripts/dte/generate-lab-xml.mjs --mode=xsd-structure",
     "dte:validate:xsd": "node scripts/dte/validate-xsd.mjs docs/dte-sii/samples/lab-envio-dte.xml docs/dte-sii/xsd/EnvioDTE_v10.xsd",

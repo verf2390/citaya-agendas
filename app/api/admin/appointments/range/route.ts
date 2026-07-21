@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -49,6 +50,9 @@ export async function GET(req: Request) {
         { status: 400, headers: NO_STORE_HEADERS },
       );
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status, headers: NO_STORE_HEADERS });
 
     if (professionalId && !isUuid(professionalId)) {
       return NextResponse.json(

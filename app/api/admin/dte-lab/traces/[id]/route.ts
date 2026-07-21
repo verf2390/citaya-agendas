@@ -131,9 +131,6 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
           ...(backend === "supabase"
             ? []
             : ["Persistencia Supabase no activada; detalle proviene de memory/LAB."]),
-          ...(tenantAccess.authMode === "legacy_host_tenant_match"
-            ? ["Autorizacion admin usando fallback legacy host/tenant; confirmar tenant_members antes de activar Supabase."]
-            : []),
         ],
       });
     } catch (error) {

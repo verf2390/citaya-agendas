@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type CampaignPayload = {
@@ -601,6 +602,9 @@ export async function GET(req: Request) {
     const tenant = await fetchTenantBranding(tenantSlug);
     if (!tenant?.id) return badRequest("Tenant no encontrado.");
 
+    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+
     const paymentCampaign = isPaymentCampaign({ templateKey, segmentKey });
     const preview = await buildAudiencePreview(
       tenant.id,
@@ -679,6 +683,9 @@ export async function POST(req: Request) {
 
     const tenant = await fetchTenantBranding(tenantSlug);
     if (!tenant?.id) return badRequest("Tenant no encontrado.");
+
+    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const ctaLabel = paymentCampaign ? "Pagar ahora" : payload.ctaLabel || "Reservar hora";
     const ctaUrl = paymentCampaign

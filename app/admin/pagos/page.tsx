@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -232,7 +234,7 @@ export default function AdminPagosPage() {
     setLoadingPaymentSettings(true);
 
     try {
-      const res = await fetch(
+      const res = await adminFetch(
         `/api/admin/payment-settings?tenantId=${encodeURIComponent(tenantId)}`,
         { cache: "no-store" },
       );
@@ -319,7 +321,7 @@ export default function AdminPagosPage() {
       end: "2100-01-01T00:00:00.000Z",
     });
 
-    const res = await fetch(`/api/admin/appointments/range?${params.toString()}`, {
+    const res = await adminFetch(`/api/admin/appointments/range?${params.toString()}`, {
       cache: "no-store",
     });
     const json = await res.json().catch(() => null);
@@ -485,7 +487,7 @@ export default function AdminPagosPage() {
     setSavingPaymentSettings(true);
 
     try {
-      const res = await fetch("/api/admin/payment-settings", {
+      const res = await adminFetch("/api/admin/payment-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -537,10 +539,10 @@ export default function AdminPagosPage() {
   const markAsPaid = async (appointmentId: string) => {
     setMarkingId(appointmentId);
     try {
-      const res = await fetch("/api/admin/appointments/mark-paid", {
+      const res = await adminFetch("/api/admin/appointments/mark-paid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appointmentId, paymentProvider: "manual" }),
+        body: JSON.stringify({ appointmentId, tenantId, paymentProvider: "manual" }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
@@ -574,7 +576,7 @@ export default function AdminPagosPage() {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
 
-      const res = await fetch("/api/admin/payments/resend", {
+      const res = await adminFetch("/api/admin/payments/resend", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

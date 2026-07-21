@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type CampaignMediaType = "image" | "gif" | "video";
@@ -93,6 +94,9 @@ export async function POST(req: Request) {
     if (tenantError || !tenant?.id) {
       return jsonError("No se pudo validar el negocio actual.", 404);
     }
+
+    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const rule = ALLOWED_TYPES[file.type];
     if (!rule) {

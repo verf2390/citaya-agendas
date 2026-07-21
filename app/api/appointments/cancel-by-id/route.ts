@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
@@ -37,6 +38,9 @@ export async function POST(req: Request) {
     if (!isUuid(tenant_id)) {
       return NextResponse.json({ ok: false, error: "Invalid tenant_id" }, { status: 400 });
     }
+
+    const access = await requireTenantAdmin({ req, tenantId: tenant_id });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     // 0) Verificar que la cita exista y pertenezca al tenant
     const { data: appt, error: apptErr } = await supabaseAdmin

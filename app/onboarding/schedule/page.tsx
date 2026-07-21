@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -42,7 +44,7 @@ export default function OnboardingSchedulePage() {
       }
       setTenantId(tenant.id);
 
-      const res = await fetch(`/api/admin/professionals/list?tenantId=${encodeURIComponent(tenant.id)}`, { cache: "no-store" });
+      const res = await adminFetch(`/api/admin/professionals/list?tenantId=${encodeURIComponent(tenant.id)}`, { cache: "no-store" });
       const json = await res.json().catch(() => null);
       const firstProfessional = json?.professionals?.[0]?.id ?? "";
       if (!firstProfessional) {
@@ -61,7 +63,7 @@ export default function OnboardingSchedulePage() {
   const save = async () => {
     if (!tenantId || !professionalId || days.length === 0) return;
     setSaving(true);
-    const res = await fetch("/api/admin/availability/upsert", {
+    const res = await adminFetch("/api/admin/availability/upsert", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

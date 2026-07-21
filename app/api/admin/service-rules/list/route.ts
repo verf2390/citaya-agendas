@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 export async function GET(req: Request) {
   try {
@@ -14,6 +15,9 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
     const { data, error } = await supabaseServer
       .from("service_availability_rules")

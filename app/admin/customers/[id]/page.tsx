@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -209,7 +211,7 @@ export default function EditCustomerPage() {
       return;
     }
 
-    const res = await fetch(
+    const res = await adminFetch(
       `/api/customers/${id}/history?tenantId=${encodeURIComponent(tenantId)}`,
       {
         method: "GET",

@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -781,7 +783,7 @@ export default function AdminFacturacionPage() {
 
       setTenantId(tenant.id);
 
-      const res = await fetch(
+      const res = await adminFetch(
         `/api/admin/billing-settings?tenantId=${encodeURIComponent(tenant.id)}&tenantSlug=${encodeURIComponent(slug)}`,
         {
           headers: {
@@ -804,7 +806,7 @@ export default function AdminFacturacionPage() {
         tenantId: tenant.id,
         tenantSlug: slug,
       });
-      const dteStatusRes = await fetch(
+      const dteStatusRes = await adminFetch(
         `/api/admin/dte-lab/status?${statusParams.toString()}`,
         {
           headers: {
@@ -822,7 +824,7 @@ export default function AdminFacturacionPage() {
         );
       }
 
-      const readinessRes = await fetch("/api/admin/dte-lab/readiness", {
+      const readinessRes = await adminFetch("/api/admin/dte-lab/readiness", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -840,7 +842,7 @@ export default function AdminFacturacionPage() {
         );
       }
 
-      const certificationRes = await fetch("/api/admin/dte-lab/sii-certification", {
+      const certificationRes = await adminFetch("/api/admin/dte-lab/sii-certification", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -863,7 +865,7 @@ export default function AdminFacturacionPage() {
         tenantSlug: slug,
         limit: "10",
       });
-      const tracesRes = await fetch(`/api/admin/dte-lab/traces?${tracesParams.toString()}`, {
+      const tracesRes = await adminFetch(`/api/admin/dte-lab/traces?${tracesParams.toString()}`, {
         headers: {
           Authorization: `Bearer ${sessionData.session.access_token}`,
         },
@@ -915,7 +917,7 @@ export default function AdminFacturacionPage() {
       return;
     }
 
-    const res = await fetch("/api/admin/billing-settings", {
+    const res = await adminFetch("/api/admin/billing-settings", {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -955,7 +957,7 @@ export default function AdminFacturacionPage() {
       return;
     }
 
-    const res = await fetch("/api/admin/dte-lab/generate-xml", {
+    const res = await adminFetch("/api/admin/dte-lab/generate-xml", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

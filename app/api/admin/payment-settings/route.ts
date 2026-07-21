@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 
@@ -76,6 +77,9 @@ export async function GET(req: Request) {
       );
     }
 
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+
     const config = await getTenantPaymentConfig(tenantId);
 
     return NextResponse.json({
@@ -135,6 +139,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     if (!parsedMode.success) {
       return NextResponse.json(

@@ -1,6 +1,7 @@
 // app/api/admin/service-rules/upsert/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type RowIn = {
   id?: string | null;
@@ -57,6 +58,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
     if (!Array.isArray(items)) {
       return NextResponse.json({ error: "items inválido" }, { status: 400 });

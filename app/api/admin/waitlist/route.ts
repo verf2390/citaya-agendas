@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type WaitlistAdminRow = {
   id: string;
@@ -24,29 +25,8 @@ type WaitlistAdminRow = {
   created_at: string;
 };
 
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-async function requireUser(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return false;
-
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  return !error && !!data?.user;
-}
-
 export async function GET(req: Request) {
   try {
-    if (!(await requireUser(req))) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
     const { searchParams } = new URL(req.url);
     const tenantId = String(searchParams.get("tenantId") || "").trim();
     const status = String(searchParams.get("status") || "active").trim();
@@ -57,6 +37,9 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
+
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     let query = supabaseAdmin
       .from("waitlist_requests")

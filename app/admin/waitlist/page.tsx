@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -160,7 +162,7 @@ export default function AdminWaitlistPage() {
     }
 
     const params = new URLSearchParams({ tenantId, status });
-    const res = await fetch(`/api/admin/waitlist?${params.toString()}`, {
+    const res = await adminFetch(`/api/admin/waitlist?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
@@ -192,7 +194,7 @@ export default function AdminWaitlistPage() {
     if (!tenantId) return;
     setActionId(id);
     const token = await getToken();
-    const res = await fetch(`/api/admin/waitlist/${id}?tenantId=${tenantId}`, {
+    const res = await adminFetch(`/api/admin/waitlist/${id}?tenantId=${tenantId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -217,7 +219,7 @@ export default function AdminWaitlistPage() {
 
     setActionId(id);
     const token = await getToken();
-    const res = await fetch(`/api/admin/waitlist/${id}?tenantId=${tenantId}`, {
+    const res = await adminFetch(`/api/admin/waitlist/${id}?tenantId=${tenantId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });

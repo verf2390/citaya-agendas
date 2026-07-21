@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import type { PaymentProviderId } from "@/services/payments/providers/types";
 
@@ -31,10 +32,15 @@ export async function POST(req: Request) {
       );
     }
 
+    const tenantId = String(body?.tenantId ?? "").trim();
+    const access = await requireTenantAdmin({ req, tenantId });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+
     const { data: appointment, error: readError } = await supabaseAdmin
       .from("appointments")
-      .select("id, payment_paid_amount, payment_required_amount")
+      .select("id, tenant_id, payment_paid_amount, payment_required_amount")
       .eq("id", appointmentId)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
 
     if (readError) {
@@ -68,6 +74,7 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", appointmentId)
+      .eq("tenant_id", tenantId)
       .select("id, payment_status")
       .maybeSingle();
 

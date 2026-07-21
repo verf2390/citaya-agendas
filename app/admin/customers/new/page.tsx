@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -51,7 +53,7 @@ export default function NewCustomerPage() {
     try {
       // ✅ IMPORTANTE: ya NO insertamos customers desde frontend (RLS lo bloquea)
       // Ahora usamos API server-side
-      const res = await fetch("/api/customers/create", {
+      const res = await adminFetch("/api/customers/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,5 +1,7 @@
 "use client";
 
+import { adminFetch } from "@/lib/api/adminFetch";
+
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -185,7 +187,7 @@ export default function CustomersPage() {
       return;
     }
 
-    const res = await fetch(`/api/customers/list?tenantId=${tenantId}`, {
+    const res = await adminFetch(`/api/customers/list?tenantId=${tenantId}`, {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
@@ -512,7 +514,7 @@ export default function CustomersPage() {
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
 
-      const res = await fetch("/api/admin/messages/send", {
+      const res = await adminFetch("/api/admin/messages/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

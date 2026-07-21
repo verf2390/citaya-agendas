@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -7,6 +8,8 @@ export async function GET(req: Request) {
   if (!tenantId) {
     return NextResponse.json({ error: "Falta tenantId" }, { status: 400 });
   }
+  const access = await requireTenantAdmin({ req, tenantId });
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
 
   const { data, error } = await supabaseServer
     .from("services")

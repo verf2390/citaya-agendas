@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type IncomingBlock = {
@@ -72,6 +73,9 @@ export async function POST(req: Request) {
     if (tenantErr || !tenant?.id) {
       return NextResponse.json({ error: "tenant no encontrado" }, { status: 404, headers: NO_STORE_HEADERS });
     }
+
+    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
+    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status, headers: NO_STORE_HEADERS });
 
     // profesional pertenece al tenant
     const { data: prof, error: profErr } = await supabaseAdmin

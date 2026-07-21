@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type MessageLogPayload = {
   type?: string;
@@ -77,6 +78,9 @@ export async function POST(req: Request) {
         { status: 404 },
       );
     }
+
+    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const { error } = await supabaseAdmin.from("message_logs").insert({
       tenant_id: tenant.id,
