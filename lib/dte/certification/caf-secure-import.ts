@@ -58,6 +58,7 @@ export type LoadCafOptions = {
   materialKind?: CafMaterialKind;
   expectedSha256?: string;
   expectedRange?: { from: number; to: number };
+  expectedIdk?: string;
   expectedOwnerUid?: number;
   allowPendingOfficialTrustAnchor?: boolean;
 };
@@ -221,7 +222,8 @@ export function loadCafAuthorization(
   const authorizationDate = value(daXml, "FA");
   assertDate(authorizationDate);
   const idk = value(daXml, "IDK");
-  if (!idk) reject("IDK");
+  if (!idk || (options.expectedIdk && idk !== options.expectedIdk))
+    reject("IDK");
   const anchor = options.trustStore.get(idk);
   let trustStatus: CafTrustStatus;
   if (!anchor) {

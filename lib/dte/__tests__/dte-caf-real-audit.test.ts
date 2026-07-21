@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import {
   auditRealCertificationCaf,
   printRealCafAudit,
@@ -25,7 +25,15 @@ import {
 } from "../certification/caf-secure-import";
 
 const ISSUER_RUT = "76086428-5";
-const IDK = "300";
+const IDK = "100";
+
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => {
+  throw new Error("NETWORK_FORBIDDEN_IN_CAF_AUDIT_TEST");
+};
+after(() => {
+  globalThis.fetch = originalFetch;
+});
 
 type Fixture = {
   dir: string;
@@ -103,6 +111,14 @@ function envFor(fixture: Fixture): NodeJS.ProcessEnv {
     DTE_SII_ENABLE_SUBMIT: "false",
     DTE_SII_ENABLE_STATUS: "false",
     DTE_SII_LIVE_AUTH: "false",
+  };
+}
+function manualEnvFor(fixture: Fixture): NodeJS.ProcessEnv {
+  return {
+    ...envFor(fixture),
+    DTE_ALLOW_MANUAL_CAF_PROVENANCE: "true",
+    DTE_CAF_MANUAL_PROVENANCE_CONFIRM:
+      "MAULLIN_CERTIFICATION_DOWNLOAD_REVIEWED",
   };
 }
 function mutated(
@@ -318,7 +334,7 @@ test("encoding rules distinguish ASCII ambiguity from declared Latin-1", () => {
 
 test("public audit output excludes issuer identifiers and cryptographic material", () => {
   const fixture = createFixture();
-  const result = auditRealCertificationCaf(envFor(fixture));
+  const result = auditRealCertificationCaf(manualEnvFor(fixture));
   const output: string[] = [];
   const originalLog = console.log;
   console.log = (...values: unknown[]) => output.push(values.join(" "));
@@ -341,6 +357,103 @@ test("public audit output excludes issuer identifiers and cryptographic material
   ];
   for (const value of forbidden) assert.equal(rendered.includes(value), false);
   assert.match(rendered, /issuerMatch=valid/);
+  assert.match(rendered, /manualProvenance=accepted/);
+  assert.match(rendered, /trustVerified=false/);
+  assert.match(rendered, /certificationOfflineUseAllowed=true/);
+  assert.match(rendered, /productionUseBlocked=true/);
+});
+
+test("manual provenance requires exact confirmation and certification-only environment", () => {
+  const fixture = createFixture();
+  assert.throws(
+    () =>
+      auditRealCertificationCaf({
+        ...envFor(fixture),
+        DTE_ALLOW_MANUAL_CAF_PROVENANCE: "true",
+      }),
+    /field=manualProvenance\.confirmation/,
+  );
+  assert.throws(
+    () =>
+      auditRealCertificationCaf({
+        ...manualEnvFor(fixture),
+        DTE_CAF_MANUAL_PROVENANCE_CONFIRM: "WRONG",
+      }),
+    /field=manualProvenance\.confirmation/,
+  );
+  for (const [name, value] of [
+    ["DTE_MODE", "production"],
+    ["DTE_SII_ENV", "production"],
+  ] as const) {
+    assert.throws(
+      () =>
+        auditRealCertificationCaf({ ...manualEnvFor(fixture), [name]: value }),
+      /field=environment/,
+    );
+  }
+});
+
+test("exact manual provenance configuration enables only certification offline use", () => {
+  const fixture = createFixture();
+  const result = auditRealCertificationCaf(manualEnvFor(fixture));
+  assert.equal(result.status, "READY_FOR_CERTIFICATION_OFFLINE");
+  assert.equal(result.manualProvenance, "accepted");
+  assert.equal(result.officialSiiTrustAnchor, "pending");
+  assert.equal(result.trustVerified, false);
+  assert.equal(result.certificationOfflineUseAllowed, true);
+  assert.equal(result.productionUseBlocked, true);
+  assert.equal(result.realUseBlocked, true);
+  assert.equal(result.siiContacted, false);
+  assert.equal(result.ledgerImported, false);
+  assert.equal(result.foliosReserved, 0);
+  assert.equal(result.dteGenerated, false);
+});
+
+test("manual provenance never masks IDK, owner or supplied-anchor failures", () => {
+  const fixture = createFixture();
+  const wrongIdk = mutated(fixture, (xml) =>
+    xml.replace("<IDK>100</IDK>", "<IDK>101</IDK>"),
+  );
+  assert.throws(
+    () =>
+      auditRealCertificationCaf({
+        ...manualEnvFor(fixture),
+        DTE_REAL_CAF_PATH: wrongIdk.path,
+        DTE_REAL_CAF_EXPECTED_SHA256: wrongIdk.sha256,
+      }),
+    /field=IDK/,
+  );
+
+  const trust: CafTrustStore = new Map();
+  assert.throws(
+    () =>
+      loadCafAuthorization(fixture.cafPath, {
+        repoRoot: process.cwd(),
+        expectedIssuerRut: ISSUER_RUT,
+        expectedType: 33,
+        expectedRange: { from: 1, to: 5 },
+        expectedIdk: "100",
+        minimumAvailable: 4,
+        expectedOwnerUid: (process.getuid?.() ?? 0) + 1,
+        trustStore: trust,
+        fixtureMode: false,
+        materialKind: "certification_real",
+        allowPendingOfficialTrustAnchor: true,
+      }),
+    /field=owner/,
+  );
+
+  assert.throws(
+    () =>
+      auditRealCertificationCaf({
+        ...manualEnvFor(fixture),
+        DTE_SII_TRUST_ANCHOR_IDK: IDK,
+        DTE_SII_TRUST_ANCHOR_PATH: fixture.anchorPath,
+        DTE_SII_TRUST_ANCHOR_PROVENANCE: "official:test-fixture-only",
+        DTE_SII_TRUST_ANCHOR_SHA256: "0".repeat(64),
+      }),
+    /field=trustAnchor\.sha256/,
+  );
 });
 
 test("production runtime and external operation flags remain blocked", () => {
@@ -350,13 +463,16 @@ test("production runtime and external operation flags remain blocked", () => {
       auditRealCertificationCaf({ ...envFor(fixture), NODE_ENV: "production" }),
     /field=NODE_ENV/,
   );
-  for (const name of [
-    "DTE_SII_ENABLE_SUBMIT",
-    "DTE_SII_ENABLE_STATUS",
-    "DTE_SII_LIVE_AUTH",
-  ]) {
+  for (const [name, value] of [
+    ["DTE_SII_ENABLE_SUBMIT", "true"],
+    ["DTE_SII_ENABLE_STATUS", "true"],
+    ["DTE_SII_LIVE_AUTH", "true"],
+    ["DTE_SII_TOKEN", "present"],
+    ["DTE_TRACK_ID", "present"],
+  ] as const) {
     assert.throws(
-      () => auditRealCertificationCaf({ ...envFor(fixture), [name]: "true" }),
+      () =>
+        auditRealCertificationCaf({ ...manualEnvFor(fixture), [name]: value }),
       /field=externalOperations/,
     );
   }

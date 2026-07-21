@@ -1,16 +1,17 @@
-import { basename } from "node:path";
 import { loadFacturaPreCafInputFromPath } from "./pre-caf-input-loader";
 import { loadCafAuthorization, type CafTrustStore } from "./caf-secure-import";
 
 export type RealCafAuditStatus =
-  "VERIFIED_LOCAL_AND_OFFICIAL" | "BLOCKED_TRUST_ANCHOR";
+  | "VERIFIED_LOCAL_AND_OFFICIAL"
+  | "READY_FOR_CERTIFICATION_OFFLINE"
+  | "BLOCKED_TRUST_ANCHOR";
 export type RealCafAuditResult = {
   status: RealCafAuditStatus;
   materialKind: "certification_real";
-  sourceName: string;
-  sha256: string;
+  cafSha256: string;
   issuerMatch: "valid";
-  typeCode: 33;
+  type: 33;
+  idk: "100";
   range: "1-5";
   coverage: 5;
   authorizationDateValid: true;
@@ -20,6 +21,10 @@ export type RealCafAuditResult = {
   exactBytesPreserved: true;
   fixtureKey: false;
   realUseBlocked: true;
+  productionUseBlocked: true;
+  certificationOfflineUseAllowed: boolean;
+  manualProvenance: "accepted" | "not_requested";
+  trustVerified: boolean;
   officialSiiTrustAnchor: "verified" | "pending";
   siiContacted: false;
   ledgerImported: false;
@@ -70,6 +75,19 @@ export function auditRealCertificationCaf(
   if (env.NODE_ENV === "production") reject("NODE_ENV");
   if (!enabled(env.DTE_ALLOW_REAL_CAF_AUDIT))
     reject("DTE_ALLOW_REAL_CAF_AUDIT");
+  const manualProvenanceRequested = enabled(
+    env.DTE_ALLOW_MANUAL_CAF_PROVENANCE,
+  );
+  const manualProvenanceConfirmation = String(
+    env.DTE_CAF_MANUAL_PROVENANCE_CONFIRM ?? "",
+  ).trim();
+  if (
+    manualProvenanceRequested &&
+    manualProvenanceConfirmation !== "MAULLIN_CERTIFICATION_DOWNLOAD_REVIEWED"
+  )
+    reject("manualProvenance.confirmation");
+  if (!manualProvenanceRequested && manualProvenanceConfirmation)
+    reject("manualProvenance.flag");
   if (
     enabled(env.DTE_SII_ENABLE_SUBMIT) ||
     enabled(env.DTE_SII_ENABLE_STATUS) ||
@@ -103,6 +121,7 @@ export function auditRealCertificationCaf(
     expectedIssuerRut: contract.input.issuer.rutEmisor,
     expectedType: 33,
     expectedRange: { from: 1, to: 5 },
+    expectedIdk: "100",
     minimumAvailable: 4,
     expectedSha256,
     expectedOwnerUid,
@@ -123,16 +142,21 @@ export function auditRealCertificationCaf(
   )
     reject("preservation");
 
+  const trustVerified = caf.trustStatus === "verified_official";
+  const certificationOfflineUseAllowed =
+    !trustVerified && manualProvenanceRequested;
+
   return {
-    status:
-      caf.trustStatus === "verified_official"
-        ? "VERIFIED_LOCAL_AND_OFFICIAL"
+    status: trustVerified
+      ? "VERIFIED_LOCAL_AND_OFFICIAL"
+      : certificationOfflineUseAllowed
+        ? "READY_FOR_CERTIFICATION_OFFLINE"
         : "BLOCKED_TRUST_ANCHOR",
     materialKind: "certification_real",
-    sourceName: basename(caf.sourcePath),
-    sha256: caf.sha256,
+    cafSha256: caf.sha256,
     issuerMatch: "valid",
-    typeCode: 33,
+    type: 33,
+    idk: "100",
     range: "1-5",
     coverage: 5,
     authorizationDateValid: true,
@@ -142,8 +166,13 @@ export function auditRealCertificationCaf(
     exactBytesPreserved: true,
     fixtureKey: false,
     realUseBlocked: true,
-    officialSiiTrustAnchor:
-      caf.trustStatus === "verified_official" ? "verified" : "pending",
+    productionUseBlocked: true,
+    certificationOfflineUseAllowed,
+    manualProvenance: certificationOfflineUseAllowed
+      ? "accepted"
+      : "not_requested",
+    trustVerified,
+    officialSiiTrustAnchor: trustVerified ? "verified" : "pending",
     siiContacted: false,
     ledgerImported: false,
     foliosReserved: 0,
@@ -154,21 +183,16 @@ export function auditRealCertificationCaf(
 export function printRealCafAudit(result: RealCafAuditResult): void {
   const lines = [
     `status=${result.status}`,
-    `materialKind=${result.materialKind}`,
-    `sourceName=${result.sourceName}`,
-    `sha256=${result.sha256}`,
-    `issuerMatch=${result.issuerMatch}`,
-    `typeCode=${result.typeCode}`,
+    `cafSha256=${result.cafSha256}`,
+    `type=${result.type}`,
     `range=${result.range}`,
-    `coverage=${result.coverage}`,
-    `authorizationDateValid=${result.authorizationDateValid}`,
-    `structureValid=${result.structureValid}`,
-    `keyPairMatch=${result.keyPairMatch}`,
-    `daPublicKeyMatch=${result.daPublicKeyMatch}`,
-    `exactBytesPreserved=${result.exactBytesPreserved}`,
-    `fixtureKey=${result.fixtureKey}`,
-    `realUseBlocked=${result.realUseBlocked}`,
+    `idk=${result.idk}`,
+    `issuerMatch=${result.issuerMatch}`,
+    `manualProvenance=${result.manualProvenance}`,
     `officialSiiTrustAnchor=${result.officialSiiTrustAnchor}`,
+    `trustVerified=${result.trustVerified}`,
+    `certificationOfflineUseAllowed=${result.certificationOfflineUseAllowed}`,
+    `productionUseBlocked=${result.productionUseBlocked}`,
     `siiContacted=${result.siiContacted}`,
     `ledgerImported=${result.ledgerImported}`,
     `foliosReserved=${result.foliosReserved}`,
