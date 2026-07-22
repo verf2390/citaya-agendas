@@ -38,6 +38,8 @@
     "dte:factura:printed-samples:dry-run": "node scripts/dte/factura-printed-samples-dry-run.mjs",
     "dte:factura:caf-import:dry-run": "node scripts/dte/factura-caf-import-dry-run.mjs",
     "dte:factura:caf-real:audit": "node scripts/dte/factura-caf-real-audit.mjs",
+    "dte:factura:cafs-real:audit": "node scripts/dte/factura-cafs-real-audit.mjs",
+    "dte:factura:certification:set:prepare": "node scripts/dte/factura-certification-set-prepare.mjs",
     "dte:factura:folio-allocation:concurrency-check": "node scripts/dte/folio-allocation-concurrency-check.mjs",
     "dte:factura:pre-caf-final-gate": "node scripts/dte/pre-caf-final-gate.mjs",
     "dte:tooling:import-boundary:check": "node scripts/dte/tooling-import-boundary-check.mjs"
