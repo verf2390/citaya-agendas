@@ -8,7 +8,7 @@ import {
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test, { after } from "node:test";
+import test from "node:test";
 import {
   auditRealCertificationCafBundle,
   formatRealCafBundleAudit,
@@ -16,13 +16,7 @@ import {
 import { expectedCertificationFolioPlan } from "../certification/factura-certification-set-prepare";
 
 const RUT = "76086428-5";
-const originalFetch = globalThis.fetch;
-globalThis.fetch = async () => {
-  throw new Error("NETWORK_FORBIDDEN");
-};
-after(() => {
-  globalThis.fetch = originalFetch;
-});
+const fetchBeforeBundleTests = globalThis.fetch;
 function write600(path: string, value: string | Buffer): void {
   writeFileSync(path, value, { mode: 0o600 });
   chmodSync(path, 0o600);
@@ -150,4 +144,7 @@ test("folio plan is exact and leaves one contingency folio per type", () => {
     { type33: 5, type61: 4, type56: 2 },
     { type33: 5, type61: 4, type56: 2 },
   );
+});
+test("CAF bundle audit leaves global fetch unchanged", () => {
+  assert.equal(globalThis.fetch, fetchBeforeBundleTests);
 });

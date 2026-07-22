@@ -3,6 +3,22 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createRequire } from "node:module";
 
+const requestedTestFile = process.env.DTE_TEST_FILE;
+const baseTestEnv = {
+  DTE_MODE: "certification",
+  DTE_SII_ENV: "certification",
+  DTE_SII_LIVE_AUTH: "false",
+  DTE_SII_ENABLE_SUBMIT: "false",
+  DTE_SII_ENABLE_STATUS: "false",
+  NODE_ENV: "test",
+};
+
+for (const name of Object.keys(process.env)) {
+  if (name.startsWith("DTE_") || name === "SII_RUT_EMPRESA" || name === "SII_RUT_USUARIO")
+    delete process.env[name];
+}
+Object.assign(process.env, baseTestEnv);
+
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
 
@@ -24,6 +40,11 @@ require.extensions[".ts"] = (module, filename) => {
 const repoRoot = resolve(dirname(new URL(import.meta.url).pathname), "../..");
 const testDir = resolve(repoRoot, "lib/dte/__tests__");
 
-for (const file of readdirSync(testDir).filter((name) => name.endsWith(".test.ts")).sort()) {
+if (requestedTestFile && !/^[a-z0-9-]+\.test\.ts$/.test(requestedTestFile))
+  throw new Error("DTE_TEST_FILE must name a DTE test file");
+const testFiles = requestedTestFile
+  ? [requestedTestFile]
+  : readdirSync(testDir).filter((name) => name.endsWith(".test.ts")).sort();
+for (const file of testFiles) {
   require(resolve(testDir, file));
 }

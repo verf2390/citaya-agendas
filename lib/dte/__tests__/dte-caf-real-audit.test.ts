@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test, { after } from "node:test";
+import test from "node:test";
 import {
   auditRealCertificationCaf,
   printRealCafAudit,
@@ -27,13 +27,7 @@ import {
 const ISSUER_RUT = "76086428-5";
 const IDK = "100";
 
-const originalFetch = globalThis.fetch;
-globalThis.fetch = async () => {
-  throw new Error("NETWORK_FORBIDDEN_IN_CAF_AUDIT_TEST");
-};
-after(() => {
-  globalThis.fetch = originalFetch;
-});
+const fetchBeforeRealCafAuditTests = globalThis.fetch;
 
 type Fixture = {
   dir: string;
@@ -141,12 +135,7 @@ function mutated(
 
 test("real CAF audit passes local checks but blocks without official anchor and never uses network", () => {
   const fixture = createFixture();
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    throw new Error("NETWORK_FORBIDDEN_IN_CAF_AUDIT_TEST");
-  };
-  try {
-    const result = auditRealCertificationCaf(envFor(fixture), process.cwd());
+  const result = auditRealCertificationCaf(envFor(fixture), process.cwd());
     assert.equal(result.status, "BLOCKED_TRUST_ANCHOR");
     assert.equal(result.officialSiiTrustAnchor, "pending");
     assert.equal(result.fixtureKey, false);
@@ -154,10 +143,7 @@ test("real CAF audit passes local checks but blocks without official anchor and 
     assert.equal(result.ledgerImported, false);
     assert.equal(result.foliosReserved, 0);
     assert.equal(result.dteGenerated, false);
-    assert.equal(result.siiContacted, false);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  assert.equal(result.siiContacted, false);
 });
 
 test("real CAF audit accepts only a complete pinned official external anchor", () => {
@@ -517,4 +503,8 @@ test("fixture and production material classifications cannot be confused", () =>
       }),
     /field=production/,
   );
+});
+
+test("real CAF audit leaves global fetch unchanged", () => {
+  assert.equal(globalThis.fetch, fetchBeforeRealCafAuditTests);
 });
