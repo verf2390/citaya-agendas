@@ -1,3 +1,4 @@
+import { chmodSync } from "node:fs";
 import Database from "better-sqlite3";
 import type { ImportedCaf } from "./caf-secure-import";
 
@@ -9,6 +10,7 @@ export class FolioSqliteLedger {
   readonly db: Database.Database;
   constructor(path: string) {
     this.db = new Database(path, { timeout: 30_000 });
+    chmodSync(path, 0o600);
     this.db.pragma("journal_mode = WAL"); this.db.pragma("synchronous = FULL"); this.db.pragma("foreign_keys = ON"); this.db.pragma("busy_timeout = 30000");
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS caf_imports (
@@ -61,6 +63,19 @@ export class FolioSqliteLedger {
       if (!row) throw new Error("FOLIO_REJECTED field=state");
       this.db.prepare("UPDATE folios SET state='issued',issued_at=?,lease_expires_at=NULL WHERE issuer=? AND reserved_case=?").run(now, issuer, caseId);
       this.db.prepare("INSERT INTO folio_audit(issuer,type_code,folio,action,case_id,happened_at) VALUES(?,?,?,?,?,?)").run(issuer, row.type_code, row.folio, "issued", caseId, now);
+    }).immediate();
+  }
+  markPlanIssued(issuer: string, caseIds: readonly string[], now = new Date().toISOString()): void {
+    this.db.transaction(() => {
+      const select = this.db.prepare("SELECT type_code,folio,state FROM folios WHERE issuer=? AND reserved_case=?");
+      const update = this.db.prepare("UPDATE folios SET state='issued',issued_at=?,lease_expires_at=NULL WHERE issuer=? AND reserved_case=? AND state='reserved'");
+      const audit = this.db.prepare("INSERT INTO folio_audit(issuer,type_code,folio,action,case_id,happened_at) VALUES(?,?,?,?,?,?)");
+      const rows = caseIds.map((caseId) => ({ caseId, row: select.get(issuer, caseId) as { type_code: number; folio: number; state: FolioState } | undefined }));
+      if (rows.some(({ row }) => row?.state !== "reserved")) throw new Error("FOLIO_REJECTED field=state");
+      for (const { caseId, row } of rows) {
+        if (!row || update.run(now, issuer, caseId).changes !== 1) throw new Error("FOLIO_REJECTED field=collision");
+        audit.run(issuer, row.type_code, row.folio, "issued", caseId, now);
+      }
     }).immediate();
   }
   releaseReserved(issuer: string, caseId: string, now = new Date().toISOString()): void {

@@ -71,6 +71,7 @@ export type FacturaSetDryRunOptions = {
   repoRoot?: string;
   outputDir?: string;
   realCertification?: { privateKeyPath: string; certificatePath: string };
+  onStage?: (stage: FacturaSetDryRunStage) => void;
   overrides?: Partial<{
     cafIssuerRut: string;
     cafTypeByCase: Partial<Record<FacturaCertificationCaseId, number>>;
@@ -94,6 +95,17 @@ export type FacturaSetDryRunOptions = {
     >;
   }>;
 };
+
+export type FacturaSetDryRunStage =
+  | "certificate_material"
+  | "output_preflight"
+  | "document_build"
+  | "ted_frmt"
+  | "dte_signature"
+  | "envelope_build"
+  | "xsd_validation"
+  | "output_write"
+  | "manifest_build";
 
 export type FacturaSetDryRunResult = {
   environment: "certification";
@@ -558,7 +570,7 @@ function signingConfig(material: FixtureMaterial, target: string): RealXmlSignin
   };
 }
 
-function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureMaterial, cafMaterial: FixtureMaterial, outputDir: string, overrides: FacturaSetDryRunOptions["overrides"] = {}, timestamp = FIXTURE_TIMESTAMP): SignedDocument[] {
+function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureMaterial, cafMaterial: FixtureMaterial, outputDir: string, overrides: FacturaSetDryRunOptions["overrides"] = {}, timestamp = FIXTURE_TIMESTAMP, onStage?: (stage: FacturaSetDryRunStage) => void): SignedDocument[] {
   return drafts.map((draft) => {
     const caseId = PRE_CAF_REQUIRED_CASE_ORDER[drafts.indexOf(draft)];
     const typeCode = getSiiDteTypeCode(draft.documentType);
@@ -575,8 +587,10 @@ function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureM
       rangeTo: range.to,
       cafPrivateKeyPem,
     });
+    onStage?.("document_build");
     const caf = parseCafRealControlledXml(cafXml, FIXTURE_TENANT_ID);
     validateCafForDraftOrThrow(caf, draft);
+    onStage?.("ted_frmt");
     const tedWithoutFrmt = buildTedControlled({
       issuerRut: caf.issuerRut,
       documentTypeCode: typeCode,
@@ -615,6 +629,7 @@ function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureM
     const unsignedDteXml = buildDteDocumentoXmlLab(draft, { tedXml: ted.tedXml, documentSignedAt: timestamp, mode: "certification", preserveTedWhitespace: true });
     const unsignedDocumentoXml = extractDocumentoForSignature(unsignedDteXml);
     const documentId = buildDteDocumentId(draft);
+    onStage?.("dte_signature");
     const signature = buildXmlDsigControlled({ referenceUri: documentId, signedXmlFragment: unsignedDocumentoXml, mode: "certification" }, signingConfig(xmlMaterial, documentId));
     if (!signature.verification?.ok) fail(`firma XMLDSig DTE fixture no verifica localmente: ${signature.reason ?? signature.verification?.reason ?? "sin detalle"}`);
     const signatureXml = overrides.tamperDocumentSignatureCase === caseId
@@ -622,6 +637,7 @@ function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureM
       : signature.signatureXml;
     const dteXml = withDteNamespace(buildDteDocumentoXmlLab(draft, { tedXml: ted.tedXml, documentSignatureXml: signatureXml, documentSignedAt: timestamp, mode: "certification", preserveTedWhitespace: true }));
     const finalDteXml = `${XML_DECLARATION_ISO_8859_1}\n${dteXml}`;
+    onStage?.("xsd_validation");
     validateXsd(finalDteXml, "DTE_v10.xsd", `${caseId}-dte`, outputDir);
     return { caseId, draft, unsignedDocumentoXml, signatureXml, dteXml: finalDteXml, cafXml, tedXml: ted.tedXml, ddXml: ted.ddXml, frmtXml: frmt.frmtXml, cafPublicKeyPem };
   });
@@ -670,6 +686,7 @@ function buildEnvioXml(
   outputDir: string,
   realCertification = false,
   timestamp = FIXTURE_TIMESTAMP,
+  onStage?: (stage: FacturaSetDryRunStage) => void,
 ): string {
   const perDocumentXml = Object.fromEntries(
     signedDocuments.map((doc) => [
@@ -705,6 +722,7 @@ function buildEnvioXml(
     ? ""
     : "<!-- FIXTURE SIN VALIDEZ TRIBUTARIA - NO ENVIAR AL SII -->\n";
   const envioXml = `${XML_DECLARATION_ISO_8859_1}\n${warning}<EnvioDTE xmlns="${SII_DTE_NAMESPACE}" version="1.0">\n${setDteXml.replace(` xmlns="${SII_DTE_NAMESPACE}"`, "")}\n${envelopeSignature.signatureXml}\n</EnvioDTE>`;
+  onStage?.("xsd_validation");
   validateXsd(
     envioXml,
     "EnvioDTE_v10.xsd",
@@ -835,6 +853,7 @@ export function runFacturaSetDryRun(
       `contrato PRE-CAF invalido missing=${validation.missingFields.join(",")} invalid=${validation.invalidFields.join(",")}`,
     );
 
+  options.onStage?.("output_preflight");
   const outputDir = ensureOutputDir(
     options.outputDir ??
       env.DTE_FACTURA_SET_DRY_RUN_OUTPUT_DIR ??
@@ -869,10 +888,13 @@ export function runFacturaSetDryRun(
   assertReferences(drafts, selectedFolios);
   const typeCounts = countTypes(drafts);
 
+  options.onStage?.("certificate_material");
   const xmlMaterial = options.realCertification
     ? loadExternalSigningMaterial(options.realCertification)
     : createSelfSignedFixture("citaya-pre-caf-8-xml");
-  const cafMaterial = createSelfSignedFixture("citaya-pre-caf-8-caf", 768);
+  const cafMaterial = realCertification
+    ? xmlMaterial
+    : createSelfSignedFixture("citaya-pre-caf-8-caf", 768);
   const documentSigningMaterial = options.overrides?.mismatchedCertificateKey
     ? cafMaterial
     : xmlMaterial;
@@ -887,6 +909,7 @@ export function runFacturaSetDryRun(
       outputDir,
       options.overrides,
       generationTimestamp,
+      options.onStage,
     );
     const dteSignatureOk = signed.filter((doc) =>
       verifyInsertedSignature(
@@ -901,6 +924,7 @@ export function runFacturaSetDryRun(
       verifyFrmt(doc.ddXml, doc.frmtXml, doc.cafPublicKeyPem),
     ).length;
     if (frmtOk !== 8) fail("FRMT fixture no verifica 8/8");
+    options.onStage?.("envelope_build");
     const envioXml = buildEnvioXml(
       drafts,
       signed,
@@ -909,9 +933,11 @@ export function runFacturaSetDryRun(
       outputDir,
       realCertification,
       generationTimestamp,
+      options.onStage,
     );
     assertNoPendingFolios(envioXml);
     const writtenPaths: string[] = [];
+    options.onStage?.("output_write");
     signed.forEach((doc) => {
       const path = join(
         outputDir,
@@ -930,6 +956,7 @@ export function runFacturaSetDryRun(
     );
     writeSafeXml(envioPath, envioXml);
     writtenPaths.push(envioPath);
+    options.onStage?.("manifest_build");
     const manifestPath = writeSetManifest(
       outputDir,
       writtenPaths,
