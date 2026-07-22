@@ -13,6 +13,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   writeFileSync,
@@ -313,10 +314,11 @@ export type SetSubmitPreflight = {
   sender: { rut: string; dv: string };
   config: SiiCertificationConfig;
 };
-export function preflightCertificationSetSubmit(
+function preflightSetSubmit(
   env: NodeJS.ProcessEnv = process.env,
   repoRoot = process.cwd(),
   deps: PreflightDeps = {},
+  retry = false,
 ): SetSubmitPreflight {
   if (
     env.DTE_MODE !== "certification" ||
@@ -336,10 +338,7 @@ export function preflightCertificationSetSubmit(
     "DTE_FACTURA_CERTIFICATION_ENVELOPE_SHA256",
   ).toLowerCase();
   if (expected !== controlledExpected) reject("preflight", "expected_sha256");
-  if (
-    env.DTE_FACTURA_CERTIFICATION_SUBMIT_CONFIRM !==
-    `SUBMIT_SET_4959698_${controlledExpected}`
-  )
+  if (!retry && env.DTE_FACTURA_CERTIFICATION_SUBMIT_CONFIRM !== `SUBMIT_SET_4959698_${controlledExpected}`)
     reject("preflight", "confirmation");
   const endpoint = required(env, "DTE_SII_SUBMIT_URL");
   validateEndpoint(endpoint);
@@ -382,8 +381,17 @@ export function preflightCertificationSetSubmit(
     )
       reject("registry", "directory");
   }
-  const registryPath = resolve(registryDir, `${expected}.json`);
-  if (existsSync(registryPath)) reject("registry", "existing_record");
+  const registryPath = resolve(
+    registryDir,
+    retry ? `${expected}.attempt-002.json` : `${expected}.json`,
+  );
+  if (retry) {
+    if (!existsSync(registryDir)) reject("registry", "directory");
+    const retries = readdirSync(registryDir).filter((name) =>
+      name.startsWith(`${expected}.attempt-`),
+    );
+    if (retries.length) reject("registry", "existing_retry");
+  } else if (existsSync(registryPath)) reject("registry", "existing_record");
   const envelope = readFileSync(envelopePath);
   if (sha256(envelope) !== expected) reject("envelope", "sha256");
   if (envelope[0] === 0xef && envelope[1] === 0xbb && envelope[2] === 0xbf)
@@ -455,6 +463,8 @@ export function preflightCertificationSetSubmit(
       reserved_case: string | null;
     }>;
     const issued = rows.filter((r) => r.state === "issued");
+    const reserved = rows.filter((r) => r.state === "reserved");
+    const available = rows.filter((r) => r.state === "available");
     if (
       issued.length !== 8 ||
       !issued.every((r) =>
@@ -462,6 +472,8 @@ export function preflightCertificationSetSubmit(
       )
     )
       reject("ledger", "issued_plan");
+    if (reserved.length !== 0 || available.length !== 3)
+      reject("ledger", "state_counts");
     for (const [t, f] of [
       [33, 5],
       [61, 4],
@@ -513,6 +525,65 @@ export function preflightCertificationSetSubmit(
     },
   };
 }
+export function preflightCertificationSetSubmit(
+  env: NodeJS.ProcessEnv = process.env,
+  repoRoot = process.cwd(),
+  deps: PreflightDeps = {},
+): SetSubmitPreflight {
+  return preflightSetSubmit(env, repoRoot, deps);
+}
+
+const RETRY_ATTEMPT_ID = "attempt-002";
+const RETRY_PORTAL_OBSERVATION = "SET_BASIC_POR_REALIZAR";
+const RETRY_PORTAL_DATE = "2026-07-22";
+export type RetrySetSubmitPreflight = SetSubmitPreflight & {
+  attemptId: "attempt-002"; originalRegistryPath: string; originalRegistrySha256: string;
+  originalResponseSha256: string; portalObservation: "SET_BASIC_POR_REALIZAR";
+  portalObservedDate: "2026-07-22"; codeCommit: string;
+};
+function currentGitCommit(repoRoot: string): string {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" });
+  if (result.status !== 0 || !/^[a-f0-9]{40}\s*$/i.test(result.stdout)) reject("preflight", "git_commit");
+  return result.stdout.trim();
+}
+function reconcileOriginalRegistry(
+  pre: SetSubmitPreflight, env: NodeJS.ProcessEnv, repoRoot: string, expectedResponseSha256: string,
+): Pick<RetrySetSubmitPreflight, "originalRegistryPath" | "originalRegistrySha256" | "originalResponseSha256"> {
+  const originalRegistryPath = resolve(pre.registryDir, `${pre.envelopeSha256}.json`);
+  secureFile(originalRegistryPath, repoRoot, "registry", "original_record");
+  const originalBytes = readFileSync(originalRegistryPath);
+  const originalRegistrySha256 = required(env, "DTE_FACTURA_CERTIFICATION_RETRY_ORIGINAL_REGISTRY_SHA256").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(originalRegistrySha256) || sha256(originalBytes) !== originalRegistrySha256) reject("registry", "original_hash");
+  let original: Record<string, unknown>;
+  try { original = JSON.parse(originalBytes.toString("utf8")); } catch (error) { reject("registry", "original_json", error); }
+  const response = typeof original.response === "string" ? original.response : "";
+  const classification = classifyUploadResponse(response);
+  if (
+    original.envelopeSha256 !== pre.envelopeSha256 || original.state !== "rejected" ||
+    original.httpStatus !== 200 || !response || !classification.semanticCategory.startsWith("html_") ||
+    classification.trackCandidateFingerprint ||
+    /<\/?RECEPCIONDTE\b|<STATUS[^>]*>\s*0\s*<|<TRACKID\b|(?:track\s*id|n(?:u|ú)mero\s+de\s+atenci(?:o|ó)n)/i.test(response)
+  ) reject("registry", "original_reconciliation");
+  const originalResponseSha256 = required(env, "DTE_FACTURA_CERTIFICATION_RETRY_OF_RESPONSE_SHA256").toLowerCase();
+  if (originalResponseSha256 !== expectedResponseSha256 || sha256(response) !== originalResponseSha256) reject("registry", "original_response_hash");
+  return { originalRegistryPath, originalRegistrySha256, originalResponseSha256 };
+}
+export function preflightReconciledCertificationSetRetry(
+  env: NodeJS.ProcessEnv = process.env, repoRoot = process.cwd(), deps: PreflightDeps = {},
+): RetrySetSubmitPreflight {
+  const pre = preflightSetSubmit(env, repoRoot, deps, true);
+  if (required(env, "DTE_FACTURA_CERTIFICATION_RETRY_ATTEMPT_ID") !== RETRY_ATTEMPT_ID) reject("preflight", "retry_attempt_id");
+  if (required(env, "DTE_FACTURA_CERTIFICATION_RETRY_PORTAL_OBSERVATION") !== RETRY_PORTAL_OBSERVATION) reject("preflight", "portal_observation");
+  if (required(env, "DTE_FACTURA_CERTIFICATION_RETRY_PORTAL_OBSERVED_DATE") !== RETRY_PORTAL_DATE) reject("preflight", "portal_observed_date");
+  const responseSha256 = required(env, "DTE_FACTURA_CERTIFICATION_RETRY_OF_RESPONSE_SHA256").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(responseSha256)) reject("preflight", "retry_response_sha256");
+  const confirmation = `RETRY_SET_4959698_${pre.envelopeSha256}_AFTER_HTML_${responseSha256}_PORTAL_POR_REALIZAR_2026-07-22`;
+  if (env.DTE_FACTURA_CERTIFICATION_RETRY_CONFIRM !== confirmation) reject("preflight", "confirmation");
+  const codeCommit = required(env, "DTE_FACTURA_CERTIFICATION_RETRY_EXPECTED_GIT_COMMIT").toLowerCase();
+  if (codeCommit !== currentGitCommit(repoRoot)) reject("preflight", "git_commit");
+  return { ...pre, ...reconcileOriginalRegistry(pre, env, repoRoot, responseSha256), attemptId: RETRY_ATTEMPT_ID, portalObservation: RETRY_PORTAL_OBSERVATION, portalObservedDate: RETRY_PORTAL_DATE, codeCommit };
+}
+
 type RecordState =
   "intent" | "submitting" | "submitted" | "rejected" | "ambiguous";
 function atomicRecord(
@@ -542,6 +613,20 @@ function atomicRecord(
   chmodSync(temp, 0o600);
   renameSync(temp, pre.registryPath);
 }
+function atomicRetryRecord(pre: RetrySetSubmitPreflight, state: RecordState, data: Record<string, unknown> = {}): void {
+  const now = new Date().toISOString();
+  if (state === "intent") {
+    const payload = JSON.stringify({ schemaVersion: 1, setId: "4959698", envelopeSha256: pre.envelopeSha256, attemptId: pre.attemptId, retryOfAttemptId: "attempt-001", retryOfRegistrySha256: pre.originalRegistrySha256, retryOfResponseSha256: pre.originalResponseSha256, portalObservation: pre.portalObservation, portalObservedDate: pre.portalObservedDate, codeCommit: pre.codeCommit, state, createdAt: now, updatedAt: now, endpointOrigin: "https://maullin.sii.cl", endpointPath: "/cgi_dte/UPL/DTEUpload", hardenedHeadersActive: true, redirectPolicy: "manual", statusQueryEnabled: false, ...data });
+    writeFileSync(pre.registryPath, payload, { flag: "wx", mode: 0o600 }); chmodSync(pre.registryPath, 0o600); return;
+  }
+  secureFile(pre.registryPath, process.cwd(), "registry", "retry_record");
+  const current = JSON.parse(readFileSync(pre.registryPath, "utf8")) as Record<string, unknown>;
+  const allowed = (current.state === "intent" && state === "submitting") || (current.state === "submitting" && ["submitted", "rejected", "ambiguous"].includes(state));
+  if (!allowed) reject("registry", "retry_transition");
+  const temp = resolve(pre.registryDir, ".attempt-002-" + randomBytes(8).toString("hex"));
+  writeFileSync(temp, JSON.stringify({ ...current, state, updatedAt: now, ...data }), { flag: "wx", mode: 0o600 }); chmodSync(temp, 0o600); renameSync(temp, pre.registryPath);
+}
+
 function fingerprint(value: string | null | undefined): string | null {
   return value ? sha256(value).slice(0, 16) : null;
 }
@@ -672,6 +757,32 @@ export type SubmitResult = {
   submitted: boolean;
   statusQueried: false;
 };
+export async function submitReconciledCertificationSetRetry(env: NodeJS.ProcessEnv = process.env, deps: PreflightDeps & { fetchImpl?: typeof fetch } = {}): Promise<SubmitResult> {
+  const pre = preflightReconciledCertificationSetRetry(env, process.cwd(), deps);
+  atomicRetryRecord(pre, "intent"); atomicRetryRecord(pre, "submitting");
+  let contacted = false; let tokenFingerprint: string | null = null;
+  try {
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    const seed = await requestSeed(pre.config, { fetchImpl }); contacted = true;
+    if (!seed.seed) reject("seed", "response");
+    const token = await requestToken(signSeed(seed.seed, pre.config).signedSeed ?? "", pre.config, { fetchImpl });
+    if (!token.token) reject("token", "response"); tokenFingerprint = fingerprint(token.token);
+    const form = new FormData(); form.set("rutSender", pre.sender.rut); form.set("dvSender", pre.sender.dv); form.set("rutCompany", pre.company.rut); form.set("dvCompany", pre.company.dv); form.set("archivo", new Blob([Uint8Array.from(pre.envelope)], { type: "text/xml" }), basename(pre.envelopePath));
+    const response = await fetchImpl(pre.endpoint, { method: "POST", headers: { "user-agent": UPLOAD_USER_AGENT, accept: "text/xml,application/xml,text/html;q=0.9,*/*;q=0.8", "accept-language": "es-cl", referer: UPLOAD_REFERER, "cache-control": "no-cache", cookie: "TOKEN=" + token.token }, body: form, redirect: "manual", signal: AbortSignal.timeout(pre.config.timeoutMs) }); contacted = true;
+    const raw = await response.text(); const classification = classifyUploadResponse(raw);
+    const metadata = { httpStatus: response.status, responseContentType: response.headers.get("content-type"), responseBytes: Buffer.byteLength(raw, "utf8"), responseSha256: sha256(raw), responseSemanticCategory: classification.semanticCategory, tokenFingerprint, locationFingerprint: fingerprint(response.headers.get("location")) };
+    if (response.status >= 300 && response.status < 400 || !response.ok || classification.kind !== "accepted") {
+      const state: RecordState = classification.kind === "rejected" && response.ok ? "rejected" : "ambiguous"; atomicRetryRecord(pre, state, { ...metadata, response: raw, trackCandidateFingerprint: classification.trackCandidateFingerprint });
+      return { status: state === "rejected" ? "REJECTED" : "AMBIGUOUS", receptionStatus: classification.status ?? "invalid", envelopeSha256: pre.envelopeSha256, tokenFingerprint, trackIdStored: false, trackIdFingerprint: null, siiContacted: contacted, submitted: false, statusQueried: false };
+    }
+    atomicRetryRecord(pre, "submitted", { ...metadata, response: raw, trackId: classification.trackId });
+    return { status: "SUBMITTED", receptionStatus: "0", envelopeSha256: pre.envelopeSha256, tokenFingerprint, trackIdStored: true, trackIdFingerprint: fingerprint(classification.trackId), siiContacted: true, submitted: true, statusQueried: false };
+  } catch (error) {
+    atomicRetryRecord(pre, "ambiguous", { tokenFingerprint, errorCode: error instanceof ControlledSetSubmitError ? error.code : "NETWORK_OR_INTERNAL" });
+    if (error instanceof ControlledSetSubmitError) throw error; throw new ControlledSetSubmitError(contacted ? "submit" : "seed", "ambiguous", error);
+  }
+}
+
 export async function submitPreparedCertificationSet(
   env: NodeJS.ProcessEnv = process.env,
   deps: PreflightDeps & { fetchImpl?: typeof fetch } = {},
@@ -828,6 +939,9 @@ export function formatSubmitPreflight(pre: SetSubmitPreflight): string {
     "submitted=false",
     "statusQueried=false",
   ].join("\n");
+}
+export function formatRetryPreflight(pre: RetrySetSubmitPreflight): string {
+  return ["status=READY_TO_RETRY", "attemptId=" + pre.attemptId, "retryAuthorized=true", "originalRegistryValid=true", "originalRegistryHashMatch=true", "originalResponseHashMatch=true", "originalTrackAbsent=true", "originalStatusZeroAbsent=true", "portalObservationAccepted=true", "portalObservedDateAccepted=true", "envelopeHashMatch=true", "manifestValid=true", "ledgerIssued=8", "contingencyAvailable=3", "endpointAllowed=true", "hardenedHeadersActive=true", "redirectManual=true", "retryRecordExists=false", "thirdAttemptBlocked=true", "siiContacted=false", "submitted=false", "statusQueried=false", "ready=true"].join("\n");
 }
 export function formatSubmitResult(result: SubmitResult): string {
   return Object.entries(result)
