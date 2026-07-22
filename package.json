@@ -42,7 +42,9 @@
     "dte:factura:certification:set:prepare": "node scripts/dte/factura-certification-set-prepare.mjs",
     "dte:factura:folio-allocation:concurrency-check": "node scripts/dte/folio-allocation-concurrency-check.mjs",
     "dte:factura:pre-caf-final-gate": "node scripts/dte/pre-caf-final-gate.mjs",
-    "dte:tooling:import-boundary:check": "node scripts/dte/tooling-import-boundary-check.mjs"
+    "dte:tooling:import-boundary:check": "node scripts/dte/tooling-import-boundary-check.mjs",
+    "dte:factura:certification:set:submit:preflight": "node scripts/dte/factura-certification-set-submit-preflight.mjs",
+    "dte:factura:certification:set:submit": "node scripts/dte/factura-certification-set-submit.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",
