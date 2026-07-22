@@ -18,9 +18,20 @@ import {
 const XMLDSIG_C14N = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
 const XMLDSIG_RSA_SHA1 = "http://www.w3.org/2000/09/xmldsig#rsa-sha1";
 const XMLDSIG_SHA1 = "http://www.w3.org/2000/09/xmldsig#sha1";
-const EXPECTED_DTE_FILES = PRE_CAF_REQUIRED_CASE_ORDER.map((caseId) => `${caseId}-DTE-FIXTURE-SIN-VALIDEZ.xml`);
-const EXPECTED_ENVIO_FILE = "EnvioDTE-4959698-FIXTURE-SIN-VALIDEZ.xml";
-const EXPECTED_MANIFEST_FILE = "manifest-4959698-FIXTURE-SIN-VALIDEZ.json";
+function artifactNames(fixtureMode: boolean) {
+  const suffix = fixtureMode ? "FIXTURE-SIN-VALIDEZ" : "CERTIFICATION";
+  return {
+    dteFiles: PRE_CAF_REQUIRED_CASE_ORDER.map((caseId) => `${caseId}-DTE-${suffix}.xml`),
+    envioFile: `EnvioDTE-4959698-${suffix}.xml`,
+    manifestFile: `manifest-4959698-${suffix}.json`,
+    auditFile: `encoding-audit-4959698-${suffix}.json`,
+  };
+}
+
+type ManifestFile = { file: string; sha256: string };
+type FixtureManifest = { fixtureMode: true; files: ManifestFile[]; cafFixtures: Array<{ caseId: string; sha256: string }> };
+type RealManifest = { fixtureMode: false; files: ManifestFile[]; cafHashes: Array<{ type: 33 | 56 | 61; sha256: string }> };
+type FacturaSetManifest = FixtureManifest | RealManifest;
 
 type AuditFile = {
   name: string;
@@ -31,7 +42,7 @@ type AuditFile = {
 
 export type FacturaEncodingAuditResult = {
   environment: "certification";
-  fixtureMode: true;
+  fixtureMode: boolean;
   encoding: "ISO-8859-1";
   bom: "absent";
   unsupportedCharacters: 0;
@@ -43,7 +54,7 @@ export type FacturaEncodingAuditResult = {
   envelopeSignatureFinalBytes: "valid";
   dteXsdFinalBytes: "8/8";
   envioDteXsdFinalBytes: "valid";
-  realCaf: false;
+  realCaf: boolean;
   siiContacted: false;
   readyToDownloadCaf: false;
 };
@@ -51,6 +62,7 @@ export type FacturaEncodingAuditResult = {
 export type FacturaEncodingAuditOptions = FacturaSetDryRunOptions & {
   skipGeneration?: boolean;
   outputDir?: string;
+  manifestMode?: "fixture" | "real";
 };
 
 function fail(message: string): never {
@@ -217,15 +229,38 @@ function validateXsdFinal(file: AuditFile, schemaName: "DTE_v10.xsd" | "EnvioDTE
   if (result.status !== 0) fail("XSD final bytes invalido");
 }
 
-function readManifest(outputDir: string): { files: Array<{ file: string; sha256: string }>; cafFixtures: Array<{ caseId: string; sha256: string }> } {
-  const raw = readFileSync(join(outputDir, EXPECTED_MANIFEST_FILE), "utf8");
-  const parsed = JSON.parse(raw) as { files?: Array<{ file?: string; sha256?: string }>; cafFixtures?: Array<{ caseId?: string; sha256?: string }> };
-  if (!Array.isArray(parsed.files) || parsed.files.length !== 9) fail("manifest fixture debe contener nueve XML");
-  if (!Array.isArray(parsed.cafFixtures) || parsed.cafFixtures.length !== 8) fail("manifest fixture debe contener ocho CAF fixture");
-  return {
-    files: parsed.files.map((item) => ({ file: String(item.file), sha256: String(item.sha256) })),
-    cafFixtures: parsed.cafFixtures.map((item) => ({ caseId: String(item.caseId), sha256: String(item.sha256) })),
-  };
+function readManifest(outputDir: string, fixtureMode: boolean): FacturaSetManifest {
+  const names = artifactNames(fixtureMode);
+  const raw = readFileSync(join(outputDir, names.manifestFile), "utf8");
+  const parsed = JSON.parse(raw) as { fixtureMode?: unknown; files?: unknown; cafFixtures?: unknown; cafHashes?: unknown };
+  const has = (field: "cafFixtures" | "cafHashes") => Object.prototype.hasOwnProperty.call(parsed, field);
+  if (parsed.fixtureMode !== fixtureMode) fail("stage=manifest field=fixtureMode");
+  if (!Array.isArray(parsed.files) || parsed.files.length !== 9) fail("stage=manifest field=files");
+  const files = parsed.files.map((item) => {
+    const value = item as { file?: unknown; sha256?: unknown };
+    if (typeof value.file !== "string" || !/^[a-f0-9]{64}$/.test(String(value.sha256))) fail("stage=manifest field=files");
+    return { file: value.file, sha256: String(value.sha256) };
+  });
+  if (fixtureMode) {
+    if (!has("cafFixtures") || has("cafHashes") || !Array.isArray(parsed.cafFixtures) || parsed.cafFixtures.length !== 8)
+      fail("stage=manifest field=cafFixtures");
+    const cafFixtures = parsed.cafFixtures.map((item) => {
+      const value = item as { caseId?: unknown; sha256?: unknown };
+      if (typeof value.caseId !== "string" || !/^[a-f0-9]{64}$/.test(String(value.sha256))) fail("stage=manifest field=cafFixtures");
+      return { caseId: value.caseId, sha256: String(value.sha256) };
+    });
+    return { fixtureMode: true, files, cafFixtures };
+  }
+  if (!has("cafHashes") || has("cafFixtures") || !Array.isArray(parsed.cafHashes) || parsed.cafHashes.length !== 3)
+    fail("stage=manifest field=cafHashes");
+  const cafHashes = parsed.cafHashes.map((item) => {
+    const value = item as { type?: unknown; sha256?: unknown };
+    if ((value.type !== 33 && value.type !== 56 && value.type !== 61) || !/^[a-f0-9]{64}$/.test(String(value.sha256)))
+      fail("stage=manifest field=cafHashes");
+    return { type: value.type, sha256: String(value.sha256) } as { type: 33 | 56 | 61; sha256: string };
+  });
+  if (new Set(cafHashes.map((item) => item.type)).size !== 3) fail("stage=manifest field=cafHashes");
+  return { fixtureMode: false, files, cafHashes };
 }
 
 function assertManifestHashes(outputDir: string, manifest: ReturnType<typeof readManifest>): void {
@@ -234,15 +269,15 @@ function assertManifestHashes(outputDir: string, manifest: ReturnType<typeof rea
   }
 }
 
-function writeAuditManifest(outputDir: string, files: AuditFile[]): void {
-  const manifestPath = join(outputDir, "encoding-audit-4959698-FIXTURE-SIN-VALIDEZ.json");
-  writeFileSync(manifestPath, JSON.stringify({
-    fixtureMode: true,
-    legalValidity: "SIN_VALIDEZ_TRIBUTARIA",
+function writeAuditManifest(outputDir: string, files: AuditFile[], fixtureMode: boolean): void {
+  const names = artifactNames(fixtureMode);
+  writeFileSync(join(outputDir, names.auditFile), JSON.stringify({
+    fixtureMode,
+    legalValidity: fixtureMode ? "SIN_VALIDEZ_TRIBUTARIA" : "CERTIFICATION_OFFLINE_NOT_SUBMITTED",
     encoding: "ISO-8859-1",
     files: files.map((file) => ({ file: file.name, sha256: sha256(file.bytes) })),
   }, null, 2), "utf8");
-  chmodSync(manifestPath, 0o600);
+  chmodSync(join(outputDir, names.auditFile), 0o600);
 }
 
 function ensureInputReady(env: NodeJS.ProcessEnv, repoRoot: string): void {
@@ -255,18 +290,24 @@ function ensureInputReady(env: NodeJS.ProcessEnv, repoRoot: string): void {
 export function auditFacturaSetFinalFiles(options: FacturaEncodingAuditOptions = {}): FacturaEncodingAuditResult {
   const env = options.env ?? process.env;
   const repoRoot = options.repoRoot ?? process.cwd();
-  if (env.DTE_SII_ENV !== "certification") fail("DTE_SII_ENV debe ser certification para PRE-CAF 9");
-  if (env.DTE_MODE === "production") fail("production bloqueado para PRE-CAF 9");
-  if (env.DTE_CAF_PATH || env.DTE_CAF_PRIVATE_KEY_PATH) fail("rutas CAF reales bloqueadas para PRE-CAF 9");
+  if (env.DTE_MODE === "production" || env.DTE_SII_ENV === "production") fail("stage=environment field=production");
+  if (env.DTE_MODE !== "certification" || env.DTE_SII_ENV !== "certification") fail("DTE_MODE y DTE_SII_ENV deben ser certification para PRE-CAF 9");
+  if (env.DTE_CAF_PATH) fail("stage=environment field=DTE_CAF_PATH");
+  if (env.DTE_CAF_PRIVATE_KEY_PATH) fail("stage=environment field=DTE_CAF_PRIVATE_KEY_PATH");
   if (env.DTE_SII_ENABLE_SUBMIT === "true" || env.DTE_TRACK_ID || env.DTE_SII_TOKEN) fail("SII submit/token/track_id bloqueado para PRE-CAF 9");
   ensureInputReady(env, repoRoot);
 
+  const fixtureMode = options.manifestMode !== "real";
+  const names = artifactNames(fixtureMode);
   const outputDir = options.outputDir ?? env.DTE_FACTURA_SET_DRY_RUN_OUTPUT_DIR ?? FACTURA_SET_FIXTURE_OUTPUT_DIR;
-  if (!options.skipGeneration) runFacturaSetDryRun({ ...options, outputDir, env, repoRoot });
+  if (!options.skipGeneration) {
+    if (!fixtureMode) fail("stage=audit field=manifestMode");
+    runFacturaSetDryRun({ ...options, outputDir, env, repoRoot });
+  }
 
-  const manifest = readManifest(outputDir);
-  const dteFiles = EXPECTED_DTE_FILES.map((name) => decodeIso88591File(join(outputDir, name), name));
-  const envioFile = decodeIso88591File(join(outputDir, EXPECTED_ENVIO_FILE), EXPECTED_ENVIO_FILE);
+  const manifest = readManifest(outputDir, fixtureMode);
+  const dteFiles = names.dteFiles.map((name) => decodeIso88591File(join(outputDir, name), name));
+  const envioFile = decodeIso88591File(join(outputDir, names.envioFile), names.envioFile);
   const allFiles = [...dteFiles, envioFile];
   assertManifestHashes(outputDir, manifest);
   for (const file of allFiles) assertNoInvalidXmlCharacters(file.xml);
@@ -281,25 +322,29 @@ export function auditFacturaSetFinalFiles(options: FacturaEncodingAuditOptions =
     validateXsdFinal(file, "DTE_v10.xsd");
     const cafXml = extractElement(extractElement(file.xml, "DD"), "CAF");
     const caseId = file.name.slice(0, "4959698-1".length);
-    const cafManifest = manifest.cafFixtures.find((item) => item.caseId === caseId) ?? fail("CAF fixture hash ausente");
+    const type = Number(extractFirst(extractElement(file.xml, "Encabezado"), "TipoDTE"));
+    const cafManifest = manifest.fixtureMode
+      ? manifest.cafFixtures.find((item) => item.caseId === caseId)
+      : manifest.cafHashes.find((item) => item.type === type);
+    if (!cafManifest) fail(`stage=manifest field=${manifest.fixtureMode ? "cafFixtures" : "cafHashes"}`);
     if (sha256(cafXml) === cafManifest.sha256) cafOk += 1;
     if (verifyFrmtFromFinalBytes(file.xml)) frmtOk += 1;
     assertTedMatchesDte(file.xml);
     const documento = addDefaultNamespace(extractElement(file.xml, "Documento"), "Documento");
     if (verifyXmlDsigFromFinalBytes(documento, extractDteSignature(file.xml))) dteSignatureOk += 1;
   }
-  if (cafOk !== 8) fail(`CAF fixture no preservado ${cafOk}/8`);
+  if (cafOk !== 8) fail(`CAF ${manifest.fixtureMode ? "fixture" : "certification"} no preservado ${cafOk}/8`);
   if (frmtOk !== 8) fail(`FRMT final bytes no verifica ${frmtOk}/8`);
   if (dteSignatureOk !== 8) fail(`XMLDSig DTE final bytes no verifica ${dteSignatureOk}/8`);
 
   validateXsdFinal(envioFile, "EnvioDTE_v10.xsd");
   const setDte = addDefaultNamespace(extractElement(envioFile.xml, "SetDTE"), "SetDTE");
   if (!verifyXmlDsigFromFinalBytes(setDte, extractLastSignature(envioFile.xml))) fail("XMLDSig SetDTE final bytes no verifica");
-  writeAuditManifest(outputDir, allFiles);
+  writeAuditManifest(outputDir, allFiles, fixtureMode);
 
   return {
     environment: "certification",
-    fixtureMode: true,
+    fixtureMode,
     encoding: "ISO-8859-1",
     bom: "absent",
     unsupportedCharacters: 0,
@@ -311,7 +356,7 @@ export function auditFacturaSetFinalFiles(options: FacturaEncodingAuditOptions =
     envelopeSignatureFinalBytes: "valid",
     dteXsdFinalBytes: "8/8",
     envioDteXsdFinalBytes: "valid",
-    realCaf: false,
+    realCaf: !fixtureMode,
     siiContacted: false,
     readyToDownloadCaf: false,
   };

@@ -179,8 +179,11 @@ function fail(message: string): never {
 }
 
 function assertCertificationEnvironment(env: NodeJS.ProcessEnv): void {
+  if (env.DTE_MODE === "production" || env.DTE_SII_ENV === "production")
+    fail("stage=environment field=production");
   if (env.DTE_MODE !== "certification" || env.DTE_SII_ENV !== "certification") fail("DTE_MODE y DTE_SII_ENV deben ser certification para PRE-CAF 8");
-  if (env.DTE_CAF_PATH || env.DTE_CAF_PRIVATE_KEY_PATH) fail("rutas CAF heredadas bloqueadas para PRE-CAF 8");
+  if (env.DTE_CAF_PATH) fail("stage=environment field=DTE_CAF_PATH");
+  if (env.DTE_CAF_PRIVATE_KEY_PATH) fail("stage=environment field=DTE_CAF_PRIVATE_KEY_PATH");
   if (env.DTE_SII_ENABLE_SUBMIT === "true" || env.DTE_SII_ENABLE_STATUS === "true" || env.DTE_SII_LIVE_AUTH === "true") fail("red SII bloqueada para PRE-CAF 8");
   if (env.DTE_TRACK_ID || env.DTE_SII_TOKEN) fail("track_id/token bloqueado para PRE-CAF 8");
 }
@@ -789,6 +792,14 @@ function writeSetManifest(
       ? "manifest-4959698-CERTIFICATION.json"
       : "manifest-4959698-FIXTURE-SIN-VALIDEZ.json",
   );
+  const cafByType = new Map<number, string>();
+  for (const doc of signedDocuments) {
+    const type = getSiiDteTypeCode(doc.draft.documentType);
+    const hash = createHash("sha256").update(doc.cafXml).digest("hex");
+    const previous = cafByType.get(type);
+    if (previous && previous !== hash) fail(`CAF hash inconsistente para tipo ${type}`);
+    cafByType.set(type, hash);
+  }
   const manifest = {
     fixtureMode: !realCertification,
     legalValidity: realCertification
@@ -800,10 +811,9 @@ function writeSetManifest(
       file: path.split("/").pop(),
       sha256: sha256File(path),
     })),
-    cafHashes: signedDocuments.map((doc) => ({
-      caseId: doc.caseId,
-      sha256: createHash("sha256").update(doc.cafXml).digest("hex"),
-    })),
+    ...(realCertification
+      ? { cafHashes: [33, 61, 56].map((type) => ({ type, sha256: cafByType.get(type) ?? fail(`CAF hash ausente para tipo ${type}`) })) }
+      : { cafFixtures: signedDocuments.map((doc) => ({ caseId: doc.caseId, sha256: createHash("sha256").update(doc.cafXml).digest("hex") })) }),
   };
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
   chmodSync(manifestPath, 0o600);

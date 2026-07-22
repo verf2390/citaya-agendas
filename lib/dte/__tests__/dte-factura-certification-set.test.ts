@@ -995,6 +995,14 @@ test("PRE-CAF 6 checker deriva confirmaciones operativas y bloquea CAF, folios, 
 });
 
 
+const certificationTestEnv = {
+  NODE_ENV: "test",
+  DTE_MODE: "certification",
+  DTE_SII_ENV: "certification",
+  DTE_SII_LIVE_AUTH: "false",
+  DTE_SII_ENABLE_SUBMIT: "false",
+  DTE_SII_ENABLE_STATUS: "false",
+};
 function runFacturaSetFixture(overrides = {}, env = {}) {
   const inputPath = writePreCafExternalFixture(validPreCafExternalFixture());
   const outputDir = mkdtempSync(join(tmpdir(), "citaya-pre-caf-8-output-"));
@@ -1004,7 +1012,7 @@ function runFacturaSetFixture(overrides = {}, env = {}) {
     env: {
       PATH: process.env.PATH,
       HOME: process.env.HOME,
-      DTE_SII_ENV: "certification",
+      ...certificationTestEnv,
       DTE_FACTURA_PRE_CAF_INPUT_PATH: inputPath,
       DTE_FACTURA_PRE_CAF_ISSUE_DATE: "2026-07-19",
       ...env,
@@ -1044,7 +1052,7 @@ test("PRE-CAF 8 comando imprime solamente resumen seguro", () => {
     env: {
       PATH: process.env.PATH,
       HOME: process.env.HOME,
-      DTE_SII_ENV: "certification",
+      ...certificationTestEnv,
       DTE_FACTURA_PRE_CAF_INPUT_PATH: inputPath,
       DTE_FACTURA_PRE_CAF_ISSUE_DATE: "2026-07-19",
       DTE_FACTURA_SET_DRY_RUN_OUTPUT_DIR: outputDir,
@@ -1075,10 +1083,15 @@ test("PRE-CAF 8 rechaza firma alterada, total alterado y certificado llave disti
   assert.throws(() => runFacturaSetFixture({ mismatchedCertificateKey: true }), /firma XMLDSig DTE fixture no verifica localmente|firmas DTE fixture no verifican/);
 });
 
-test("PRE-CAF 8 bloquea production y rutas CAF reales", () => {
-  assert.throws(() => runFacturaSetFixture({}, { DTE_SII_ENV: "production" }), /certification|production bloqueado/);
-  assert.throws(() => runFacturaSetFixture({}, { DTE_CAF_PATH: "/tmp/caf-real.xml" }), /rutas CAF reales bloqueadas/);
-  assert.throws(() => runFacturaSetFixture({}, { DTE_SII_ENABLE_SUBMIT: "true" }), /submit SII bloqueado/);
+test("PRE-CAF 8 bloquea production antes de inspeccionar rutas CAF heredadas", () => {
+  assert.throws(() => runFacturaSetFixture({}, { DTE_MODE: "production", DTE_CAF_PATH: "/tmp/caf.xml" }), /field=production/);
+  assert.throws(() => runFacturaSetFixture({}, { DTE_SII_ENV: "production", DTE_CAF_PRIVATE_KEY_PATH: "/tmp/caf.key" }), /field=production/);
+});
+
+test("PRE-CAF 8 bloquea rutas CAF heredadas en certification", () => {
+  assert.throws(() => runFacturaSetFixture({}, { DTE_CAF_PATH: "/tmp/caf.xml" }), /field=DTE_CAF_PATH/);
+  assert.throws(() => runFacturaSetFixture({}, { DTE_CAF_PRIVATE_KEY_PATH: "/tmp/caf.key" }), /field=DTE_CAF_PRIVATE_KEY_PATH/);
+  assert.throws(() => runFacturaSetFixture({}, { DTE_SII_ENABLE_SUBMIT: "true" }), /red SII/);
 });
 
 
@@ -1088,7 +1101,7 @@ function prepareFacturaEncodingAuditFixture() {
   const env = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
-    DTE_SII_ENV: "certification",
+    ...certificationTestEnv,
     DTE_FACTURA_PRE_CAF_INPUT_PATH: inputPath,
     DTE_FACTURA_PRE_CAF_ISSUE_DATE: "2026-07-19",
   };
@@ -1108,6 +1121,98 @@ function updateXmlManifestHash(outputDir: string, fileName: string) {
 function overwriteLatin1Xml(path: string, xml: string) {
   writeFileSync(path, encodeIso88591Strict(xml));
 }
+
+function readSetManifest(outputDir: string, name = "manifest-4959698-FIXTURE-SIN-VALIDEZ.json") {
+  return JSON.parse(readFileSync(join(outputDir, name), "utf8"));
+}
+
+function writeSetManifest(outputDir: string, manifest: unknown, name = "manifest-4959698-FIXTURE-SIN-VALIDEZ.json") {
+  writeFileSync(join(outputDir, name), JSON.stringify(manifest, null, 2), "utf8");
+}
+
+function prepareRealManifestAuditFixture() {
+  const fixture = prepareFacturaEncodingAuditFixture();
+  const source = readSetManifest(fixture.outputDir);
+  const suffix = "-FIXTURE-SIN-VALIDEZ.xml";
+  const replacement = "-CERTIFICATION.xml";
+  for (const item of source.files as Array<{ file: string }>)
+    copyFileSync(join(fixture.outputDir, item.file), join(fixture.outputDir, item.file.replace(suffix, replacement)));
+  const typeByCase: Record<string, 33 | 56 | 61> = {
+    "4959698-1": 33, "4959698-2": 33, "4959698-3": 33, "4959698-4": 33,
+    "4959698-5": 61, "4959698-6": 61, "4959698-7": 61, "4959698-8": 56,
+  };
+  const cafHashes = [33, 61, 56].map((type) => {
+    const hashes = new Set((source.cafFixtures as Array<{ caseId: string; sha256: string }>)
+      .filter((item) => typeByCase[item.caseId] === type)
+      .map((item) => item.sha256));
+    assert.equal(hashes.size, 1);
+    return { type, sha256: [...hashes][0] };
+  });
+  writeSetManifest(fixture.outputDir, {
+    fixtureMode: false,
+    legalValidity: "CERTIFICATION_OFFLINE_NOT_SUBMITTED",
+    encoding: "ISO-8859-1",
+    generatedAt: source.generatedAt,
+    files: source.files.map((item: { file: string; sha256: string }) => ({
+      file: item.file.replace(suffix, replacement),
+      sha256: createHash("sha256").update(readFileSync(join(fixture.outputDir, item.file.replace(suffix, replacement)))).digest("hex"),
+    })),
+    cafHashes,
+  }, "manifest-4959698-CERTIFICATION.json");
+  return fixture;
+}
+
+test("PRE-CAF 8 manifiesto fixture usa solamente cafFixtures sintéticos", () => {
+  const fixture = prepareFacturaEncodingAuditFixture();
+  const manifest = readSetManifest(fixture.outputDir);
+  assert.equal(manifest.fixtureMode, true);
+  assert.equal(manifest.cafFixtures.length, 8);
+  assert.equal(Object.hasOwn(manifest, "cafHashes"), false);
+  assert.ok(manifest.cafFixtures.every((item: { caseId: string; sha256: string }) => /^4959698-[1-8]$/.test(item.caseId) && /^[a-f0-9]{64}$/.test(item.sha256)));
+});
+
+test("PRE-CAF 9 audita manifiesto de certificación con cafHashes por tipo", () => {
+  const fixture = prepareRealManifestAuditFixture();
+  const result = auditFacturaSetFinalFiles({ outputDir: fixture.outputDir, env: fixture.env, skipGeneration: true, manifestMode: "real" });
+  assert.equal(result.fixtureMode, false);
+  assert.equal(result.realCaf, true);
+  const manifest = readSetManifest(fixture.outputDir, "manifest-4959698-CERTIFICATION.json");
+  assert.equal(Object.hasOwn(manifest, "cafFixtures"), false);
+  assert.deepEqual(manifest.cafHashes.map((item: { type: number }) => item.type), [33, 61, 56]);
+});
+
+test("PRE-CAF 9 rechaza manifiesto fixture con ambos campos CAF", () => {
+  const fixture = prepareFacturaEncodingAuditFixture();
+  const manifest = readSetManifest(fixture.outputDir);
+  manifest.cafHashes = [{ type: 33, sha256: "a".repeat(64) }, { type: 61, sha256: "b".repeat(64) }, { type: 56, sha256: "c".repeat(64) }];
+  writeSetManifest(fixture.outputDir, manifest);
+  assert.throws(() => auditFacturaSetFinalFiles({ outputDir: fixture.outputDir, env: fixture.env, skipGeneration: true }), /field=cafFixtures/);
+});
+
+test("PRE-CAF 9 rechaza manifiesto fixture sin campo CAF", () => {
+  const fixture = prepareFacturaEncodingAuditFixture();
+  const manifest = readSetManifest(fixture.outputDir);
+  delete manifest.cafFixtures;
+  writeSetManifest(fixture.outputDir, manifest);
+  assert.throws(() => auditFacturaSetFinalFiles({ outputDir: fixture.outputDir, env: fixture.env, skipGeneration: true }), /field=cafFixtures/);
+});
+
+test("PRE-CAF 9 rechaza cafHashes bajo fixtureMode", () => {
+  const fixture = prepareFacturaEncodingAuditFixture();
+  const manifest = readSetManifest(fixture.outputDir);
+  delete manifest.cafFixtures;
+  manifest.cafHashes = [{ type: 33, sha256: "a".repeat(64) }, { type: 61, sha256: "b".repeat(64) }, { type: 56, sha256: "c".repeat(64) }];
+  writeSetManifest(fixture.outputDir, manifest);
+  assert.throws(() => auditFacturaSetFinalFiles({ outputDir: fixture.outputDir, env: fixture.env, skipGeneration: true }), /field=cafFixtures/);
+});
+
+test("PRE-CAF 9 rechaza cafFixtures bajo manifiesto real", () => {
+  const fixture = prepareRealManifestAuditFixture();
+  const manifest = readSetManifest(fixture.outputDir, "manifest-4959698-CERTIFICATION.json");
+  manifest.cafFixtures = [];
+  writeSetManifest(fixture.outputDir, manifest, "manifest-4959698-CERTIFICATION.json");
+  assert.throws(() => auditFacturaSetFinalFiles({ outputDir: fixture.outputDir, env: fixture.env, skipGeneration: true, manifestMode: "real" }), /field=cafHashes/);
+});
 
 test("PRE-CAF 9 audita encoding y firmas sobre bytes finales", () => {
   const { outputDir, env } = prepareFacturaEncodingAuditFixture();
