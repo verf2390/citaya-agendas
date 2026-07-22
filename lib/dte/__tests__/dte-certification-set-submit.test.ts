@@ -15,8 +15,10 @@ import Database from "better-sqlite3";
 import { buildXmlDsigControlled } from "../signing/sign-xml.real";
 import {
   ControlledSetSubmitError,
+  classifyUploadResponse,
   diagnosePersistedXmlSignature,
   formatSubmitError,
+  formatSubmitResult,
   preflightCertificationSetSubmit,
   submitPreparedCertificationSet,
 } from "../certification/factura-certification-set-submit";
@@ -205,12 +207,23 @@ test("preflight rejects permissions, symlink and internal path", () => {
     preflightCertificationSetSubmit(c.env, c.root, deps(c.sha)),
   );
 });
-function responses(kind: "success" | "rejected" | "timeout") {
+function responses(
+  kind:
+    | "success"
+    | "rejected"
+    | "timeout"
+    | "redirect"
+    | "html-login"
+    | "html-generic"
+    | "html-receipt",
+) {
   let calls = 0;
   const bodies: unknown[] = [];
-  const fetchImpl: typeof fetch = async (_url, init) => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl: typeof fetch = async (url, init) => {
     calls++;
     bodies.push(init?.body);
+    requests.push({ url: String(url), init });
     if (calls === 1)
       return new Response(
         "<RESPUESTA><RESP_HDR><ESTADO>00</ESTADO></RESP_HDR><RESP_BODY><SEMILLA>12345</SEMILLA></RESP_BODY></RESPUESTA>",
@@ -222,6 +235,26 @@ function responses(kind: "success" | "rejected" | "timeout") {
         { status: 200 },
       );
     if (kind === "timeout") throw new DOMException("timeout", "TimeoutError");
+    if (kind === "redirect")
+      return new Response("", {
+        status: 302,
+        headers: { location: "https://maullin.sii.cl/redirected" },
+      });
+    if (kind === "html-login")
+      return new Response(
+        "<!doctype html><html><body>Sesión expirada</body></html>",
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    if (kind === "html-generic")
+      return new Response("<!doctype html><html><body>Página</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    if (kind === "html-receipt")
+      return new Response(
+        "<!doctype html><html><body>Track ID: 123456789</body></html>",
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
     return new Response(
       kind === "success"
         ? "<RECEPCIONDTE><STATUS>0</STATUS><TRACKID>123456789</TRACKID></RECEPCIONDTE>"
@@ -232,6 +265,7 @@ function responses(kind: "success" | "rejected" | "timeout") {
   return {
     fetchImpl,
     bodies,
+    requests,
     get calls() {
       return calls;
     },
@@ -248,6 +282,15 @@ test("submit builds official multipart, accepts STATUS 0, stores track and never
   assert.equal(result.status, "SUBMITTED");
   assert.equal(result.trackIdStored, true);
   assert.equal(result.statusQueried, false);
+  const upload = mock.requests[2];
+  const headers = new Headers(upload.init?.headers);
+  assert.match(headers.get("user-agent") ?? "", /PROG 1\.0/);
+  assert.equal(headers.get("accept-language"), "es-cl");
+  assert.equal(headers.get("referer"), "https://maullin.sii.cl/");
+  assert.equal(headers.get("cache-control"), "no-cache");
+  assert.match(headers.get("accept") ?? "", /application\/xml/);
+  assert.match(headers.get("cookie") ?? "", /^TOKEN=/);
+  assert.equal(upload.init?.redirect, "manual");
   const form = mock.bodies[2] as FormData;
   assert.equal(form.get("rutSender"), "22222222");
   assert.equal(form.get("dvSender"), "2");
@@ -305,6 +348,58 @@ test("upload timeout becomes ambiguous and cannot retry", async () => {
   );
   assert.equal(mock.calls, 3);
 });
+test("redirect and HTML responses become ambiguous and cannot retry", async () => {
+  for (const kind of [
+    "redirect",
+    "html-login",
+    "html-generic",
+    "html-receipt",
+  ] as const) {
+    const f = fixture();
+    const mock = responses(kind);
+    const result = await submitPreparedCertificationSet(f.env, {
+      ...deps(f.sha),
+      fetchImpl: mock.fetchImpl,
+    });
+    assert.equal(result.status, "AMBIGUOUS");
+    assert.equal(result.submitted, false);
+    assert.equal(mock.calls, 3);
+    const record = JSON.parse(
+      readFileSync(join(f.registry, `${f.sha}.json`), "utf8"),
+    );
+    assert.equal(record.state, "ambiguous");
+    if (kind === "redirect") assert.ok(record.locationFingerprint);
+    if (kind === "html-receipt") {
+      assert.ok(record.trackCandidateFingerprint);
+      assert.equal(formatSubmitResult(result).includes("123456789"), false);
+    }
+    await assert.rejects(() =>
+      submitPreparedCertificationSet(f.env, {
+        ...deps(f.sha),
+        fetchImpl: mock.fetchImpl,
+      }),
+    );
+    assert.equal(mock.calls, 3);
+  }
+});
+test("response parser supports namespaced XML and classifies HTML safely", () => {
+  const xml = classifyUploadResponse(
+    '<?xml version="1.0"?><s:RECEPCIONDTE xmlns:s="urn:test"><s:STATUS> 0 </s:STATUS><s:TRACKID> 123456789 </s:TRACKID></s:RECEPCIONDTE>',
+  );
+  assert.equal(xml.kind, "accepted");
+  const rejected = classifyUploadResponse(
+    "<RECEPCIONDTE><STATUS>5</STATUS></RECEPCIONDTE>",
+  );
+  assert.equal(rejected.kind, "rejected");
+  const html = classifyUploadResponse(
+    "<!doctype html><html><body>Número de atención: 123456789</body></html>",
+  );
+  assert.equal(html.kind, "ambiguous");
+  assert.equal(html.semanticCategory, "possible_html_receipt");
+  assert.ok(html.trackCandidateFingerprint);
+  assert.equal(JSON.stringify(html).includes("123456789"), false);
+});
+
 test("safe errors never print internal values", () => {
   const secret = "TOKEN track-id RUT XML /secure/path PRIVATE KEY";
   const output = formatSubmitError(
@@ -357,7 +452,10 @@ test("persisted Latin-1 envelope verifies the SetDTE signature among nested DTE 
     false,
   );
   const wrongDigest = Buffer.from(
-    xml.replace(/<DigestValue>(.)/, "<DigestValue>X"),
+    xml.replace(
+      signed.signatureXml,
+      signed.signatureXml.replace(/<DigestValue>(.)/, "<DigestValue>X"),
+    ),
     "latin1",
   );
   assert.equal(
@@ -365,7 +463,10 @@ test("persisted Latin-1 envelope verifies the SetDTE signature among nested DTE 
     false,
   );
   const wrongSignature = Buffer.from(
-    xml.replace(/<SignatureValue>(.)/, "<SignatureValue>X"),
+    xml.replace(
+      signed.signatureXml,
+      signed.signatureXml.replace(/<SignatureValue>(.)/, "<SignatureValue>X"),
+    ),
     "latin1",
   );
   assert.equal(

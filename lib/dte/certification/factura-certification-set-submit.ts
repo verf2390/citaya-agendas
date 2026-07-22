@@ -26,6 +26,7 @@ import {
   sep,
 } from "node:path";
 import { spawnSync } from "node:child_process";
+import { DOMParser } from "@xmldom/xmldom";
 import { validateRut } from "../rut";
 import { canonicalizeXmlControlled } from "../signing/sign-xml.real";
 import {
@@ -544,6 +545,122 @@ function atomicRecord(
 function fingerprint(value: string | null | undefined): string | null {
   return value ? sha256(value).slice(0, 16) : null;
 }
+const UPLOAD_USER_AGENT = "PROG 1.0";
+const UPLOAD_REFERER = "https://maullin.sii.cl/";
+type UploadResponseClassification = {
+  kind: "accepted" | "rejected" | "ambiguous";
+  status: string | null;
+  trackId: string | null;
+  trackCandidateFingerprint: string | null;
+  semanticCategory: string;
+};
+function localName(value: {
+  localName?: string | null;
+  nodeName: string;
+}): string {
+  return String(value.localName || value.nodeName).replace(/^.*:/, "");
+}
+export function classifyUploadResponse(
+  raw: string,
+): UploadResponseClassification {
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const looksHtml = /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(raw);
+  const candidate =
+    raw.match(
+      /(?:track\s*id|trackid|n(?:u|ú)mero\s+de\s+atenci(?:o|ó)n|nro\.?\s*atenci(?:o|ó)n)[^0-9]{0,80}([0-9]{5,30})/i,
+    )?.[1] ?? null;
+  if (looksHtml) {
+    const semanticCategory = candidate
+      ? "possible_html_receipt"
+      : /(?:login|autenticacion|iniciar sesion|sesion.{0,30}(?:expir|caduc|venc))/.test(
+            normalized,
+          )
+        ? "html_login_or_session"
+        : /(?:error|problema|fallo|invalido)/.test(normalized)
+          ? "html_error"
+          : "html_generic";
+    return {
+      kind: "ambiguous",
+      status: null,
+      trackId: null,
+      trackCandidateFingerprint: fingerprint(candidate),
+      semanticCategory,
+    };
+  }
+  const errors: string[] = [];
+  let document: ReturnType<DOMParser["parseFromString"]>;
+  try {
+    document = new DOMParser({
+      onError: (level) => {
+        if (level !== "warning") errors.push(level);
+      },
+    }).parseFromString(raw, "application/xml");
+  } catch {
+    return {
+      kind: "ambiguous",
+      status: null,
+      trackId: null,
+      trackCandidateFingerprint: null,
+      semanticCategory: "unexpected_response",
+    };
+  }
+  const root = document.documentElement;
+  if (
+    !root ||
+    errors.length ||
+    localName(root).toUpperCase() !== "RECEPCIONDTE"
+  )
+    return {
+      kind: "ambiguous",
+      status: null,
+      trackId: null,
+      trackCandidateFingerprint: null,
+      semanticCategory: "unexpected_response",
+    };
+  const elements = [root, ...Array.from(root.getElementsByTagName("*"))];
+  const text = (name: string) =>
+    elements
+      .find((element) => localName(element).toUpperCase() === name)
+      ?.textContent?.trim() ?? null;
+  const status = text("STATUS");
+  const trackId = text("TRACKID");
+  if (status === "0" && trackId)
+    return {
+      kind: "accepted",
+      status,
+      trackId,
+      trackCandidateFingerprint: null,
+      semanticCategory: "xml_receipt",
+    };
+  if (status && status !== "0")
+    return {
+      kind: "rejected",
+      status,
+      trackId: null,
+      trackCandidateFingerprint: null,
+      semanticCategory: "explicit_sii_rejection",
+    };
+  return {
+    kind: "ambiguous",
+    status,
+    trackId: null,
+    trackCandidateFingerprint: null,
+    semanticCategory: "incomplete_xml_receipt",
+  };
+}
+function safeResponseUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "maullin.sii.cl"
+      ? `${url.origin}${url.pathname}`
+      : null;
+  } catch {
+    return null;
+  }
+}
 export type SubmitResult = {
   status: "SUBMITTED" | "REJECTED" | "AMBIGUOUS";
   receptionStatus: string;
@@ -587,23 +704,79 @@ export async function submitPreparedCertificationSet(
     );
     const response = await fetchImpl(pre.endpoint, {
       method: "POST",
-      headers: { cookie: `TOKEN=${token.token}` },
+      headers: {
+        "user-agent": UPLOAD_USER_AGENT,
+        accept: "text/xml,application/xml,text/html;q=0.9,*/*;q=0.8",
+        "accept-language": "es-cl",
+        referer: UPLOAD_REFERER,
+        "cache-control": "no-cache",
+        cookie: `TOKEN=${token.token}`,
+      },
       body: form,
+      redirect: "manual",
       signal: AbortSignal.timeout(pre.config.timeoutMs),
     });
     contacted = true;
     const raw = await response.text();
-    const status = raw.match(/<STATUS[^>]*>([^<]+)</i)?.[1]?.trim() ?? null;
-    const track = raw.match(/<TRACKID[^>]*>([^<]+)</i)?.[1]?.trim() ?? null;
-    if (!response.ok || status !== "0" || !track) {
-      atomicRecord(pre, "rejected", {
+    const responseMetadata = {
+      httpStatus: response.status,
+      responseContentType: response.headers.get("content-type"),
+      responseUrl: safeResponseUrl(response.url),
+      redirected: response.redirected,
+      responseBytes: Buffer.byteLength(raw, "utf8"),
+      responseSha256: sha256(raw),
+      requestMetadata: {
+        multipartBoundaryConsistent: true,
+        rutSenderFieldPresent: true,
+        dvSenderFieldPresent: true,
+        rutCompanyFieldPresent: true,
+        dvCompanyFieldPresent: true,
+        archivoFieldPresent: true,
+        filenamePresent: true,
+        contentTypeXml: true,
+        tokenCookiePresent: true,
+        requestBodyLengthPositive: pre.envelope.length > 0,
+        endpointExact: pre.endpoint === SET_SUBMIT_URL,
+        redirectManual: true,
+        userAgentProgPresent: true,
+        refererPresent: true,
+      },
+    };
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400) {
+      atomicRecord(pre, "ambiguous", {
         response: raw,
-        httpStatus: response.status,
+        ...responseMetadata,
+        locationFingerprint: fingerprint(location),
+        semanticCategory: "http_redirect",
         tokenFingerprint,
       });
       return {
-        status: "REJECTED",
-        receptionStatus: status ?? "invalid",
+        status: "AMBIGUOUS",
+        receptionStatus: "redirect",
+        envelopeSha256: pre.envelopeSha256,
+        tokenFingerprint,
+        trackIdStored: false,
+        trackIdFingerprint: null,
+        siiContacted: true,
+        submitted: false,
+        statusQueried: false,
+      };
+    }
+    const classification = classifyUploadResponse(raw);
+    if (!response.ok || classification.kind !== "accepted") {
+      const state =
+        classification.kind === "rejected" ? "rejected" : "ambiguous";
+      atomicRecord(pre, state, {
+        response: raw,
+        ...responseMetadata,
+        semanticCategory: classification.semanticCategory,
+        trackCandidateFingerprint: classification.trackCandidateFingerprint,
+        tokenFingerprint,
+      });
+      return {
+        status: state === "rejected" ? "REJECTED" : "AMBIGUOUS",
+        receptionStatus: classification.status ?? "invalid",
         envelopeSha256: pre.envelopeSha256,
         tokenFingerprint,
         trackIdStored: false,
@@ -615,8 +788,9 @@ export async function submitPreparedCertificationSet(
     }
     atomicRecord(pre, "submitted", {
       response: raw,
-      httpStatus: response.status,
-      trackId: track,
+      ...responseMetadata,
+      semanticCategory: classification.semanticCategory,
+      trackId: classification.trackId,
       tokenFingerprint,
     });
     return {
@@ -625,7 +799,7 @@ export async function submitPreparedCertificationSet(
       envelopeSha256: pre.envelopeSha256,
       tokenFingerprint,
       trackIdStored: true,
-      trackIdFingerprint: fingerprint(track),
+      trackIdFingerprint: fingerprint(classification.trackId),
       siiContacted: true,
       submitted: true,
       statusQueried: false,
