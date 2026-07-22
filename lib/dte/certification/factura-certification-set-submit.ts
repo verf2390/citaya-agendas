@@ -30,6 +30,7 @@ import { spawnSync } from "node:child_process";
 import { DOMParser } from "@xmldom/xmldom";
 import { validateRut } from "../rut";
 import { canonicalizeXmlControlled } from "../signing/sign-xml.real";
+import { hasRequiredSiiEnvioDteHeader } from "../xml/sii-envio-dte-header";
 import {
   requestSeed,
   requestToken,
@@ -402,6 +403,8 @@ function preflightSetSubmit(
     !Buffer.from(xml, "latin1").equals(envelope)
   )
     reject("envelope", "encoding");
+  if (!hasRequiredSiiEnvioDteHeader(xml))
+    reject("envelope", "schema_header");
   const xsd =
     deps.xsd ??
     ((path) =>

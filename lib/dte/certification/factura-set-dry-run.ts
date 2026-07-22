@@ -42,6 +42,10 @@ import {
 } from "../xml/build-dte-envelope";
 import { escapeXml } from "../xml/escape-xml";
 import {
+  SII_ENVIO_DTE_ROOT_OPENING,
+  SII_ENVIO_DTE_XML_DECLARATION,
+} from "../xml/sii-envio-dte-header";
+import {
   buildFacturaCertificationDocuments,
   type FacturaCertificationCaseId,
   type FacturaCertificationDocument,
@@ -63,8 +67,7 @@ export const FACTURA_SET_FIXTURE_TIMESTAMP = "2026-07-19T12:00:00";
 const FIXTURE_OUTPUT_DIR = FACTURA_SET_FIXTURE_OUTPUT_DIR;
 const FIXTURE_TIMESTAMP = FACTURA_SET_FIXTURE_TIMESTAMP;
 const FIXTURE_TENANT_ID = "citaya-rg-pre-caf-fixture";
-const XML_DECLARATION_ISO_8859_1 =
-  '<?xml version="1.0" encoding="ISO-8859-1"?>';
+const XML_DECLARATION_ISO_8859_1 = SII_ENVIO_DTE_XML_DECLARATION;
 
 export type FacturaSetDryRunOptions = {
   env?: NodeJS.ProcessEnv;
@@ -737,7 +740,7 @@ function buildEnvioXml(
   const warning = realCertification
     ? ""
     : "<!-- FIXTURE SIN VALIDEZ TRIBUTARIA - NO ENVIAR AL SII -->\n";
-  const envioXml = `${XML_DECLARATION_ISO_8859_1}\n${warning}<EnvioDTE xmlns="${SII_DTE_NAMESPACE}" version="1.0">\n${setDteXml.replace(` xmlns="${SII_DTE_NAMESPACE}"`, "")}\n${envelopeSignature.signatureXml}\n</EnvioDTE>`;
+  const envioXml = `${XML_DECLARATION_ISO_8859_1}\n${SII_ENVIO_DTE_ROOT_OPENING}\n${warning}${setDteXml.replace(` xmlns="${SII_DTE_NAMESPACE}"`, "")}\n${envelopeSignature.signatureXml}\n</EnvioDTE>`;
   onStage?.("xsd_validation");
   validateXsd(
     envioXml,

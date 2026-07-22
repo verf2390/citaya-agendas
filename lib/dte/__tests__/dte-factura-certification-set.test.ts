@@ -1043,6 +1043,25 @@ test("PRE-CAF 8 genera Set Basico 4959698 offline con CAF, folios y certificado 
   assert.doesNotMatch(output, /11111111-1|22222222-2|DIRECCION|SECRETO-CLIENTE-FICTICIO/);
 });
 
+
+test("PRE-CAF 8 declara la cabecera SII exacta sin alterar XSD ni firmas", () => {
+  const result = runFacturaSetFixture();
+  const bytes = readFileSync(
+    join(result.outputDir, "EnvioDTE-4959698-FIXTURE-SIN-VALIDEZ.xml"),
+  );
+  const lines = bytes.toString("latin1").split("\n");
+  assert.deepEqual(lines.slice(0, 2), [
+    '<?xml version="1.0" encoding="ISO-8859-1"?>',
+    '<EnvioDTE xmlns="http://www.sii.cl/SiiDte" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioDTE_v10.xsd" version="1.0">',
+  ]);
+  assert.equal(Buffer.from(bytes.toString("latin1"), "latin1").equals(bytes), true);
+  assert.equal(result.envioDteXsd, "valid");
+  assert.equal(result.dteSignatures, "8/8");
+  assert.equal(result.envelopeSignature, "valid");
+  assert.equal(result.references, "valid");
+  assert.equal(result.totals, "valid");
+});
+
 test("PRE-CAF 8 comando imprime solamente resumen seguro", () => {
   const inputPath = writePreCafExternalFixture(validPreCafExternalFixture());
   const outputDir = mkdtempSync(join(tmpdir(), "citaya-pre-caf-8-command-"));

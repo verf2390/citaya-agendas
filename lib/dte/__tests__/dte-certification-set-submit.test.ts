@@ -31,7 +31,7 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), "set-submit-"));
   const envelope = join(root, "EnvioDTE-4959698-CERTIFICATION.xml");
   const xml =
-    '<?xml version="1.0" encoding="ISO-8859-1"?><EnvioDTE>FIXTURE</EnvioDTE>';
+    '<?xml version="1.0" encoding="ISO-8859-1"?>\n<EnvioDTE xmlns="http://www.sii.cl/SiiDte" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioDTE_v10.xsd" version="1.0">\nFIXTURE</EnvioDTE>';
   write600(envelope, Buffer.from(xml, "latin1"));
   const sha = createHash("sha256").update(readFileSync(envelope)).digest("hex");
   const cert = join(root, "cert.pem"),
@@ -185,6 +185,37 @@ test("preflight rejects wrong hash and modified envelope", () => {
     () => preflightCertificationSetSubmit(b.env, process.cwd(), deps(b.sha)),
     /Controlled certification/,
   );
+});
+test("preflight rejects missing or incompatible SII envelope schema header", () => {
+  for (const header of [
+    '<EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">',
+    '<EnvioDTE xmlns="https://example.invalid/SiiDte" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioDTE_v10.xsd" version="1.0">',
+    '<EnvioDTE xmlns="http://www.sii.cl/SiiDte" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte Otro_v10.xsd" version="1.0">',
+  ]) {
+    const f = fixture();
+    const value = Buffer.from(
+      `<?xml version="1.0" encoding="ISO-8859-1"?>\n${header}FIXTURE</EnvioDTE>`,
+      "latin1",
+    );
+    write600(f.envelope, value);
+    const hash = createHash("sha256").update(value).digest("hex");
+    const manifestPath = join(f.root, "manifest-4959698-CERTIFICATION.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    manifest.files.find((file: { file: string }) => file.file === "EnvioDTE-4959698-CERTIFICATION.xml").sha256 = hash;
+    write600(manifestPath, JSON.stringify(manifest));
+    assert.throws(
+      () =>
+        preflightCertificationSetSubmit(
+          { ...f.env, DTE_FACTURA_CERTIFICATION_ENVELOPE_SHA256: hash, DTE_FACTURA_CERTIFICATION_SUBMIT_CONFIRM: `SUBMIT_SET_4959698_${hash}` },
+          process.cwd(),
+          deps(hash),
+        ),
+      (error: unknown) =>
+        error instanceof ControlledSetSubmitError &&
+        error.stage === "envelope" &&
+        error.field === "schema_header",
+    );
+  }
 });
 test("preflight rejects permissions, symlink and internal path", () => {
   const a = fixture();
