@@ -97,11 +97,15 @@ export type FacturaSetDryRunOptions = {
 };
 
 export type FacturaSetDryRunStage =
+  | "generation_config"
   | "certificate_material"
+  | "caf_material_load"
   | "output_preflight"
+  | "document_model"
   | "document_build"
   | "ted_frmt"
   | "dte_signature"
+  | "document_signing"
   | "envelope_build"
   | "xsd_validation"
   | "output_write"
@@ -466,18 +470,27 @@ function assertTotals(
   });
 }
 
+export function assertCertificationFolioOrder(
+  actualFolios: readonly number[],
+  folios: Record<FacturaCertificationCaseId, number>,
+): void {
+  PRE_CAF_REQUIRED_CASE_ORDER.forEach((caseId, index) => {
+    if (actualFolios[index] !== folios[caseId])
+      fail("folio del caso no coincide con el plan");
+  });
+}
+
 function assertReferences(
   drafts: TaxDocumentDraft[],
   folios: Record<FacturaCertificationCaseId, number>,
 ): void {
   const expectedOrder = [...PRE_CAF_REQUIRED_CASE_ORDER];
-  const caseByFolio = new Map<number, FacturaCertificationCaseId>();
-  for (const caseId of expectedOrder) caseByFolio.set(folios[caseId], caseId);
+  assertCertificationFolioOrder(
+    drafts.map((draft) => draft.folio),
+    folios,
+  );
   drafts.forEach((draft, index) => {
-    const caseId =
-      caseByFolio.get(draft.folio) ?? fail("folio fixture sin caso");
-    if (caseId !== expectedOrder[index])
-      fail("orden de documentos del set invalido");
+    const caseId = expectedOrder[index] ?? fail("documento sin caso esperado");
     const refs = draft.references ?? [];
     if (
       refs[0]?.documentType !== "SET" ||
@@ -819,6 +832,7 @@ function countTypes(drafts: TaxDocumentDraft[]): {
 export function runFacturaSetDryRun(
   options: FacturaSetDryRunOptions = {},
 ): FacturaSetDryRunResult {
+  options.onStage?.("generation_config");
   const env = options.env ?? process.env;
   const repoRoot = options.repoRoot ?? process.cwd();
   assertCertificationEnvironment(env);
@@ -859,6 +873,7 @@ export function runFacturaSetDryRun(
       env.DTE_FACTURA_SET_DRY_RUN_OUTPUT_DIR ??
       FIXTURE_OUTPUT_DIR,
   );
+  options.onStage?.("document_model");
   const docs = buildFacturaCertificationDocuments({
     issueDate: loaded.issueDate,
     taxPeriod: loaded.taxPeriod,
@@ -888,7 +903,7 @@ export function runFacturaSetDryRun(
   assertReferences(drafts, selectedFolios);
   const typeCounts = countTypes(drafts);
 
-  options.onStage?.("certificate_material");
+  options.onStage?.("caf_material_load");
   const xmlMaterial = options.realCertification
     ? loadExternalSigningMaterial(options.realCertification)
     : createSelfSignedFixture("citaya-pre-caf-8-xml");
@@ -911,6 +926,7 @@ export function runFacturaSetDryRun(
       generationTimestamp,
       options.onStage,
     );
+    options.onStage?.("document_signing");
     const dteSignatureOk = signed.filter((doc) =>
       verifyInsertedSignature(
         doc.unsignedDocumentoXml,

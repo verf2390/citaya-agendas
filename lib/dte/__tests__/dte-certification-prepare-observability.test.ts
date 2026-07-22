@@ -12,6 +12,7 @@ import {
   type CertificationPrepareStage,
 } from "../certification/factura-certification-set-prepare";
 import { FolioSqliteLedger } from "../certification/folio-sqlite-ledger";
+import { assertCertificationFolioOrder } from "../certification/factura-set-dry-run";
 
 const KEY = "SET-4959698-ATTEMPT-001";
 const ISSUER = "fixture-issuer";
@@ -170,4 +171,95 @@ test("public error output is structured and never exposes internal cause", () =>
     "code=CERTIFICATION_SET_PREPARE_REJECTED\nstage=ted_frmt\nfield=generation\nmessage=controlled_operation_failed",
   );
   for (const secret of secrets) assert.equal(output.includes(secret), false);
+});
+
+test("real per-type folio plan is valid despite repeated folio numbers", () => {
+  assert.doesNotThrow(() =>
+    assertCertificationFolioOrder(
+      [1, 2, 3, 4, 1, 2, 3, 1],
+      Object.fromEntries(
+        PLAN.map(([, folio, caseId]) => [caseId, folio]),
+      ) as Record<(typeof PLAN)[number][2], number>,
+    ),
+  );
+});
+
+test("generator exception after output preflight is attributed to the next entered stage", () => {
+  assert.throws(
+    () =>
+      runCertificationGeneration(
+        (onStage) => {
+          onStage("output_preflight");
+          onStage("document_model");
+          throw new Error("fixture model failure");
+        },
+        () => assert.fail("must not finalize"),
+      ),
+    (error) =>
+      error instanceof CertificationSetPrepareError &&
+      error.stage === "document_model" &&
+      error.stage !== "output_preflight",
+  );
+});
+
+test("complete fixture resume writes artifacts then finalizes all eight atomically", () => {
+  const { ledger } = seededLedger();
+  const root = mkdtempSync(join(tmpdir(), "prepare-complete-"));
+  const output = join(root, "attempt-001");
+  mkdirSync(output, { mode: 0o700 });
+  chmodSync(output, 0o700);
+  try {
+    assertCertificationOutputPreflight(output);
+    const plan = resolveCertificationFolioPlan(ledger, ISSUER, KEY);
+    assert.equal(plan.reused, true);
+    runCertificationGeneration(
+      (onStage) => {
+        for (const stage of [
+          "output_preflight",
+          "document_model",
+          "caf_material_load",
+          "document_build",
+          "ted_frmt",
+          "dte_signature",
+          "document_signing",
+          "envelope_build",
+          "xsd_validation",
+          "output_write",
+          "manifest_build",
+        ] as const)
+          onStage(stage);
+        for (let index = 1; index <= 8; index += 1)
+          writeFileSync(join(output, `fixture-dte-${index}.xml`), "fixture", {
+            mode: 0o600,
+          });
+        writeFileSync(join(output, "fixture-envelope.xml"), "fixture", {
+          mode: 0o600,
+        });
+        writeFileSync(join(output, "fixture-manifest.json"), "{}", {
+          mode: 0o600,
+        });
+        return true;
+      },
+      () =>
+        ledger.markPlanIssued(
+          ISSUER,
+          PLAN.map(([, , caseId]) => `${KEY}:${caseId}`),
+        ),
+    );
+    assert.deepEqual(stateCounts(ledger), { reserved: 0, issued: 8, audit: 8 });
+    for (const [type, folio] of [
+      [33, 5],
+      [61, 4],
+      [56, 2],
+    ] as const) {
+      const row = ledger.db
+        .prepare(
+          "SELECT state FROM folios WHERE issuer=? AND type_code=? AND folio=?",
+        )
+        .get(ISSUER, type, folio) as { state: string };
+      assert.equal(row.state, "available");
+    }
+  } finally {
+    ledger.close();
+  }
 });
