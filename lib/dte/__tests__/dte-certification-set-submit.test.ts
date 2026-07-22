@@ -12,8 +12,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
+import { buildXmlDsigControlled } from "../signing/sign-xml.real";
 import {
   ControlledSetSubmitError,
+  diagnosePersistedXmlSignature,
   formatSubmitError,
   preflightCertificationSetSubmit,
   submitPreparedCertificationSet,
@@ -112,7 +114,7 @@ function fixture() {
     SII_RUT_EMPRESA: "11111111-1",
     SII_RUT_USUARIO: "22222222-2",
   };
-  return { root, envelope, sha, env, registry };
+  return { root, envelope, sha, env, registry, cert, key };
 }
 const deps = (sha: string) => ({
   expectedSha256: sha,
@@ -311,4 +313,75 @@ test("safe errors never print internal values", () => {
   for (const value of secret.split(" "))
     assert.equal(output.includes(value), false);
   assert.match(output, /stage=submit/);
+});
+
+test("persisted Latin-1 envelope verifies the SetDTE signature among nested DTE signatures", () => {
+  const f = fixture();
+  const fragment =
+    '<SetDTE xmlns="http://www.sii.cl/SiiDte" ID="FixtureSet"><Caratula>Información y mañana</Caratula></SetDTE>';
+  const signed = buildXmlDsigControlled(
+    {
+      referenceUri: "FixtureSet",
+      signedXmlFragment: fragment,
+      mode: "certification",
+    },
+    {
+      tenantId: "fixture",
+      mode: "certification",
+      signatureTarget: "FixtureSet",
+      privateKeyPath: f.key,
+      certificatePath: f.cert,
+      publicCertificatePath: f.cert,
+    },
+  );
+  assert.equal(signed.verification?.ok, true);
+  const nestedSignature = signed.signatureXml.replace(
+    'URI="#FixtureSet"',
+    'URI="#NestedDte"',
+  );
+  const xml = `<?xml version="1.0" encoding="ISO-8859-1"?>\n<EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0"><DTE><Documento ID="NestedDte"><Detalle>acción</Detalle></Documento>${nestedSignature}</DTE>${fragment.replace(' xmlns="http://www.sii.cl/SiiDte"', "")}${signed.signatureXml}</EnvioDTE>`;
+  const bytes = Buffer.from(xml, "latin1");
+  const cert = readFileSync(f.cert, "utf8");
+  const valid = diagnosePersistedXmlSignature(bytes, cert);
+  assert.equal(valid.valid, true);
+  assert.equal(valid.finalBytesRoundTrip, true);
+  assert.equal(valid.referenceDigestValid, true);
+  assert.equal(valid.signedInfoSignatureValid, true);
+
+  const corruptByte = Buffer.from(
+    xml.replace("Información", "Informaciòn"),
+    "latin1",
+  );
+  assert.equal(
+    diagnosePersistedXmlSignature(corruptByte, cert).referenceDigestValid,
+    false,
+  );
+  const wrongDigest = Buffer.from(
+    xml.replace(/<DigestValue>(.)/, "<DigestValue>X"),
+    "latin1",
+  );
+  assert.equal(
+    diagnosePersistedXmlSignature(wrongDigest, cert).referenceDigestValid,
+    false,
+  );
+  const wrongSignature = Buffer.from(
+    xml.replace(/<SignatureValue>(.)/, "<SignatureValue>X"),
+    "latin1",
+  );
+  assert.equal(
+    diagnosePersistedXmlSignature(wrongSignature, cert)
+      .signedInfoSignatureValid,
+    false,
+  );
+  const other = fixture();
+  assert.equal(
+    diagnosePersistedXmlSignature(bytes, readFileSync(other.cert, "utf8"))
+      .embeddedCertificateMatchesExternal,
+    false,
+  );
+  const accidentalUtf8 = Buffer.from(xml, "utf8");
+  assert.equal(
+    diagnosePersistedXmlSignature(accidentalUtf8, cert).valid,
+    false,
+  );
 });

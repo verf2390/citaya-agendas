@@ -1,10 +1,10 @@
-import { DOMParser } from "@xmldom/xmldom";
 import Database from "better-sqlite3";
-import { SignedXml } from "xml-crypto";
 import {
   createHash,
   createPrivateKey,
   createPublicKey,
+  createVerify,
+  X509Certificate,
   randomBytes,
 } from "node:crypto";
 import {
@@ -17,9 +17,17 @@ import {
   renameSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { spawnSync } from "node:child_process";
 import { validateRut } from "../rut";
+import { canonicalizeXmlControlled } from "../signing/sign-xml.real";
 import {
   requestSeed,
   requestToken,
@@ -145,19 +153,147 @@ function verifyCertificatePair(certPath: string, keyPath: string): void {
     throw wrap(error, "certificate", "key_pair");
   }
 }
-function validateXmlSignature(xml: string, certificatePem: string): boolean {
-  const doc = new DOMParser().parseFromString(xml, "text/xml");
-  const nodes = doc.getElementsByTagNameNS(
-    "http://www.w3.org/2000/09/xmldsig#",
-    "Signature",
+export type PersistedSignatureDiagnostics = {
+  finalBytesRoundTrip: boolean;
+  referenceDigestValid: boolean;
+  signedInfoSignatureValid: boolean;
+  embeddedCertificatePresent: boolean;
+  embeddedCertificateMatchesExternal: boolean;
+  externalCertificateKeyMatch: boolean;
+  signatureAlgorithmAllowed: boolean;
+  canonicalizationAlgorithmAllowed: boolean;
+  valid: boolean;
+};
+function xmlTag(source: string, name: string): string | null {
+  return (
+    source
+      .match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`))?.[1]
+      ?.trim() ?? null
   );
-  if (nodes.length !== 1) return false;
-  const verifier = new SignedXml({ publicCert: certificatePem });
-  verifier.loadSignature(nodes[0] as never);
-  return verifier.checkSignature(xml);
+}
+export function diagnosePersistedXmlSignature(
+  bytes: Buffer,
+  certificatePem: string,
+  targetTag = "SetDTE",
+): PersistedSignatureDiagnostics {
+  const xml = bytes.toString("latin1");
+  const finalBytesRoundTrip = Buffer.from(xml, "latin1").equals(bytes);
+  const target =
+    xml.match(
+      new RegExp(`<${targetTag}\\b[^>]*>[\\s\\S]*?<\\/${targetTag}>`),
+    )?.[0] ?? "";
+  const targetId = target.match(/\sID="([^"]+)"/)?.[1] ?? "";
+  const signatures = [
+    ...xml.matchAll(/<Signature\b[^>]*>[\s\S]*?<\/Signature>/g),
+  ].map((match) => match[0]);
+  const signatureXml =
+    signatures.find((value) =>
+      value.includes(`<Reference URI="#${targetId}"`),
+    ) ?? "";
+  const digestValue = xmlTag(signatureXml, "DigestValue");
+  const signatureValue = xmlTag(signatureXml, "SignatureValue");
+  const embeddedCertificate = xmlTag(signatureXml, "X509Certificate");
+  const signatureAlgorithm =
+    signatureXml.match(/<SignatureMethod[^>]*Algorithm="([^"]+)"/)?.[1] ?? "";
+  const canonicalizationAlgorithm =
+    signatureXml.match(
+      /<CanonicalizationMethod[^>]*Algorithm="([^"]+)"/,
+    )?.[1] ?? "";
+  const signatureAlgorithmAllowed =
+    signatureAlgorithm === "http://www.w3.org/2000/09/xmldsig#rsa-sha1";
+  const canonicalizationAlgorithmAllowed =
+    canonicalizationAlgorithm ===
+    "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
+  let referenceXml = target;
+  if (
+    referenceXml &&
+    !/\\sxmlns=/.test(referenceXml.slice(0, referenceXml.indexOf(">")))
+  )
+    referenceXml = referenceXml.replace(
+      `<${targetTag} `,
+      `<${targetTag} xmlns="http://www.sii.cl/SiiDte" `,
+    );
+  const canonicalReference = canonicalizeXmlControlled(referenceXml);
+  const referenceDigestValid = Boolean(
+    canonicalReference.ok &&
+    digestValue &&
+    createHash("sha1")
+      .update(canonicalReference.ok ? canonicalReference.canonicalXml : "")
+      .digest("base64") === digestValue,
+  );
+  let signedInfoXml =
+    signatureXml.match(/<SignedInfo\b[^>]*>[\s\S]*?<\/SignedInfo>/)?.[0] ?? "";
+  if (
+    signedInfoXml &&
+    !/\\sxmlns=/.test(signedInfoXml.slice(0, signedInfoXml.indexOf(">")))
+  )
+    signedInfoXml = signedInfoXml.replace(
+      "<SignedInfo>",
+      '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">',
+    );
+  const canonicalSignedInfo = canonicalizeXmlControlled(signedInfoXml);
+  let signedInfoSignatureValid = false;
+  if (canonicalSignedInfo.ok && signatureValue) {
+    const verifier = createVerify("RSA-SHA1");
+    verifier.update(canonicalSignedInfo.canonicalXml, "utf8");
+    signedInfoSignatureValid = verifier.verify(
+      certificatePem,
+      signatureValue,
+      "base64",
+    );
+  }
+  let externalCertificate = "";
+  try {
+    externalCertificate = new X509Certificate(certificatePem).raw.toString(
+      "base64",
+    );
+  } catch {
+    externalCertificate = "";
+  }
+  const embeddedCertificatePresent = Boolean(embeddedCertificate);
+  const embeddedCertificateMatchesExternal = Boolean(
+    embeddedCertificate &&
+    externalCertificate &&
+    embeddedCertificate.replace(/\s/g, "") === externalCertificate,
+  );
+  let externalCertificateKeyMatch = false;
+  try {
+    const embeddedKey = createPublicKey(
+      `-----BEGIN CERTIFICATE-----\n${embeddedCertificate}\n-----END CERTIFICATE-----`,
+    ).export({ type: "spki", format: "der" });
+    const externalKey = createPublicKey(certificatePem).export({
+      type: "spki",
+      format: "der",
+    });
+    externalCertificateKeyMatch = Buffer.from(embeddedKey).equals(
+      Buffer.from(externalKey),
+    );
+  } catch {
+    externalCertificateKeyMatch = false;
+  }
+  const valid =
+    finalBytesRoundTrip &&
+    referenceDigestValid &&
+    signedInfoSignatureValid &&
+    embeddedCertificatePresent &&
+    embeddedCertificateMatchesExternal &&
+    externalCertificateKeyMatch &&
+    signatureAlgorithmAllowed &&
+    canonicalizationAlgorithmAllowed;
+  return {
+    finalBytesRoundTrip,
+    referenceDigestValid,
+    signedInfoSignatureValid,
+    embeddedCertificatePresent,
+    embeddedCertificateMatchesExternal,
+    externalCertificateKeyMatch,
+    signatureAlgorithmAllowed,
+    canonicalizationAlgorithmAllowed,
+    valid,
+  };
 }
 export type PreflightDeps = {
-  signature?: typeof validateXmlSignature;
+  signature?: (bytes: Buffer, certificatePem: string) => boolean;
   xsd?: (path: string) => boolean;
   expectedSha256?: string;
 };
@@ -265,9 +401,11 @@ export function preflightCertificationSetSubmit(
         stdio: "ignore",
       }).status === 0);
   if (!xsd(envelopePath)) reject("envelope", "xsd");
-  const signature = deps.signature ?? validateXmlSignature;
-  if (!signature(xml, readFileSync(certPath, "utf8")))
-    reject("envelope", "signature");
+  const certificatePem = readFileSync(certPath, "utf8");
+  const signatureValid = deps.signature
+    ? deps.signature(envelope, certificatePem)
+    : diagnosePersistedXmlSignature(envelope, certificatePem).valid;
+  if (!signatureValid) reject("envelope", "signature");
   let manifest: {
     fixtureMode?: boolean;
     files?: Array<{ file?: unknown; sha256?: unknown }>;
