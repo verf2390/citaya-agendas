@@ -61,7 +61,10 @@ test("generates a single dry-run envelope with references for all boleta cases",
   assert.match(result.xml, /NO PRODUCTIVO/);
   assert.match(result.xml, /<TpoDTE>39<\/TpoDTE>/);
   assert.match(result.xml, /<NroDTE>5<\/NroDTE>/);
-  assert.equal((result.xml.match(/<DTE version="1.0">/g) ?? []).length, 5);
+  assert.equal(
+    (result.xml.match(/<DTE\b(?=[^>]*\bversion="1\.0")[^>]*>/g) ?? []).length,
+    5,
+  );
   assert.equal((result.xml.match(/<CodRef>SET<\/CodRef>/g) ?? []).length, 5);
   assert.match(result.xml, /<RazonRef>CASO-5<\/RazonRef>/);
   assert.match(result.xml, /<IndExe>1<\/IndExe>/);

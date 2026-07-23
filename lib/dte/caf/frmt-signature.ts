@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 import { validateExternalDteFile } from "../config/external-dte-files";
 import type { FrmtSignatureInput, FrmtSignatureResult } from "../types";
+import { wrapBase64Lines } from "../signing/sign-xml.real";
+import { buildOfficialFrmtDd } from "./ted-builder";
 
 function readPrivateKey(input: FrmtSignatureInput): {
   key: string | null;
@@ -76,7 +78,7 @@ export function signFrmtControlled(
   let signature: string;
   try {
     const signer = createSign("RSA-SHA1");
-    signer.update(Buffer.from(input.ddXml, input.inputEncoding ?? "utf8"));
+    signer.update(Buffer.from(buildOfficialFrmtDd(input.ddXml), "latin1"));
     signature = signer.sign(privateKey, "base64");
   } catch {
     return {
@@ -94,7 +96,7 @@ export function signFrmtControlled(
 
   return {
     ok: true,
-    frmtXml: `<FRMT algoritmo="SHA1withRSA">${signature}</FRMT>`,
+    frmtXml: `<FRMT algoritmo="SHA1withRSA">${wrapBase64Lines(signature)}</FRMT>`,
     mode: "certification",
     isProductionValid: false,
     warnings: [

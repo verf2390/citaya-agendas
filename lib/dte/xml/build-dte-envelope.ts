@@ -13,6 +13,8 @@ export type DteSetEnvelopeBuildOptions = DteEnvelopeBuildOptions & {
   setDteId?: string;
 };
 
+export const dteTypeFolioKey = (draft: TaxDocumentDraft) => `${getSiiDteTypeCode(draft.documentType)}:${draft.folio}`;
+
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value.slice(0, 10);
@@ -127,7 +129,7 @@ function buildDocumentoXml(
     : "";
   const referencesXml = buildReferenceXml(draft);
 
-  return `    <DTE version="1.0">
+  return `    <DTE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.0">
       <Documento ID="${documentId}">
         <Encabezado>
           <IdDoc>
@@ -217,9 +219,9 @@ export function buildDteSetDteXmlLab(
     `CitayaDteLab-${escapeXml(firstDraft.tenantId)}-set-${formatDate(firstDraft.issueDate)}`;
   return `  <SetDTE ID="${setDteId}">
 ${buildCaratulaXml(drafts, options)}
-${drafts.map((draft) => buildDocumentoXml(draft, {
+${drafts.map((draft) => options.perDocumentXml?.[dteTypeFolioKey(draft)]?.fullDteXml ?? buildDocumentoXml(draft, {
   ...options,
-  ...(options.perDocumentXml?.[draft.folio] ?? {}),
+  ...(options.perDocumentXml?.[dteTypeFolioKey(draft)] ?? {}),
 })).join("\n")}
   </SetDTE>`;
 }

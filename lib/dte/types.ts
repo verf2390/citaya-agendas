@@ -178,7 +178,7 @@ export type DteEnvelopeBuildOptions = {
   documentSignedAt?: string | null;
   rutEnvia?: string | null;
   setDteId?: string | null;
-  perDocumentXml?: Record<number, { tedXml?: string | null; documentSignatureXml?: string | null; documentSignedAt?: string | null }> | null;
+  perDocumentXml?: Record<string, { tedXml?: string | null; documentSignatureXml?: string | null; documentSignedAt?: string | null; fullDteXml?: string | null }> | null;
   globalDiscount?: { discountType: "D" | "R"; valueType: "%" | "$"; value: number; appliesTo: "affected" | "exempt" } | null;
   preserveTedWhitespace?: boolean | null;
 };

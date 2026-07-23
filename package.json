@@ -46,7 +46,8 @@
     "dte:factura:certification:set:submit:preflight": "node scripts/dte/factura-certification-set-submit-preflight.mjs",
     "dte:factura:certification:set:submit": "node scripts/dte/factura-certification-set-submit.mjs",
     "dte:factura:certification:set:retry:preflight": "node scripts/dte/factura-certification-set-retry-preflight.mjs",
-    "dte:factura:certification:set:retry": "node scripts/dte/factura-certification-set-retry.mjs"
+    "dte:factura:certification:set:retry": "node scripts/dte/factura-certification-set-retry.mjs",
+    "dte:factura:certification:set:correction:prepare": "node scripts/dte/factura-certification-set-correction-prepare.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

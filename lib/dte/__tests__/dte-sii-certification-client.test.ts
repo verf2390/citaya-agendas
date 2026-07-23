@@ -8,8 +8,10 @@ import test from "node:test";
 
 import { validateDteConfig } from "../config/validate-dte-config";
 import { buildSubmissionRecord } from "../persistence/dte-submissions";
+import { fingerprintToken } from "../persistence/dte-redaction";
 import {
   getSiiCertificationConfigFromEnv,
+  queryCertificationDte,
   signSeed,
 } from "../sii/sii-certification-client";
 import {
@@ -35,6 +37,8 @@ import {
   mapSiiStatusToInternalStatus,
   parseSiiStatusResponse,
   parseSiiSubmissionResponse,
+  SII_CERTIFICATION_QUERY_EST_DTE_URL,
+  buildQueryEstDteSoapEnvelope,
 } from "../sii/sii-status";
 
 
@@ -78,6 +82,8 @@ function authConfig(overrides = {}) {
     ...overrides,
   };
 }
+
+test("FOCAL QueryEstDte uses the raw token in RPC encoded order without upload", async () => { const root = mkdtempSync(join(tmpdir(), "citaya-query-est-dte-")); const material = createSelfSignedFixture(root); const rawToken = "RAW-TOKEN-QUERY-01"; const input = { rutConsultante: "27164542", dvConsultante: "2", rutCompania: "78195645", dvCompania: "7", rutReceptor: "60803000", dvReceptor: "K", tipoDte: "33" as const, folioDte: "1" as const, fechaEmisionDte: "2026-07-22", montoDte: "12345" }; const soap = buildQueryEstDteSoapEnvelope(input, rawToken); const names = [...soap.matchAll(/<([A-Z][A-Za-z]+) xsi:type=\"xsd:string\">/g)].map((match) => match[1]); assert.deepEqual(names, ["RutConsultante", "DvConsultante", "RutCompania", "DvCompania", "RutReceptor", "DvReceptor", "TipoDte", "FolioDte", "FechaEmisionDte", "MontoDte", "Token"]); assert.match(soap, /<SOAP-ENV:Envelope/); assert.equal(soap.includes("SOAP-ENV:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\""), true); assert.match(soap, /<m:getEstDte>/); assert.equal((soap.match(/<Token xsi:type=/g) ?? []).length, 1); assert.match(soap, new RegExp("<Token xsi:type=\"xsd:string\">" + rawToken + "</Token>")); assert.equal(soap.includes(fingerprintToken(rawToken) ?? ""), false); const calls: Array<{ url: string; body: string }> = []; const previousFetch = globalThis.fetch; globalThis.fetch = async (url, init) => { calls.push({ url: String(url), body: String(init?.body ?? "") }); if (calls.length === 1) return new Response("<Envelope><Body><return>&lt;RESPUESTA&gt;&lt;RESP_HDR&gt;&lt;ESTADO&gt;00&lt;/ESTADO&gt;&lt;/RESP_HDR&gt;&lt;RESP_BODY&gt;&lt;SEMILLA&gt;000001&lt;/SEMILLA&gt;&lt;/RESP_BODY&gt;&lt;/RESPUESTA&gt;</return></Body></Envelope>", { status: 200 }); if (calls.length === 2) return new Response("<Envelope><Body><return>&lt;RESPUESTA&gt;&lt;RESP_HDR&gt;&lt;ESTADO&gt;00&lt;/ESTADO&gt;&lt;/RESP_HDR&gt;&lt;RESP_BODY&gt;&lt;TOKEN&gt;" + rawToken + "&lt;/TOKEN&gt;&lt;/RESP_BODY&gt;&lt;/RESPUESTA&gt;</return></Body></Envelope>", { status: 200 }); return new Response("<Envelope><Body><return>&lt;RESPUESTA&gt;&lt;RESP_HDR&gt;&lt;ESTADO&gt;DNK&lt;/ESTADO&gt;&lt;GLOSA&gt;RECHAZADO&lt;/GLOSA&gt;&lt;/RESP_HDR&gt;&lt;/RESPUESTA&gt;</return></Body></Envelope>", { status: 200 }); }; try { const result = await queryCertificationDte(input, authConfig({ statusUrl: SII_CERTIFICATION_QUERY_EST_DTE_URL, certPath: material.certPath, privateKeyPath: material.keyPath })); assert.equal(result.tokenSource, "rawTokenFromRequestToken"); assert.equal(result.tokenLengthValid, true); assert.equal(result.tokenExactMatch, true); assert.equal(calls.length, 3); assert.deepEqual(calls.map((call) => call.url), [SII_CERTIFICATION_SEED_URL, SII_CERTIFICATION_TOKEN_URL, SII_CERTIFICATION_QUERY_EST_DTE_URL]); assert.match(calls[2].body, new RegExp("<Token xsi:type=\"xsd:string\">" + rawToken + "</Token>")); assert.equal(calls[2].body.includes(fingerprintToken(rawToken) ?? ""), false); assert.equal(calls.some((call) => (call.body + call.url).includes("archivo") || (call.body + call.url).includes("multipart/form-data") || (call.body + call.url).includes("DTEUpload")), false); } finally { globalThis.fetch = previousFetch; } });
 
 test("builds SII SOAP seed envelope without WSDL endpoint", () => {
   const envelope = buildGetSeedSoapEnvelope();

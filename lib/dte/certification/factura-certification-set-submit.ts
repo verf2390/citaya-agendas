@@ -43,6 +43,61 @@ import type { SiiCertificationConfig } from "../sii/sii-types";
 export const SET_SUBMIT_URL = "https://maullin.sii.cl/cgi_dte/UPL/DTEUpload";
 export const SET_SHA256 =
   "da3875da0dd1190fe290393f063e02f31d3be583454e349387f24dff59196e37";
+const CORRECTION_001_ENVELOPE_SHA256 =
+  "738197d2ab1d65c0f83d35b97408331114c5617cc6647768cb95dcfedc779ec3";
+const CORRECTION_001_TRACK_FINGERPRINT = "0430bc27374b80a4";
+const CORRECTION_002_ENVELOPE_SHA256 = "fc9a2a5836c8e93d0c6f26bf405d9ddb7db8b86b5d50d90c3ffeccc26ee62094";
+const CORRECTION_002_TRACK_FINGERPRINT = "13fdc74f20f65666";
+const CORRECTION_003_ENVELOPE_SHA256 = "3792002081b8f884bc0f14f3ca78ff2340fe312f7fb43dfb3f311c2cce5ae51a";
+const CORRECTION_003_TRACK_FINGERPRINT = "77a28038d28ccc1e";
+const REISSUE_PREVIOUS_ENVELOPE_SHA256 = "e8bfb70eb4113c0be7583c76414919ef7044cee944e2d14e52fb12d1e1f8240a";
+const REISSUE_PREVIOUS_MANIFEST_SHA256 = "c11e5a0f196dcb83ec91b7648ec8ce4192956356584e74f24a1f9920b3c1f765";
+const REISSUE_PREVIOUS_REGISTRY_SHA256 = "94d8647cd04b5414cb8d923458e9bf95c508de9eeae7f0bdb9ca59268a6e07ef";
+const REISSUE_PREVIOUS_TRACK_FINGERPRINT = "f3bc8d8c157d4b83";
+export function validateCertificationReissueManifestLineage(
+  manifest: Record<string, unknown>,
+): boolean {
+  const assignments = Array.isArray(manifest.cafAssignments)
+    ? (manifest.cafAssignments as Array<Record<string, unknown>>)
+    : [];
+  const expected = new Map([
+    ["33:5", "1-5"], ["33:6", "6-8"], ["33:7", "6-8"], ["33:8", "6-8"],
+    ["61:4", "1-4"], ["61:5", "5-6"], ["61:6", "5-6"], ["56:2", "1-2"],
+  ]);
+  const keys = new Set(assignments.map((item) => String(item.dteTypeFolio ?? "")));
+  return (
+    manifest.artifactKind === "certification_set_reissue" &&
+    manifest.reissueNumber === 1 &&
+    manifest.reissueReasonCode === "TED-2-510" &&
+    manifest.reissueOfEnvelopeSha256 === REISSUE_PREVIOUS_ENVELOPE_SHA256 &&
+    manifest.reissueOfManifestSha256 === REISSUE_PREVIOUS_MANIFEST_SHA256 &&
+    manifest.reissueOfRegistrySha256 === REISSUE_PREVIOUS_REGISTRY_SHA256 &&
+    manifest.reissueOfTrackIdFingerprint === REISSUE_PREVIOUS_TRACK_FINGERPRINT &&
+    manifest.reissueOfStatus === "EPR" &&
+    manifest.foliosPlan === "33:5-8,61:4-6,56:2" &&
+    JSON.stringify(manifest.folios) === JSON.stringify({ "33": [5, 6, 7, 8], "56": [2], "61": [4, 5, 6] }) &&
+    manifest.cafCoverageUnique === "8/8" &&
+    assignments.length === 8 &&
+    keys.size === 8 &&
+    assignments.every((item) => expected.get(String(item.dteTypeFolio ?? "")) === item.range) &&
+    Array.isArray(manifest.cafHashes) &&
+    manifest.cafHashes.length === 5 &&
+    manifest.officialFrmtValid === "8/8" &&
+    manifest.xsiPhysicallyDeclaredOnDte === "8/8" &&
+    manifest.literalStandaloneXmlsecValid === "8/8" &&
+    manifest.embeddedXmlsecValid === "8/8" &&
+    manifest.outerXmlsecValid === true &&
+    manifest.dteXsd === "8/8" &&
+    manifest.envioDteXsd === "valid" &&
+    manifest.references === "valid" &&
+    manifest.totals === "valid" &&
+    manifest.encoding === "ISO-8859-1" &&
+    manifest.bom === "absent" &&
+    manifest.previousArtifactsUnchanged === true &&
+    manifest.previousRegistriesUnchanged === true
+  );
+}
+
 export type SubmitStage =
   | "preflight"
   | "envelope"
@@ -295,8 +350,9 @@ export function diagnosePersistedXmlSignature(
     valid,
   };
 }
+export type XmlsecSignatureGate = { xmlsecAvailable: boolean; documentIds: string[]; setDteId: string; individualValid: number; outerValid: boolean; persistedBytesValid: boolean; };
+export function verifyPersistedXmlsecSignatures(input: { envelopePath: string; bytes: Buffer; expectedSha256: string; certificatePath: string }): XmlsecSignatureGate { const xml = input.bytes.toString("latin1"); const documentIds = [...xml.matchAll(/<Documento\b[^>]*\bID="([^"]+)"/g)].map((match) => match[1]); const setDteId = xml.match(/<SetDTE\b[^>]*\bID="([^"]+)"/)?.[1] ?? ""; const persisted = () => { const current = readFileSync(input.envelopePath); return current.equals(input.bytes) && sha256(current) === input.expectedSha256; }; const available = spawnSync("xmlsec1", ["--version"], { stdio: "ignore" }).status === 0; if (!available || !persisted()) return { xmlsecAvailable: available, documentIds, setDteId, individualValid: 0, outerValid: false, persistedBytesValid: false }; const verify = (id: string) => spawnSync("xmlsec1", ["--verify", "--id-attr:ID", "Documento", "--id-attr:ID", "SetDTE", "--pubkey-cert-pem", input.certificatePath, "--node-xpath", "//*[local-name()=\"Signature\"][.//*[local-name()=\"Reference\" and " + String.fromCharCode(64) + "URI=\"#" + id + "\"]]", input.envelopePath], { stdio: "ignore" }).status === 0; const individualValid = documentIds.filter(verify).length; const outerValid = Boolean(setDteId) && verify(setDteId); return { xmlsecAvailable: true, documentIds, setDteId, individualValid, outerValid, persistedBytesValid: persisted() }; }
 export type PreflightDeps = {
-  signature?: (bytes: Buffer, certificatePem: string) => boolean;
   xsd?: (path: string) => boolean;
   expectedSha256?: string;
 };
@@ -311,10 +367,53 @@ export type SetSubmitPreflight = {
   envelope: Buffer;
   envelopeSha256: string;
   endpoint: string;
+  xmlsecAvailable: true;
+  xmlsecDocumentIds: string[];
+  xmlsecSetDteId: string;
+  xmlsecIndividualValid: "8/8";
+  xmlsecOuterValid: true;
+  internalVerifier: "non_authoritative";
+  signatureAuthority: "xmlsec1";
+  artifactKind?: "certification_set_reissue";
+  cafCoverageUnique?: "8/8";
+  foliosPlan?: "33:5-8,61:4-6,56:2";
+  officialFrmtValid?: "8/8";
+  xsiPhysicallyDeclaredOnDte?: "8/8";
+  literalStandaloneXmlsecValid?: "8/8";
+  embeddedXmlsecValid?: "8/8";
+  previousArtifactsUnchanged?: true;
+  previousRegistriesUnchanged?: true;
   company: { rut: string; dv: string };
   sender: { rut: string; dv: string };
   config: SiiCertificationConfig;
 };
+function snapshotExternalDirectory(path: string, repoRoot: string, field: string): string {
+  const value = resolve(path);
+  try {
+    const stat = lstatSync(value);
+    if (
+      !isAbsolute(path) ||
+      inside(repoRoot, value) ||
+      !stat.isDirectory() ||
+      stat.isSymbolicLink() ||
+      realpathSync(value) !== value ||
+      stat.uid !== process.getuid?.() ||
+      (stat.mode & 0o777) !== 0o700
+    )
+      reject("manifest", field);
+    const files = readdirSync(value)
+      .sort()
+      .map((name) => {
+        const file = resolve(value, name);
+        secureFile(file, repoRoot, "manifest", field);
+        return { file: name, sha256: sha256(readFileSync(file)) };
+      });
+    return sha256(JSON.stringify(files));
+  } catch (error) {
+    throw wrap(error, "manifest", field);
+  }
+}
+
 function preflightSetSubmit(
   env: NodeJS.ProcessEnv = process.env,
   repoRoot = process.cwd(),
@@ -333,14 +432,10 @@ function preflightSetSubmit(
     env.DTE_SII_ENABLE_STATUS !== "false"
   )
     reject("preflight", "flags");
-  const controlledExpected = deps.expectedSha256 ?? SET_SHA256;
   const expected = required(
     env,
     "DTE_FACTURA_CERTIFICATION_ENVELOPE_SHA256",
   ).toLowerCase();
-  if (expected !== controlledExpected) reject("preflight", "expected_sha256");
-  if (!retry && env.DTE_FACTURA_CERTIFICATION_SUBMIT_CONFIRM !== `SUBMIT_SET_4959698_${controlledExpected}`)
-    reject("preflight", "confirmation");
   const endpoint = required(env, "DTE_SII_SUBMIT_URL");
   validateEndpoint(endpoint);
   const envelopePath = external(
@@ -414,13 +509,56 @@ function preflightSetSubmit(
       }).status === 0);
   if (!xsd(envelopePath)) reject("envelope", "xsd");
   const certificatePem = readFileSync(certPath, "utf8");
-  const signatureValid = deps.signature
-    ? deps.signature(envelope, certificatePem)
-    : diagnosePersistedXmlSignature(envelope, certificatePem).valid;
-  if (!signatureValid) reject("envelope", "signature");
+  diagnosePersistedXmlSignature(envelope, certificatePem);
+  const xmlsec = verifyPersistedXmlsecSignatures({ envelopePath, bytes: envelope, expectedSha256: expected, certificatePath: certPath });
+  if (!xmlsec.xmlsecAvailable) reject("envelope", "xmlsec_unavailable");
+  if (!xmlsec.persistedBytesValid) reject("envelope", "signature_bytes_changed");
+  if (xmlsec.documentIds.length !== 8 || !xmlsec.setDteId || xmlsec.individualValid !== 8 || !xmlsec.outerValid) reject("envelope", "signature");
   let manifest: {
     fixtureMode?: boolean;
     files?: Array<{ file?: unknown; sha256?: unknown }>;
+    envelopeSha256?: unknown;
+    correctionNumber?: unknown;
+    correctionOfEnvelopeSha256?: unknown;
+    correctionOfManifestSha256?: unknown;
+    correctionOfRegistrySha256?: unknown;
+    correctionOfTrackIdFingerprint?: unknown;
+    correctionOfStatus?: unknown;
+    statusEvidenceSource?: unknown;
+    portalObservedStatus?: unknown;
+    portalObservedDate?: unknown;
+    correctionReason?: unknown;
+    correctionResponseSha256?: unknown;
+    associationKey?: unknown;
+    documentsMatched?: unknown;
+    artifactKind?: unknown;
+    reissueNumber?: unknown;
+    reissueReasonCode?: unknown;
+    reissueOfEnvelopeSha256?: unknown;
+    reissueOfManifestSha256?: unknown;
+    reissueOfRegistrySha256?: unknown;
+    reissueOfTrackIdFingerprint?: unknown;
+    reissueOfStatus?: unknown;
+    foliosPlan?: unknown;
+    folios?: unknown;
+    cafCoverageUnique?: unknown;
+    cafAssignments?: Array<Record<string, unknown>>;
+    cafHashes?: Array<Record<string, unknown>>;
+    officialFrmtValid?: unknown;
+    xsiPhysicallyDeclaredOnDte?: unknown;
+    literalStandaloneXmlsecValid?: unknown;
+    embeddedXmlsecValid?: unknown;
+    outerXmlsecValid?: unknown;
+    dteXsd?: unknown;
+    envioDteXsd?: unknown;
+    references?: unknown;
+    totals?: unknown;
+    encoding?: unknown;
+    bom?: unknown;
+    previousArtifactSnapshotSha256?: unknown;
+    previousRegistrySnapshotSha256?: unknown;
+    previousArtifactsUnchanged?: unknown;
+    previousRegistriesUnchanged?: unknown;
   };
   try {
     manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -453,6 +591,174 @@ function preflightSetSubmit(
     if (sha256(readFileSync(filePath)) !== String(item.sha256 ?? ""))
       reject("manifest", "file_hash");
   }
+  const isReissue = manifest.artifactKind === "certification_set_reissue";
+  if (isReissue) {
+    if (!validateCertificationReissueManifestLineage(manifest as Record<string, unknown>)) reject("manifest", "reissue_lineage");
+    const expectedAssignments = new Map([
+      ["33:5", "1-5"],
+      ["33:6", "6-8"],
+      ["33:7", "6-8"],
+      ["33:8", "6-8"],
+      ["61:4", "1-4"],
+      ["61:5", "5-6"],
+      ["61:6", "5-6"],
+      ["56:2", "1-2"],
+    ]);
+    const assignments = manifest.cafAssignments ?? [];
+    const assignmentKeys = new Set(
+      assignments.map((item) => String(item.dteTypeFolio ?? "")),
+    );
+    if (
+      manifest.reissueNumber !== 1 ||
+      manifest.reissueReasonCode !== "TED-2-510" ||
+      manifest.reissueOfEnvelopeSha256 !== REISSUE_PREVIOUS_ENVELOPE_SHA256 ||
+      manifest.reissueOfManifestSha256 !== REISSUE_PREVIOUS_MANIFEST_SHA256 ||
+      manifest.reissueOfRegistrySha256 !== REISSUE_PREVIOUS_REGISTRY_SHA256 ||
+      manifest.reissueOfTrackIdFingerprint !== REISSUE_PREVIOUS_TRACK_FINGERPRINT ||
+      manifest.reissueOfStatus !== "EPR" ||
+      manifest.foliosPlan !== "33:5-8,61:4-6,56:2" ||
+      JSON.stringify(manifest.folios) !== JSON.stringify({ "33": [5, 6, 7, 8], "56": [2], "61": [4, 5, 6] }) ||
+      manifest.cafCoverageUnique !== "8/8" ||
+      assignments.length !== 8 ||
+      assignmentKeys.size !== 8 ||
+      assignments.some(
+        (item) => expectedAssignments.get(String(item.dteTypeFolio ?? "")) !== item.range,
+      ) ||
+      (manifest.cafHashes ?? []).length !== 5 ||
+      manifest.officialFrmtValid !== "8/8" ||
+      manifest.xsiPhysicallyDeclaredOnDte !== "8/8" ||
+      manifest.literalStandaloneXmlsecValid !== "8/8" ||
+      manifest.embeddedXmlsecValid !== "8/8" ||
+      manifest.outerXmlsecValid !== true ||
+      manifest.dteXsd !== "8/8" ||
+      manifest.envioDteXsd !== "valid" ||
+      manifest.references !== "valid" ||
+      manifest.totals !== "valid" ||
+      manifest.encoding !== "ISO-8859-1" ||
+      manifest.bom !== "absent" ||
+      manifest.previousArtifactsUnchanged !== true ||
+      manifest.previousRegistriesUnchanged !== true
+    )
+      reject("manifest", "reissue_lineage");
+    const previousArtifactDir = external(
+      env,
+      "DTE_FACTURA_CERTIFICATION_REISSUE_PREVIOUS_ARTIFACT_DIR",
+      repoRoot,
+    );
+    const previousEnvelope = resolve(previousArtifactDir, "EnvioDTE-4959698-CERTIFICATION.xml");
+    const previousManifest = resolve(previousArtifactDir, "manifest-4959698-CERTIFICATION.json");
+    secureFile(previousEnvelope, repoRoot, "manifest", "previous_artifacts");
+    secureFile(previousManifest, repoRoot, "manifest", "previous_artifacts");
+    const previousRegistry = external(
+      env,
+      "DTE_FACTURA_CERTIFICATION_REISSUE_PREVIOUS_REGISTRY_PATH",
+      repoRoot,
+    );
+    secureFile(previousRegistry, repoRoot, "manifest", "previous_registry");
+    const previousRegistryValue = JSON.parse(readFileSync(previousRegistry, "utf8")) as Record<string, unknown>;
+    const registryDirs = required(
+      env,
+      "DTE_FACTURA_CERTIFICATION_REISSUE_PREVIOUS_REGISTRY_DIRS",
+    )
+      .split(":")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const expectedRegistrySnapshots = Array.isArray(manifest.previousRegistrySnapshotSha256)
+      ? manifest.previousRegistrySnapshotSha256.map(String)
+      : [];
+    if (
+      sha256(readFileSync(previousEnvelope)) !== REISSUE_PREVIOUS_ENVELOPE_SHA256 ||
+      sha256(readFileSync(previousManifest)) !== REISSUE_PREVIOUS_MANIFEST_SHA256 ||
+      sha256(readFileSync(previousRegistry)) !== REISSUE_PREVIOUS_REGISTRY_SHA256 ||
+      previousRegistryValue.envelopeSha256 !== REISSUE_PREVIOUS_ENVELOPE_SHA256 ||
+      previousRegistryValue.state !== "submitted" ||
+      sha256(String(previousRegistryValue.trackId ?? "")).slice(0, 16) !== REISSUE_PREVIOUS_TRACK_FINGERPRINT ||
+      snapshotExternalDirectory(previousArtifactDir, repoRoot, "previous_artifacts") !== manifest.previousArtifactSnapshotSha256 ||
+      registryDirs.length !== 2 ||
+      expectedRegistrySnapshots.length !== 2 ||
+      registryDirs.some(
+        (path, index) =>
+          snapshotExternalDirectory(path, repoRoot, "previous_registries") !== expectedRegistrySnapshots[index],
+      )
+    )
+      reject("manifest", "reissue_evidence");
+  }
+  const correctionFields = [
+    "correctionNumber",
+    "correctionOfEnvelopeSha256",
+    "correctionReason",
+    "correctionResponseSha256",
+  ] as const;
+  const isCorrection = correctionFields.some((field) => field in manifest);
+  const isCorrectionTwo = manifest.correctionNumber === 2;
+  const isCorrectionThree = manifest.correctionNumber === 3;
+  const isCorrectionFour = manifest.correctionNumber === 4;
+  const envelopeArtifact = (manifest.files ?? []).find(
+    (item) => String(item.file ?? "") === basename(envelopePath),
+  );
+  const manifestEnvelopeSha256 = String(manifest.envelopeSha256 ?? "").toLowerCase();
+  const artifactSha256 = String(envelopeArtifact?.sha256 ?? "").toLowerCase();
+  let controlledExpected = deps.expectedSha256 ?? SET_SHA256;
+  if (isReissue) {
+    if (!/^[a-f0-9]{64}$/.test(manifestEnvelopeSha256) || manifestEnvelopeSha256 !== artifactSha256 || manifestEnvelopeSha256 !== expected) reject("manifest", "reissue_envelope");
+    controlledExpected = manifestEnvelopeSha256;
+  } else if (isCorrectionFour) {
+    if (manifest.correctionOfEnvelopeSha256 !== CORRECTION_003_ENVELOPE_SHA256 || manifest.correctionOfTrackIdFingerprint !== CORRECTION_003_TRACK_FINGERPRINT || manifest.correctionOfStatus !== "EPR" || manifest.correctionReason !== "DTE_3_505_INHERITED_XSI_NAMESPACE" || manifest.documentsMatched !== "8/8" || !/^[a-f0-9]{64}$/.test(String(manifestEnvelopeSha256)) || manifestEnvelopeSha256 !== artifactSha256 || manifestEnvelopeSha256 !== expected) reject("manifest", "correction_lineage");
+    controlledExpected = manifestEnvelopeSha256;
+  } else if (isCorrectionThree) {
+    if (
+      manifest.correctionOfEnvelopeSha256 !== CORRECTION_002_ENVELOPE_SHA256 ||
+      manifest.correctionOfTrackIdFingerprint !== CORRECTION_002_TRACK_FINGERPRINT ||
+      manifest.correctionOfStatus !== "RFR" ||
+      manifest.correctionReason !== "RFR_DETACHED_C14N_DIGEST_MISMATCH" ||
+      manifest.portalObservedDate !== "2026-07-22" ||
+      !/^[a-f0-9]{64}$/.test(String(manifest.correctionOfManifestSha256 ?? "")) ||
+      !/^[a-f0-9]{64}$/.test(String(manifest.correctionOfRegistrySha256 ?? "")) ||
+      !/^[a-f0-9]{64}$/.test(manifestEnvelopeSha256) ||
+      manifestEnvelopeSha256 !== artifactSha256 ||
+      manifestEnvelopeSha256 !== expected
+    )
+      reject("manifest", "correction_lineage");
+    controlledExpected = manifestEnvelopeSha256;
+  } else if (isCorrectionTwo) {
+    if (
+      manifest.correctionOfEnvelopeSha256 !== CORRECTION_001_ENVELOPE_SHA256 ||
+      manifest.correctionOfTrackIdFingerprint !== CORRECTION_001_TRACK_FINGERPRINT ||
+      manifest.correctionOfStatus !== "RFR" ||
+      manifest.statusEvidenceSource !== "human_portal_observation" ||
+      manifest.portalObservedStatus !== "RECHAZADO_POR_ERROR_EN_FIRMA" ||
+      manifest.portalObservedDate !== "2026-07-22" ||
+      manifest.correctionReason !== "RFR_WRONG_DTE_ASSOCIATION_AND_BASE64_LINE_LENGTH" ||
+      manifest.associationKey !== "dteType:folio" ||
+      manifest.documentsMatched !== "8/8" ||
+      !/^[a-f0-9]{64}$/.test(String(manifest.correctionOfManifestSha256 ?? "")) ||
+      !/^[a-f0-9]{64}$/.test(String(manifest.correctionOfRegistrySha256 ?? "")) ||
+      !/^[a-f0-9]{64}$/.test(manifestEnvelopeSha256) ||
+      manifestEnvelopeSha256 !== artifactSha256 ||
+      manifestEnvelopeSha256 !== expected
+    )
+      reject("manifest", "correction_lineage");
+    controlledExpected = manifestEnvelopeSha256;
+  } else if (isCorrection) {
+    if (
+      manifest.correctionOfEnvelopeSha256 !== SET_SHA256 ||
+      manifest.correctionReason !== "STATUS_7_SCH_00001" ||
+      manifest.correctionResponseSha256 !==
+        "1cc59e211e5217abf6f88132a1b9c30cfba312f12bd2a8afc834d78fe31108ef" ||
+      !/^[a-f0-9]{64}$/.test(manifestEnvelopeSha256) ||
+      manifestEnvelopeSha256 !== artifactSha256 ||
+      manifestEnvelopeSha256 !== expected
+    )
+      reject("manifest", "correction_lineage");
+    controlledExpected = manifestEnvelopeSha256;
+  }
+  if (expected !== controlledExpected) reject("preflight", "expected_sha256");
+  if (
+    !retry &&
+    env.DTE_FACTURA_CERTIFICATION_SUBMIT_CONFIRM !==
+      `SUBMIT_SET_4959698_${controlledExpected}`
+  )
+    reject("preflight", "confirmation");
   const db = new Database(ledgerPath, { readonly: true, fileMustExist: true });
   try {
     const rows = db
@@ -468,26 +774,50 @@ function preflightSetSubmit(
     const issued = rows.filter((r) => r.state === "issued");
     const reserved = rows.filter((r) => r.state === "reserved");
     const available = rows.filter((r) => r.state === "available");
-    if (
-      issued.length !== 8 ||
-      !issued.every((r) =>
-        String(r.reserved_case ?? "").startsWith("SET-4959698-ATTEMPT-001:"),
-      )
-    )
-      reject("ledger", "issued_plan");
-    if (reserved.length !== 0 || available.length !== 3)
-      reject("ledger", "state_counts");
-    for (const [t, f] of [
-      [33, 5],
-      [61, 4],
-      [56, 2],
-    ])
+    if (isReissue) {
+      const original = issued.filter((row) =>
+        String(row.reserved_case ?? "").startsWith("SET-4959698-ATTEMPT-001:"),
+      );
+      const reissued = issued.filter((row) =>
+        String(row.reserved_case ?? "").startsWith("SET-4959698-REISSUE-001:"),
+      );
+      const expected = new Set([
+        "33:5", "33:6", "33:7", "33:8",
+        "61:4", "61:5", "61:6", "56:2",
+      ]);
+      const cafImports = db.prepare(
+        "SELECT type_code,range_from,range_to,content_sha256 FROM caf_imports ORDER BY type_code,range_from",
+      ).all() as Array<{ type_code: number; range_from: number; range_to: number; content_sha256: string }>;
       if (
-        !rows.some(
-          (r) => r.type_code === t && r.folio === f && r.state === "available",
+        issued.length !== 16 ||
+        original.length !== 8 ||
+        reissued.length !== 8 ||
+        reissued.some((row) => !expected.has(`${row.type_code}:${row.folio}`)) ||
+        reserved.length !== 0 ||
+        available.length !== 0 ||
+        cafImports.length !== 5 ||
+        !cafImports.some((row) => row.type_code === 33 && row.range_from === 6 && row.range_to === 8 && row.content_sha256 === "21a0d1008e2d88447811d757967a8f209bddb1c7491f967685216c82b1dd10fb") ||
+        !cafImports.some((row) => row.type_code === 61 && row.range_from === 5 && row.range_to === 6 && row.content_sha256 === "db2e77e3d314e3fa4a167b483688efacc3ed51d7fdd786761ae2ad1b968eb6c1")
+      )
+        reject("ledger", "reissue_plan");
+    } else {
+      if (
+        issued.length !== 8 ||
+        !issued.every((r) =>
+          String(r.reserved_case ?? "").startsWith("SET-4959698-ATTEMPT-001:"),
         )
       )
-        reject("ledger", "contingency");
+        reject("ledger", "issued_plan");
+      if (reserved.length !== 0 || available.length !== 3)
+        reject("ledger", "state_counts");
+      for (const [t, f] of [[33, 5], [61, 4], [56, 2]])
+        if (
+          !rows.some(
+            (r) => r.type_code === t && r.folio === f && r.state === "available",
+          )
+        )
+          reject("ledger", "contingency");
+    }
   } finally {
     db.close();
   }
@@ -511,6 +841,26 @@ function preflightSetSubmit(
     envelope,
     envelopeSha256: expected,
     endpoint,
+    xmlsecAvailable: true,
+    xmlsecDocumentIds: xmlsec.documentIds,
+    xmlsecSetDteId: xmlsec.setDteId,
+    xmlsecIndividualValid: "8/8",
+    xmlsecOuterValid: true,
+    internalVerifier: "non_authoritative",
+    signatureAuthority: "xmlsec1",
+    ...(isReissue
+      ? {
+          artifactKind: "certification_set_reissue" as const,
+          cafCoverageUnique: "8/8" as const,
+          foliosPlan: "33:5-8,61:4-6,56:2" as const,
+          officialFrmtValid: "8/8" as const,
+          xsiPhysicallyDeclaredOnDte: "8/8" as const,
+          literalStandaloneXmlsecValid: "8/8" as const,
+          embeddedXmlsecValid: "8/8" as const,
+          previousArtifactsUnchanged: true as const,
+          previousRegistriesUnchanged: true as const,
+        }
+      : {}),
     company,
     sender,
     config: {
@@ -937,7 +1287,25 @@ export async function submitPreparedCertificationSet(
 export function formatSubmitPreflight(pre: SetSubmitPreflight): string {
   return [
     `status=READY_TO_SUBMIT`,
-    `envelopeSha256=${pre.envelopeSha256}`,
+    "envelopeSha256=" + pre.envelopeSha256,
+    "xmlsecAvailable=" + pre.xmlsecAvailable,
+    "xmlsecIndividualValid=" + pre.xmlsecIndividualValid,
+    "xmlsecOuterValid=" + pre.xmlsecOuterValid,
+    "internalVerifier=" + pre.internalVerifier,
+    "signatureAuthority=" + pre.signatureAuthority,
+    ...(pre.artifactKind
+      ? [
+          "artifactKind=" + pre.artifactKind,
+          "cafCoverageUnique=" + pre.cafCoverageUnique,
+          "foliosPlan=" + pre.foliosPlan,
+          "officialFrmtValid=" + pre.officialFrmtValid,
+          "xsiPhysicallyDeclaredOnDte=" + pre.xsiPhysicallyDeclaredOnDte,
+          "literalStandaloneXmlsecValid=" + pre.literalStandaloneXmlsecValid,
+          "embeddedXmlsecValid=" + pre.embeddedXmlsecValid,
+          "previousArtifactsUnchanged=" + pre.previousArtifactsUnchanged,
+          "previousRegistriesUnchanged=" + pre.previousRegistriesUnchanged,
+        ]
+      : []),
     "siiContacted=false",
     "submitted=false",
     "statusQueried=false",
@@ -963,4 +1331,93 @@ export function formatSubmitError(error: unknown): string {
     `field=${safe.field}`,
     "message=controlled_operation_failed",
   ].join("\n");
+}
+
+const CORRECTION_002_DELIVERY_ATTEMPT_ID = "correction-002-delivery-attempt-002";
+const CORRECTION_002_DELIVERY_SHA256 = "fc9a2a5836c8e93d0c6f26bf405d9ddb7db8b86b5d50d90c3ffeccc26ee62094";
+const CORRECTION_002_DELIVERY_CONFIRM = "RETRY_CORRECTION_002_SET_4959698_fc9a2a5836c8e93d0c6f26bf405d9ddb7db8b86b5d50d90c3ffeccc26ee62094_AMBIGUOUS_NO_RESPONSE_PORTAL_POR_REALIZAR_2026-07-22";
+type DeliveryAttemptStage = "intent" | "seed_started" | "seed_completed" | "token_started" | "token_completed" | "multipart_built" | "upload_started" | "response_headers_received" | "response_body_stored" | "submitted" | "rejected" | "ambiguous";
+export type Correction002DeliveryRetryPreflight = SetSubmitPreflight & { attemptId: typeof CORRECTION_002_DELIVERY_ATTEMPT_ID; priorRegistryPath: string; deliveryRegistryPath: string };
+export type DeliveryRetryDeps = PreflightDeps & { fetchImpl?: typeof fetch; individualSignature?: (bytes: Buffer, certificatePem: string) => boolean; dteXsd?: (path: string) => boolean };
+function deliveryRegistryPath(pre: SetSubmitPreflight): string { return resolve(pre.registryDir, `${pre.envelopeSha256}.${CORRECTION_002_DELIVERY_ATTEMPT_ID}.json`); }
+function base64LinesValid(xml: string): boolean { for (const match of xml.matchAll(/<(FRMT|SignatureValue|X509Certificate)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/g)) if (match[2].split("\n").some((line) => line.length > 76)) return false; return true; }
+function deliveryRecord(pre: Correction002DeliveryRetryPreflight, stage: DeliveryAttemptStage, data: Record<string, unknown> = {}): void {
+  const now = new Date().toISOString();
+  if (stage === "intent") {
+    writeFileSync(pre.deliveryRegistryPath, JSON.stringify({ schemaVersion: 1, setId: "4959698", envelopeSha256: pre.envelopeSha256, attemptId: pre.attemptId, retryOfRegistryPath: basename(pre.priorRegistryPath), portalObservation: "SET_BASIC_POR_REALIZAR", portalObservedDate: "2026-07-22", stage, stages: [{ stage, at: now }], createdAt: now, updatedAt: now, statusQueryEnabled: false, ...data }), { flag: "wx", mode: 0o600 });
+    chmodSync(pre.deliveryRegistryPath, 0o600); return;
+  }
+  secureFile(pre.deliveryRegistryPath, process.cwd(), "registry", "delivery_retry_record");
+  const current = JSON.parse(readFileSync(pre.deliveryRegistryPath, "utf8")) as Record<string, unknown>;
+  const stages = Array.isArray(current.stages) ? current.stages : [];
+  const temp = resolve(pre.registryDir, `.delivery-${randomBytes(8).toString("hex")}`);
+  writeFileSync(temp, JSON.stringify({ ...current, stage, stages: [...stages, { stage, at: now }], updatedAt: now, ...data }), { flag: "wx", mode: 0o600 });
+  chmodSync(temp, 0o600); renameSync(temp, pre.deliveryRegistryPath);
+}
+function safeDeliveryError(error: unknown): { errorName: string; errorCode: string; causeCode: string; abortTriggered: boolean } {
+  const value = error as { name?: unknown; code?: unknown; cause?: { code?: unknown } };
+  const known = /^(?:ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|UND_ERR_CONNECT_TIMEOUT|UND_ERR_SOCKET|UND_ERR_HEADERS_TIMEOUT)$/;
+  const code = typeof value?.code === "string" && known.test(value.code) ? value.code : "none";
+  const causeCode = typeof value?.cause?.code === "string" && known.test(value.cause.code) ? value.cause.code : "none";
+  const errorName = value?.name === "AbortError" || value?.name === "TypeError" ? value.name : "Error";
+  return { errorName, errorCode: code, causeCode, abortTriggered: value?.name === "AbortError" };
+}
+function validateCorrection002DeliveryArtifacts(pre: SetSubmitPreflight, deps: DeliveryRetryDeps): void {
+  if (pre.envelopeSha256 !== (deps.expectedSha256 ?? CORRECTION_002_DELIVERY_SHA256) || !base64LinesValid(pre.envelope.toString("latin1"))) reject("envelope", "delivery_artifacts");
+  const manifest = JSON.parse(readFileSync(pre.manifestPath, "utf8")) as { files?: Array<{ file?: unknown }> };
+  const dtes = (manifest.files ?? []).filter((item) => /^4959698-[1-8]-DTE-CERTIFICATION\.xml$/.test(String(item.file ?? "")));
+  if (dtes.length !== 8) reject("manifest", "delivery_documents");
+  const certificate = readFileSync(pre.certPath, "utf8");
+  for (const item of dtes) {
+    const file = resolve(dirname(pre.manifestPath), String(item.file));
+    const bytes = readFileSync(file);
+    const signatureOk = deps.individualSignature ? deps.individualSignature(bytes, certificate) : diagnosePersistedXmlSignature(bytes, certificate, "Documento").valid;
+    const xsdOk = deps.dteXsd ? deps.dteXsd(file) : spawnSync("xmllint", ["--noout", "--schema", "DTE_v10.xsd", file], { cwd: resolve(process.cwd(), "docs/dte-sii/xsd"), stdio: "ignore" }).status === 0;
+    if (!signatureOk || !xsdOk || !base64LinesValid(bytes.toString("latin1"))) reject("envelope", "delivery_documents");
+  }
+}
+export function preflightCorrection002DeliveryRetry(env: NodeJS.ProcessEnv = process.env, repoRoot = process.cwd(), deps: DeliveryRetryDeps = {}): Correction002DeliveryRetryPreflight {
+  const pre = preflightSetSubmit(env, repoRoot, deps, true);
+  const deliverySha = deps.expectedSha256 ?? CORRECTION_002_DELIVERY_SHA256;
+  const deliveryConfirmation = deps.expectedSha256 ? required(env, "DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_CONFIRM") : CORRECTION_002_DELIVERY_CONFIRM;
+  if (pre.envelopeSha256 !== deliverySha || required(env, "DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_ATTEMPT_ID") !== CORRECTION_002_DELIVERY_ATTEMPT_ID || required(env, "DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_CONFIRM") !== deliveryConfirmation || required(env, "DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_PORTAL_OBSERVATION") !== "SET_BASIC_POR_REALIZAR" || required(env, "DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_PORTAL_OBSERVED_DATE") !== "2026-07-22") reject("preflight", "delivery_retry_contract");
+  const priorRegistryPath = resolve(pre.registryDir, `${pre.envelopeSha256}.json`);
+  secureFile(priorRegistryPath, repoRoot, "registry", "delivery_prior_record");
+  const prior = JSON.parse(readFileSync(priorRegistryPath, "utf8")) as Record<string, unknown>;
+  if (prior.envelopeSha256 !== pre.envelopeSha256 || prior.state !== "ambiguous" || prior.httpStatus !== undefined || typeof prior.response === "string" || typeof prior.trackId === "string") reject("registry", "delivery_prior_record");
+  const path = deliveryRegistryPath(pre);
+  if (existsSync(path)) reject("registry", "delivery_retry_exists");
+  validateCorrection002DeliveryArtifacts(pre, deps);
+  return { ...pre, attemptId: CORRECTION_002_DELIVERY_ATTEMPT_ID, priorRegistryPath, deliveryRegistryPath: path };
+}
+export async function submitCorrection002DeliveryRetry(env: NodeJS.ProcessEnv = process.env, deps: DeliveryRetryDeps = {}): Promise<SubmitResult> {
+  const pre = preflightCorrection002DeliveryRetry(env, process.cwd(), deps);
+  deliveryRecord(pre, "intent");
+  let failureStage = "seed"; let uploadStarted = false; let tokenFingerprint: string | null = null;
+  try {
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    deliveryRecord(pre, "seed_started");
+    const seed = await requestSeed(pre.config, { fetchImpl });
+    if (!seed.seed) reject("seed", "response");
+    deliveryRecord(pre, "seed_completed");
+    failureStage = "token"; deliveryRecord(pre, "token_started");
+    const token = await requestToken(signSeed(seed.seed, pre.config).signedSeed ?? "", pre.config, { fetchImpl });
+    if (!token.token) reject("token", "response");
+    tokenFingerprint = fingerprint(token.token); deliveryRecord(pre, "token_completed", { tokenFingerprint });
+    failureStage = "multipart_build";
+    const form = new FormData(); form.set("rutSender", pre.sender.rut); form.set("dvSender", pre.sender.dv); form.set("rutCompany", pre.company.rut); form.set("dvCompany", pre.company.dv); form.set("archivo", new Blob([Uint8Array.from(pre.envelope)], { type: "text/xml" }), basename(pre.envelopePath));
+    deliveryRecord(pre, "multipart_built", { multipartBuilt: true });
+    failureStage = "upload_connect"; uploadStarted = true; deliveryRecord(pre, "upload_started", { uploadStarted: true, siiUploadContacted: true });
+    const response = await fetchImpl(pre.endpoint, { method: "POST", headers: { "user-agent": UPLOAD_USER_AGENT, accept: "text/xml,application/xml,text/html;q=0.9,*/*;q=0.8", "accept-language": "es-cl", referer: UPLOAD_REFERER, "cache-control": "no-cache", cookie: `TOKEN=${token.token}` }, body: form, redirect: "manual", signal: AbortSignal.timeout(pre.config.timeoutMs) });
+    failureStage = "upload_wait_response"; deliveryRecord(pre, "response_headers_received", { responseHeadersReceived: true, httpStatus: response.status, responseContentType: response.headers.get("content-type"), locationFingerprint: fingerprint(response.headers.get("location")) });
+    const raw = await response.text(); const classification = classifyUploadResponse(raw);
+    deliveryRecord(pre, "response_body_stored", { responseBodyStored: true, responseBytes: Buffer.byteLength(raw, "utf8"), responseSha256: sha256(raw), receptionStatus: classification.status ?? "invalid" });
+    if (classification.kind === "accepted" && response.ok) { deliveryRecord(pre, "submitted", { trackId: classification.trackId, trackIdFingerprint: fingerprint(classification.trackId), submitted: true }); return { status: "SUBMITTED", receptionStatus: "0", envelopeSha256: pre.envelopeSha256, tokenFingerprint, trackIdStored: true, trackIdFingerprint: fingerprint(classification.trackId), siiContacted: true, submitted: true, statusQueried: false }; }
+    if (classification.kind === "rejected") { deliveryRecord(pre, "rejected", { submitted: false, receptionStatus: classification.status ?? "invalid" }); return { status: "REJECTED", receptionStatus: classification.status ?? "invalid", envelopeSha256: pre.envelopeSha256, tokenFingerprint, trackIdStored: false, trackIdFingerprint: null, siiContacted: true, submitted: false, statusQueried: false }; }
+    deliveryRecord(pre, "ambiguous", { submitted: false, receptionStatus: classification.status ?? "invalid", failureStage }); return { status: "AMBIGUOUS", receptionStatus: classification.status ?? "invalid", envelopeSha256: pre.envelopeSha256, tokenFingerprint, trackIdStored: false, trackIdFingerprint: null, siiContacted: true, submitted: false, statusQueried: false };
+  } catch (error) {
+    const safe = safeDeliveryError(error); const finalStage = uploadStarted ? "ambiguous" : "ambiguous";
+    deliveryRecord(pre, finalStage, { ...safe, failureStage, uploadStarted, siiUploadContacted: uploadStarted, safeToClassifyNotDelivered: !uploadStarted, submitted: false });
+    return { status: "AMBIGUOUS", receptionStatus: "invalid", envelopeSha256: pre.envelopeSha256, tokenFingerprint, trackIdStored: false, trackIdFingerprint: null, siiContacted: uploadStarted, submitted: false, statusQueried: false };
+  }
 }

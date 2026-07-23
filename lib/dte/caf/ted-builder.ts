@@ -5,6 +5,17 @@ function truncateTedText(value: string, maxLength: number): string {
   return value.trim().slice(0, maxLength);
 }
 
+export function buildOfficialFrmtDd(ddXml: string): string {
+  const withoutNamespaceReferences = ddXml.replace(
+    /\s+xmlns(?::[A-Za-z_][\w.-]*)?\s*=\s*(?:"[^"]*"|'[^']*')/g,
+    "",
+  );
+  const compact = withoutNamespaceReferences.replace(/>\s+</g, "><");
+  if ([...compact].some((character) => (character.codePointAt(0) ?? 0) > 0xff))
+    throw new Error("DD FRMT contiene caracteres fuera de ISO-8859-1");
+  return compact;
+}
+
 export function buildTedControlled(input: TedInput): TedBuildResult {
   const timestamp = (input.timestamp ?? new Date().toISOString()).slice(0, 19);
   const frmtXml =
@@ -15,7 +26,7 @@ export function buildTedControlled(input: TedInput): TedBuildResult {
     (input.frmtXml ? "real_controlled" : "pending_real_signature");
   const separator = input.compact ? "" : "\n";
   const indent = input.compact ? "" : "  ";
-  const ddXml = [
+  const ddXml = buildOfficialFrmtDd([
     "<DD>",
     `${indent}<RE>${escapeXml(input.issuerRut)}</RE>`,
     `${indent}<TD>${input.documentTypeCode}</TD>`,
@@ -28,7 +39,7 @@ export function buildTedControlled(input: TedInput): TedBuildResult {
     input.cafXml.trim(),
     `${indent}<TSTED>${escapeXml(timestamp)}</TSTED>`,
     "</DD>",
-  ].join(separator);
+  ].join(separator));
 
   return {
     ddXml,

@@ -14,10 +14,22 @@ const SPECS = [
     shaVar: "DTE_REAL_CAF_33_SHA256",
   },
   {
+    type: 33 as CafType,
+    range: { from: 6, to: 8 },
+    pathVar: "DTE_REAL_CAF_33_6_8_PATH",
+    shaVar: "DTE_REAL_CAF_33_6_8_SHA256",
+  },
+  {
     type: 61 as CafType,
     range: { from: 1, to: 4 },
     pathVar: "DTE_REAL_CAF_61_PATH",
     shaVar: "DTE_REAL_CAF_61_SHA256",
+  },
+  {
+    type: 61 as CafType,
+    range: { from: 5, to: 6 },
+    pathVar: "DTE_REAL_CAF_61_5_6_PATH",
+    shaVar: "DTE_REAL_CAF_61_5_6_SHA256",
   },
   {
     type: 56 as CafType,
@@ -114,7 +126,10 @@ export function loadAuditedRealCertificationCafs(
   const owner = process.getuid?.();
   if (owner === undefined) reject("owner.unsupported");
   const anchors = trustStore(env);
-  const cafs = SPECS.map((spec) => {
+  const specs = env.DTE_FACTURA_CERTIFICATION_REISSUE_NUMBER === "1"
+    ? SPECS
+    : SPECS.filter((spec) => spec.range.from === 1);
+  const cafs = specs.map((spec) => {
     const expectedSha256 = required(env, spec.shaVar).toLowerCase();
     if (!/^[a-f0-9]{64}$/.test(expectedSha256)) reject(spec.shaVar);
     return loadCafAuthorization(required(env, spec.pathVar), {
@@ -123,7 +138,7 @@ export function loadAuditedRealCertificationCafs(
       expectedType: spec.type,
       expectedRange: spec.range,
       expectedIdk: "100",
-      minimumAvailable: spec.range.to,
+      minimumAvailable: spec.range.to - spec.range.from + 1,
       expectedSha256,
       expectedOwnerUid: owner,
       trustStore: anchors,
@@ -146,10 +161,14 @@ export function loadAuditedRealCertificationCafs(
     reject("classification");
   if (new Set(cafs.map((caf) => caf.issuerRut)).size !== 1)
     reject("issuerMismatch");
+  const identities = new Set(
+    cafs.map((caf) => `${caf.typeCode}:${caf.rangeFrom}-${caf.rangeTo}`),
+  );
+  if (identities.size !== specs.length) reject("coverage.duplicate");
   const result: RealCafBundleAuditResult = {
     status: "READY_FOR_CERTIFICATION_OFFLINE",
     attention: "4959698",
-    cafs: SPECS.map((spec, index) => ({
+    cafs: specs.map((spec, index) => ({
       type: spec.type,
       range: `${spec.range.from}-${spec.range.to}`,
       sha256: cafs[index].sha256,

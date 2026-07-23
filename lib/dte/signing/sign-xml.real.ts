@@ -1,4 +1,5 @@
 import { createHash, createPublicKey, createSign, createVerify, X509Certificate } from "node:crypto";
+import { SignedXml } from "xml-crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -216,8 +217,44 @@ export async function signXmlRealControlled(): Promise<never> {
   );
 }
 
+export function wrapBase64Lines(value: string): string {
+  const compact = value.replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) throw new Error("Base64 XMLDSig invalido");
+  return compact.match(/.{1,76}/g)?.join("\n") ?? "";
+}
+
 function sha1Base64(value: string): string {
   return createHash("sha1").update(value).digest("base64");
+}
+
+export type FinalContextXmlDsigResult = {
+  signedXml: string;
+  signatureXml: string;
+};
+function wrapGeneratedSignatureBase64(xml: string): string {
+  return xml.replace(/<(SignatureValue|X509Certificate)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/g, (_match, tag, value) => `<${tag}>${wrapBase64Lines(value)}</${tag}>`);
+}
+export function signXmlInFinalContextControlled(input: { xml: string; referenceId: string; insertAfterXPath: string }, config: RealXmlSigningConfig): FinalContextXmlDsigResult {
+  const preparation = prepareRealXmlSigning(input.xml, config);
+  if (preparation.missing.length > 0 || preparation.status === "unsafe_repo_path" || preparation.status === "failed") throw new Error("XMLDSig final-context requires controlled external signing material");
+  if (config.mode !== "certification" || !config.privateKeyPath || !config.publicCertificatePath) throw new Error("XMLDSig final-context requires certification signing configuration");
+  const privateKey = readFileSync(config.privateKeyPath, "utf8");
+  const certificate = readFileSync(config.publicCertificatePath, "utf8");
+  const keyInfo = extractRsaKeyInfo(certificate);
+  const signer = new SignedXml({
+    privateKey,
+    publicCert: certificate,
+    canonicalizationAlgorithm: C14N,
+    signatureAlgorithm: RSA_SHA1,
+    getKeyInfoContent: () => `<KeyValue><RSAKeyValue><Modulus>${keyInfo.modulus}</Modulus><Exponent>${keyInfo.exponent}</Exponent></RSAKeyValue></KeyValue><X509Data><X509Certificate>${keyInfo.x509Certificate}</X509Certificate></X509Data>`,
+  });
+  signer.addReference({ xpath: `//*[@ID='${input.referenceId}']`, transforms: [C14N], digestAlgorithm: SHA1, uri: `#${input.referenceId}` });
+  signer.computeSignature(input.xml, { location: { reference: input.insertAfterXPath, action: "after" }, existingPrefixes: { ds: "http://www.w3.org/2000/09/xmldsig#" } });
+  const signedXml = wrapGeneratedSignatureBase64(signer.getSignedXml());
+  const signatures = [...signedXml.matchAll(/<Signature\b[^>]*>[\s\S]*?<\/Signature>/g)];
+  const signatureXml = signatures.find((match) => match[0].includes(`<Reference URI="#${input.referenceId}"`))?.[0];
+  if (!signatureXml) throw new Error("XMLDSig final-context signature insertion failed");
+  return { signedXml, signatureXml };
 }
 
 function stripPem(value: string): string {
@@ -404,7 +441,7 @@ export function buildXmlDsigControlled(
     signatureXml: [
       '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">',
       signedInfo,
-      `<SignatureValue>${signatureValue}</SignatureValue>`,
+      `<SignatureValue>${wrapBase64Lines(signatureValue)}</SignatureValue>`,
       "<KeyInfo>",
       "<KeyValue>",
       "<RSAKeyValue>",
@@ -413,7 +450,7 @@ export function buildXmlDsigControlled(
       "</RSAKeyValue>",
       "</KeyValue>",
       "<X509Data>",
-      `<X509Certificate>${keyInfo.x509Certificate}</X509Certificate>`,
+      `<X509Certificate>${wrapBase64Lines(keyInfo.x509Certificate)}</X509Certificate>`,
       "</X509Data>",
       "</KeyInfo>",
       "</Signature>",

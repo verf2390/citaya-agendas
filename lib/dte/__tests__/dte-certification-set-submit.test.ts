@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   symlinkSync,
@@ -12,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
-import { buildXmlDsigControlled } from "../signing/sign-xml.real";
+import { buildXmlDsigControlled, signXmlInFinalContextControlled } from "../signing/sign-xml.real";
 import {
   ControlledSetSubmitError,
   classifyUploadResponse,
@@ -20,20 +21,68 @@ import {
   formatSubmitError,
   formatSubmitResult,
   preflightCertificationSetSubmit,
+  SET_SHA256,
+  verifyPersistedXmlsecSignatures,
   submitPreparedCertificationSet,
+  submitCorrection002DeliveryRetry,
 } from "../certification/factura-certification-set-submit";
 
 function write600(path: string, value: string | Buffer) {
   writeFileSync(path, value, { mode: 0o600 });
   chmodSync(path, 0o600);
 }
+function buildSignedEnvelopeFixture(cert: string, key: string) {
+  const documentIds = Array.from({ length: 8 }, (_, index) =>
+    `FixtureDoc-${index + 1}`,
+  );
+  const documents = documentIds.map((id, index) =>
+    `<DTE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.0"><Documento ID="${id}"><Detalle>fixture-${index + 1}</Detalle></Documento></DTE>`,
+  ).join("");
+  let xml =
+    `<EnvioDTE xmlns="http://www.sii.cl/SiiDte" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioDTE_v10.xsd" version="1.0">\n<SetDTE ID="FixtureSet"><Caratula>fixture</Caratula>${documents}</SetDTE></EnvioDTE>`;
+  const baseConfig = {
+    tenantId: "fixture",
+    mode: "certification" as const,
+    signatureTarget: "",
+    privateKeyPath: key,
+    certificatePath: cert,
+    publicCertificatePath: cert,
+  };
+  for (const id of documentIds) {
+    xml = signXmlInFinalContextControlled(
+      {
+        xml,
+        referenceId: id,
+        insertAfterXPath: "//*[local-name()=\"Documento\" and " +
+          String.fromCharCode(64) + "ID=\"" + id + "\"]",
+      },
+      { ...baseConfig, signatureTarget: id },
+    ).signedXml;
+  }
+  xml = signXmlInFinalContextControlled(
+    {
+      xml,
+      referenceId: "FixtureSet",
+      insertAfterXPath: "//*[local-name()=\"SetDTE\" and " +
+        String.fromCharCode(64) + "ID=\"FixtureSet\"]",
+    },
+    { ...baseConfig, signatureTarget: "FixtureSet" },
+  ).signedXml;
+  const dtes = documentIds.map((id) => {
+    const match = [...xml.matchAll(/<DTE\b[^>]*>[\s\S]*?<\/DTE>/g)]
+      .find((candidate) => candidate[0].includes(`ID="${id}"`));
+    assert.ok(match);
+    return `<?xml version="1.0" encoding="ISO-8859-1"?>\n${match[0]}`;
+  });
+  return {
+    xml: `<?xml version="1.0" encoding="ISO-8859-1"?>\n${xml}`,
+    dtes,
+  };
+}
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "set-submit-"));
   const envelope = join(root, "EnvioDTE-4959698-CERTIFICATION.xml");
-  const xml =
-    '<?xml version="1.0" encoding="ISO-8859-1"?>\n<EnvioDTE xmlns="http://www.sii.cl/SiiDte" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioDTE_v10.xsd" version="1.0">\nFIXTURE</EnvioDTE>';
-  write600(envelope, Buffer.from(xml, "latin1"));
-  const sha = createHash("sha256").update(readFileSync(envelope)).digest("hex");
   const cert = join(root, "cert.pem"),
     key = join(root, "key.pem");
   execFileSync(
@@ -57,11 +106,14 @@ function fixture() {
   );
   chmodSync(cert, 0o600);
   chmodSync(key, 0o600);
+  const signedFixture = buildSignedEnvelopeFixture(cert, key);
+  write600(envelope, Buffer.from(signedFixture.xml, "latin1"));
+  const sha = createHash("sha256").update(readFileSync(envelope)).digest("hex");
   const manifest = join(root, "manifest-4959698-CERTIFICATION.json");
   const files: Array<{ file: string; sha256: string }> = [];
   for (let index = 1; index <= 8; index += 1) {
     const file = `4959698-${index}-DTE-CERTIFICATION.xml`;
-    const value = Buffer.from(`fixture-${index}`, "latin1");
+    const value = Buffer.from(signedFixture.dtes[index - 1], "latin1");
     write600(join(root, file), value);
     files.push({
       file,
@@ -123,6 +175,23 @@ const deps = (sha: string) => ({
   xsd: () => true,
   signature: () => true,
 });
+function correctionFixture() {
+  const f = fixture();
+  const manifestPath = join(f.root, "manifest-4959698-CERTIFICATION.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  Object.assign(manifest, {
+    envelopeSha256: f.sha,
+    correctionOfEnvelopeSha256: SET_SHA256,
+    correctionReason: "STATUS_7_SCH_00001",
+    correctionResponseSha256:
+      "1cc59e211e5217abf6f88132a1b9c30cfba312f12bd2a8afc834d78fe31108ef",
+  });
+  write600(manifestPath, JSON.stringify(manifest));
+  return f;
+}
+function finalContextSignedFixture() { return fixture(); }
+test("FOCAL final-context signatures use xmlsec1 as the preflight authority", () => { const f = finalContextSignedFixture(); const bytes = readFileSync(f.envelope); assert.equal(diagnosePersistedXmlSignature(bytes, readFileSync(f.cert, "utf8")).valid, false); const gate = verifyPersistedXmlsecSignatures({ envelopePath: f.envelope, bytes, expectedSha256: f.sha, certificatePath: f.cert }); assert.equal(gate.xmlsecAvailable, true); assert.equal(gate.individualValid, 8); assert.equal(gate.outerValid, true); assert.equal(gate.persistedBytesValid, true); const preflight = preflightCertificationSetSubmit(f.env, process.cwd(), { expectedSha256: f.sha, xsd: () => true }); assert.equal(preflight.xmlsecIndividualValid, "8/8"); assert.equal(preflight.xmlsecOuterValid, true); assert.equal(preflight.signatureAuthority, "xmlsec1"); });
+
 test("offline preflight validates fixture without fetch", () => {
   const f = fixture();
   let calls = 0;
@@ -516,4 +585,55 @@ test("persisted Latin-1 envelope verifies the SetDTE signature among nested DTE 
     diagnosePersistedXmlSignature(accidentalUtf8, cert).valid,
     false,
   );
+});
+
+test("preflight accepts a validated correction manifest with its new SHA", () => {
+  const f = correctionFixture();
+  const result = preflightCertificationSetSubmit(f.env, process.cwd(), deps(f.sha));
+  assert.equal(result.envelopeSha256, f.sha);
+});
+test("preflight rejects altered correction lineage or SHA", () => {
+  for (const mutate of [
+    (manifest: Record<string, unknown>) => {
+      manifest.correctionReason = "ALTERED";
+    },
+    (manifest: Record<string, unknown>) => {
+      manifest.envelopeSha256 = "0".repeat(64);
+    },
+  ]) {
+    const f = correctionFixture();
+    const manifestPath = join(f.root, "manifest-4959698-CERTIFICATION.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+    mutate(manifest);
+    write600(manifestPath, JSON.stringify(manifest));
+    assert.throws(
+      () => preflightCertificationSetSubmit(f.env, process.cwd(), deps(f.sha)),
+      (error: unknown) =>
+        error instanceof ControlledSetSubmitError &&
+        error.stage === "manifest" &&
+        error.field === "correction_lineage",
+    );
+  }
+});
+
+
+test("correction-002 delivery retry preserves ambiguous original and records every transport stage", async () => {
+  const f = fixture();
+  const manifestPath = join(f.root, "manifest-4959698-CERTIFICATION.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  Object.assign(manifest, { envelopeSha256: f.sha, correctionNumber: 2, correctionOfEnvelopeSha256: "738197d2ab1d65c0f83d35b97408331114c5617cc6647768cb95dcfedc779ec3", correctionOfManifestSha256: "a".repeat(64), correctionOfRegistrySha256: "b".repeat(64), correctionOfTrackIdFingerprint: "0430bc27374b80a4", correctionOfStatus: "RFR", statusEvidenceSource: "human_portal_observation", portalObservedStatus: "RECHAZADO_POR_ERROR_EN_FIRMA", portalObservedDate: "2026-07-22", correctionReason: "RFR_WRONG_DTE_ASSOCIATION_AND_BASE64_LINE_LENGTH", associationKey: "dteType:folio", documentsMatched: "8/8" });
+  write600(manifestPath, JSON.stringify(manifest));
+  mkdirSync(f.registry, { mode: 0o700 });
+  const originalPath = join(f.registry, f.sha + ".json");
+  write600(originalPath, JSON.stringify({ envelopeSha256: f.sha, state: "ambiguous", errorCode: "NETWORK_OR_INTERNAL" }));
+  const original = readFileSync(originalPath);
+  Object.assign(f.env, { DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_ATTEMPT_ID: "correction-002-delivery-attempt-002", DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_CONFIRM: "fixture-" + f.sha, DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_PORTAL_OBSERVATION: "SET_BASIC_POR_REALIZAR", DTE_FACTURA_CERTIFICATION_DELIVERY_RETRY_PORTAL_OBSERVED_DATE: "2026-07-22" });
+  let calls = 0;
+  const fetchImpl: typeof fetch = async () => { calls += 1; if (calls === 1) return new Response("<RESPUESTA><RESP_HDR><ESTADO>00</ESTADO></RESP_HDR><RESP_BODY><SEMILLA>1</SEMILLA></RESP_BODY></RESPUESTA>"); if (calls === 2) return new Response("<RESPUESTA><RESP_HDR><ESTADO>00</ESTADO></RESP_HDR><RESP_BODY><TOKEN>x</TOKEN></RESP_BODY></RESPUESTA>"); return new Response("<RECEPCIONDTE><STATUS>0</STATUS><TRACKID>12345</TRACKID></RECEPCIONDTE>", { status: 200, headers: { "content-type": "text/xml" } }); };
+  const result = await submitCorrection002DeliveryRetry(f.env, { ...deps(f.sha), individualSignature: () => true, dteXsd: () => true, fetchImpl });
+  const retry = JSON.parse(readFileSync(join(f.registry, f.sha + ".correction-002-delivery-attempt-002.json"), "utf8"));
+  assert.equal(calls, 3);
+  assert.deepEqual(readFileSync(originalPath), original);
+  assert.deepEqual(retry.stages.map((item: { stage: string }) => item.stage), ["intent", "seed_started", "seed_completed", "token_started", "token_completed", "multipart_built", "upload_started", "response_headers_received", "response_body_stored", "submitted"]);
+  assert.equal(result.statusQueried, false);
 });

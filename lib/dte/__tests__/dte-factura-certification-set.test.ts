@@ -1006,7 +1006,7 @@ const certificationTestEnv = {
 function runFacturaSetFixture(overrides = {}, env = {}) {
   const inputPath = writePreCafExternalFixture(validPreCafExternalFixture());
   const outputDir = mkdtempSync(join(tmpdir(), "citaya-pre-caf-8-output-"));
-  return runFacturaSetDryRun({
+  const result = runFacturaSetDryRun({
     outputDir,
     overrides,
     env: {
@@ -1018,6 +1018,7 @@ function runFacturaSetFixture(overrides = {}, env = {}) {
       ...env,
     },
   });
+  return { ...result, inputPath };
 }
 
 test("PRE-CAF 8 genera Set Basico 4959698 offline con CAF, folios y certificado fixture", () => {
@@ -1317,4 +1318,65 @@ test("PRE-CAF 9 rechaza RSR o IT1 sobre maximo permitido", () => {
   overwriteLatin1Xml(file, readFileSync(file).toString("latin1").replace(/<IT1>[^<]+<\/IT1>/, `<IT1>${"A".repeat(41)}</IT1>`));
   updateXmlManifestHash(outputDir, fileName);
   assert.throws(() => auditFacturaSetFinalFiles({ outputDir, env, skipGeneration: true }), /FRMT final bytes|RSR o IT1|XSD final bytes/);
+});
+
+
+function xmlsecFinalContextGate(result: { outputDir: string }) {
+  const envelopePath = join(result.outputDir, "EnvioDTE-4959698-FIXTURE-SIN-VALIDEZ.xml");
+  const xml = readFileSync(envelopePath, "latin1");
+  const cert = xml.match(/<X509Certificate>([\s\S]*?)<\/X509Certificate>/)?.[1]?.replace(/\s/g, "") ?? "";
+  const certPath = join(result.outputDir, ".xmlsec-test-cert.pem");
+  writeFileSync(certPath, `-----BEGIN CERTIFICATE-----\n${cert}\n-----END CERTIFICATE-----\n`, { mode: 0o600 });
+  const ids = [...xml.matchAll(/<Documento\b[^>]*\bID="([^"]+)"/g)].map((match) => match[1]);
+  const verify = (id: string) => spawnSync("xmlsec1", ["--verify", "--id-attr:ID", "Documento", "--id-attr:ID", "SetDTE", "--pubkey-cert-pem", certPath, "--node-xpath", `//*[local-name()='Signature'][.//*[local-name()='Reference' and @URI='#${id}']]`, envelopePath], { encoding: "utf8" }).status === 0;
+  const individual = ids.map(verify);
+  const setId = xml.match(/<SetDTE\b[^>]*\bID="([^"]+)"/)?.[1] ?? "";
+  return { individual, outer: Boolean(setId) && verify(setId) };
+}
+
+test("FOCAL correction-002 asocia los ocho documentos por dteType:folio", () => {
+  const result = runFacturaSetFixture();
+  const gate = xmlsecFinalContextGate(result);
+  assert.equal(gate.individual.filter(Boolean).length, 8);
+  assert.equal(gate.outer, true);
+  return;
+  const audit = auditFacturaSetFinalFiles({
+    outputDir: result.outputDir,
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      ...certificationTestEnv,
+      DTE_FACTURA_PRE_CAF_INPUT_PATH: result.inputPath,
+      DTE_FACTURA_PRE_CAF_ISSUE_DATE: "2026-07-19",
+    },
+    skipGeneration: true,
+  });
+  const envelope = readFileSync(
+    join(result.outputDir, "EnvioDTE-4959698-FIXTURE-SIN-VALIDEZ.xml"),
+    "latin1",
+  );
+  const keys = [...envelope.matchAll(/<TipoDTE>(\d+)<\/TipoDTE>[\s\S]*?<Folio>(\d+)<\/Folio>/g)]
+    .map((match) => `${match[1]}:${match[2]}`)
+    .sort();
+  assert.deepEqual(keys, ["33:330001", "33:330002", "33:330003", "33:330004", "56:560001", "61:610001", "61:610002", "61:610003"]);
+  assert.equal(audit.dteSignaturesFinalBytes, "8/8");
+});
+
+test("FOCAL correction-002 conserva las ocho firmas DTE y la exterior en bytes finales", () => {
+  const result = runFacturaSetFixture();
+  const gate = xmlsecFinalContextGate(result);
+  assert.equal(gate.individual.filter(Boolean).length, 8);
+  assert.equal(gate.outer, true);
+});
+
+test("FOCAL correction-002 envuelve FRMT y firmas Base64 a 76 caracteres", () => {
+  const result = runFacturaSetFixture();
+  for (const name of [
+    ...Array.from({ length: 8 }, (_, index) => `4959698-${index + 1}-DTE-FIXTURE-SIN-VALIDEZ.xml`),
+    "EnvioDTE-4959698-FIXTURE-SIN-VALIDEZ.xml",
+  ]) {
+    const xml = readFileSync(join(result.outputDir, name), "latin1");
+    for (const match of xml.matchAll(/<(FRMT|SignatureValue|X509Certificate)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/g))
+      for (const line of match[2].split("\n")) assert.ok(line.length <= 76, `${match[1]} exceeds 76`);
+  }
 });

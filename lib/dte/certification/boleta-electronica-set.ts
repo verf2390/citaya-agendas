@@ -413,7 +413,7 @@ export function checkBoletaPreCafReadiness(input: BoletaPreCafCheckInput): Bolet
     hasTagValue(setXml, "CiudadOrigen", EXPECTED_REAL_ISSUER.city) &&
     hasTagValue(rcofXml, "RutEmisor", EXPECTED_REAL_ISSUER.rut);
 
-  checks.push(check("set_case_count", (setXml.match(/<DTE version="1.0">/g) ?? []).length === 5, "SetDTE debe contener 5 boletas."));
+  checks.push(check("set_case_count", (setXml.match(/<DTE\b(?=[^>]*\bversion="1\.0")[^>]*>/g) ?? []).length === 5, "SetDTE debe contener 5 boletas."));
   checks.push(check("rcof_exists", rcofXml.includes("<ConsumoFolios"), "RCOF debe existir."));
   checks.push(check("folios_1_5", JSON.stringify(folioValues) === JSON.stringify([1, 2, 3, 4, 5]), "Folios del set deben ser 1..5."));
 

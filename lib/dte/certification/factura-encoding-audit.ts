@@ -1,23 +1,18 @@
-import { createHash, createPublicKey, createVerify, X509Certificate } from "node:crypto";
+import { createHash, createPublicKey, createVerify } from "node:crypto";
 import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { canonicalizeXmlControlled, verifyXmlSignatureControlled } from "../signing/sign-xml.real";
 import { PRE_CAF_REQUIRED_CASE_ORDER, validatePreCafExternalData } from "./pre-caf-external-contract";
 import { loadFacturaPreCafInputFromPath } from "./pre-caf-input-loader";
 import {
   encodeIso88591Strict,
   FACTURA_SET_FIXTURE_OUTPUT_DIR,
   runFacturaSetDryRun,
-  SII_DTE_NAMESPACE,
   type FacturaSetDryRunOptions,
 } from "./factura-set-dry-run";
 
-const XMLDSIG_C14N = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
-const XMLDSIG_RSA_SHA1 = "http://www.w3.org/2000/09/xmldsig#rsa-sha1";
-const XMLDSIG_SHA1 = "http://www.w3.org/2000/09/xmldsig#sha1";
 function artifactNames(fixtureMode: boolean) {
   const suffix = fixtureMode ? "FIXTURE-SIN-VALIDEZ" : "CERTIFICATION";
   return {
@@ -112,71 +107,32 @@ function extractElement(xml: string, tag: string): string {
   return match?.[0] ?? fail(`elemento requerido ausente: ${tag}`);
 }
 
-function extractLastSignature(xml: string): string {
-  const matches = [...xml.matchAll(/<Signature xmlns="http:\/\/www\.w3\.org\/2000\/09\/xmldsig#">[\s\S]*?<\/Signature>/g)];
-  return matches.at(-1)?.[0] ?? fail("Signature ausente");
+function extractReferenceId(xml: string, tag: "Documento" | "SetDTE"): string {
+  const openingTag = extractElement(xml, tag).split(">")[0] + ">";
+  const id = openingTag.match(/\sID="([^"]+)"/)?.[1];
+  if (!id || !/^[A-Za-z_][A-Za-z0-9_.:-]*$/.test(id))
+    fail("ID invalido o ausente: " + tag);
+  return id;
 }
 
-function extractDteSignature(xml: string): string {
-  const matches = [...xml.matchAll(/<Signature xmlns="http:\/\/www\.w3\.org\/2000\/09\/xmldsig#">[\s\S]*?<\/Signature>/g)];
-  if (matches.length !== 1) fail("DTE final debe contener exactamente una Signature");
-  return matches[0][0];
+function verifyXmlsecFinalSignature(path: string, referenceId: string): boolean {
+  const xpath = "//*[local-name()=\"Signature\"][.//*[local-name()=\"Reference\" and " +
+    String.fromCharCode(64) + "URI=\"#" + referenceId + "\"]]";
+  return spawnSync("xmlsec1", [
+    "--verify",
+    "--id-attr:ID",
+    "Documento",
+    "--id-attr:ID",
+    "SetDTE",
+    "--node-xpath",
+    xpath,
+    path,
+  ], { stdio: "ignore" }).status === 0;
 }
 
-function addDefaultNamespace(fragment: string, tag: string): string {
-  if (fragment.includes(`xmlns="${SII_DTE_NAMESPACE}"`)) return fragment;
-  return fragment.replace(`<${tag} `, `<${tag} xmlns="${SII_DTE_NAMESPACE}" `);
-}
-
-function normalizeSignedInfo(signatureXml: string): string {
-  const signedInfo = signatureXml.match(/<SignedInfo[\s\S]*?<\/SignedInfo>/)?.[0] ?? fail("SignedInfo ausente");
-  if (signedInfo.startsWith('<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">')) return signedInfo;
-  return signedInfo
-    .split("\n")
-    .map((line) => line.replace(/^  /, ""))
-    .join("\n")
-    .replace(/^<SignedInfo>/, '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">');
-}
-
-function pemFromX509(signatureXml: string): string {
-  const x509 = extractFirst(signatureXml, "X509Certificate").replace(/\s+/g, "");
-  if (!x509) fail("X509Certificate vacio");
-  const cert = new X509Certificate(Buffer.from(x509, "base64"));
-  return cert.toString();
-}
-
-function assertKeyInfo(signatureXml: string): void {
-  const required = ["KeyInfo", "KeyValue", "RSAKeyValue", "Modulus", "Exponent", "X509Data", "X509Certificate"];
-  for (const tag of required) {
-    const count = (signatureXml.match(new RegExp(`<${tag}(?:\\s|>)`, "g")) ?? []).length;
-    if (count !== 1) fail(`KeyInfo incompleto o duplicado: ${tag}`);
-  }
-  const cert = new X509Certificate(Buffer.from(extractFirst(signatureXml, "X509Certificate").replace(/\s+/g, ""), "base64"));
-  const jwk = cert.publicKey.export({ format: "jwk" }) as { kty?: string; n?: string; e?: string };
-  if (jwk.kty !== "RSA" || !jwk.n || !jwk.e) fail("certificado KeyInfo no contiene RSA");
-  const modulus = extractFirst(signatureXml, "Modulus").replace(/\s+/g, "");
-  const exponent = extractFirst(signatureXml, "Exponent").replace(/\s+/g, "");
-  if (base64ToBase64Url(modulus) !== jwk.n || base64ToBase64Url(exponent) !== jwk.e) fail("RSAKeyValue no coincide con X509Certificate");
-}
-
-function assertLegacyAlgorithms(signatureXml: string): void {
-  for (const algorithm of [XMLDSIG_C14N, XMLDSIG_RSA_SHA1, XMLDSIG_SHA1]) {
-    if (!signatureXml.includes(algorithm)) fail("algoritmo XMLDSig legacy ausente");
-  }
-}
-
-function verifyXmlDsigFromFinalBytes(referenceXml: string, signatureXml: string): boolean {
-  assertLegacyAlgorithms(signatureXml);
-  assertKeyInfo(signatureXml);
-  const canonicalReference = canonicalizeXmlControlled(referenceXml);
-  if (!canonicalReference.ok) fail("canonicalizacion final fallo");
-  return verifyXmlSignatureControlled({
-    signedInfoXml: normalizeSignedInfo(signatureXml),
-    signatureValue: extractFirst(signatureXml, "SignatureValue").trim(),
-    certificatePem: pemFromX509(signatureXml),
-    expectedDigestValue: extractFirst(signatureXml, "DigestValue").trim(),
-    canonicalizedReferenceXml: canonicalReference.canonicalXml,
-  }).ok;
+function assertXmlsecAvailable(): void {
+  if (spawnSync("xmlsec1", ["--version"], { stdio: "ignore" }).status !== 0)
+    fail("xmlsec1 no disponible para auditar firmas finales");
 }
 
 function publicKeyFromCaf(cafXml: string) {
@@ -251,7 +207,7 @@ function readManifest(outputDir: string, fixtureMode: boolean): FacturaSetManife
     });
     return { fixtureMode: true, files, cafFixtures };
   }
-  if (!has("cafHashes") || has("cafFixtures") || !Array.isArray(parsed.cafHashes) || parsed.cafHashes.length !== 3)
+  if (!has("cafHashes") || has("cafFixtures") || !Array.isArray(parsed.cafHashes) || parsed.cafHashes.length < 3)
     fail("stage=manifest field=cafHashes");
   const cafHashes = parsed.cafHashes.map((item) => {
     const value = item as { type?: unknown; sha256?: unknown };
@@ -259,7 +215,9 @@ function readManifest(outputDir: string, fixtureMode: boolean): FacturaSetManife
       fail("stage=manifest field=cafHashes");
     return { type: value.type, sha256: String(value.sha256) } as { type: 33 | 56 | 61; sha256: string };
   });
-  if (new Set(cafHashes.map((item) => item.type)).size !== 3) fail("stage=manifest field=cafHashes");
+  if (new Set(cafHashes.map((item) => item.type)).size !== 3 ||
+      new Set(cafHashes.map((item) => item.type + ":" + item.sha256)).size !== cafHashes.length)
+    fail("stage=manifest field=cafHashes");
   return { fixtureMode: false, files, cafHashes };
 }
 
@@ -315,31 +273,36 @@ export function auditFacturaSetFinalFiles(options: FacturaEncodingAuditOptions =
   if (!dteFiles.some((file) => file.xml.includes("Pintura B&amp;W AFECTO"))) fail("entidad XML esperada para ampersand ausente");
   if (dteFiles.some((file) => file.xml.includes("Pintura B&W AFECTO"))) fail("ampersand sin escapar detectado");
 
+  assertXmlsecAvailable();
   let cafOk = 0;
   let frmtOk = 0;
-  let dteSignatureOk = 0;
+  let literalDteSignatureOk = 0;
+  let embeddedDteSignatureOk = 0;
   for (const file of dteFiles) {
     validateXsdFinal(file, "DTE_v10.xsd");
     const cafXml = extractElement(extractElement(file.xml, "DD"), "CAF");
+    const cafHash = sha256(cafXml);
     const caseId = file.name.slice(0, "4959698-1".length);
     const type = Number(extractFirst(extractElement(file.xml, "Encabezado"), "TipoDTE"));
     const cafManifest = manifest.fixtureMode
       ? manifest.cafFixtures.find((item) => item.caseId === caseId)
-      : manifest.cafHashes.find((item) => item.type === type);
+      : manifest.cafHashes.find((item) => item.type === type && item.sha256 === cafHash);
     if (!cafManifest) fail(`stage=manifest field=${manifest.fixtureMode ? "cafFixtures" : "cafHashes"}`);
-    if (sha256(cafXml) === cafManifest.sha256) cafOk += 1;
+    if (cafHash === cafManifest.sha256) cafOk += 1;
     if (verifyFrmtFromFinalBytes(file.xml)) frmtOk += 1;
     assertTedMatchesDte(file.xml);
-    const documento = addDefaultNamespace(extractElement(file.xml, "Documento"), "Documento");
-    if (verifyXmlDsigFromFinalBytes(documento, extractDteSignature(file.xml))) dteSignatureOk += 1;
+    const documentId = extractReferenceId(file.xml, "Documento");
+    if (verifyXmlsecFinalSignature(file.path, documentId)) literalDteSignatureOk += 1;
+    if (verifyXmlsecFinalSignature(envioFile.path, documentId)) embeddedDteSignatureOk += 1;
   }
   if (cafOk !== 8) fail(`CAF ${manifest.fixtureMode ? "fixture" : "certification"} no preservado ${cafOk}/8`);
   if (frmtOk !== 8) fail(`FRMT final bytes no verifica ${frmtOk}/8`);
-  if (dteSignatureOk !== 8) fail(`XMLDSig DTE final bytes no verifica ${dteSignatureOk}/8`);
+  if (literalDteSignatureOk !== 8) fail(`XMLDSig DTE literal final bytes no verifica ${literalDteSignatureOk}/8`);
+  if (embeddedDteSignatureOk !== 8) fail(`XMLDSig DTE embebido final bytes no verifica ${embeddedDteSignatureOk}/8`);
 
   validateXsdFinal(envioFile, "EnvioDTE_v10.xsd");
-  const setDte = addDefaultNamespace(extractElement(envioFile.xml, "SetDTE"), "SetDTE");
-  if (!verifyXmlDsigFromFinalBytes(setDte, extractLastSignature(envioFile.xml))) fail("XMLDSig SetDTE final bytes no verifica");
+  const setDteId = extractReferenceId(envioFile.xml, "SetDTE");
+  if (!verifyXmlsecFinalSignature(envioFile.path, setDteId)) fail("XMLDSig SetDTE final bytes no verifica");
   writeAuditManifest(outputDir, allFiles, fixtureMode);
 
   return {

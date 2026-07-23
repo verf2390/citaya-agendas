@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { fingerprintToken } from "../persistence/dte-redaction";
 
 import type {
   SiiClientConfig,
@@ -25,6 +26,9 @@ import {
   mapSiiStatusToInternalStatus,
   parseSiiStatusResponse,
   parseSiiSubmissionResponse,
+  queryCertificationDteStatus as queryDteStatus,
+  type SiiDteQueryInput,
+  type SiiDteQueryResult,
 } from "./sii-status";
 import type {
   SiiCertificationConfig,
@@ -215,6 +219,8 @@ export async function getSubmissionStatus(
     };
   }
 }
+
+export async function queryCertificationDte(input: SiiDteQueryInput, config: SiiClientConfig | SiiCertificationConfig): Promise<SiiDteQueryResult & { tokenSource: "rawTokenFromRequestToken"; tokenLengthValid: true; tokenExactMatch: true }> { const normalized = normalizeConfig(config); const auth = await prepareCertificationAuthFlow(normalized); const rawToken = auth.token.token ?? ""; const tokenLengthValid = rawToken.length >= 1 && rawToken.length <= 40; const tokenExactMatch = Boolean(auth.token.tokenFingerprint && auth.token.tokenFingerprint === fingerprintToken(rawToken)); if (!tokenLengthValid || !tokenExactMatch) throw new SiiCertificationError(SII_ERROR_CODES.INVALID_RESPONSE, "Token SII invalido para QueryEstDte.", "token"); const result = await queryDteStatus(normalized, input, { token: rawToken }); return { ...result, tokenSource: "rawTokenFromRequestToken", tokenLengthValid: true, tokenExactMatch: true }; }
 
 export function parseSiiResponse(rawResponse: unknown): SiiParsedResponse {
   return parseSiiSubmissionResponse(rawResponse);

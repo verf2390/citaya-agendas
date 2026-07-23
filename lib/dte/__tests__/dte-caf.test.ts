@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { createVerify, generateKeyPairSync } from "node:crypto";
 import test from "node:test";
 
 import {
@@ -194,4 +194,40 @@ test("FRMT can sign DD with explicit external fixture key without printing it", 
     assert.match(frmt.frmtXml, /<FRMT algoritmo="SHA1withRSA">/);
     assert.doesNotMatch(frmt.frmtXml, /BEGIN RSA PRIVATE KEY/);
   }
+});
+
+
+test("FOCAL FRMT SII signs the compact ISO-8859-1 DD and verifies independently", () => {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = publicKey.export({ format: "jwk" }) as { n: string; e: string };
+  const toBase64 = (value: string) => Buffer.from(value, "base64url").toString("base64");
+  const ddXml = [
+    "<DD xmlns=\"http://www.sii.cl/SiiDte\">",
+    "  <RE>76123456-0</RE>",
+    "  <TD>33</TD>",
+    "  <F>1</F>",
+    "  <FE>2026-07-22</FE>",
+    "  <RR>11111111-1</RR>",
+    "  <RSR>Señor &amp; Compañía</RSR>",
+    "  <MNT>11900</MNT>",
+    "  <IT1>Cajón &amp; Pañuelo</IT1>",
+    `  <CAF xmlns=\"http://www.sii.cl/SiiDte\"><DA><RSAPK><M>${toBase64(jwk.n)}</M><E>${toBase64(jwk.e)}</E></RSAPK></DA><FRMA algoritmo=\"SHA1withRSA\">AA==</FRMA></CAF>`,
+    "  <TSTED>2026-07-22T12:00:00</TSTED>",
+    "</DD>",
+  ].join("\n");
+  const signed = signFrmtControlled({
+    ddXml,
+    privateKeyPem: privateKey.export({ type: "pkcs1", format: "pem" }).toString(),
+    mode: "certification",
+  });
+  assert.equal(signed.ok, true);
+  if (!signed.ok) return;
+  const officialDd = ddXml
+    .replace(/\s+xmlns(?::[A-Za-z_][\w.-]*)?\s*=\s*(?:"[^"]*"|\x27[^\x27]*\x27)/g, "")
+    .replace(/>\s+</g, "><");
+  const frmt = signed.frmtXml.match(/<FRMT[^>]*>([\s\S]*?)<\/FRMT>/)?.[1] ?? "";
+  const verifier = createVerify("RSA-SHA1");
+  verifier.update(Buffer.from(officialDd, "latin1"));
+  assert.equal(verifier.verify(publicKey, frmt, "base64"), true);
+  assert.ok(frmt.split("\n").every((line) => line.length <= 76));
 });

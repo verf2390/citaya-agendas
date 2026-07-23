@@ -55,7 +55,7 @@ test("generates boleta lab XML with SII-like DTE fields", () => {
   assert.match(result.xml, /<EnvioDTE/);
   assert.match(result.xml, /<SetDTE/);
   assert.match(result.xml, /<Caratula/);
-  assert.match(result.xml, /<DTE version="1.0">/);
+  assert.match(result.xml, /<DTE\b(?=[^>]*\bversion="1\.0")[^>]*>/);
   assert.match(result.xml, /<Documento ID="CitayaDocLab-39-123">/);
   assert.match(result.xml, /<Encabezado>/);
   assert.match(result.xml, /<TipoDTE>39<\/TipoDTE>/);
