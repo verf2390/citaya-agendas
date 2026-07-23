@@ -297,11 +297,15 @@ function fixtureSignatureXml(): string {
   ].join("\n");
 }
 
-export function serializeSalesBookXml(model: SalesBookModel, options: { includeFixtureSignature?: boolean; signatureXml?: string; timestamp?: string } = {}): string {
+export function serializeSalesBookXml(model: SalesBookModel, options: { id?: string; includeSchemaLocation?: boolean; includeFixtureSignature?: boolean; signatureXml?: string; timestamp?: string } = {}): string {
+  const id = options.id ?? "LibroVentas-4959699-PRECAF";
+  const root = options.includeSchemaLocation
+    ? '<LibroCompraVenta xmlns="http://www.sii.cl/SiiDte" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte LibroCV_v10.xsd" version="1.0">'
+    : '<LibroCompraVenta xmlns="http://www.sii.cl/SiiDte" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" version="1.0">';
   return [
     '<?xml version="1.0" encoding="ISO-8859-1"?>',
-    '<LibroCompraVenta xmlns="http://www.sii.cl/SiiDte" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" version="1.0">',
-    '  <EnvioLibro ID="LibroVentas-4959699-PRECAF">',
+    root,
+    `  <EnvioLibro ID="${escapeXml(id)}">`,
     '    <Caratula>',
     `      <RutEmisorLibro>${escapeXml(model.caratula.rutEmisorLibro)}</RutEmisorLibro>`,
     `      <RutEnvia>${escapeXml(model.caratula.rutEnvia)}</RutEnvia>`,

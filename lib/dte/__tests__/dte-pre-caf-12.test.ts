@@ -8,9 +8,17 @@ import { assertNoOverlappingOrDuplicateCafs, loadCafAuthorization, type CafTrust
 import { prepareFixtureCafVault } from "../certification/caf-import-dry-run";
 import { FolioSqliteLedger } from "../certification/folio-sqlite-ledger";
 
-const env = { ...process.env, NODE_ENV: "test", DTE_SII_ENV: "certification", DTE_FACTURA_PRE_CAF_INPUT_PATH: "/home/verf/secure/dte-lab/factura-pre-caf-input.json", DTE_CERTIFICATION_ISSUE_DATE: "2026-07-19" };
+function fixtureEnvironment(): { env: NodeJS.ProcessEnv; outputDir: string } {
+  const root = mkdtempSync(join(tmpdir(), "pre-caf-12-fixture-"));
+  const inputPath = join(root, "input.json");
+  const outputDir = join(root, "vault");
+  writeFileSync(inputPath, JSON.stringify({ issuer: { rutEmisor: "11111111-1", razonSocial: "EMISOR FIXTURE" } }), { encoding: "utf8", mode: 0o600 });
+  chmodSync(inputPath, 0o600);
+  return { env: { NODE_ENV: "test", DTE_SII_ENV: "certification", DTE_FACTURA_PRE_CAF_INPUT_PATH: inputPath, DTE_CERTIFICATION_ISSUE_DATE: "2026-07-19" }, outputDir };
+}
 function fixture() {
-  const prepared = prepareFixtureCafVault(env); const caf = prepared.cafs[0]; const anchorPath = join(prepared.outputDir, "fixture-trust-anchor-public.pem");
+  const { env, outputDir } = fixtureEnvironment();
+  const prepared = prepareFixtureCafVault(env, process.cwd(), outputDir); const caf = prepared.cafs[0]; const anchorPath = join(prepared.outputDir, "fixture-trust-anchor-public.pem");
   const trust: CafTrustStore = new Map([[caf.idk, { idk: caf.idk, mode: "fixture", publicKeyPath: anchorPath, provenance: "generated:test", sha256: createHash("sha256").update(readFileSync(anchorPath)).digest("hex") }]]);
   return { prepared, caf, trust };
 }
@@ -30,7 +38,7 @@ test("PRE-CAF 12 rejects XXE, symlink, unsafe permissions and production", () =>
   assert.throws(() => loadCafAuthorization(copy(caf.originalBytes, (x) => x.replace("?>", "?><!DOCTYPE AUTORIZACION [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]>")), options), /DOCTYPE/);
   const target = copy(caf.originalBytes, (x) => x); chmodSync(target, 0o644); assert.throws(() => loadCafAuthorization(target, options), /permissions/);
   const link = join(mkdtempSync(join(tmpdir(), "pre-caf-12-link-")), "caf.xml"); symlinkSync(caf.sourcePath, link); assert.throws(() => loadCafAuthorization(link, options), /path/);
-  assert.throws(() => prepareFixtureCafVault({ ...env, NODE_ENV: "production" }), /environment/);
+  const production = fixtureEnvironment(); assert.throws(() => prepareFixtureCafVault({ ...production.env, NODE_ENV: "production" }, process.cwd(), production.outputDir), /environment/);
 });
 test("PRE-CAF 12 ledger is idempotent, rolls back and never releases issued", () => {
   const { prepared, caf } = fixture(); const ledger = new FolioSqliteLedger(prepared.dbPath);

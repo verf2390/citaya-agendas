@@ -370,17 +370,17 @@ export type SetSubmitPreflight = {
   xmlsecAvailable: true;
   xmlsecDocumentIds: string[];
   xmlsecSetDteId: string;
-  xmlsecIndividualValid: "8/8";
+  xmlsecIndividualValid: string;
   xmlsecOuterValid: true;
   internalVerifier: "non_authoritative";
   signatureAuthority: "xmlsec1";
-  artifactKind?: "certification_set_reissue";
-  cafCoverageUnique?: "8/8";
-  foliosPlan?: "33:5-8,61:4-6,56:2";
-  officialFrmtValid?: "8/8";
-  xsiPhysicallyDeclaredOnDte?: "8/8";
-  literalStandaloneXmlsecValid?: "8/8";
-  embeddedXmlsecValid?: "8/8";
+  artifactKind?: "certification_set_reissue" | "certification_simulation_set";
+  cafCoverageUnique?: string;
+  foliosPlan?: string;
+  officialFrmtValid?: string;
+  xsiPhysicallyDeclaredOnDte?: string;
+  literalStandaloneXmlsecValid?: string;
+  embeddedXmlsecValid?: string;
   previousArtifactsUnchanged?: true;
   previousRegistriesUnchanged?: true;
   company: { rut: string; dv: string };
@@ -513,7 +513,7 @@ function preflightSetSubmit(
   const xmlsec = verifyPersistedXmlsecSignatures({ envelopePath, bytes: envelope, expectedSha256: expected, certificatePath: certPath });
   if (!xmlsec.xmlsecAvailable) reject("envelope", "xmlsec_unavailable");
   if (!xmlsec.persistedBytesValid) reject("envelope", "signature_bytes_changed");
-  if (xmlsec.documentIds.length !== 8 || !xmlsec.setDteId || xmlsec.individualValid !== 8 || !xmlsec.outerValid) reject("envelope", "signature");
+  if (![8, 10].includes(xmlsec.documentIds.length) || !xmlsec.setDteId || xmlsec.individualValid !== xmlsec.documentIds.length || !xmlsec.outerValid) reject("envelope", "signature");
   let manifest: {
     fixtureMode?: boolean;
     files?: Array<{ file?: unknown; sha256?: unknown }>;
@@ -559,37 +559,63 @@ function preflightSetSubmit(
     previousRegistrySnapshotSha256?: unknown;
     previousArtifactsUnchanged?: unknown;
     previousRegistriesUnchanged?: unknown;
+    previousLedgerEntriesUnchanged?: unknown;
+    simulationNumber?: unknown;
+    documentsCount?: unknown;
+    contingencyAvailable?: unknown;
+    lineage?: Record<string, unknown>;
   };
   try {
     manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   } catch (error) {
     reject("manifest", "json", error);
   }
+  const isSimulation = manifest.artifactKind === "certification_simulation_set";
   const names = new Set((manifest.files ?? []).map((f) => String(f.file)));
-  const cases = Array.from(
-    { length: 8 },
-    (_, i) => `4959698-${i + 1}-DTE-CERTIFICATION.xml`,
-  );
+  const cases = isSimulation
+    ? ["simulation-33-09", "simulation-33-10", "simulation-33-11", "simulation-33-12", "simulation-33-13", "simulation-33-14", "simulation-33-15", "simulation-33-16", "simulation-56-03", "simulation-61-07"].map((id) => id + "-DTE-CERTIFICATION.xml")
+    : Array.from({ length: 8 }, (_, i) => "4959698-" + (i + 1) + "-DTE-CERTIFICATION.xml");
   if (
     manifest.fixtureMode !== false ||
-    basename(manifestPath) !== "manifest-4959698-CERTIFICATION.json" ||
-    manifest.files?.length !== 9 ||
+    basename(manifestPath) !== (isSimulation ? "manifest-SIMULATION-001-CERTIFICATION.json" : "manifest-4959698-CERTIFICATION.json") ||
+    manifest.files?.length !== (isSimulation ? 11 : 9) ||
     !cases.every((n) => names.has(n)) ||
     !names.has(basename(envelopePath))
-  )
-    reject("manifest", "set_4959698");
+  ) reject("manifest", isSimulation ? "simulation_set" : "set_4959698");
   for (const item of manifest.files ?? []) {
     const name = String(item.file ?? "");
-    if (
-      !/^(?:4959698-[1-8]-DTE-CERTIFICATION|EnvioDTE-4959698-CERTIFICATION)\.xml$/.test(
-        name,
-      )
-    )
-      reject("manifest", "file_name");
+    const allowed = isSimulation
+      ? /^(?:simulation-(?:33-(?:09|1[0-6])|56-03|61-07)-DTE-CERTIFICATION|EnvioDTE-SIMULATION-001-CERTIFICATION)\.xml$/.test(name)
+      : /^(?:4959698-[1-8]-DTE-CERTIFICATION|EnvioDTE-4959698-CERTIFICATION)\.xml$/.test(name);
+    if (!allowed) reject("manifest", "file_name");
     const filePath = resolve(dirname(manifestPath), name);
     secureFile(filePath, repoRoot, "manifest", "file_metadata");
-    if (sha256(readFileSync(filePath)) !== String(item.sha256 ?? ""))
-      reject("manifest", "file_hash");
+    if (sha256(readFileSync(filePath)) !== String(item.sha256 ?? "")) reject("manifest", "file_hash");
+  }
+  if (isSimulation) {
+    const expectedAssignments = new Map<string, string>();
+    for (let folio = 9; folio <= 16; folio += 1) expectedAssignments.set("33:" + folio, "9-16");
+    expectedAssignments.set("56:3", "3-4");
+    expectedAssignments.set("61:7", "7-12");
+    const assignments = manifest.cafAssignments ?? [];
+    const lineage = manifest.lineage ?? {};
+    if (
+      manifest.simulationNumber !== 1 || manifest.documentsCount !== 10 ||
+      manifest.foliosPlan !== "33:9-16,56:3,61:7" ||
+      JSON.stringify(manifest.folios) !== JSON.stringify({ "33": [9,10,11,12,13,14,15,16], "56": [3], "61": [7] }) ||
+      manifest.contingencyAvailable !== "56:4,61:8-12" || manifest.cafCoverageUnique !== "10/10" ||
+      assignments.length !== 10 || new Set(assignments.map((item) => String(item.dteTypeFolio ?? ""))).size !== 10 ||
+      assignments.some((item) => expectedAssignments.get(String(item.dteTypeFolio ?? "")) !== item.range) ||
+      (manifest.cafHashes ?? []).length !== 3 || manifest.officialFrmtValid !== "10/10" ||
+      manifest.xsiPhysicallyDeclaredOnDte !== "10/10" || manifest.literalStandaloneXmlsecValid !== "10/10" ||
+      manifest.embeddedXmlsecValid !== "10/10" || manifest.outerXmlsecValid !== true || manifest.dteXsd !== "10/10" ||
+      manifest.envioDteXsd !== "valid" || manifest.references !== "valid" || manifest.totals !== "valid" ||
+      manifest.encoding !== "ISO-8859-1" || manifest.bom !== "absent" || manifest.previousArtifactsUnchanged !== true ||
+      manifest.previousRegistriesUnchanged !== true || manifest.previousLedgerEntriesUnchanged !== true ||
+      lineage.artifactKind !== "certification_set_reissue" ||
+      lineage.envelopeSha256 !== "875e311358155109761133688bdbbec1341a038cb0ebdd17290b3e711d4912a0" ||
+      lineage.trackIdFingerprint !== "b617c78b09421d96" || lineage.portalStage !== "SIMULACION"
+    ) reject("manifest", "simulation_lineage");
   }
   const isReissue = manifest.artifactKind === "certification_set_reissue";
   if (isReissue) {
@@ -699,7 +725,10 @@ function preflightSetSubmit(
   const manifestEnvelopeSha256 = String(manifest.envelopeSha256 ?? "").toLowerCase();
   const artifactSha256 = String(envelopeArtifact?.sha256 ?? "").toLowerCase();
   let controlledExpected = deps.expectedSha256 ?? SET_SHA256;
-  if (isReissue) {
+  if (isSimulation) {
+    if (!/^[a-f0-9]{64}$/.test(manifestEnvelopeSha256) || manifestEnvelopeSha256 !== artifactSha256 || manifestEnvelopeSha256 !== expected) reject("manifest", "simulation_envelope");
+    controlledExpected = manifestEnvelopeSha256;
+  } else if (isReissue) {
     if (!/^[a-f0-9]{64}$/.test(manifestEnvelopeSha256) || manifestEnvelopeSha256 !== artifactSha256 || manifestEnvelopeSha256 !== expected) reject("manifest", "reissue_envelope");
     controlledExpected = manifestEnvelopeSha256;
   } else if (isCorrectionFour) {
@@ -753,11 +782,10 @@ function preflightSetSubmit(
     controlledExpected = manifestEnvelopeSha256;
   }
   if (expected !== controlledExpected) reject("preflight", "expected_sha256");
-  if (
-    !retry &&
-    env.DTE_FACTURA_CERTIFICATION_SUBMIT_CONFIRM !==
-      `SUBMIT_SET_4959698_${controlledExpected}`
-  )
+  const submitConfirmation = isSimulation
+    ? "SUBMIT_SIMULATION_001_" + controlledExpected
+    : "SUBMIT_SET_4959698_" + controlledExpected;
+  if (!retry && env.DTE_FACTURA_CERTIFICATION_SUBMIT_CONFIRM !== submitConfirmation)
     reject("preflight", "confirmation");
   const db = new Database(ledgerPath, { readonly: true, fileMustExist: true });
   try {
@@ -774,7 +802,13 @@ function preflightSetSubmit(
     const issued = rows.filter((r) => r.state === "issued");
     const reserved = rows.filter((r) => r.state === "reserved");
     const available = rows.filter((r) => r.state === "available");
-    if (isReissue) {
+    if (isSimulation) {
+      const simulation = issued.filter((row) => String(row.reserved_case ?? "").startsWith("CERTIFICATION-SIMULATION-001:"));
+      const expectedPlan = new Set(["33:9","33:10","33:11","33:12","33:13","33:14","33:15","33:16","56:3","61:7"]);
+      const cafImports = db.prepare("SELECT type_code,range_from,range_to,content_sha256 FROM caf_imports ORDER BY type_code,range_from").all() as Array<{ type_code: number; range_from: number; range_to: number; content_sha256: string }>;
+      const contingencies = new Set(["56:4","61:8","61:9","61:10","61:11","61:12"]);
+      if (issued.length !== 26 || simulation.length !== 10 || simulation.some((row) => !expectedPlan.has(row.type_code + ":" + row.folio)) || reserved.length !== 0 || available.length !== 6 || available.some((row) => !contingencies.has(row.type_code + ":" + row.folio)) || cafImports.length !== 8 || !cafImports.some((row) => row.type_code === 33 && row.range_from === 9 && row.range_to === 16 && row.content_sha256 === "14fa4c2d4d8b0de48edfe16f0b375145747e269b7bf0593100b80f1aa058d768") || !cafImports.some((row) => row.type_code === 56 && row.range_from === 3 && row.range_to === 4 && row.content_sha256 === "cd5b33fd5604ac91762aa5275f369b3abab000a99a3c96601b5b7418b900d40e") || !cafImports.some((row) => row.type_code === 61 && row.range_from === 7 && row.range_to === 12 && row.content_sha256 === "2cc76903dc3d1bec413b14e9c6f97182b6bf817149aa94cc7d2a02b388ac47c6")) reject("ledger", "simulation_plan");
+    } else if (isReissue) {
       const original = issued.filter((row) =>
         String(row.reserved_case ?? "").startsWith("SET-4959698-ATTEMPT-001:"),
       );
@@ -844,11 +878,18 @@ function preflightSetSubmit(
     xmlsecAvailable: true,
     xmlsecDocumentIds: xmlsec.documentIds,
     xmlsecSetDteId: xmlsec.setDteId,
-    xmlsecIndividualValid: "8/8",
+    xmlsecIndividualValid: xmlsec.individualValid + "/" + xmlsec.documentIds.length,
     xmlsecOuterValid: true,
     internalVerifier: "non_authoritative",
     signatureAuthority: "xmlsec1",
-    ...(isReissue
+    ...(isSimulation
+      ? {
+          artifactKind: "certification_simulation_set" as const,
+          cafCoverageUnique: "10/10", foliosPlan: "33:9-16,56:3,61:7", officialFrmtValid: "10/10",
+          xsiPhysicallyDeclaredOnDte: "10/10", literalStandaloneXmlsecValid: "10/10", embeddedXmlsecValid: "10/10",
+          previousArtifactsUnchanged: true as const, previousRegistriesUnchanged: true as const,
+        }
+      : isReissue
       ? {
           artifactKind: "certification_set_reissue" as const,
           cafCoverageUnique: "8/8" as const,

@@ -157,7 +157,7 @@ type FixtureMaterial = {
 };
 
 type SignedDocument = {
-  caseId: FacturaCertificationCaseId;
+  caseId: string;
   draft: TaxDocumentDraft;
   unsignedDocumentoXml: string;
   signatureXml: string;
@@ -661,12 +661,14 @@ function signingConfig(material: FixtureMaterial, target: string): RealXmlSignin
   };
 }
 
-function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureMaterial, cafMaterial: FixtureMaterial, outputDir: string, overrides: FacturaSetDryRunOptions["overrides"] = {}, timestamp = FIXTURE_TIMESTAMP, onStage?: (stage: FacturaSetDryRunStage) => void): SignedDocument[] {
-  return drafts.map((draft) => {
-    const caseId = PRE_CAF_REQUIRED_CASE_ORDER[drafts.indexOf(draft)];
+function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureMaterial, cafMaterial: FixtureMaterial, outputDir: string, overrides: FacturaSetDryRunOptions["overrides"] = {}, timestamp = FIXTURE_TIMESTAMP, onStage?: (stage: FacturaSetDryRunStage) => void, caseIds: readonly string[] = PRE_CAF_REQUIRED_CASE_ORDER): SignedDocument[] {
+  if (caseIds.length !== drafts.length || new Set(caseIds).size !== drafts.length) fail("case_ids_invalid");
+  return drafts.map((draft, index) => {
+    const caseId = caseIds[index] ?? fail("case_id_missing");
     const typeCode = getSiiDteTypeCode(draft.documentType);
-    const cafTypeCode = overrides.cafTypeByCase?.[caseId] ?? typeCode;
-    const range = overrides.cafRangeByCase?.[caseId] ?? fixtureRangeFor(typeCode);
+    const legacyCaseId = caseId as FacturaCertificationCaseId;
+    const cafTypeCode = overrides.cafTypeByCase?.[legacyCaseId] ?? typeCode;
+    const range = overrides.cafRangeByCase?.[legacyCaseId] ?? fixtureRangeFor(typeCode);
     const coverage = (overrides.importedCafs ?? []).filter(
       (candidate) =>
         candidate.typeCode === typeCode &&
@@ -754,14 +756,17 @@ function buildEnvioXml(
   rutEnvia: string,
   outputDir: string,
   realCertification = false,
-  tamperDocumentSignatureCase?: FacturaCertificationCaseId,
+  tamperDocumentSignatureCase?: string,
   onStage?: (stage: FacturaSetDryRunStage) => void,
+  setDteIdOverride?: string,
+  validationLabel?: string,
 ): string {
+  const documentCount = signedDocuments.length;
   const documentKeys = signedDocuments.map((doc) => dteTypeFolioKey(doc.draft));
   const expectedKeys = new Set(documentKeys);
   if (
-    documentKeys.length !== 8 ||
-    new Set(documentKeys).size !== 8 ||
+    documentKeys.length !== documentCount ||
+    new Set(documentKeys).size !== documentCount ||
     documentKeys.some((key) => !expectedKeys.has(key))
   )
     fail("dte_type_folio_association");
@@ -774,13 +779,13 @@ function buildEnvioXml(
     ]),
   );
   if (
-    Object.keys(perDocumentXml).length !== 8 ||
+    Object.keys(perDocumentXml).length !== documentCount ||
     Object.keys(perDocumentXml).some((key) => !expectedKeys.has(key))
   )
     fail("dte_type_folio_association");
-  const setDteId = realCertification
+  const setDteId = setDteIdOverride ?? (realCertification
     ? `CitayaSetDTE-4959698-CERT`
-    : `CitayaSetDTE-4959698-FIXTURE`;
+    : `CitayaSetDTE-4959698-FIXTURE`);
   const setDteXml = buildDteSetDteXmlLab(drafts, {
     setDteId,
     rutEnvia,
@@ -824,17 +829,17 @@ function buildEnvioXml(
     outputDir,
     "dte-signatures",
   );
-  if (dteSignatureOk !== 8)
-    fail(`firmas DTE fixture no verifican ${dteSignatureOk}/8`);
+  if (dteSignatureOk !== documentCount)
+    fail("firmas DTE fixture no verifican " + dteSignatureOk + "/" + documentCount);
   const signedEnvelope = signXmlInFinalContextControlled({ xml: unsignedEnvioXml, referenceId: setDteId, insertAfterXPath: `//*[local-name()='SetDTE' and @ID='${setDteId}']` }, signingConfig(material, setDteId));
   const envioXml = `${XML_DECLARATION_ISO_8859_1}\n${signedEnvelope.signedXml}`;
   onStage?.("xsd_validation");
   validateXsd(
     envioXml,
     "EnvioDTE_v10.xsd",
-    realCertification
+    validationLabel ?? (realCertification
       ? "envio-dte-4959698-certification"
-      : "envio-dte-4959698-fixture",
+      : "envio-dte-4959698-fixture"),
     outputDir,
   );
 
@@ -877,12 +882,14 @@ function writeSetManifest(
   realCertification: boolean,
   generatedAt: string,
   metadata: Record<string, unknown> = {},
+  manifestFileName?: string,
 ): string {
+  const documentCount = signedDocuments.length;
   const manifestPath = join(
     outputDir,
-    realCertification
+    manifestFileName ?? (realCertification
       ? "manifest-4959698-CERTIFICATION.json"
-      : "manifest-4959698-FIXTURE-SIN-VALIDEZ.json",
+      : "manifest-4959698-FIXTURE-SIN-VALIDEZ.json"),
   );
   const cafAssignments = signedDocuments.map((doc) => {
     const type = getSiiDteTypeCode(doc.draft.documentType);
@@ -895,8 +902,8 @@ function writeSetManifest(
       sha256: createHash("sha256").update(doc.cafXml).digest("hex"),
     };
   });
-  if (new Set(cafAssignments.map((item) => item.dteTypeFolio)).size !== 8)
-    fail("CAF assignments no cubren 8 DTE unicos");
+  if (new Set(cafAssignments.map((item) => item.dteTypeFolio)).size !== documentCount)
+    fail("CAF assignments no cubren " + documentCount + " DTE unicos");
   const manifest = {
     fixtureMode: !realCertification,
     legalValidity: realCertification
@@ -910,7 +917,7 @@ function writeSetManifest(
     })),
     ...(realCertification
       ? {
-          cafCoverageUnique: "8/8",
+          cafCoverageUnique: String(documentCount) + "/" + documentCount,
           cafAssignments,
           cafHashes: Array.from(
             new Map(
@@ -1121,6 +1128,149 @@ export function runFacturaSetDryRun(
   } finally {
     if (xmlMaterial.root) rmSync(xmlMaterial.root, { recursive: true, force: true });
     if (cafMaterial.root !== xmlMaterial.root) rmSync(cafMaterial.root, { recursive: true, force: true });
+  }
+}
+
+
+export type ControlledCertificationSetOptions = {
+  env?: NodeJS.ProcessEnv;
+  outputDir: string;
+  signingMaterial: { privateKeyPath: string; certificatePath: string };
+  drafts: TaxDocumentDraft[];
+  caseIds: string[];
+  rutEnvia: string;
+  importedCafs: NonNullable<NonNullable<FacturaSetDryRunOptions["overrides"]>["importedCafs"]>;
+  setDteId: string;
+  envelopeFileName: string;
+  manifestFileName: string;
+  generationTimestamp: string;
+  manifestMetadata: Record<string, unknown>;
+  onStage?: (stage: FacturaSetDryRunStage) => void;
+};
+
+export type ControlledCertificationSetResult = {
+  documents: number;
+  type33: number;
+  type56: number;
+  type61: number;
+  dteXsd: string;
+  envioDteXsd: "valid";
+  tedFrmt: string;
+  dteSignatures: string;
+  envelopeSignature: "valid";
+  references: "valid";
+  totals: "valid";
+  cafCoverageUnique: string;
+  encoding: "ISO-8859-1";
+  bom: "absent";
+  outputDir: string;
+  envelopePath: string;
+  envelopeSha256: string;
+  manifestPath: string;
+  siiContacted: false;
+};
+
+export function runControlledCertificationSet(
+  options: ControlledCertificationSetOptions,
+): ControlledCertificationSetResult {
+  const env = options.env ?? process.env;
+  assertCertificationEnvironment(env);
+  const count = options.drafts.length;
+  if (
+    count < 1 ||
+    options.caseIds.length !== count ||
+    new Set(options.caseIds).size !== count ||
+    new Set(options.drafts.map((draft) => dteTypeFolioKey(draft))).size !== count ||
+    !/^[A-Za-z][A-Za-z0-9._-]{7,79}$/.test(options.setDteId) ||
+    !/^[A-Za-z0-9._-]+\.xml$/.test(options.envelopeFileName) ||
+    !/^[A-Za-z0-9._-]+\.json$/.test(options.manifestFileName)
+  ) fail("controlled_set_contract");
+  for (const draft of options.drafts) {
+    if (
+      draft.totalAmount !==
+      (draft.netAmount ?? 0) + (draft.exemptAmount ?? 0) + (draft.taxAmount ?? 0)
+    ) fail("total DTE no cuadra");
+    if (draft.lines.length < 1 || draft.lines.some((line) => line.amount < 0))
+      fail("detalle DTE invalido");
+  }
+  const type33 = options.drafts.filter((draft) => getSiiDteTypeCode(draft.documentType) === 33).length;
+  const type56 = options.drafts.filter((draft) => getSiiDteTypeCode(draft.documentType) === 56).length;
+  const type61 = options.drafts.filter((draft) => getSiiDteTypeCode(draft.documentType) === 61).length;
+  if (type33 + type56 + type61 !== count) fail("tipo DTE no soportado");
+  const outputDir = ensureOutputDir(options.outputDir);
+  const xmlMaterial = loadExternalSigningMaterial(options.signingMaterial);
+  const overrides: FacturaSetDryRunOptions["overrides"] = {
+    importedCafs: options.importedCafs,
+    manifestMetadata: options.manifestMetadata,
+  };
+  try {
+    const signed = signAndBuildDocuments(
+      options.drafts,
+      xmlMaterial,
+      xmlMaterial,
+      outputDir,
+      overrides,
+      options.generationTimestamp,
+      options.onStage,
+      options.caseIds,
+    );
+    const frmtOk = signed.filter((doc) => verifyFrmt(doc.ddXml, doc.frmtXml, doc.cafPublicKeyPem)).length;
+    if (frmtOk !== count) fail("FRMT no verifica " + frmtOk + "/" + count);
+    const envioXml = buildEnvioXml(
+      options.drafts,
+      signed,
+      xmlMaterial,
+      xmlMaterial,
+      options.rutEnvia,
+      outputDir,
+      true,
+      undefined,
+      options.onStage,
+      options.setDteId,
+      "envio-dte-controlled-certification",
+    );
+    assertNoPendingFolios(envioXml);
+    const writtenPaths: string[] = [];
+    signed.forEach((doc) => {
+      const path = join(outputDir, doc.caseId + "-DTE-CERTIFICATION.xml");
+      writeSafeXml(path, doc.dteXml);
+      writtenPaths.push(path);
+    });
+    const envelopePath = join(outputDir, options.envelopeFileName);
+    writeSafeXml(envelopePath, envioXml);
+    writtenPaths.push(envelopePath);
+    const manifestPath = writeSetManifest(
+      outputDir,
+      writtenPaths,
+      signed,
+      true,
+      options.generationTimestamp,
+      options.manifestMetadata,
+      options.manifestFileName,
+    );
+    return {
+      documents: count,
+      type33,
+      type56,
+      type61,
+      dteXsd: count + "/" + count,
+      envioDteXsd: "valid",
+      tedFrmt: count + "/" + count,
+      dteSignatures: count + "/" + count,
+      envelopeSignature: "valid",
+      references: "valid",
+      totals: "valid",
+      cafCoverageUnique: count + "/" + count,
+      encoding: "ISO-8859-1",
+      bom: "absent",
+      outputDir,
+      envelopePath,
+      envelopeSha256: sha256File(envelopePath),
+      manifestPath,
+      siiContacted: false,
+    };
+  } finally {
+    if (xmlMaterial.root) rmSync(xmlMaterial.root, { recursive: true, force: true });
   }
 }
 

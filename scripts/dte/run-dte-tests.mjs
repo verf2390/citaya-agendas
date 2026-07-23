@@ -14,7 +14,7 @@ const baseTestEnv = {
 };
 
 for (const name of Object.keys(process.env)) {
-  if (name.startsWith("DTE_") || name === "SII_RUT_EMPRESA" || name === "SII_RUT_USUARIO")
+  if (["DTE_", "SII_", "CAF_", "CERT_"].some((prefix) => name.startsWith(prefix)))
     delete process.env[name];
 }
 Object.assign(process.env, baseTestEnv);

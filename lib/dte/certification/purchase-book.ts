@@ -139,6 +139,7 @@ function buildDetail(entry: PurchaseBookSourceEntry, provider: PurchaseBookProvi
   if (entry.vatKind === "common_use") ivaUsoComun = vat;
   if (entry.vatKind === "non_recoverable") ivaNoRec = { codIVANoRec: 4, mntIVANoRec: vat };
   if (entry.vatKind === "withholding") {
+    mntIVA = vat;
     otrosImp = { codImp: 15, tasaImp: 19, mntImp: vat };
     ivaRetTotal = vat;
     ivaNoRetenido = 0;
@@ -329,11 +330,15 @@ function fixtureSignatureXml(): string {
   ].join("\n");
 }
 
-export function serializePurchaseBookXml(model: PurchaseBookModel, options: { includeFixtureSignature?: boolean; signatureXml?: string; timestamp?: string } = {}): string {
+export function serializePurchaseBookXml(model: PurchaseBookModel, options: { id?: string; includeSchemaLocation?: boolean; includeFixtureSignature?: boolean; signatureXml?: string; timestamp?: string } = {}): string {
+  const id = options.id ?? "LibroCompras-4959700-PRECAF";
+  const root = options.includeSchemaLocation
+    ? '<LibroCompraVenta xmlns="http://www.sii.cl/SiiDte" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte LibroCV_v10.xsd" version="1.0">'
+    : '<LibroCompraVenta xmlns="http://www.sii.cl/SiiDte" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" version="1.0">';
   return [
     '<?xml version="1.0" encoding="ISO-8859-1"?>',
-    '<LibroCompraVenta xmlns="http://www.sii.cl/SiiDte" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" version="1.0">',
-    '  <EnvioLibro ID="LibroCompras-4959700-PRECAF">',
+    root,
+    `  <EnvioLibro ID="${escapeXml(id)}">`,
     '    <Caratula>',
     `      <RutEmisorLibro>${escapeXml(model.caratula.rutEmisorLibro)}</RutEmisorLibro>`,
     `      <RutEnvia>${escapeXml(model.caratula.rutEnvia)}</RutEnvia>`,

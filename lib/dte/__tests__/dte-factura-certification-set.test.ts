@@ -584,7 +584,7 @@ test("Libro de Compras calcula totales de cada documento", () => {
     { caseId: "4959700-3", neto: 29589, exe: 0, iva: 0, usoComun: 5622, noRec: 0, ret: 0, total: 35211 },
     { caseId: "4959700-4", neto: 2612, exe: 0, iva: 496, usoComun: 0, noRec: 0, ret: 0, total: 3108 },
     { caseId: "4959700-5", neto: 8952, exe: 0, iva: 0, usoComun: 0, noRec: 1701, ret: 0, total: 10653 },
-    { caseId: "4959700-6", neto: 9037, exe: 0, iva: 0, usoComun: 0, noRec: 0, ret: 1717, total: 9037 },
+    { caseId: "4959700-6", neto: 9037, exe: 0, iva: 1717, usoComun: 0, noRec: 0, ret: 1717, total: 9037 },
     { caseId: "4959700-7", neto: 2130, exe: 0, iva: 405, usoComun: 0, noRec: 0, ret: 0, total: 2535 },
   ]);
 });
@@ -595,7 +595,7 @@ test("Libro de Compras resume por tipo sin compensar notas", () => {
     { tpoDoc: 30, totDoc: 2, totMntExe: 0, totMntNeto: 34620, totOpIVARec: 1, totMntIVA: 956, totOpIVAUsoComun: 1, totIVAUsoComun: 5622, fctProp: "0.600", totCredIVAUsoComun: 3373, totMntTotal: 41198 },
     { tpoDoc: 33, totDoc: 2, totMntExe: 7933, totMntNeto: 12962, totOpIVARec: 1, totMntIVA: 762, totIVANoRec: { codIVANoRec: 4, totOpIVANoRec: 1, totMntIVANoRec: 1701 }, totMntTotal: 23358 },
     { tpoDoc: 60, totDoc: 2, totMntExe: 0, totMntNeto: 4742, totOpIVARec: 2, totMntIVA: 901, totMntTotal: 5643 },
-    { tpoDoc: 46, totDoc: 1, totMntExe: 0, totMntNeto: 9037, totMntIVA: 0, totOtrosImp: { codImp: 15, totMntImp: 1717 }, totOpIVARetTotal: 1, totIVARetTotal: 1717, totMntTotal: 9037, totOpIVANoRetenido: 1, totIVANoRetenido: 0 },
+    { tpoDoc: 46, totDoc: 1, totMntExe: 0, totMntNeto: 9037, totOpIVARec: 1, totMntIVA: 1717, totOtrosImp: { codImp: 15, totMntImp: 1717 }, totOpIVARetTotal: 1, totIVARetTotal: 1717, totMntTotal: 9037, totOpIVANoRetenido: 1, totIVANoRetenido: 0 },
   ]);
 });
 
@@ -617,11 +617,12 @@ test("Libro de Compras valida IVA normal, mixto, uso comun, no recuperable y ret
   assert.equal(retained.ivaNoRetenido, 0);
 });
 
-test("Libro de Compras mantiene tipos de IVA mutuamente excluyentes", () => {
+test("Libro de Compras mantiene clasificacion IVA y retencion coherentes", () => {
   const model = buildPurchaseBookFixture();
   for (const detail of model.detalle) {
-    const active = [detail.mntIVA > 0, detail.ivaUsoComun > 0, Boolean(detail.ivaNoRec), detail.ivaRetTotal > 0].filter(Boolean).length;
-    assert.ok(active <= 1, detail.caseId);
+    const specialized = [detail.ivaUsoComun > 0, Boolean(detail.ivaNoRec), detail.ivaRetTotal > 0].filter(Boolean).length;
+    assert.ok(specialized <= 1, detail.caseId);
+    if (detail.ivaRetTotal > 0) assert.equal(detail.mntIVA, detail.ivaRetTotal, detail.caseId);
   }
 });
 
