@@ -28,6 +28,12 @@ import {
   sep,
 } from "node:path";
 import { DOMParser } from "@xmldom/xmldom";
+import type {
+  Document as XmlDocument,
+  Element as XmlElement,
+} from "@xmldom/xmldom";
+
+type ParsedXmlDocument = XmlDocument & { documentElement: XmlElement };
 
 import { validateRut } from "../rut";
 import {
@@ -221,7 +227,7 @@ function assertSigningPair(certPath: string, keyPath: string): void {
   }
 }
 
-function parseXml(xml: string): Document {
+function parseXml(xml: string): ParsedXmlDocument {
   const problems: string[] = [];
   const document = new DOMParser({
     onError: (level, message) => {
@@ -229,37 +235,37 @@ function parseXml(xml: string): Document {
     },
   }).parseFromString(xml, "application/xml");
   if (problems.length || !document.documentElement) reject("xml_parse");
-  return document;
+  return document as ParsedXmlDocument;
 }
 
-function elements(parent: Document | Element, name: string): Element[] {
+function elements(parent: XmlDocument | XmlElement, name: string): XmlElement[] {
   return Array.from(parent.getElementsByTagNameNS(SII_NS, name));
 }
 
-function one(parent: Document | Element, name: string): Element {
+function one(parent: XmlDocument | XmlElement, name: string): XmlElement {
   const matches = elements(parent, name);
   if (matches.length !== 1) reject(`xml_${name.toLowerCase()}`);
   return matches[0];
 }
 
-function direct(parent: Element, name: string): Element {
+function direct(parent: XmlElement, name: string): XmlElement {
   const matches = Array.from(parent.childNodes).filter(
-    (node): node is Element =>
+    (node): node is XmlElement =>
       node.nodeType === 1 &&
-      (node as Element).namespaceURI === SII_NS &&
-      (node as Element).localName === name,
+      (node as XmlElement).namespaceURI === SII_NS &&
+      (node as XmlElement).localName === name,
   );
   if (matches.length !== 1) reject(`xml_${name.toLowerCase()}`);
   return matches[0];
 }
 
-function text(parent: Element, name: string): string {
+function text(parent: XmlElement, name: string): string {
   const value = direct(parent, name).textContent?.trim() ?? "";
   if (!value) reject(`xml_${name.toLowerCase()}`);
   return value;
 }
 
-function numeric(parent: Element, name: string): number {
+function numeric(parent: XmlElement, name: string): number {
   const raw = text(parent, name);
   if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) reject(`xml_${name.toLowerCase()}`);
   return Number(raw);
@@ -301,7 +307,7 @@ function xmlsecVerify(input: {
   return spawnSync("xmlsec1", args, { stdio: "ignore" }).status === 0;
 }
 
-function embeddedCertificateForReference(document: Document, referenceId: string): string {
+function embeddedCertificateForReference(document: XmlDocument, referenceId: string): string {
   const signatures = Array.from(
     document.getElementsByTagNameNS(XMLDSIG_NS, "Signature"),
   );
@@ -326,7 +332,7 @@ function embeddedCertificateForReference(document: Document, referenceId: string
 function verifyInputSignatures(
   inputPath: string,
   inputBytes: Buffer,
-  document: Document,
+  document: XmlDocument,
   documentIds: string[],
   setDteId: string,
 ): { individual: "2/2"; outer: true } {
@@ -394,7 +400,7 @@ function verifyInputSignatures(
   return { individual: "2/2", outer: true };
 }
 
-function signatureDigest(document: Document, referenceId: string): string {
+function signatureDigest(document: XmlDocument, referenceId: string): string {
   const signatures = Array.from(
     document.getElementsByTagNameNS(XMLDSIG_NS, "Signature"),
   );
@@ -413,7 +419,7 @@ function signatureDigest(document: Document, referenceId: string): string {
 
 function parseInput(inputPath: string, bytes: Buffer): {
   modelBase: Omit<InterchangeModel, "generatedAt" | "signerRut" | "recinto">;
-  document: Document;
+  document: XmlDocument;
   documentIds: string[];
 } {
   if (bytes.length !== INTERCHANGE_INPUT_BYTES) reject("input_bytes");
@@ -437,10 +443,10 @@ function parseInput(inputPath: string, bytes: Buffer): {
     "input_receiver_rut",
   );
   const dtes = Array.from(setDte.childNodes).filter(
-    (node): node is Element =>
+    (node): node is XmlElement =>
       node.nodeType === 1 &&
-      (node as Element).namespaceURI === SII_NS &&
-      (node as Element).localName === "DTE",
+      (node as XmlElement).namespaceURI === SII_NS &&
+      (node as XmlElement).localName === "DTE",
   );
   if (dtes.length !== 2) reject("input_dte_count");
   const documentIds: string[] = [];
