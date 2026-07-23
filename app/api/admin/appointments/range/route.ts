@@ -103,7 +103,6 @@ export async function GET(req: Request) {
         payment_remaining_amount,
         payment_reference,
         payment_url,
-        manage_token
       `,
       )
       .eq("tenant_id", tenantId)
@@ -124,9 +123,9 @@ export async function GET(req: Request) {
       return NextResponse.json(
         {
           error: error.message,
-          code: (error as any).code ?? null,
-          details: (error as any).details ?? null,
-          hint: (error as any).hint ?? null,
+          code: error.code ?? null,
+          details: error.details ?? null,
+          hint: error.hint ?? null,
         },
         { status: 500, headers: NO_STORE_HEADERS },
       );
@@ -139,10 +138,11 @@ export async function GET(req: Request) {
       },
       { headers: NO_STORE_HEADERS },
     );
-  } catch (e: any) {
-    console.error("[admin/appointments/range] unexpected:", e?.message || e);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "unexpected";
+    console.error("[admin/appointments/range] unexpected:", message);
     return NextResponse.json(
-      { error: e?.message ?? "unexpected" },
+      { error: message },
       { status: 500, headers: NO_STORE_HEADERS },
     );
   }

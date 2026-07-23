@@ -211,6 +211,10 @@ function cn(...v: Array<string | false | null | undefined>) {
   return v.filter(Boolean).join(" ");
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 function moneyCLP(price: number, currency?: string | null) {
   const cur = (currency || "").toUpperCase();
   if (cur === "CLP" || !cur)
@@ -537,8 +541,8 @@ function ReservarInner() {
               : DEFAULT_MIN_LEAD_TIME_MIN,
           );
         }
-      } catch (e: any) {
-        console.error(e);
+      } catch (error: unknown) {
+        console.error(error);
         if (!cancelled) {
           setTenantId("");
           setTenantName("");
@@ -549,7 +553,7 @@ function ReservarInner() {
           setTenantPaymentCollectionMode("full");
           setTenantDepositType(null);
           setTenantDepositValue(null);
-          setLoadError(e?.message ?? "No se pudo cargar tenant");
+          setLoadError(errorMessage(error, "No se pudo cargar tenant"));
         }
       }
     })();
@@ -585,8 +589,8 @@ function ReservarInner() {
           const exists = !!prev && list.some((p) => p.id === prev);
           return exists ? prev : (list[0]?.id ?? "");
         });
-      } catch (e: any) {
-        console.error(e);
+      } catch (error: unknown) {
+        console.error(error);
         if (!cancelled) {
           setProfessionals([]);
           setProfessionalId("");
@@ -636,13 +640,13 @@ function ReservarInner() {
         } else {
           setService(null);
         }
-      } catch (e: any) {
-        console.error(e);
+      } catch (error: unknown) {
+        console.error(error);
         if (!cancelled) {
           setServices([]);
           setService(null);
           setLoadError(
-            (prev) => prev ?? e?.message ?? "No se pudieron cargar servicios.",
+            (prev) => prev ?? errorMessage(error, "No se pudieron cargar servicios."),
           );
         }
       } finally {
@@ -732,11 +736,11 @@ function ReservarInner() {
 
       const pageDays = buildPageDays(pageStart);
       setSelectedDayKey(pageDays[0]?.dayKey ?? "");
-    } catch (e: any) {
-      console.error(e);
+    } catch (error: unknown) {
+      console.error(error);
       setSlots([]);
       setUnavailableSlots([]);
-      setLoadError(e?.message ?? "No se pudo cargar disponibilidad");
+      setLoadError(errorMessage(error, "No se pudo cargar disponibilidad"));
       const pageDays = buildPageDays(pageStart);
       setSelectedDayKey(pageDays[0]?.dayKey ?? "");
     } finally {
@@ -899,6 +903,7 @@ function ReservarInner() {
     let createdManageToken: string | null = null;
 
     try {
+      const appointmentIdempotencyKey = crypto.randomUUID();
       const payload = {
         tenantId,
         professionalId,
@@ -923,8 +928,11 @@ function ReservarInner() {
 
       const res = await fetch("/api/appointments/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": appointmentIdempotencyKey,
+        },
+        body: JSON.stringify({ ...payload, idempotencyKey: appointmentIdempotencyKey }),
       });
 
       const json = await res.json();
@@ -938,14 +946,29 @@ function ReservarInner() {
       if (!appointmentId)
         throw new Error("Reserva creada pero falta id en respuesta.");
 
+      if (manageToken) {
+        try {
+          sessionStorage.setItem(
+            "citaya_manage_token:" + appointmentId,
+            manageToken,
+          );
+        } catch {}
+      }
+
       if (isPayNowSelected) {
+        const paymentIdempotencyKey = crypto.randomUUID();
         const paymentRes = await fetch("/api/payments/create", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": paymentIdempotencyKey,
+          },
           body: JSON.stringify({
             appointmentId,
             tenantId,
             provider: selectedPaymentProvider,
+            manageToken,
+            idempotencyKey: paymentIdempotencyKey,
           }),
         });
 
@@ -999,8 +1022,8 @@ function ReservarInner() {
       }
 
       router.push(`/reservar/confirmacion?${qs}`);
-    } catch (e: any) {
-      console.error(e);
+    } catch (error: unknown) {
+      console.error(error);
       if (createdAppointmentId) {
         if (createdManageToken) {
           try {
@@ -1012,14 +1035,16 @@ function ReservarInner() {
         }
 
         alert(
-          e?.message ??
+          errorMessage(
+            error,
             "La reserva fue creada, pero hubo un problema iniciando el pago.",
+          ),
         );
         router.push(`/reservar/confirmacion?id=${createdAppointmentId}`);
         return;
       }
 
-      alert(e?.message ?? "Error reservando");
+      alert(errorMessage(error, "Error reservando"));
     } finally {
       setSaving(false);
     }
@@ -1097,9 +1122,13 @@ function ReservarInner() {
     setWaitlistSavingSlot(slotPayload.savingKey);
     setWaitlistFeedback(null);
     try {
+      const waitlistIdempotencyKey = crypto.randomUUID();
       const res = await fetch("/api/waitlist/create", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "Idempotency-Key": waitlistIdempotencyKey,
+        },
         body: JSON.stringify({
           tenantId,
           tenantSlug,
@@ -1112,6 +1141,7 @@ function ReservarInner() {
           customerName: name,
           customerEmail: contactEmail,
           customerPhone: contactPhone,
+          idempotencyKey: waitlistIdempotencyKey,
           notes:
             waitlistNote.trim() ||
             (waitlistTarget.type === "flexible"
@@ -1134,10 +1164,10 @@ function ReservarInner() {
           ? "Ya estabas en la lista de espera para esa solicitud."
           : "Te agregamos a la lista de espera. Te avisaremos si se libera un cupo.",
       });
-    } catch (e: any) {
+    } catch (error: unknown) {
       setWaitlistFeedback({
         tone: "error",
-        text: e?.message ?? "No se pudo registrar la lista de espera",
+        text: errorMessage(error, "No se pudo registrar la lista de espera"),
       });
     } finally {
       setWaitlistSavingSlot(null);

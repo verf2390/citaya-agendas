@@ -7,8 +7,11 @@ export type PaymentProviderConfig = {
 };
 
 export type CreateProviderPaymentParams = {
+  paymentIntentId: string;
   appointmentId: string;
   tenantId: string;
+  buyOrder?: string | null;
+  sessionId?: string | null;
   title: string;
   amount: number;
   currency: string;
@@ -27,7 +30,6 @@ export type ProviderPaymentResult = {
   paymentUrl: string | null;
   redirectMethod?: "GET" | "POST";
   redirectPayload?: Record<string, string>;
-  raw?: unknown;
 };
 
 export interface PaymentProvider {

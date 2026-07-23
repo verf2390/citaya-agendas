@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import ShimmerButton from "@/components/magicui/ShimmerButton";
+import { safeInternalRedirect } from "@/lib/security/redirects.mjs";
 
 /**
  * Página wrapper: en Next (App Router) useSearchParams() debe estar dentro de <Suspense>.
@@ -42,7 +43,7 @@ function LoginInner() {
 
   // ✅ Solo path (mantiene host/subdominio)
   const redirectTo = useMemo(
-    () => searchParams.get("redirectTo") || "/admin/agenda",
+    () => safeInternalRedirect(searchParams.get("redirectTo"), "/admin"),
     [searchParams],
   );
 

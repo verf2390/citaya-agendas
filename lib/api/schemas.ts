@@ -1,44 +1,30 @@
 import { z } from "zod";
 
 const AppointmentPaymentStatusSchema = z.enum([
-  "not_required",
-  "pending",
-  "paid",
-  "failed",
-  "cancelled",
+  "not_required", "pending", "paid", "failed", "cancelled", "pay_later",
 ]);
+
+const optionalShortText = (max: number) =>
+  z.string().trim().max(max).nullable().optional();
 
 export const AppointmentCreateSchema = z.object({
   tenantId: z.string().uuid("tenantId inválido"),
   professionalId: z.string().uuid("professionalId inválido"),
-
-  // ISO
-  startAt: z
-    .string()
-    .min(1, "startAt requerido")
+  serviceId: z.string().uuid("serviceId inválido"),
+  startAt: z.string().min(1).max(64)
     .refine((value) => !Number.isNaN(new Date(value).getTime()), "startAt inválido"),
-  endAt: z
-    .string()
-    .min(1, "endAt requerido")
-    .refine((value) => !Number.isNaN(new Date(value).getTime()), "endAt inválido"),
-
-  // cliente (snapshot)
-  customerName: z.string().min(1, "customerName requerido"),
-  customerPhone: z.string().min(1, "customerPhone requerido").nullable().optional(),
-  customerEmail: z.string().email("customerEmail inválido").nullable().optional(),
-
-  // relación opcional (si la tienes)
-  customerId: z.string().uuid("customerId inválido").nullable().optional(),
-
-  // servicio opcional: si viene, copiamos snapshot
-  serviceId: z.string().uuid("serviceId inválido").nullable().optional(),
-
-  // opcionales que sí existen en tu tabla
-  status: z.string().nullable().optional(),
-  currency: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
+  // Accepted during the transition but ignored: duration is server-derived.
+  endAt: z.string().max(64).optional(),
+  customerName: z.string().trim().min(1).max(120),
+  customerPhone: optionalShortText(32),
+  customerEmail: z.string().trim().email().max(254).nullable().optional(),
+  customerId: z.string().uuid().nullable().optional(),
+  status: optionalShortText(32),
+  currency: optionalShortText(3),
+  notes: optionalShortText(1000),
   paymentRequired: z.boolean().optional(),
   paymentStatus: AppointmentPaymentStatusSchema.optional(),
+  idempotencyKey: z.string().max(128).optional(),
 });
 
 export type AppointmentCreateInput = z.infer<typeof AppointmentCreateSchema>;

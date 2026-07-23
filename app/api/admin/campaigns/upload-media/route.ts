@@ -1,159 +1,78 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-
+import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { validateCampaignMedia } from "@/lib/security/upload-validation.mjs";
 
-type CampaignMediaType = "image" | "gif" | "video";
+const BUCKET_NAME = process.env.SUPABASE_CAMPAIGN_ASSETS_BUCKET?.trim() || "campaign-assets";
+const ABSOLUTE_MAX_BYTES = 25 * 1024 * 1024;
 
-const BUCKET_NAME =
-  process.env.SUPABASE_CAMPAIGN_ASSETS_BUCKET?.trim() || "campaign-assets";
-
-const ALLOWED_TYPES: Record<string, { mediaType: CampaignMediaType; extensions: string[] }> = {
-  "image/jpeg": { mediaType: "image", extensions: ["jpg", "jpeg"] },
-  "image/png": { mediaType: "image", extensions: ["png"] },
-  "image/webp": { mediaType: "image", extensions: ["webp"] },
-  "image/gif": { mediaType: "gif", extensions: ["gif"] },
-  "video/mp4": { mediaType: "video", extensions: ["mp4"] },
-  "video/quicktime": { mediaType: "video", extensions: ["mov"] },
-  "video/webm": { mediaType: "video", extensions: ["webm"] },
-};
-
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
-
-function getBearerToken(req: Request): string {
-  const auth = req.headers.get("authorization") ?? "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-function jsonError(error: string, status = 400) {
+function fail(status = 400, error = "Archivo no permitido") {
   return NextResponse.json({ ok: false, error }, { status });
 }
-
-function getTenantSlug(req: Request, fallbackSlug: unknown) {
-  const forwardedHost = req.headers.get("x-forwarded-host");
-  const host = forwardedHost || req.headers.get("host");
-  const fromHost = getTenantSlugFromHostname(host);
-  if (fromHost) return fromHost;
-
-  return String(fallbackSlug ?? "").trim();
-}
-
-function extensionFromName(fileName: string) {
-  const cleanName = fileName.trim().toLowerCase();
-  const parts = cleanName.split(".");
-  return parts.length > 1 ? parts.pop() || "" : "";
-}
-
-function sanitizeFileName(fileName: string) {
-  const extension = extensionFromName(fileName);
-  const rawBase = fileName.replace(/\.[^.]+$/, "") || "campaign-media";
-  const safeBase =
-    rawBase
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 80) || "campaign-media";
-
-  return extension ? `${safeBase}.${extension}` : safeBase;
+function hostname(req: Request) {
+  return (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
+    .split(",")[0].trim().split(":")[0];
 }
 
 export async function POST(req: Request) {
   try {
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const form = await req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0 || file.size > ABSOLUTE_MAX_BYTES) {
+      return fail();
     }
-
-    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userData?.user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const formData = await req.formData();
-    const file = formData.get("file");
-    if (!(file instanceof File)) {
-      return jsonError("Selecciona un archivo para subir.");
-    }
-
-    const tenantSlug = getTenantSlug(req, formData.get("tenantSlug"));
-    if (!tenantSlug) return jsonError("No se pudo detectar el negocio actual.");
-
-    const { data: tenant, error: tenantError } = await supabaseAdmin
-      .from("tenants")
-      .select("id, slug")
-      .eq("slug", tenantSlug)
-      .maybeSingle();
-
-    if (tenantError || !tenant?.id) {
-      return jsonError("No se pudo validar el negocio actual.", 404);
-    }
-
+    const tenantSlug =
+      getTenantSlugFromHostname(hostname(req)) || String(form.get("tenantSlug") ?? "").trim();
+    if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(tenantSlug)) return fail(404);
+    const { data: tenant, error: tenantError } = await supabaseAdmin.from("tenants")
+      .select("id, slug").eq("slug", tenantSlug).maybeSingle();
+    if (tenantError || !tenant) return fail(404);
     const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
-    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    if (!access.ok) return fail(access.status, access.status === 401 ? "Unauthorized" : "Forbidden");
 
-    const rule = ALLOWED_TYPES[file.type];
-    if (!rule) {
-      return jsonError("Formato no permitido. Usa JPG, PNG, WebP, GIF, MP4, MOV o WebM.");
-    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const validation = validateCampaignMedia({
+      bytes,
+      declaredMime: file.type,
+      originalName: file.name,
+    });
+    if (!validation.ok) return fail();
 
-    const extension = extensionFromName(file.name);
-    if (!extension || !rule.extensions.includes(extension)) {
-      return jsonError("La extensión del archivo no coincide con el formato permitido.");
-    }
-
-    const maxSize = rule.mediaType === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
-    if (file.size > maxSize) {
-      return jsonError(
-        rule.mediaType === "video"
-          ? "Los videos pueden pesar hasta 25 MB."
-          : "Las imágenes y GIF pueden pesar hasta 5 MB.",
-      );
-    }
-
-    const safeFileName = sanitizeFileName(file.name);
-    const storagePath = `campaigns/${tenant.slug}/drafts/${Date.now()}-${safeFileName}`;
-    const buffer = Buffer.from(await file.arrayBuffer());
-
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(BUCKET_NAME)
-      .upload(storagePath, buffer, {
+    const serverName = `${randomUUID()}.${validation.extension}`;
+    const storagePath = `campaigns/${tenant.id}/drafts/${serverName}`;
+    const { error: uploadError } = await supabaseAdmin.storage.from(BUCKET_NAME).upload(
+      storagePath,
+      Buffer.from(bytes),
+      {
         cacheControl: "31536000",
-        contentType: file.type,
+        contentType: String(validation.mimeType),
         upsert: false,
-      });
-
+      },
+    );
     if (uploadError) {
-      console.error("[api/admin/campaigns/upload-media] upload error:", uploadError);
-      return jsonError(
-        `No se pudo subir el archivo. Revisa que exista el bucket ${BUCKET_NAME}.`,
-        500,
-      );
+      console.error("[campaign-upload] storage failed", { code: uploadError.name ?? null });
+      return fail(500, "No se pudo guardar el archivo");
     }
-
-    const { data: publicData } = supabaseAdmin.storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(storagePath);
-
+    const mediaUrl = new URL(
+      `/api/media/campaigns/${tenant.id}/${serverName}`,
+      req.url,
+    ).toString();
     return NextResponse.json({
       ok: true,
-      mediaUrl: publicData.publicUrl,
-      mediaType: rule.mediaType,
-      fileName: safeFileName,
-      size: file.size,
-      mimeType: file.type,
+      mediaUrl,
+      mediaType: validation.mediaType,
+      fileName: serverName,
+      size: bytes.byteLength,
+      mimeType: validation.mimeType,
     });
-  } catch (e: any) {
-    console.error("[api/admin/campaigns/upload-media] error:", e?.message || e);
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? "No se pudo subir el archivo" },
-      { status: 500 },
-    );
+  } catch (error) {
+    console.error("[campaign-upload] failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return fail(500, "No se pudo procesar el archivo");
   }
 }

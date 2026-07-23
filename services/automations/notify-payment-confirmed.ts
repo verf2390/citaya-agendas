@@ -31,36 +31,18 @@ type AppointmentRow = {
   payment_remaining_amount: number | null;
   payment_reference: string | null;
   payment_url: string | null;
-  manage_token: string | null;
 };
 
 type TenantRow = {
   id: string;
   slug: string | null;
   name: string | null;
-  base_url: string | null;
-  public_base_url: string | null;
 };
 
 type ProfessionalRow = {
   id: string;
   name: string | null;
 };
-
-function buildManageUrl(args: {
-  baseUrl: string | null;
-  manageToken: string | null;
-}) {
-  if (!args.baseUrl || !args.manageToken) return null;
-
-  try {
-    const url = new URL("/reservar/gestionar", args.baseUrl);
-    url.searchParams.set("token", args.manageToken);
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
 
 async function postToN8n(payload: Record<string, unknown>) {
   const webhookUrl = process.env.N8N_PAYMENT_CONFIRMED_WEBHOOK_URL?.trim();
@@ -126,7 +108,6 @@ export async function notifyPaymentConfirmed(
           "payment_remaining_amount",
           "payment_reference",
           "payment_url",
-          "manage_token",
         ].join(","),
       )
       .eq("id", args.appointmentId)
@@ -146,7 +127,7 @@ export async function notifyPaymentConfirmed(
     const [{ data: tenant }, { data: professional }] = await Promise.all([
       supabaseAdmin
         .from("tenants")
-        .select("id, slug, name, base_url, public_base_url")
+        .select("id, slug, name")
         .eq("id", appointmentRow.tenant_id)
         .maybeSingle(),
       appointmentRow.professional_id
@@ -161,16 +142,6 @@ export async function notifyPaymentConfirmed(
 
     const tenantRow = (tenant ?? null) as TenantRow | null;
     const professionalRow = (professional ?? null) as ProfessionalRow | null;
-    const baseUrl =
-      String(tenantRow?.public_base_url ?? "").trim() ||
-      String(tenantRow?.base_url ?? "").trim() ||
-      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-      null;
-    const manageUrl = buildManageUrl({
-      baseUrl,
-      manageToken: appointmentRow.manage_token,
-    });
-
     await postToN8n({
       source: "payment_confirmed",
       payment_status: appointmentRow.payment_status ?? "paid",
@@ -210,17 +181,11 @@ export async function notifyPaymentConfirmed(
         args.externalPaymentId != null
           ? String(args.externalPaymentId)
           : appointmentRow.payment_reference,
-      confirmation_token: appointmentRow.manage_token ?? null,
-      manage_token: appointmentRow.manage_token ?? null,
-      manage_url: manageUrl,
-      cancel_url: manageUrl,
-      reschedule_url: manageUrl,
     });
   } catch (error) {
     console.error("[automations/payment-confirmed] notification failed", {
       appointmentId: args.appointmentId,
       provider: args.provider,
-      externalPaymentId: args.externalPaymentId ?? null,
       error,
     });
   }

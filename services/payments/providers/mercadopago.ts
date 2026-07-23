@@ -18,7 +18,7 @@ export const mercadoPagoProvider: PaymentProvider = {
       title: args.title,
       amount: args.amount,
       currencyId: args.currency,
-      externalReference: args.appointmentId,
+      externalReference: args.paymentIntentId,
       payer: args.customerEmail
         ? {
             email: args.customerEmail,
@@ -36,7 +36,6 @@ export const mercadoPagoProvider: PaymentProvider = {
       reference: preference.id ?? null,
       paymentUrl: preference.init_point ?? null,
       redirectMethod: "GET",
-      raw: preference,
     };
   },
 };

@@ -1,235 +1,117 @@
-// app/api/appointments/reschedule/route.ts
-// (Cliente - gestionar cita) -> reagendar por token + dispara n8n (multi-tenant)
-// Regla: máximo 2 reagendados por cita
-
 import { NextResponse } from "next/server";
-import { parseIsoDate } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  generateManageToken,
+  hashManageToken,
+  manageTokenExpiresAt,
+} from "@/lib/security/manage-tokens.mjs";
+import { authorizeAppointmentActor } from "@/lib/api/appointmentAccess";
+import { consumeRateLimit, opaqueKey, requestIp } from "@/lib/security/request";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
+
+function denied(status = 404) {
+  return NextResponse.json({ ok: false, error: "No se pudo reagendar" }, { status });
+}
+
+function localParts(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Santiago",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  const day = new Map([["Sun", 0], ["Mon", 1], ["Tue", 2], ["Wed", 3], ["Thu", 4], ["Fri", 5], ["Sat", 6]]).get(value("weekday"));
+  return { day, time: `${value("hour")}:${value("minute")}:00` };
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
-
     const token = String(body?.token ?? "").trim();
-    const start_at = String(body?.start_at ?? "").trim();
-    const end_at = String(body?.end_at ?? "").trim();
-
-    if (!token || !start_at || !end_at) {
-      return NextResponse.json(
-        { ok: false, error: "Missing token/start_at/end_at" },
-        { status: 400 }
-      );
+    const start = new Date(String(body?.start_at ?? ""));
+    const pepper = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();
+    if (!pepper || token.length < 32 || token.length > 256 || Number.isNaN(start.getTime())) {
+      return denied();
     }
-
-    const parsedStart = parseIsoDate(start_at);
-    const parsedEnd = parseIsoDate(end_at);
-
-    if (!parsedStart || !parsedEnd) {
-      return NextResponse.json(
-        { ok: false, error: "start_at/end_at inválidos" },
-        { status: 400 }
-      );
+    if (start.getTime() < Date.now() || start.getTime() > Date.now() + 365 * 86400_000) {
+      return denied(400);
     }
-
-    if (parsedStart >= parsedEnd) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid time range" },
-        { status: 400 }
-      );
+    const columns = "id, tenant_id, professional_id, service_id, start_at, end_at, status, booking_status, reschedule_count, manage_token, manage_token_hash, manage_token_expires_at, manage_token_revoked_at, manage_token_legacy_expires_at";
+    let result = await supabaseAdmin.from("appointments").select(columns)
+      .eq("manage_token_hash", hashManageToken(token, pepper)).maybeSingle();
+    if (!result.data && !result.error) {
+      result = await supabaseAdmin.from("appointments").select(columns)
+        .eq("manage_token", token)
+        .gt("manage_token_legacy_expires_at", new Date().toISOString()).maybeSingle();
     }
+    if (result.error || !result.data) return denied();
+    const appointment = result.data;
+    const access = await authorizeAppointmentActor({ req, appointment, manageToken: token });
+    if (!access.ok || access.actor !== "manage_token") return denied();
+    if (["canceled", "cancelled"].includes(String(appointment.status).toLowerCase())) return denied(409);
+    if (Number(appointment.reschedule_count ?? 0) >= 2) return denied(409);
 
-    // 1) Leer cita actual (ANTES)
-    const { data: oldAppt, error: oldErr } = await supabaseAdmin
-      .from("appointments")
-      .select("*")
-      .eq("manage_token", token)
-      .maybeSingle();
+    const rateAllowed = await consumeRateLimit({
+      scope: "appointment_reschedule",
+      key: opaqueKey(requestIp(req), appointment.tenant_id, appointment.id),
+      limit: 5,
+      windowSeconds: 3600,
+    });
+    if (!rateAllowed) return denied(429);
 
-    if (oldErr) {
-      console.error("Old appointment lookup error:", oldErr);
-      return NextResponse.json({ ok: false, error: "DB error" }, { status: 500 });
-    }
-
-    if (!oldAppt) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid token" },
-        { status: 404 }
-      );
-    }
-
-    // 2) Bloqueos de negocio
-    const status = String(oldAppt.status ?? "").toLowerCase();
-
-    if (status === "canceled") {
-      return NextResponse.json(
-        { ok: false, error: "Appointment canceled" },
-        { status: 409 }
-      );
-    }
-
-    const rescheduleCount = Number(oldAppt.reschedule_count ?? 0);
-
-    if (rescheduleCount >= 2) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "reschedule_limit_reached",
-          message: "Esta cita ya fue reagendada el máximo permitido (2 veces).",
-          meta: {
-            max: 2,
-            used: rescheduleCount,
-          },
-        },
-        { status: 403 }
-      );
-    }
-
-    const { data: conflicts, error: conflictErr } = await supabaseAdmin
-      .from("appointments")
+    const { data: service, error: serviceError } = await supabaseAdmin.from("services")
+      .select("id, duration_min, is_active")
+      .eq("id", appointment.service_id)
+      .eq("tenant_id", appointment.tenant_id)
+      .eq("is_active", true).maybeSingle();
+    const duration = Number(service?.duration_min);
+    if (serviceError || !service || !Number.isInteger(duration) || duration < 5 || duration > 480) return denied(409);
+    const end = new Date(start.getTime() + duration * 60_000);
+    const startLocal = localParts(start);
+    const endLocal = localParts(end);
+    if (startLocal.day !== endLocal.day) return denied(409);
+    const { data: available, error: availabilityError } = await supabaseAdmin.from("availability")
       .select("id")
-      .eq("tenant_id", oldAppt.tenant_id)
-      .eq("professional_id", oldAppt.professional_id)
-      .eq("booking_status", "confirmed")
-      .neq("id", oldAppt.id)
-      .lt("start_at", parsedEnd.toISOString())
-      .gt("end_at", parsedStart.toISOString())
+      .eq("tenant_id", appointment.tenant_id)
+      .eq("professional_id", appointment.professional_id)
+      .eq("day_of_week", startLocal.day)
+      .eq("is_active", true)
+      .lte("start_time", startLocal.time)
+      .gte("end_time", endLocal.time)
       .limit(1);
+    if (availabilityError || !available?.length) return denied(409);
 
-    if (conflictErr) {
-      console.error("[reschedule] overlap error:", conflictErr);
-      return NextResponse.json({ ok: false, error: "DB error" }, { status: 500 });
-    }
-
-    if ((conflicts?.length ?? 0) > 0) {
-      return NextResponse.json(
-        { ok: false, error: "Time slot already booked" },
-        { status: 409 }
-      );
-    }
-
-    // 3) Update (DESPUÉS)
-    const rescheduled_at = new Date().toISOString();
-
-    const { data: updated, error: upErr } = await supabaseAdmin
-      .from("appointments")
+    const nextToken = generateManageToken();
+    const now = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabaseAdmin.from("appointments")
       .update({
-        start_at: parsedStart.toISOString(),
-        end_at: parsedEnd.toISOString(),
-        rescheduled_at,
-        reschedule_count: rescheduleCount + 1, // 👈 incrementamos
+        start_at: start.toISOString(),
+        end_at: end.toISOString(),
+        rescheduled_at: now,
+        reschedule_count: Number(appointment.reschedule_count ?? 0) + 1,
+        manage_token: null,
+        manage_token_hash: hashManageToken(nextToken, pepper),
+        manage_token_expires_at: manageTokenExpiresAt(),
+        manage_token_revoked_at: null,
+        manage_token_rotated_at: now,
+        manage_token_legacy_expires_at: null,
       })
-      .eq("manage_token", token)
+      .eq("id", appointment.id)
       .neq("status", "canceled")
-      .select("*")
+      .select("id, start_at, end_at, status")
       .maybeSingle();
-
-    if (upErr) {
-      console.error("Update error:", upErr);
-      return NextResponse.json({ ok: false, error: "DB error" }, { status: 500 });
-    }
-
-    if (!updated) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid token or canceled" },
-        { status: 404 }
-      );
-    }
-
-    if (
-      oldAppt.booking_status === "confirmed" &&
-      oldAppt.start_at !== updated.start_at
-    ) {
+    if (updateError || !updated) return denied(updateError?.code === "23P01" ? 409 : 500);
+    if (appointment.booking_status === "confirmed" && appointment.start_at !== updated.start_at) {
       await notifyWaitlistSlotReleased({
-        tenantId: oldAppt.tenant_id,
-        serviceId: oldAppt.service_id,
-        startAt: oldAppt.start_at,
+        tenantId: appointment.tenant_id,
+        serviceId: appointment.service_id,
+        startAt: appointment.start_at,
       });
     }
-
-    // 4) Traer admin_email del tenant (MULTI-TENANT)
-    const tenant_id = updated.tenant_id ?? oldAppt.tenant_id ?? null;
-
-    let admin_email: string | null = null;
-
-    if (tenant_id) {
-      const { data: tenant } = await supabaseAdmin
-        .from("tenants")
-        .select("admin_email")
-        .eq("id", tenant_id)
-        .single();
-
-      admin_email = tenant?.admin_email ?? null;
-    }
-
-    // 5) Llamar a n8n (si hay envs)
-    const secret = process.env.CITAYA_SECRET;
-    const webhookUrl = process.env.N8N_RESCHEDULE_WEBHOOK_URL;
-
-    const n8n = {
-      called: false,
-      ok: false as boolean,
-      status: 0 as number,
-      result: null as any,
-    };
-
-    if (secret && webhookUrl) {
-      const payload = {
-        kind: "reschedule",
-        appointment_id: updated.id,
-        tenant_id,
-        admin_email,
-        old: {
-          start_at: oldAppt.start_at,
-          end_at: oldAppt.end_at,
-        },
-        new: {
-          start_at: updated.start_at,
-          end_at: updated.end_at,
-        },
-        updated_at: updated.rescheduled_at ?? rescheduled_at,
-        source: "client",
-      };
-
-      try {
-        const resp = await fetch(webhookUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "x-citaya-secret": secret,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        n8n.called = true;
-        n8n.status = resp.status;
-
-        const text = await resp.text().catch(() => "");
-        try {
-          n8n.result = text ? JSON.parse(text) : null;
-        } catch {
-          n8n.result = text || null;
-        }
-
-        n8n.ok = resp.ok;
-      } catch (err: any) {
-        console.error("n8n fetch failed:", err);
-        n8n.called = true;
-        n8n.ok = false;
-        n8n.result = { error: "fetch_failed", details: String(err?.message ?? err) };
-      }
-    }
-
-    return NextResponse.json({
-      ok: true,
-      appointment: updated,
-      old: { start_at: oldAppt.start_at, end_at: oldAppt.end_at },
-      n8n,
-    });
-  } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? "Unexpected error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true, appointment: updated, manageToken: nextToken });
+  } catch {
+    return denied();
   }
 }

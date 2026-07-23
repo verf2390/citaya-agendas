@@ -1124,10 +1124,14 @@ export default function AgendaPage() {
 
     serviceId?: string | null;
   }) {
+    const idempotencyKey = crypto.randomUUID();
     const res = await adminFetch("/api/appointments/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify({ ...payload, idempotencyKey }),
     });
 
     const json = await res.json().catch(() => null);

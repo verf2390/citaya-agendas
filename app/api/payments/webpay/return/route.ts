@@ -1,151 +1,93 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { isUuid } from "@/lib/api/validators";
-import { getTenantPaymentConfig } from "@/services/payments/payment-config";
+import {
+  safePaymentAuditMetadata,
+  verifyWebpayCommit,
+} from "@/lib/security/payment-verification.mjs";
+import {
+  getWebpayCredentials,
+  webpayTransaction,
+} from "@/services/payments/provider-credentials";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
-import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
-function webpayBaseUrl(environment?: string | null) {
-  return environment === "production"
-    ? "https://webpay3g.transbank.cl"
-    : "https://webpay3gint.transbank.cl";
-}
-
-function redirectResult(req: Request, status: "success" | "failure" | "pending") {
+function redirectResult(req: Request, status: "success" | "failure", appointmentId?: string) {
   const url = new URL("/reservar/resultado", new URL(req.url).origin);
   url.searchParams.set("status", status);
+  if (appointmentId) url.searchParams.set("id", appointmentId);
   return NextResponse.redirect(url);
+}
+
+async function tokenFromRequest(req: Request) {
+  const url = new URL(req.url);
+  const queryToken = String(url.searchParams.get("token_ws") ?? "").trim();
+  if (queryToken) return queryToken;
+  if (req.method !== "POST") return "";
+  const form = await req.formData().catch(() => null);
+  return String(form?.get("token_ws") ?? "").trim();
 }
 
 export async function GET(req: Request) {
   return handleWebpayReturn(req);
 }
-
 export async function POST(req: Request) {
   return handleWebpayReturn(req);
 }
 
 async function handleWebpayReturn(req: Request) {
   try {
-    const url = new URL(req.url);
-    const tenantId = String(url.searchParams.get("tenantId") ?? "").trim();
-    const appointmentId = String(url.searchParams.get("appointmentId") ?? "").trim();
-    let token = String(url.searchParams.get("token_ws") ?? "").trim();
+    const token = await tokenFromRequest(req);
+    if (!token || token.length > 256) return redirectResult(req, "failure");
 
-    if (req.method === "POST" && !token) {
-      const form = await req.formData().catch(() => null);
-      token = String(form?.get("token_ws") ?? "").trim();
-    }
+    const { data: intent, error: intentError } = await supabaseAdmin
+      .from("payment_intents")
+      .select("id, tenant_id, appointment_id, provider, provider_payment_id, buy_order, session_id, amount, currency, status")
+      .eq("provider", "webpay")
+      .eq("provider_payment_id", token)
+      .maybeSingle();
+    if (intentError || !intent) return redirectResult(req, "failure");
+    if (intent.status === "succeeded") return redirectResult(req, "success", intent.appointment_id);
+    if (intent.status !== "pending") return redirectResult(req, "failure");
 
-    if (!tenantId || !isUuid(tenantId) || !appointmentId || !isUuid(appointmentId)) {
+    const credentials = getWebpayCredentials(intent.tenant_id);
+    if (!credentials) return redirectResult(req, "failure");
+    const transaction = await webpayTransaction(credentials).commit(token);
+    const verified = verifyWebpayCommit(intent, transaction, token);
+    if (!verified.ok) {
+      console.warn("[payments/webpay/return] verification rejected", {
+        paymentIntentId: intent.id,
+        reason: verified.reason,
+      });
       return redirectResult(req, "failure");
     }
 
-    if (!token) {
-      return redirectResult(req, "failure");
-    }
-
-    const config = await getTenantPaymentConfig(tenantId);
-    const commerceCode = String(config.webpayCommerceCode ?? "").trim();
-    const apiKey = String(config.webpayApiKey ?? "").trim();
-
-    if (!commerceCode || !apiKey) {
-      return redirectResult(req, "failure");
-    }
-
-    const res = await fetch(
-      `${webpayBaseUrl(config.webpayEnvironment)}/rswebpaytransaction/api/webpay/v1.2/transactions/${token}`,
+    const { data: transitioned, error: finalizeError } = await supabaseAdmin.rpc(
+      "finalize_verified_payment",
       {
-        method: "PUT",
-        headers: {
-          "content-type": "application/json",
-          "Tbk-Api-Key-Id": commerceCode,
-          "Tbk-Api-Key-Secret": apiKey,
-        },
+        p_intent_id: intent.id,
+        p_provider: "webpay",
+        p_provider_payment_id: token,
+        p_audit_metadata: safePaymentAuditMetadata("webpay", transaction),
       },
     );
-
-    const json = await res.json().catch(() => null);
-    const approved =
-      res.ok &&
-      String(json?.status ?? "").toUpperCase() === "AUTHORIZED" &&
-      Number(json?.response_code ?? -1) === 0;
-    const status = approved ? "paid" : "failed";
-    const appointmentStatus = approved ? "confirmed" : "pending_payment";
-    const [{ data: currentAppointment }, { data: existingPayments }] =
-      await Promise.all([
-        supabaseAdmin
-          .from("appointments")
-          .select("payment_status, booking_status, service_id, start_at")
-          .eq("id", appointmentId)
-          .eq("tenant_id", tenantId)
-          .maybeSingle(),
-        supabaseAdmin
-          .from("payments")
-          .select("status")
-          .eq("tenant_id", tenantId)
-          .eq("appointment_id", appointmentId)
-          .limit(1),
-      ]);
-    const previousAppointmentPaymentStatus = String(
-      currentAppointment?.payment_status ?? "",
-    ).toLowerCase();
-    const previousPaymentStatus = String(
-      existingPayments?.[0]?.status ?? "",
-    ).toLowerCase();
-
-    await supabaseAdmin
-      .from("payments")
-      .update({ status })
-      .eq("tenant_id", tenantId)
-      .eq("appointment_id", appointmentId);
-
-    await supabaseAdmin
-      .from("appointments")
-      .update({
-        payment_status: status,
-        status: appointmentStatus,
-        booking_status: appointmentStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", appointmentId)
-      .eq("tenant_id", tenantId);
-
-    await supabaseAdmin
-      .from("appointments")
-      .update({
-        payment_paid_amount: approved ? Number(json?.amount ?? 0) : 0,
-      })
-      .eq("id", appointmentId)
-      .eq("tenant_id", tenantId);
-
-    if (
-      approved &&
-      previousAppointmentPaymentStatus !== "paid" &&
-      previousPaymentStatus !== "paid"
-    ) {
+    if (finalizeError) {
+      console.error("[payments/webpay/return] atomic finalize failed", {
+        paymentIntentId: intent.id,
+        code: finalizeError.code ?? null,
+      });
+      return redirectResult(req, "failure");
+    }
+    if (transitioned === true) {
       await notifyPaymentConfirmed({
-        appointmentId,
+        appointmentId: intent.appointment_id,
         provider: "webpay",
-        externalPaymentId:
-          json?.buy_order ?? json?.authorization_code ?? token,
-      });
-    } else if (approved) {
-      console.info("[payments/webpay/return] notificación paid omitida", {
-        appointmentId,
-        reason: "already_paid",
-      });
-    } else if (!approved && currentAppointment?.booking_status === "confirmed") {
-      await notifyWaitlistSlotReleased({
-        tenantId,
-        serviceId: currentAppointment.service_id ?? null,
-        startAt: currentAppointment.start_at ?? null,
+        externalPaymentId: token,
       });
     }
-
-    return redirectResult(req, approved ? "success" : "failure");
+    return redirectResult(req, "success", intent.appointment_id);
   } catch (error) {
-    console.error("[payments/webpay/return] error:", error);
+    console.error("[payments/webpay/return] failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
     return redirectResult(req, "failure");
   }
 }

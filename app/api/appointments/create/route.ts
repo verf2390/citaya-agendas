@@ -1,387 +1,152 @@
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { parseJson } from "@/lib/api/parse";
 import { AppointmentCreateSchema } from "@/lib/api/schemas";
-import { parseIsoDate } from "@/lib/api/validators";
-import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import {
+  deriveManageToken,
+  hashManageToken,
+  manageTokenExpiresAt,
+} from "@/lib/security/manage-tokens.mjs";
+import {
+  consumeRateLimit,
+  idempotencyKey,
+  opaqueKey,
+  requestIp,
+} from "@/lib/security/request";
+import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 
-/* =====================================================
-   CUSTOMERS: UPSERT SERVER-SIDE (para reservar público)
-===================================================== */
-
-function cleanTextOrNull(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim().replace(/\s+/g, " ");
-  return t ? t : null;
+function publicError(status = 400, error = "No se pudo crear la reserva") {
+  return NextResponse.json({ ok: false, error }, { status });
 }
 
-function cleanPhoneOrNull(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim();
-  if (!t) return null;
-  const norm = t.replace(/[^\d+]/g, "");
-  return norm ? norm : null;
-}
-
-function cleanEmailOrNull(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const t = v.trim().toLowerCase();
-  return t ? t : null;
-}
-
-async function resolveCustomerId(args: {
-  sb: typeof supabaseServer;
+async function resolveCustomerId(input: {
   tenantId: string;
   customerId?: string | null;
-  customerName?: string | null;
-  customerPhone?: string | null;
-  customerEmail?: string | null;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
 }) {
-  const { sb, tenantId } = args;
-
-  if (args.customerId) return args.customerId;
-
-  const full_name = cleanTextOrNull(args.customerName);
-  const phone = cleanPhoneOrNull(args.customerPhone);
-  const email = cleanEmailOrNull(args.customerEmail);
-
-  if (!phone && !email) return null;
-
-  let existing:
-    | { id: string; full_name: string; phone: string | null; email: string | null }
-    | null = null;
-
+  if (input.customerId) {
+    const { data } = await supabaseAdmin.from("customers").select("id")
+      .eq("id", input.customerId).eq("tenant_id", input.tenantId).maybeSingle();
+    if (!data) throw new Error("invalid_customer");
+    return data.id;
+  }
+  const phone = String(input.phone ?? "").replace(/[^+\d]/g, "").slice(0, 32) || null;
+  const email = String(input.email ?? "").trim().toLowerCase().slice(0, 254) || null;
+  let existing = null;
   if (phone) {
-    const { data, error } = await sb
-      .from("customers")
-      .select("id, full_name, phone, email")
-      .eq("tenant_id", tenantId)
-      .eq("phone", phone)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data?.id) existing = data;
+    existing = (await supabaseAdmin.from("customers").select("id")
+      .eq("tenant_id", input.tenantId).eq("phone", phone).maybeSingle()).data;
   }
-
   if (!existing && email) {
-    const { data, error } = await sb
-      .from("customers")
-      .select("id, full_name, phone, email")
-      .eq("tenant_id", tenantId)
-      .eq("email", email)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data?.id) existing = data;
+    existing = (await supabaseAdmin.from("customers").select("id")
+      .eq("tenant_id", input.tenantId).eq("email", email).maybeSingle()).data;
   }
-
-  if (existing?.id) {
-    const patch: any = {};
-    if (full_name && !existing.full_name) patch.full_name = full_name;
-    if (phone && !existing.phone) patch.phone = phone;
-    if (email && !existing.email) patch.email = email;
-
-    if (Object.keys(patch).length > 0) {
-      patch.updated_at = new Date().toISOString();
-      const { error } = await sb
-        .from("customers")
-        .update(patch)
-        .eq("tenant_id", tenantId)
-        .eq("id", existing.id);
-
-      if (error) throw error;
-    }
-
-    return existing.id;
-  }
-
-  const { data: created, error: insErr } = await sb
-    .from("customers")
-    .insert({
-      tenant_id: tenantId,
-      full_name: full_name ?? "Cliente",
-      phone,
-      email,
-    })
-    .select("id")
-    .single();
-
-  if (insErr) throw insErr;
-  return created.id as string;
-}
-
-// ✅ NEW: generar token robusto (Node/Next runtime)
-function generateManageToken(): string {
-  return crypto.randomUUID();
-}
-
-function shouldSendConfirmation(args: {
-  status: string | null;
-  paymentRequired: boolean | null;
-  paymentStatus: string | null;
-}) {
-  if (args.status !== "confirmed") return false;
-  if (args.paymentRequired === true && args.paymentStatus !== "paid") return false;
-  return true;
-}
-
-async function sendConfirmationWebhook(args: {
-  appointmentId: string;
-  tenantId: string;
-  professionalId: string;
-  startAt: string;
-  endAt: string;
-  customerName: string;
-  customerPhone?: string | null;
-  customerEmail?: string | null;
-  customerId?: string | null;
-  serviceId?: string | null;
-  serviceName?: string | null;
-  description?: string | null;
-  notes?: string | null;
-  currency?: string | null;
-  status: string;
-  manageToken: string;
-}) {
-  const webhookBase = process.env.N8N_CONFIRMATION_WEBHOOK_URL;
-  const secret = process.env.CITAYA_SECRET;
-
-  if (!webhookBase) {
-    console.warn("[appointments/create] N8N_CONFIRMATION_WEBHOOK_URL no seteada");
-    return;
-  }
-
-  try {
-    const url = new URL(webhookBase);
-    if (secret) url.searchParams.set("secret", secret);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    await fetch(url.toString(), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        event: "appointment.created",
-        appointmentId: args.appointmentId,
-        tenantId: args.tenantId,
-        professionalId: args.professionalId,
-        startAt: args.startAt,
-        endAt: args.endAt,
-        customerName: args.customerName,
-        customerPhone: args.customerPhone ?? null,
-        customerEmail: args.customerEmail ?? null,
-        customerId: args.customerId ?? null,
-        serviceId: args.serviceId ?? null,
-        service_name: args.serviceName ?? null,
-        description: args.description ?? null,
-        notes: args.notes ?? null,
-        currency: args.currency ?? "CLP",
-        status: args.status,
-        manage_token: args.manageToken,
-        source: "citaya-api",
-        createdAt: new Date().toISOString(),
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-  } catch (err: any) {
-    console.error("[appointments/create] n8n webhook error:", err?.message || err);
-  }
+  if (existing?.id) return existing.id;
+  const { data, error } = await supabaseAdmin.from("customers").insert({
+    tenant_id: input.tenantId,
+    full_name: input.name.slice(0, 120),
+    phone,
+    email,
+  }).select("id").single();
+  if (error) throw error;
+  return data.id;
 }
 
 export async function POST(req: Request) {
   try {
     const parsed = await parseJson(req, AppointmentCreateSchema);
     if (!parsed.ok) return parsed.res;
+    const input = parsed.data;
+    const key = idempotencyKey(req, input.idempotencyKey);
+    const pepper = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();
+    if (!key || !pepper) return publicError(503);
 
-    const {
-      tenantId,
-      professionalId,
-      startAt,
-      endAt,
-      customerName,
-      customerPhone,
-      customerEmail,
-      customerId,
-      serviceId,
-      notes,
-      currency,
-      paymentRequired,
-      paymentStatus,
-    } = parsed.data;
-
-    const sb = supabaseServer;
-    const parsedStartAt = parseIsoDate(startAt);
-    const parsedEndAt = parseIsoDate(endAt);
-
-    if (!parsedStartAt || !parsedEndAt) {
-      return NextResponse.json(
-        { ok: false, error: "startAt/endAt deben ser fechas válidas" },
-        { status: 400 },
-      );
-    }
-
-    if (parsedStartAt >= parsedEndAt) {
-      return NextResponse.json(
-        { ok: false, error: "endAt debe ser mayor que startAt" },
-        { status: 400 },
-      );
-    }
-
-    // ✅ Demo cookie override (subdominios)
-    const demoTenantId = getDemoTenantIdFromCookieHeader(req.headers.get("cookie"));
-    const effectiveTenantId = demoTenantId ?? tenantId;
-
-    // La cita pública puede venir de un slug demo o de tenant explícito. Antes
-    // de insertar validamos que profesional y servicio pertenezcan al tenant
-    // efectivo para no mezclar datos entre clientes.
-    const { data: professional, error: professionalError } = await sb
-      .from("professionals")
-      .select("id")
-      .eq("tenant_id", effectiveTenantId)
-      .eq("id", professionalId)
-      .maybeSingle();
-
-    if (professionalError) throw professionalError;
-    if (!professional?.id) {
-      return NextResponse.json(
-        { ok: false, error: "professionalId no pertenece al tenant" },
-        { status: 400 },
-      );
-    }
-
-    const resolvedCustomerId = await resolveCustomerId({
-      sb,
-      tenantId: effectiveTenantId,
-      customerId: customerId ?? null,
-      customerName: customerName ?? null,
-      customerPhone: customerPhone ?? null,
-      customerEmail: customerEmail ?? null,
-    });
-
-    let service_name: string | null = null;
-    let description: string | null = null;
-
-    if (serviceId) {
-      const { data: svc, error } = await sb
-        .from("services")
-        .select("name, description")
-        .eq("tenant_id", effectiveTenantId)
-        .eq("id", serviceId)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      service_name = svc?.name ?? null;
-      description = svc?.description ?? null;
-
-      if (!svc?.name) {
-        return NextResponse.json(
-          { ok: false, error: "serviceId no pertenece al tenant" },
-          { status: 400 },
-        );
-      }
-    }
-
-    // ✅ token privado SIEMPRE
-    const manage_token = generateManageToken();
-    const normalizedPaymentRequired = paymentRequired === true;
-    const normalizedStatus = normalizedPaymentRequired
-      ? "pending_payment"
-      : "confirmed";
-    const normalizedBookingStatus =
-      normalizedStatus === "confirmed" ? "confirmed" : "pending_payment";
-    const normalizedPaymentStatus = normalizedPaymentRequired
-      ? "pending"
-      : String(paymentStatus ?? "") === "pay_later"
-        ? "pay_later"
-        : "not_required";
-
-    const payload = {
-      tenant_id: effectiveTenantId,
-      professional_id: professionalId,
-      start_at: startAt,
-      end_at: endAt,
-
-      customer_name: customerName,
-      customer_phone: customerPhone ?? null,
-      customer_email: customerEmail ?? null,
-
-      customer_id: resolvedCustomerId ?? null,
-
-      service_id: serviceId ?? null,
-
-      service_name,
-      description,
-
-      notes: notes ?? null,
-      currency: currency ?? "CLP",
-      status: normalizedStatus,
-      booking_status: normalizedBookingStatus,
-      payment_required: normalizedPaymentRequired,
-      payment_status: normalizedPaymentStatus,
-
-      source: "admin",
-
-      manage_token,
-    };
-
-    const { data, error } = await sb
-      .from("appointments")
-      .insert(payload)
-      .select("id, manage_token")
-      .single();
-
-    if (error) throw error;
-
-    if (
-      !shouldSendConfirmation({
-        status: normalizedStatus,
-        paymentRequired: normalizedPaymentRequired,
-        paymentStatus: normalizedPaymentStatus,
-      })
-    ) {
-      console.info("[appointments/create] confirmación omitida por pago pendiente", {
-        appointmentId: data.id,
-        status: normalizedStatus,
-        payment_required: normalizedPaymentRequired,
-        payment_status: normalizedPaymentStatus,
-      });
+    const isAdminRequest = Boolean(req.headers.get("authorization"));
+    if (isAdminRequest) {
+      const admin = await requireTenantAdmin({ req, tenantId: input.tenantId });
+      if (!admin.ok) return publicError(404);
     } else {
-      await sendConfirmationWebhook({
-        appointmentId: data.id,
-        tenantId: effectiveTenantId,
-        professionalId,
-        startAt,
-        endAt,
-        customerName,
-        customerPhone: customerPhone ?? null,
-        customerEmail: customerEmail ?? null,
-        customerId: resolvedCustomerId ?? null,
-        serviceId: serviceId ?? null,
-        serviceName: service_name,
-        description,
-        notes: notes ?? null,
-        currency: currency ?? "CLP",
-        status: normalizedStatus,
-        manageToken: data.manage_token,
+      const allowed = await consumeRateLimit({
+        scope: "appointment_create",
+        key: opaqueKey(
+          requestIp(req),
+          input.tenantId,
+          input.customerEmail ?? input.customerPhone ?? "anonymous",
+        ),
+        limit: 5,
+        windowSeconds: 15 * 60,
       });
+      if (!allowed) return publicError(429, "Demasiadas solicitudes");
     }
 
+    const [{ data: service, error: serviceError }, { data: professional, error: professionalError }, paymentConfig] =
+      await Promise.all([
+        supabaseAdmin.from("services")
+          .select("id, tenant_id, duration_min, price, currency, is_active")
+          .eq("id", input.serviceId).eq("tenant_id", input.tenantId)
+          .eq("is_active", true).maybeSingle(),
+        supabaseAdmin.from("professionals")
+          .select("id, tenant_id, active")
+          .eq("id", input.professionalId).eq("tenant_id", input.tenantId)
+          .eq("active", true).maybeSingle(),
+        getTenantPaymentConfig(input.tenantId),
+      ]);
+    const duration = Number(service?.duration_min);
+    const price = Number(service?.price);
+    if (
+      serviceError || professionalError || !service || !professional ||
+      !Number.isInteger(duration) || duration < 5 || duration > 480 ||
+      !Number.isFinite(price) || price < 0
+    ) {
+      return publicError(409);
+    }
+
+    const customerId = await resolveCustomerId({
+      tenantId: input.tenantId,
+      customerId: input.customerId,
+      name: input.customerName,
+      phone: input.customerPhone,
+      email: input.customerEmail,
+    });
+    const paymentRequired = isAdminRequest
+      ? input.paymentRequired === true
+      : paymentConfig.enabled && paymentConfig.collectionMode !== "none";
+    const manageToken = deriveManageToken(input.tenantId, key, pepper);
+    const { data, error } = await supabaseAdmin.rpc("create_public_appointment", {
+      p_tenant_id: input.tenantId,
+      p_professional_id: input.professionalId,
+      p_service_id: input.serviceId,
+      p_start_at: new Date(input.startAt).toISOString(),
+      p_customer_id: customerId,
+      p_customer_name: input.customerName,
+      p_customer_phone: input.customerPhone ?? "",
+      p_customer_email: input.customerEmail ?? "",
+      p_notes: input.notes ?? "",
+      p_payment_required: paymentRequired,
+      p_payment_status: isAdminRequest ? input.paymentStatus ?? "not_required" : "pending",
+      p_manage_token_hash: hashManageToken(manageToken, pepper),
+      p_manage_token_expires_at: manageTokenExpiresAt(),
+      p_idempotency_key: key,
+    });
+    if (error) {
+      console.warn("[appointments/create] rejected", { code: error.code ?? null });
+      return publicError(error.code === "23P01" ? 409 : 400);
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.appointment_id) return publicError(500);
     return NextResponse.json({
       ok: true,
-      appointmentId: data.id,
-      manageToken: data.manage_token,
-      customerId: resolvedCustomerId ?? null,
+      appointmentId: row.appointment_id,
+      manageToken,
+      duplicate: row.duplicate === true,
     });
-  } catch (e: any) {
-    console.error("[appointments/create] error:", e?.message || e);
-
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error inesperado" },
-      { status: 500 }
-    );
+  } catch (error) {
+    console.error("[appointments/create] failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return publicError(500);
   }
 }

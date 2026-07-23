@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isUuid } from "@/lib/api/validators";
+import { authorizeAppointmentActor } from "@/lib/api/appointmentAccess";
+import {
+  consumeRateLimit,
+  idempotencyKey,
+  opaqueKey,
+  requestIp,
+} from "@/lib/security/request";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { calculatePaymentBreakdown } from "@/services/payments/payment-mode";
 import {
@@ -9,320 +16,200 @@ import {
 } from "@/services/payments/provider-factory";
 import type { PaymentProviderConfig } from "@/services/payments/providers/types";
 
-function buildProviderConfig(
-  providerId: PaymentProviderConfig["id"],
+function jsonError(status: number, error = "No se pudo iniciar el pago") {
+  return NextResponse.json({ ok: false, error }, { status });
+}
+
+function providerConfig(
+  provider: PaymentProviderConfig["id"],
   paymentConfig: Awaited<ReturnType<typeof getTenantPaymentConfig>>,
 ): PaymentProviderConfig {
-  if (providerId === "mercadopago") {
-    return {
-      id: providerId,
-      enabled: paymentConfig.paymentMethodsEnabled.includes(providerId),
-      credentials: {
-        accessToken: paymentConfig.accessToken,
-      },
-    };
-  }
-
-  if (providerId === "webpay") {
-    return {
-      id: providerId,
-      enabled: paymentConfig.paymentMethodsEnabled.includes(providerId),
-      credentials: {
-        commerceCode: paymentConfig.webpayCommerceCode,
-        apiKey: paymentConfig.webpayApiKey,
-        environment: paymentConfig.webpayEnvironment,
-      },
-    };
-  }
-
-  if (providerId === "khipu") {
-    return {
-      id: providerId,
-      enabled: paymentConfig.paymentMethodsEnabled.includes(providerId),
-      credentials: {
-        receiverId: paymentConfig.khipuReceiverId,
-        secret: paymentConfig.khipuSecret,
-        environment: paymentConfig.khipuEnvironment,
-      },
-    };
-  }
-
   return {
-    id: providerId,
-    enabled: paymentConfig.paymentMethodsEnabled.includes(providerId),
+    id: provider,
+    enabled: paymentConfig.paymentMethodsEnabled.includes(provider),
+    credentials: provider === "mercadopago"
+      ? { accessToken: paymentConfig.accessToken }
+      : undefined,
   };
 }
 
 export async function POST(req: Request) {
+  let createdIntentId = "";
   try {
     const body = await req.json().catch(() => null);
     const appointmentId = String(body?.appointmentId ?? "").trim();
-    const tenantId = body?.tenantId ? String(body.tenantId).trim() : "";
     const providerId = String(body?.provider ?? "mercadopago").trim();
-
-    if (!appointmentId || !isUuid(appointmentId)) {
-      return NextResponse.json(
-        { ok: false, error: "appointmentId inválido" },
-        { status: 400 },
-      );
-    }
-
-    if (tenantId && !isUuid(tenantId)) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId inválido" },
-        { status: 400 },
-      );
-    }
-
-    if (!isPaymentProviderId(providerId)) {
-      return NextResponse.json(
-        { ok: false, error: "Proveedor de pago inválido" },
-        { status: 400 },
-      );
+    const requestKey = idempotencyKey(req, body?.idempotencyKey);
+    if (!isUuid(appointmentId) || !isPaymentProviderId(providerId) || !requestKey) {
+      return jsonError(400, "Solicitud de pago inválida");
     }
 
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from("appointments")
       .select(
-        "id, tenant_id, service_id, service_name, customer_name, customer_email, status",
+        "id, tenant_id, service_id, service_name, customer_name, customer_email, status, payment_status, payment_url, payment_reference, service_price, currency, manage_token, manage_token_hash, manage_token_expires_at, manage_token_revoked_at, manage_token_legacy_expires_at",
       )
       .eq("id", appointmentId)
-      .single();
-
-    if (appointmentError || !appointment) {
-      return NextResponse.json(
-        { ok: false, error: "Cita no encontrada" },
-        { status: 404 },
-      );
-    }
-
-    if (tenantId && appointment.tenant_id !== tenantId) {
-      return NextResponse.json(
-        { ok: false, error: "Tenant mismatch para la cita" },
-        { status: 403 },
-      );
-    }
-
-    if (String(appointment.status ?? "").toLowerCase() === "canceled") {
-      return NextResponse.json(
-        { ok: false, error: "No se puede pagar una cita cancelada" },
-        { status: 409 },
-      );
-    }
-
-    if (!appointment.service_id) {
-      return NextResponse.json(
-        { ok: false, error: "La cita no tiene service_id asociado" },
-        { status: 400 },
-      );
-    }
-
-    const paymentConfig = await getTenantPaymentConfig(appointment.tenant_id);
-    const providerConfig = buildProviderConfig(providerId, paymentConfig);
-
-    if (!paymentConfig.enabled || paymentConfig.collectionMode === "none") {
-      return NextResponse.json(
-        { ok: false, error: "Pagos no habilitados para este tenant" },
-        { status: 400 },
-      );
-    }
-
-    if (!providerConfig.enabled) {
-      return NextResponse.json(
-        { ok: false, error: "Proveedor no habilitado para este tenant" },
-        { status: 400 },
-      );
-    }
-
-    const { data: service, error: serviceError } = await supabaseAdmin
-      .from("services")
-      .select("id, tenant_id, name, price, currency")
-      .eq("tenant_id", appointment.tenant_id)
-      .eq("id", appointment.service_id)
-      .single();
-
-    if (serviceError || !service) {
-      return NextResponse.json(
-        { ok: false, error: "Servicio de la cita no encontrado" },
-        { status: 404 },
-      );
-    }
-
-    const { data: tenant } = await supabaseAdmin
-      .from("tenants")
-      .select("base_url, slug")
-      .eq("id", appointment.tenant_id)
       .maybeSingle();
+    if (appointmentError || !appointment) return jsonError(404);
+
+    const actor = await authorizeAppointmentActor({
+      req,
+      appointment,
+      manageToken: body?.manageToken,
+    });
+    if (!actor.ok) return jsonError(404);
+    if (["canceled", "cancelled"].includes(String(appointment.status).toLowerCase())) {
+      return jsonError(409);
+    }
+    if (!appointment.service_id || String(appointment.payment_status) === "paid") {
+      return jsonError(409);
+    }
+
+    const allowed = await consumeRateLimit({
+      scope: "payment_create",
+      key: opaqueKey(requestIp(req), appointment.tenant_id, appointment.id),
+      limit: 8,
+      windowSeconds: 15 * 60,
+    });
+    if (!allowed) return jsonError(429, "Demasiadas solicitudes");
+
+    const { data: existingIntent, error: existingIntentError } = await supabaseAdmin
+      .from("payment_intents")
+      .select("id, appointment_id, provider, status, provider_payment_id")
+      .eq("tenant_id", appointment.tenant_id)
+      .eq("idempotency_key", requestKey)
+      .maybeSingle();
+    if (existingIntentError) return jsonError(500);
+    if (existingIntent) {
+      if (existingIntent.provider !== providerId || existingIntent.appointment_id !== appointment.id) return jsonError(409);
+      return NextResponse.json({
+        ok: true,
+        provider: providerId,
+        payment_url: appointment.payment_url ?? null,
+        reference: appointment.payment_reference ?? null,
+        replay: true,
+      });
+    }
+
+    const [{ data: service, error: serviceError }, paymentConfig] = await Promise.all([
+      supabaseAdmin
+        .from("services")
+        .select("id, tenant_id, name, price, currency, is_active")
+        .eq("id", appointment.service_id)
+        .eq("tenant_id", appointment.tenant_id)
+        .eq("is_active", true)
+        .maybeSingle(),
+      getTenantPaymentConfig(appointment.tenant_id),
+    ]);
+    if (serviceError || !service) return jsonError(404);
+    const bookedAmount = Number(appointment.service_price ?? service.price);
+    if (!Number.isFinite(bookedAmount) || bookedAmount < 0) return jsonError(409);
+    const config = providerConfig(providerId, paymentConfig);
+    if (!paymentConfig.enabled || paymentConfig.collectionMode === "none" || !config.enabled) {
+      return jsonError(409);
+    }
 
     const breakdown = calculatePaymentBreakdown({
-      totalAmount: service.price ?? 0,
+      totalAmount: bookedAmount,
       paymentMode: paymentConfig.collectionMode,
       depositType: paymentConfig.depositType,
       depositValue: paymentConfig.depositValue,
     });
-
-    if (breakdown.requiredOnlineAmount <= 0) {
-      return NextResponse.json(
-        { ok: false, error: "Este tenant no requiere pago online" },
-        { status: 400 },
-      );
+    if (!Number.isFinite(breakdown.requiredOnlineAmount) || breakdown.requiredOnlineAmount <= 0) {
+      return jsonError(409);
     }
 
-    const { data: existingPayments, error: existingPaymentsError } =
-      await supabaseAdmin
-        .from("payments")
-        .select("id, status, mp_preference_id")
-        .eq("tenant_id", appointment.tenant_id)
-        .eq("appointment_id", appointment.id);
+    const intentId = crypto.randomUUID();
+    createdIntentId = intentId;
+    const compactIntent = intentId.replace(/-/g, "");
+    const buyOrder = `CTY${compactIntent}`.slice(0, 26);
+    const sessionId = `${appointment.tenant_id.replace(/-/g, "")}:${compactIntent}`.slice(0, 61);
+    const currency = String(appointment.currency ?? service.currency ?? "CLP").trim().toUpperCase() || "CLP";
+    const { error: intentError } = await supabaseAdmin.from("payment_intents").insert({
+      id: intentId,
+      tenant_id: appointment.tenant_id,
+      appointment_id: appointment.id,
+      provider: providerId,
+      buy_order: providerId === "webpay" ? buyOrder : null,
+      session_id: providerId === "webpay" ? sessionId : null,
+      amount: breakdown.requiredOnlineAmount,
+      currency,
+      status: "created",
+      idempotency_key: requestKey,
+    });
+    if (intentError) return jsonError(intentError.code === "23505" ? 409 : 500);
 
-    if (existingPaymentsError) {
-      console.error("[payments/create] error leyendo payments:", existingPaymentsError);
-      return NextResponse.json(
-        { ok: false, error: "No se pudo validar el estado de pago actual" },
-        { status: 500 },
-      );
-    }
-
-    const paidPayment = (existingPayments ?? []).find(
-      (payment) => String(payment.status ?? "").toLowerCase() === "paid",
-    );
-
-    if (paidPayment) {
-      return NextResponse.json(
-        { ok: false, error: "La cita ya tiene un pago aprobado" },
-        { status: 409 },
-      );
-    }
-
+    const { data: tenant } = await supabaseAdmin
+      .from("tenants")
+      .select("base_url")
+      .eq("id", appointment.tenant_id)
+      .maybeSingle();
     const appUrl =
       String(tenant?.base_url ?? "").trim() ||
       process.env.NEXT_PUBLIC_APP_URL?.trim() ||
       new URL(req.url).origin;
 
-    const notificationUrl =
-      providerId === "mercadopago"
-        ? new URL(
-            process.env.MERCADOPAGO_WEBHOOK_URL?.trim() ||
-              `${appUrl}/api/webhooks/mercadopago`,
-          )
-        : new URL(`${appUrl}/api/webhooks/${providerId}`);
-    notificationUrl.searchParams.set("tenantId", appointment.tenant_id);
-    notificationUrl.searchParams.set("appointmentId", appointment.id);
+    const providerNotificationUrl = new URL(
+      providerId === "mercadopago" && process.env.MERCADOPAGO_WEBHOOK_URL
+        ? process.env.MERCADOPAGO_WEBHOOK_URL
+        : "/api/webhooks/" + providerId,
+      appUrl,
+    );
+    if (providerId === "mercadopago") {
+      providerNotificationUrl.searchParams.set("intent", intentId);
+    }
 
-    const successUrl =
-      providerId === "webpay"
-        ? `${appUrl}/api/payments/webpay/return?tenantId=${appointment.tenant_id}&appointmentId=${appointment.id}`
-        : `${appUrl}/reservar/resultado?status=success`;
-
-    const provider = getPaymentProvider(providerId);
-    // TODO(manual): when an admin validation route marks a manual transfer as
-    // paid, call notifyPaymentConfirmed after the pending -> paid transition.
-    const payment = await provider.createPayment({
+    const payment = await getPaymentProvider(providerId).createPayment({
+      paymentIntentId: intentId,
       appointmentId: appointment.id,
       tenantId: appointment.tenant_id,
+      buyOrder,
+      sessionId,
       title: appointment.service_name || service.name || "Reserva",
       amount: breakdown.requiredOnlineAmount,
-      currency: String(service.currency ?? "CLP").trim().toUpperCase() || "CLP",
+      currency,
       customerName: appointment.customer_name ?? null,
       customerEmail: appointment.customer_email ?? null,
-      successUrl,
-      failureUrl: `${appUrl}/reservar/resultado?status=failure`,
-      pendingUrl: `${appUrl}/reservar/resultado?status=pending&id=${appointment.id}&provider=${providerId}`,
-      notificationUrl: notificationUrl.toString(),
-      config: providerConfig,
+      successUrl: providerId === "webpay"
+        ? appUrl + "/api/payments/webpay/return"
+        : appUrl + "/reservar/resultado?status=success&id=" + encodeURIComponent(appointment.id),
+      failureUrl: appUrl + "/reservar/resultado?status=failure&id=" + encodeURIComponent(appointment.id),
+      pendingUrl: appUrl + "/reservar/resultado?status=pending&id=" + encodeURIComponent(appointment.id),
+      notificationUrl: providerNotificationUrl.toString(),
+      config,
     });
 
-    const latestPayment = (existingPayments ?? [])[0] ?? null;
-
-    if (latestPayment?.id) {
-      const { error: updateError } = await supabaseAdmin
-        .from("payments")
-        .update({
-          mp_preference_id: payment.reference,
-          external_reference: appointment.id,
-          amount: breakdown.requiredOnlineAmount,
-          status: "pending",
-        })
-        .eq("id", latestPayment.id)
-        .eq("tenant_id", appointment.tenant_id);
-
-      if (updateError) {
-        console.error("[payments/create] error actualizando payment:", updateError);
-        return NextResponse.json(
-          { ok: false, error: "No se pudo persistir el pago" },
-          { status: 500 },
-        );
-      }
-    } else {
-      const { error: insertError } = await supabaseAdmin.from("payments").insert({
-        tenant_id: appointment.tenant_id,
-        appointment_id: appointment.id,
-        mp_preference_id: payment.reference,
-        external_reference: appointment.id,
-        amount: breakdown.requiredOnlineAmount,
-        status: "pending",
-      });
-
-      if (insertError) {
-        console.error("[payments/create] error insertando payment:", insertError);
-        return NextResponse.json(
-          { ok: false, error: "No se pudo guardar el pago pendiente" },
-          { status: 500 },
-        );
-      }
-    }
-
-    const { error: appointmentUpdateError } = await supabaseAdmin
-      .from("appointments")
-      .update({
-        payment_required: true,
-        payment_status: "pending",
-        status: "pending_payment",
-        booking_status: "pending_payment",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", appointment.id)
-      .eq("tenant_id", appointment.tenant_id);
-
-    if (appointmentUpdateError) {
-      console.error("[payments/create] error actualizando appointment:", appointmentUpdateError);
-      return NextResponse.json(
-        { ok: false, error: "No se pudo actualizar la cita al iniciar el pago" },
-        { status: 500 },
-      );
-    }
-
-    await supabaseAdmin
-      .from("appointments")
-      .update({
-        payment_provider: providerId,
-        payment_required_amount: breakdown.requiredOnlineAmount,
-        payment_remaining_amount: breakdown.remainingAmount,
-        payment_reference: payment.reference,
-        payment_url: payment.paymentUrl,
-      })
-      .eq("id", appointment.id)
-      .eq("tenant_id", appointment.tenant_id);
+    const { error: activationError } = await supabaseAdmin.rpc(
+      "activate_payment_intent",
+      {
+        p_intent_id: intentId,
+        p_provider_payment_id: payment.reference,
+        p_payment_url: payment.paymentUrl,
+        p_remaining_amount: breakdown.remainingAmount,
+      },
+    );
+    if (activationError) throw new Error("payment_activation_failed");
 
     return NextResponse.json({
       ok: true,
       provider: providerId,
       payment_url: payment.paymentUrl,
-      init_point: payment.paymentUrl,
-      preference_id: payment.reference,
       reference: payment.reference,
       redirect_method: payment.redirectMethod ?? "GET",
       redirect_payload: payment.redirectPayload ?? null,
-      amount: breakdown.requiredOnlineAmount,
-      totalAmount: breakdown.totalAmount,
-      remainingAmount: breakdown.remainingAmount,
-      paymentMode: breakdown.paymentMode,
     });
   } catch (error) {
-    console.error("[payments/create] unexpected error:", error);
-    return NextResponse.json(
-      { ok: false, error: "Error interno creando pago" },
-      { status: 500 },
-    );
+    if (createdIntentId) {
+      await supabaseAdmin
+        .from("payment_intents")
+        .update({ status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", createdIntentId)
+        .eq("status", "created");
+    }
+    console.error("[payments/create] failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return jsonError(500);
   }
 }

@@ -123,9 +123,11 @@ function ResultInner() {
 
     (async () => {
       try {
+        const manageToken = sessionStorage.getItem("citaya_manage_token:" + appointmentId) ?? "";
+        if (!manageToken) return;
         const res = await fetch(
           `/api/appointments/by-id?id=${encodeURIComponent(appointmentId)}`,
-          { cache: "no-store" },
+          { cache: "no-store", headers: { "x-manage-token": manageToken } },
         );
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.appointment) return;

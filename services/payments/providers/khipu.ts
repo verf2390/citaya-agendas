@@ -2,6 +2,7 @@ import type {
   CreateProviderPaymentParams,
   PaymentProvider,
 } from "@/services/payments/providers/types";
+import { getKhipuCredentials } from "@/services/payments/provider-credentials";
 
 type KhipuCreatePaymentResponse = {
   payment_id?: string;
@@ -13,23 +14,22 @@ type KhipuCreatePaymentResponse = {
 export const khipuProvider: PaymentProvider = {
   id: "khipu",
   async createPayment(args: CreateProviderPaymentParams) {
-    const secret = String(args.config.credentials?.secret ?? "").trim();
-
-    if (!secret) {
-      throw new Error("Falta secret de Khipu");
+    const credentials = getKhipuCredentials(args.tenantId);
+    if (!credentials) {
+      throw new Error("Falta configuración server-side de Khipu");
     }
 
     const res = await fetch("https://payment-api.khipu.com/v3/payments", {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": secret,
+        "x-api-key": credentials.apiKey,
       },
       body: JSON.stringify({
         amount: args.amount,
         currency: args.currency,
         subject: args.title,
-        transaction_id: args.appointmentId,
+        transaction_id: args.paymentIntentId,
         custom: JSON.stringify({
           tenantId: args.tenantId,
           appointmentId: args.appointmentId,
@@ -56,7 +56,6 @@ export const khipuProvider: PaymentProvider = {
       reference: json.payment_id,
       paymentUrl: json.payment_url,
       redirectMethod: "GET",
-      raw: json,
     };
   },
 };

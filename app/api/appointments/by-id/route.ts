@@ -1,103 +1,59 @@
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { isUuid } from "@/lib/api/validators";
+import { authorizeAppointmentActor } from "@/lib/api/appointmentAccess";
+
+function notFound() {
+  return NextResponse.json({ ok: false, error: "Cita no disponible" }, { status: 404 });
+}
 
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const id = url.searchParams.get("id");
-
-    if (!id) {
-      return NextResponse.json({ error: "Falta id" }, { status: 400 });
-    }
-
-    const { data, error } = await supabaseServer
+    const id = String(new URL(req.url).searchParams.get("id") ?? "").trim();
+    if (!isUuid(id)) return notFound();
+    const { data, error } = await supabaseAdmin
       .from("appointments")
       .select(`
-        id,
-        start_at,
-        end_at,
-        customer_name,
-        customer_phone,
-        customer_email,
-        professional_id,
-        tenant_id,
-        service_name,
-        description,
-        payment_provider,
-        payment_status,
-        payment_reference,
-        payment_url,
-        manage_token,
-        tenants (
-          id,
-          name,
-          slug,
-          base_url,
-          admin_email,
-          address,
-          city,
-          phone_display,
-          logo_url,
-          show_address_after_booking,
-          show_phone_after_booking,
-          tenant_payment_settings (
-            bank_name,
-            bank_account_type,
-            bank_account_number,
-            bank_account_holder,
-            bank_rut,
-            bank_email
-          )
-        ),
-        professionals (
-          id,
-          name,
-          title,
-          avatar_url,
-          code
-        )
+        id, tenant_id, professional_id, service_id, service_name,
+        customer_name, customer_phone, customer_email,
+        start_at, end_at, status, booking_status, payment_status,
+        manage_token, manage_token_hash, manage_token_expires_at,
+        manage_token_revoked_at, manage_token_legacy_expires_at,
+        professional:professionals(id, name),
+        tenant:tenants(id, name, slug, logo_url, address, city, phone_display,
+          show_address_after_booking, show_phone_after_booking)
       `)
       .eq("id", id)
-      .single();
+      .maybeSingle();
+    if (error || !data) return notFound();
 
-    if (error || !data) {
-      return NextResponse.json(
-        { error: error?.message ?? "Cita no encontrada" },
-        { status: 404 }
-      );
-    }
-
-    // Supabase puede devolver join como objeto o array
-    const profAny = (data as any)?.professionals ?? null;
-    const profObj = Array.isArray(profAny)
-      ? (profAny.length ? profAny[0] : null)
-      : profAny;
-
-    const professional_name =
-      (profObj?.name && String(profObj.name).trim()) ||
-      (profObj?.title && String(profObj.title).trim()) ||
-      null;
-
-    const tenant = (data as any)?.tenants ?? null;
-
-    const appointment = {
-      ...(data as any),
-      professional_name,
-      // (opcional) también dejo el objeto para frontend/email si lo quieres
-      professional: profObj ?? null,
+    const access = await authorizeAppointmentActor({ req, appointment: data });
+    if (!access.ok) return notFound();
+    const common = {
+      id: data.id,
+      tenant_id: data.tenant_id,
+      professional_id: data.professional_id,
+      service_id: data.service_id,
+      service_name: data.service_name,
+      start_at: data.start_at,
+      end_at: data.end_at,
+      status: data.status,
+      booking_status: data.booking_status,
+      payment_status: data.payment_status,
+      professional_name: (data.professional as { name?: string } | null)?.name ?? null,
+      tenant: data.tenant,
     };
-
-    return NextResponse.json({
-      ok: true,
-      debug: "BY_ID_WITH_DESCRIPTION_AND_PROFESSIONAL",
-      appointment,
-      tenant,
-    });
-  } catch (e: any) {
-    // Evita que el front reviente con "client-side exception" por un error inesperado
-    return NextResponse.json(
-      { error: e?.message ?? "Error inesperado en by-id" },
-      { status: 500 }
-    );
+    const appointment =
+      access.actor === "admin"
+        ? {
+            ...common,
+            customer_name: data.customer_name,
+            customer_phone: data.customer_phone,
+            customer_email: data.customer_email,
+          }
+        : common;
+    return NextResponse.json({ ok: true, appointment });
+  } catch {
+    return notFound();
   }
 }

@@ -186,37 +186,6 @@ function ConfirmacionInner() {
     : "";
   const tenantSlugInitial = tenantFromQuery || tenantFromSubdomain;
 
-  if (!id) {
-    return (
-      <DemoShell>
-        <DemoContainer className="max-w-3xl px-4 py-8 font-[system-ui] sm:py-10">
-          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-6">
-            <div className="text-lg font-extrabold">⚠️ Link inválido</div>
-            <div className="mt-2 text-sm font-semibold text-red-600">
-              Falta el id de la cita.
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Button asChild variant="pill" className="h-11 gap-2 px-4 text-sm font-extrabold">
-                <Link href="/">
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver al inicio
-                </Link>
-              </Button>
-
-              <Button asChild variant="hero" className="h-11 gap-2 px-4 text-sm font-extrabold">
-                <Link href="/reservar">
-                  <RefreshCw className="h-4 w-4" />
-                  Reservar otra hora
-                </Link>
-              </Button>
-            </div>
-          </SurfaceCard>
-        </DemoContainer>
-      </DemoShell>
-    );
-  }
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
 
@@ -239,9 +208,11 @@ function ConfirmacionInner() {
         setLoading(true);
         setError("");
 
+        const manageToken = sessionStorage.getItem("citaya_manage_token:" + id) ?? "";
+        if (!manageToken) throw new Error("Enlace de gestión requerido");
         const res = await fetch(
           `/api/appointments/by-id?id=${encodeURIComponent(id)}`,
-          { cache: "no-store" },
+          { cache: "no-store", headers: { "x-manage-token": manageToken } },
         );
 
         const json = await res.json().catch(() => null);
@@ -251,8 +222,14 @@ function ConfirmacionInner() {
         }
 
         if (!cancelled) setAppt(json.appointment as Appt);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message ?? "No se pudo cargar la cita");
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "No se pudo cargar la cita",
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -349,37 +326,6 @@ function ConfirmacionInner() {
       cancelled = true;
     };
   }, [tenantSlugInitial, tenant?.slug]);
-
-  if (error) {
-    return (
-      <DemoShell>
-        <DemoContainer className="max-w-3xl px-4 py-8 font-[system-ui] sm:py-10">
-          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-6">
-            <div className="text-lg font-extrabold">
-              ⚠️ No se pudo cargar la cita
-            </div>
-            <div className="mt-2 text-sm font-semibold text-red-600">{error}</div>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Button asChild variant="pill" className="h-11 gap-2 px-4 text-sm font-extrabold">
-                <Link href="/">
-                  <ArrowLeft className="h-4 w-4" />
-                  Volver al inicio
-                </Link>
-              </Button>
-
-              <Button asChild variant="hero" className="h-11 gap-2 px-4 text-sm font-extrabold">
-                <Link href="/reservar">
-                  <RefreshCw className="h-4 w-4" />
-                  Reservar otra hora
-                </Link>
-              </Button>
-            </div>
-          </SurfaceCard>
-        </DemoContainer>
-      </DemoShell>
-    );
-  }
 
   const startLabel = useMemo(
     () => formatStartCL(appt?.start_at ?? ""),
@@ -548,6 +494,69 @@ function ConfirmacionInner() {
     startLabel,
     descriptionText,
   ]);
+
+
+  if (!id) {
+    return (
+      <DemoShell>
+        <DemoContainer className="max-w-3xl px-4 py-8 font-[system-ui] sm:py-10">
+          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-6">
+            <div className="text-lg font-extrabold">⚠️ Link inválido</div>
+            <div className="mt-2 text-sm font-semibold text-red-600">
+              Falta el id de la cita.
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button asChild variant="pill" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/">
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver al inicio
+                </Link>
+              </Button>
+
+              <Button asChild variant="hero" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/reservar">
+                  <RefreshCw className="h-4 w-4" />
+                  Reservar otra hora
+                </Link>
+              </Button>
+            </div>
+          </SurfaceCard>
+        </DemoContainer>
+      </DemoShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <DemoShell>
+        <DemoContainer className="max-w-3xl px-4 py-8 font-[system-ui] sm:py-10">
+          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-6">
+            <div className="text-lg font-extrabold">
+              ⚠️ No se pudo cargar la cita
+            </div>
+            <div className="mt-2 text-sm font-semibold text-red-600">{error}</div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button asChild variant="pill" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/">
+                  <ArrowLeft className="h-4 w-4" />
+                  Volver al inicio
+                </Link>
+              </Button>
+
+              <Button asChild variant="hero" className="h-11 gap-2 px-4 text-sm font-extrabold">
+                <Link href="/reservar">
+                  <RefreshCw className="h-4 w-4" />
+                  Reservar otra hora
+                </Link>
+              </Button>
+            </div>
+          </SurfaceCard>
+        </DemoContainer>
+      </DemoShell>
+    );
+  }
 
   async function onCopy() {
     try {
