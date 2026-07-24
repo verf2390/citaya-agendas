@@ -104,18 +104,24 @@ test("reserva pública acota sus loaders y ofrece Reintentar", () => {
   assert.match(source, /Reintentar/);
 });
 
-test("admin clientes, agenda, servicios y facturación no consultan tenants directo", () => {
+test("admin resuelve el tenant sin consultas directas desde el cliente", () => {
   for (const file of [
     "app/admin/customers/page.tsx",
     "app/admin/agenda/page.tsx",
     "app/admin/servicios/page.tsx",
-    "app/admin/facturacion/page.tsx",
   ]) {
     const source = readFileSync(resolve(repoRoot, file), "utf8");
     assert.match(source, /resolveTenantFromHostname/);
     assert.doesNotMatch(source, /\.from\("tenants"\)/);
     assert.match(source, /Reintentar/);
   }
+
+  const billing = readFileSync(resolve(repoRoot, "app/admin/facturacion/page.tsx"), "utf8");
+  const billingApi = readFileSync(resolve(repoRoot, "app/api/admin/dte-settings/route.ts"), "utf8");
+  assert.match(billing, /adminFetch\("\/api\/admin\/dte-settings"/);
+  assert.doesNotMatch(billing, /\.from\("tenants"\)/);
+  assert.match(billing, /Reintentar/);
+  assert.match(billingApi, /requireHostTenantAdmin/);
 });
 
 test("endpoint separa not-found de fallo Supabase sin filtrar mensajes SQL", () => {

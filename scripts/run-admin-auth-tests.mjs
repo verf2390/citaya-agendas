@@ -32,7 +32,7 @@ const query = (table) => {
     async maybeSingle() {
       if (state.errors[table]) return { data: null, error: { code: state.errors[table] } };
       if (table === "tenants") {
-        const matches = state.tenant && state.tenant.id === filters.id && (!filters.slug || state.tenant.slug === filters.slug);
+        const matches = state.tenant && (!filters.id || state.tenant.id === filters.id) && (!filters.slug || state.tenant.slug === filters.slug);
         return { data: matches ? state.tenant : null, error: null };
       }
       if (table === "tenant_members") return { data: state.member, error: null };
@@ -45,12 +45,15 @@ const query = (table) => {
 const mock = { auth: { async getUser(token) { return token === "valid" ? { data: { user: state.user }, error: null } : { data: { user: null }, error: {} }; } }, from: query };
 const supabasePath = require.resolve(resolve(repoRoot, "lib/supabaseAdmin.ts"));
 require.cache[supabasePath] = { id: supabasePath, filename: supabasePath, loaded: true, exports: { supabaseAdmin: mock }, children: [], paths: [] };
-const { requireTenantAdmin } = require(resolve(repoRoot, "lib/api/requireTenantAdmin.ts"));
+const { requireTenantAdmin, requireHostTenantAdmin } = require(resolve(repoRoot, "lib/api/requireTenantAdmin.ts"));
 const tenantId = state.tenant.id;
 const req = (token = "valid", slug = "tenant-a") => new Request("https://admin.example/api", { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), host: "admin.example", ...(slug ? { "x-forwarded-host": `${slug}.citaya.online` } : {}) } });
 const reset = () => { state.user = { id: "user-a" }; state.tenant = { id: tenantId, slug: "tenant-a" }; state.member = null; state.platform = null; state.errors = {}; };
 
 test.beforeEach(reset);
+test("hostname deriva tenant correcto", async () => { state.member = { role: "owner", is_active: true }; const result = await requireHostTenantAdmin(req()); assert.equal(result.ok, true); assert.equal(result.tenantId, tenantId); });
+test("hostname de tenant ajeno falla cerrado", async () => { state.member = { role: "owner", is_active: true }; assert.equal((await requireHostTenantAdmin(req("valid", "tenant-b"))).status, 403); });
+test("hostname correcto sin membresía queda bloqueado", async () => assert.equal((await requireHostTenantAdmin(req())).status, 403));
 test("sin token devuelve 401", async () => assert.equal((await requireTenantAdmin({ req: req(""), tenantId })).status, 401));
 test("JWT válido sin autorización devuelve 403", async () => assert.equal((await requireTenantAdmin({ req: req(), tenantId })).status, 403));
 test("tenant ajeno devuelve 403", async () => { state.member = { role: "owner", is_active: true }; assert.equal((await requireTenantAdmin({ req: req("valid", "tenant-b"), tenantId })).status, 403); });
@@ -61,8 +64,8 @@ test("member e inactivo rechazan", async () => { state.member = { role: "member"
 test("UUID ajeno queda filtrado por tenant antes de mutar", () => {
   for (const file of ["app/api/appointments/cancel-by-id/route.ts", "app/api/appointments/reschedule-by-id/route.ts", "app/api/admin/appointments/mark-paid/route.ts"]) {
     const source = readFileSync(resolve(repoRoot, file), "utf8");
-    assert.match(source, /requireTenantAdmin/);
-    assert.match(source, /\.eq\("tenant_id",/);
+    assert.match(source, /require(?:Host)?TenantAdmin/);
+    assert.match(source, /(?:\.eq\("tenant_id",|p_tenant_id: access\.tenantId)/);
   }
 });
 

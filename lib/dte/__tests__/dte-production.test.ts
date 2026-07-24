@@ -93,6 +93,7 @@ function settings(tenantId: string, enabled = true): ProductionTenantSettings {
     privateKeyPath: "/tmp/private-key.pem",
     certificateValidFrom: "2026-01-01T00:00:00.000Z",
     certificateValidTo: "2030-01-01T00:00:00.000Z",
+    autoEmailDelivery: true,
   };
 }
 
@@ -369,7 +370,7 @@ test("emit performs one upload, persists Track ID safely and enqueues delivery o
   assert.equal(submitted.status, "submitted");
   assert.equal(submitted.hasTrackId, true);
   assert.equal(context.client.uploads, 1);
-  assert.equal(context.repository.outboxRecords().length, 1);
+  assert.equal(context.repository.outboxRecords().length, 0);
   const detail = await context.service.getSafeDetail(context.tenantId, draft.id);
   assert.equal(detail.artifacts.some((artifact) => artifact.kind === "sii_response"), true);
   await assert.rejects(
@@ -382,7 +383,7 @@ test("emit performs one upload, persists Track ID safely and enqueues delivery o
     /DTE_EMIT_STATE_INVALID|DTE_UPLOAD_ALREADY_ATTEMPTED/,
   );
   assert.equal(context.client.uploads, 1);
-  assert.equal(context.repository.outboxRecords().length, 1);
+  assert.equal(context.repository.outboxRecords().length, 0);
 });
 
 test("SII rejection and ambiguous response are terminal for automatic emission", async () => {

@@ -9,6 +9,7 @@ import {
   useRef,
   type RefObject,
 } from "react";
+import { ProfessionalAvatar } from "@/components/booking/ProfessionalAvatar";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -35,6 +36,7 @@ import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 import { fetchWithClientTimeout } from "@/lib/client/async-timeout";
 import { resolveTenantBySlug } from "@/lib/client/tenant-resolution";
 import { getTenantSlugFromHostname, normalizeTenantSlug } from "@/lib/tenant";
+import { validateRut } from "@/lib/dte/rut";
 
 type Slot = { start_at: string; end_at: string };
 type WaitlistTarget =
@@ -429,6 +431,13 @@ function ReservarInner() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [invoiceRequested, setInvoiceRequested] = useState(false);
+  const [invoiceRut, setInvoiceRut] = useState("");
+  const [invoiceLegalName, setInvoiceLegalName] = useState("");
+  const [invoiceActivity, setInvoiceActivity] = useState("");
+  const [invoiceAddress, setInvoiceAddress] = useState("");
+  const [invoiceCommune, setInvoiceCommune] = useState("");
+  const [invoiceCity, setInvoiceCity] = useState("");
   const [paymentChoice, setPaymentChoice] = useState<PaymentChoice>("pay_later");
   const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState<
     PaymentProviderId[]
@@ -824,6 +833,7 @@ function ReservarInner() {
     fullName.trim().length >= 2 &&
     isPhoneValid &&
     isValidEmail(email) &&
+    (!invoiceRequested || (validateRut(invoiceRut) && invoiceLegalName.trim().length >= 2 && invoiceActivity.trim().length >= 2 && invoiceAddress.trim().length >= 2 && invoiceCommune.trim().length >= 2)) &&
     (tenantPaymentMode !== "required" || paymentChoice === "pay_now") &&
     !saving;
 
@@ -884,6 +894,15 @@ function ReservarInner() {
       return;
     }
 
+    if (invoiceRequested && (
+      !validateRut(invoiceRut) || !invoiceLegalName.trim() || !invoiceActivity.trim() ||
+      !invoiceAddress.trim() || !invoiceCommune.trim()
+    )) {
+      alert("Completa los datos tributarios para solicitar factura.");
+      scrollToRef(contactRef);
+      return;
+    }
+
     if (isPaymentRequired && paymentChoice !== "pay_now") {
       alert("Este servicio requiere pago online para reservar.");
       scrollToRef(paymentRef);
@@ -917,6 +936,13 @@ function ReservarInner() {
         paymentStatus: currentPaymentStatus,
 
         notes: null,
+        invoiceRequested,
+        invoiceReceiverRut: invoiceRequested ? invoiceRut : null,
+        invoiceReceiverLegalName: invoiceRequested ? invoiceLegalName : null,
+        invoiceReceiverActivity: invoiceRequested ? invoiceActivity : null,
+        invoiceReceiverAddress: invoiceRequested ? invoiceAddress : null,
+        invoiceReceiverCommune: invoiceRequested ? invoiceCommune : null,
+        invoiceReceiverCity: invoiceRequested ? invoiceCity : null,
       };
 
       const res = await fetch("/api/appointments/create", {
@@ -1570,19 +1596,7 @@ function ReservarInner() {
                         className="mt-4 bg-white/88 p-3 sm:p-4 shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] ring-1 ring-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.08)]">
-                            {pro.avatar_url ? (
-                              <img
-                                src={pro.avatar_url}
-                                alt={pro.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <span className="text-sm font-extrabold">
-                                {pro.name.slice(0, 2).toUpperCase()}
-                              </span>
-                            )}
-                          </div>
+                          <ProfessionalAvatar name={pro.name} url={pro.avatar_url} />
 
                           <div className="min-w-0">
                             <div className="truncate text-[12px] font-extrabold sm:text-sm">
@@ -2184,6 +2198,42 @@ function ReservarInner() {
                       )}
                     />
                   </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
+                  <label className="flex items-center gap-2 text-[11px] font-extrabold sm:text-sm">
+                    <input
+                      type="checkbox"
+                      checked={invoiceRequested}
+                      onChange={(event) => setInvoiceRequested(event.target.checked)}
+                      disabled={saving || !tenantId}
+                      className="h-4 w-4 accent-slate-900"
+                    />
+                    Necesito factura electrónica
+                  </label>
+                  {invoiceRequested ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      {[
+                        ["RUT receptor", invoiceRut, setInvoiceRut, "76.543.210-3"],
+                        ["Razón social", invoiceLegalName, setInvoiceLegalName, "Empresa SpA"],
+                        ["Giro", invoiceActivity, setInvoiceActivity, "Servicios profesionales"],
+                        ["Dirección", invoiceAddress, setInvoiceAddress, "Calle 123"],
+                        ["Comuna", invoiceCommune, setInvoiceCommune, "Santiago"],
+                        ["Ciudad", invoiceCity, setInvoiceCity, "Santiago"],
+                      ].map(([label, value, setter, placeholder]) => (
+                        <label key={String(label)} className="grid gap-1 text-[10px] font-semibold sm:text-xs">
+                          {String(label)}
+                          <input
+                            value={String(value)}
+                            onChange={(event) => (setter as (value: string) => void)(event.target.value)}
+                            placeholder={String(placeholder)}
+                            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs outline-none focus:ring-2 focus:ring-slate-200"
+                          />
+                        </label>
+                      ))}
+                      {!validateRut(invoiceRut) && invoiceRut.trim() ? <p className="text-xs font-bold text-red-700 sm:col-span-2">RUT receptor inválido.</p> : null}
+                    </div>
+                  ) : null}
                 </div>
 
                 <SurfaceCard

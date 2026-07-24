@@ -15,6 +15,7 @@ import {
   requestIp,
 } from "@/lib/security/request";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
+import { normalizeRut, validateRut } from "@/lib/dte/rut";
 
 function publicError(status = 400, error = "No se pudo crear la reserva") {
   return NextResponse.json({ ok: false, error }, { status });
@@ -82,10 +83,10 @@ export async function POST(req: Request) {
       if (!allowed) return publicError(429, "Demasiadas solicitudes");
     }
 
-    const [{ data: service, error: serviceError }, { data: professional, error: professionalError }, paymentConfig] =
+    const [{ data: service, error: serviceError }, { data: professional, error: professionalError }, paymentConfig, { data: issuanceConfig }] =
       await Promise.all([
         supabaseAdmin.from("services")
-          .select("id, tenant_id, duration_min, price, currency, is_active")
+          .select("id, tenant_id, duration_min, price, currency, is_active, tax_treatment")
           .eq("id", input.serviceId).eq("tenant_id", input.tenantId)
           .eq("is_active", true).maybeSingle(),
         supabaseAdmin.from("professionals")
@@ -93,6 +94,7 @@ export async function POST(req: Request) {
           .eq("id", input.professionalId).eq("tenant_id", input.tenantId)
           .eq("active", true).maybeSingle(),
         getTenantPaymentConfig(input.tenantId),
+        supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment").eq("tenant_id", input.tenantId).maybeSingle(),
       ]);
     const duration = Number(service?.duration_min);
     const price = Number(service?.price);
@@ -103,6 +105,12 @@ export async function POST(req: Request) {
     ) {
       return publicError(409);
     }
+
+    if (input.invoiceRequested && (
+      !input.invoiceReceiverRut || !validateRut(input.invoiceReceiverRut) ||
+      !input.invoiceReceiverLegalName || !input.invoiceReceiverActivity ||
+      !input.invoiceReceiverAddress || !input.invoiceReceiverCommune
+    )) return publicError(400, "Datos tributarios de factura incompletos");
 
     const customerId = await resolveCustomerId({
       tenantId: input.tenantId,
@@ -137,6 +145,23 @@ export async function POST(req: Request) {
     }
     const row = Array.isArray(data) ? data[0] : data;
     if (!row?.appointment_id) return publicError(500);
+    const taxTreatmentSnapshot = service.tax_treatment ??
+      (["affected", "exempt"].includes(String(issuanceConfig?.tax_treatment)) ? issuanceConfig?.tax_treatment : null);
+    const { error: taxSnapshotError } = await supabaseAdmin
+      .from("appointments")
+      .update({
+        invoice_requested: input.invoiceRequested === true,
+        invoice_receiver_rut: input.invoiceRequested && input.invoiceReceiverRut ? normalizeRut(input.invoiceReceiverRut) : null,
+        invoice_receiver_legal_name: input.invoiceRequested ? input.invoiceReceiverLegalName ?? null : null,
+        invoice_receiver_activity: input.invoiceRequested ? input.invoiceReceiverActivity ?? null : null,
+        invoice_receiver_address: input.invoiceRequested ? input.invoiceReceiverAddress ?? null : null,
+        invoice_receiver_commune: input.invoiceRequested ? input.invoiceReceiverCommune ?? null : null,
+        invoice_receiver_city: input.invoiceRequested ? input.invoiceReceiverCity ?? null : null,
+        tax_treatment_snapshot: taxTreatmentSnapshot,
+      })
+      .eq("id", row.appointment_id)
+      .eq("tenant_id", input.tenantId);
+    if (taxSnapshotError) return publicError(500);
     return NextResponse.json({
       ok: true,
       appointmentId: row.appointment_id,

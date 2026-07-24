@@ -102,7 +102,7 @@ export async function GET(req: Request) {
         payment_paid_amount,
         payment_remaining_amount,
         payment_reference,
-        payment_url,
+        payment_url
       `,
       )
       .eq("tenant_id", tenantId)

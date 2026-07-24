@@ -393,18 +393,6 @@ export class ProductionDteService {
         finalResponseSha256: result.responseSha256,
       },
     });
-    if (result.status === "submitted") {
-      const xml = requiredArtifact(artifacts, "dte_xml");
-      const pdf = requiredArtifact(artifacts, "pdf");
-      await this.repository.enqueueRecipientDelivery({
-        tenantId: input.tenantId,
-        documentId: input.documentId,
-        recipientEmail: document.recipient.email,
-        idempotencyKey: `recipient:${input.documentId}`,
-        xmlArtifactId: xml.id,
-        pdfArtifactId: pdf.id,
-      });
-    }
     return safeDocument(final);
   }
 
@@ -462,7 +450,7 @@ export class ProductionDteService {
         finalResponseSha256: result.responseSha256,
       },
     });
-    if (["accepted", "accepted_with_observations"].includes(result.siiStatus)) {
+    if (["accepted", "accepted_with_observations"].includes(result.siiStatus) && settings.autoEmailDelivery) {
       const artifacts = await this.repository.listArtifacts(
         input.tenantId,
         input.documentId,

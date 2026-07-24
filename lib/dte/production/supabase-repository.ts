@@ -55,7 +55,7 @@ function number(value: unknown): number {
   return Number(value);
 }
 
-function mapSettings(row: Record<string, unknown>, env: NodeJS.ProcessEnv): ProductionTenantSettings {
+function mapSettings(row: Record<string, unknown>, env: NodeJS.ProcessEnv): Omit<ProductionTenantSettings, "autoEmailDelivery"> {
   const certificateRoot = String(env.DTE_PRODUCTION_CERTIFICATE_ROOT ?? "").trim();
   const privateKeyRoot = String(env.DTE_PRODUCTION_PRIVATE_KEY_ROOT ?? "").trim();
   if (!certificateRoot) throw new Error("DTE_PRODUCTION_CERTIFICATE_ROOT_MISSING");
@@ -167,7 +167,17 @@ export class SupabaseProductionDteRepository
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (result.error) fail(result.error);
-    return result.data ? mapSettings(result.data, this.env) : null;
+    if (!result.data) return null;
+    const delivery = await this.client
+      .from("dte_tenant_issuance_settings")
+      .select("auto_email_delivery")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (delivery.error) fail(delivery.error);
+    return {
+      ...mapSettings(result.data, this.env),
+      autoEmailDelivery: delivery.data?.auto_email_delivery === true,
+    };
   }
 
   async importCaf(metadata: ProductionCafMetadata): Promise<void> {

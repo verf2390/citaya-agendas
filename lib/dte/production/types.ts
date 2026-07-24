@@ -37,6 +37,7 @@ export type ProductionTenantSettings = {
   certificatePath: string;
   privateKeyPath: string;
   certificateValidFrom: string;
+  autoEmailDelivery: boolean;
   certificateValidTo: string;
 };
 

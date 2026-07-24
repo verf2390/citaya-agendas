@@ -170,3 +170,24 @@ export async function requireTenantAdmin(
     status: 403,
   };
 }
+
+
+export async function requireHostTenantAdmin(req: Request): Promise<RequireTenantAdminResult> {
+  const host = getHostnameFromReq(req);
+  const tenantSlug = getTenantSlugFromHostname(host);
+  if (!tenantSlug) {
+    return { ok: false, error: "No se pudo resolver el tenant del hostname", status: 400 };
+  }
+  const { data: tenant, error } = await supabaseAdmin
+    .from("tenants")
+    .select("id, slug")
+    .eq("slug", tenantSlug)
+    .maybeSingle();
+  if (error) {
+    return { ok: false, error: "No se pudo validar el tenant", status: 500 };
+  }
+  if (!tenant?.id || tenant.slug !== tenantSlug) {
+    return { ok: false, error: "Tenant no autorizado o inexistente", status: 403 };
+  }
+  return requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
+}

@@ -1,28 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
-
-export function tenantSlug(req: Request, fallback: unknown): string {
-  const host =
-    req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  return (
-    getTenantSlugFromHostname(
-      host.split(",")[0]?.trim().split(":")[0] ?? "",
-    ) || String(fallback ?? "").trim()
-  );
-}
+import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 export async function requireProductionAdmin(
   req: Request,
-  tenantId: unknown,
-  tenantSlugValue: unknown,
+  ...legacyTenantHints: unknown[]
 ) {
-  return requireTenantAdmin({
-    req,
-    tenantId: String(tenantId ?? "").trim(),
-    tenantSlug: tenantSlug(req, tenantSlugValue),
-  });
+  void legacyTenantHints;
+  return requireHostTenantAdmin(req);
 }
 
 export function safeProductionApiError(error: unknown): NextResponse {

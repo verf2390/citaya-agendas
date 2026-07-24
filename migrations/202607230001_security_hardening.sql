@@ -57,6 +57,14 @@ alter table if exists public.appointments
   add column if not exists service_duration_min integer,
   add column if not exists currency text;
 
+-- Normalize legacy split status fields before enforcing overlap rules.
+-- Limited to already-cancelled rows and idempotent.
+update public.appointments
+set booking_status = 'canceled',
+    updated_at = coalesce(updated_at, now())
+where lower(coalesce(status, '')) in ('canceled', 'cancelled')
+  and booking_status = 'confirmed';
+
 -- Existing plaintext links get a bounded transition window. New code never
 -- writes plaintext. A follow-up migration must null manage_token after this date.
 update public.appointments
@@ -321,7 +329,7 @@ returns boolean
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_intent public.payment_intents%rowtype;
   v_payment_id uuid;
@@ -397,7 +405,7 @@ begin
   if not found then raise exception 'appointment_not_payable'; end if;
   return true;
 end;
-$;
+$$;
 
 revoke all on function public.activate_payment_intent(uuid, text, text, numeric)
   from public;

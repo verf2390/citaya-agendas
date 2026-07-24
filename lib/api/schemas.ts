@@ -25,6 +25,13 @@ export const AppointmentCreateSchema = z.object({
   paymentRequired: z.boolean().optional(),
   paymentStatus: AppointmentPaymentStatusSchema.optional(),
   idempotencyKey: z.string().max(128).optional(),
+  invoiceRequested: z.boolean().optional(),
+  invoiceReceiverRut: optionalShortText(32),
+  invoiceReceiverLegalName: optionalShortText(180),
+  invoiceReceiverActivity: optionalShortText(180),
+  invoiceReceiverAddress: optionalShortText(180),
+  invoiceReceiverCommune: optionalShortText(100),
+  invoiceReceiverCity: optionalShortText(100),
 });
 
 export type AppointmentCreateInput = z.infer<typeof AppointmentCreateSchema>;

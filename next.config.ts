@@ -5,7 +5,7 @@ const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://*.khipu.com https://*.transbank.cl https://*.mercadopago.com",
+  "img-src 'self' data: blob: https://images.unsplash.com https://*.supabase.co https://*.supabase.in https://*.khipu.com https://*.transbank.cl https://*.mercadopago.com",
   "font-src 'self' data:",
   "connect-src 'self' https://*.supabase.co https://*.supabase.in https://api.mercadopago.com https://payment-api.khipu.com https://webpay3g.transbank.cl https://webpay3gint.transbank.cl",
   "frame-src 'self' https://*.mercadopago.com https://*.khipu.com https://*.transbank.cl",
