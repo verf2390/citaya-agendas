@@ -15,7 +15,7 @@ import {
 } from "@/components/admin/admin-ui";
 import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { resolveTenantFromHostname } from "@/lib/client/tenant-resolution";
 
 type ServiceRow = {
   id: string;
@@ -78,27 +78,15 @@ export default function ServiciosPage() {
 
   useEffect(() => {
     const run = async () => {
-      const slug = getTenantSlugFromHostname(window.location.hostname);
-      if (!slug) {
-        setTenantError("Este panel debe abrirse desde el subdominio del cliente.");
+      const result = await resolveTenantFromHostname(window.location.host);
+      if (!result.ok) {
+        setTenantSlug(result.slug ?? "");
+        setTenantError(result.message);
         setLoading(false);
         return;
       }
-      setTenantSlug(slug);
-
-      const { data, error } = await supabase
-        .from("tenants")
-        .select("id, slug")
-        .eq("slug", slug)
-        .maybeSingle();
-
-      if (error || !data?.id) {
-        setTenantError(error?.message ?? `No existe tenant para ${slug}`);
-        setLoading(false);
-        return;
-      }
-
-      setTenantId(data.id);
+      setTenantSlug(result.slug);
+      setTenantId(result.tenant.id);
     };
 
     void run();
@@ -120,6 +108,7 @@ export default function ServiciosPage() {
   const loadServices = async () => {
     if (!tenantId) return;
     setLoading(true);
+    setSaveError("");
 
     const token = await getAuthToken();
     if (!token) {
@@ -136,7 +125,7 @@ export default function ServiciosPage() {
     const json = await res.json().catch(() => null);
 
     if (!res.ok || !Array.isArray(json?.services)) {
-      console.error("[admin/servicios] load error:", json);
+      setSaveError("No se pudieron cargar los servicios. Inténtalo nuevamente.");
       setServices([]);
     } else {
       setServices(json.services as ServiceRow[]);
@@ -272,7 +261,14 @@ export default function ServiciosPage() {
   };
 
   if (tenantError) {
-    return <main className="p-6 text-sm text-red-700">{tenantError}</main>;
+    return (
+      <main className="p-6 text-sm text-red-700">
+        <p>{tenantError}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-3 rounded-xl border px-3 py-2 font-bold">
+          Reintentar
+        </button>
+      </main>
+    );
   }
 
   return (
@@ -318,7 +314,14 @@ export default function ServiciosPage() {
               </label>
               {saveError ? (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
-                  {saveError}
+                  <div>{saveError}</div>
+                  <button
+                    type="button"
+                    onClick={() => void loadServices()}
+                    className="mt-2 rounded-lg border border-red-300 bg-white px-3 py-2 font-bold"
+                  >
+                    Reintentar
+                  </button>
                 </div>
               ) : null}
               <div className="flex flex-wrap gap-2">

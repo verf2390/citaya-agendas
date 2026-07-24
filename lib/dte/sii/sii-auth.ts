@@ -354,6 +354,15 @@ export async function requestSeed(
   };
 }
 
+export function signSiiSeedXml(seed: string, privateKeyPem: string, certificatePem: string): string {
+  const keyInfoContent = buildSiiSeedKeyInfoContent(certificatePem);
+  const xml = buildGetTokenXml(seed);
+  const signature = new SignedXml({ privateKey: privateKeyPem, publicCert: certificatePem, signatureAlgorithm: XMLDSIG_RSA_SHA1, canonicalizationAlgorithm: XMLDSIG_C14N, getKeyInfoContent: () => keyInfoContent });
+  signature.addReference({ xpath: "//*[local-name(.)='getToken']", transforms: [XMLDSIG_ENVELOPED_SIGNATURE], digestAlgorithm: XMLDSIG_SHA1 });
+  signature.computeSignature(xml, { location: { reference: "//*[local-name(.)='getToken']", action: "append" } });
+  return signature.getSignedXml();
+}
+
 export function signSeed(
   seed: string,
   config: SiiCertificationConfig,
@@ -362,25 +371,7 @@ export function signSeed(
   assertCertificationEnvironment(config.environment);
   const privateKeyPem = options.privateKeyPem ?? requireExternalPem(config.privateKeyPath, "DTE_PRIVATE_KEY_PATH");
   const certificatePem = options.certificatePem ?? requireExternalPem(config.certPath, "DTE_CERT_PATH");
-  const keyInfoContent = buildSiiSeedKeyInfoContent(certificatePem);
-
-  const xml = buildGetTokenXml(seed);
-  const signature = new SignedXml({
-    privateKey: privateKeyPem,
-    publicCert: certificatePem,
-    signatureAlgorithm: XMLDSIG_RSA_SHA1,
-    canonicalizationAlgorithm: XMLDSIG_C14N,
-    getKeyInfoContent: () => keyInfoContent,
-  });
-  signature.addReference({
-    xpath: "//*[local-name(.)='getToken']",
-    transforms: [XMLDSIG_ENVELOPED_SIGNATURE],
-    digestAlgorithm: XMLDSIG_SHA1,
-  });
-  signature.computeSignature(xml, {
-    location: { reference: "//*[local-name(.)='getToken']", action: "append" },
-  });
-  const signedXml = signature.getSignedXml();
+  const signedXml = signSiiSeedXml(seed, privateKeyPem, certificatePem);
 
   return {
     ok: true,

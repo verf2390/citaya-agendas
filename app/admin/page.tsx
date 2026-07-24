@@ -29,7 +29,7 @@ import {
   StatusBadge,
 } from "@/components/admin/admin-ui";
 import { supabase } from "@/lib/supabaseClient";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { resolveTenantFromHostname } from "@/lib/client/tenant-resolution";
 
 type AppointmentDashboardRow = {
   id: string;
@@ -354,36 +354,29 @@ export default function AdminDashboardPage() {
   const [tenantError, setTenantError] = useState("");
   const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [dataLoadError, setDataLoadError] = useState("");
   const [appointments, setAppointments] = useState<AppointmentDashboardRow[]>([]);
   const [customers, setCustomers] = useState<CustomerDashboardRow[]>([]);
   const [nowMs] = useState(() => Date.now());
 
   useEffect(() => {
+    let cancelled = false;
     const run = async () => {
-      const slug = getTenantSlugFromHostname(window.location.hostname);
-      if (!slug) {
-        setTenantError("Este panel debe abrirse desde el subdominio del cliente.");
+      const result = await resolveTenantFromHostname(window.location.host);
+      if (cancelled) return;
+      if (!result.ok) {
+        setTenantError(result.message);
         setLoading(false);
         return;
       }
-      setTenantSlug(slug);
-
-      const { data, error } = await supabase
-        .from("tenants")
-        .select("id, slug")
-        .eq("slug", slug)
-        .maybeSingle();
-
-      if (error || !data?.id) {
-        setTenantError(error?.message ?? `No existe negocio para ${slug}`);
-        setLoading(false);
-        return;
-      }
-
-      setTenantId(data.id);
+      setTenantSlug(result.slug);
+      setTenantId(result.tenant.id);
     };
 
     void run();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -404,6 +397,7 @@ export default function AdminDashboardPage() {
     const load = async () => {
       if (!authChecked || !tenantId) return;
       setLoading(true);
+      setDataLoadError("");
 
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
@@ -444,6 +438,9 @@ export default function AdminDashboardPage() {
         setCustomers([]);
       }
 
+      if (!appointmentsRes.ok || !customersRes?.ok) {
+        setDataLoadError("No se pudo cargar el resumen. Inténtalo nuevamente.");
+      }
       setLoading(false);
     };
 
@@ -615,7 +612,14 @@ export default function AdminDashboardPage() {
   }, [appointments, customers]);
 
   if (tenantError) {
-    return <main className="p-6 text-sm text-red-700">{tenantError}</main>;
+    return (
+      <main className="p-6 text-sm text-red-700">
+        <p>{tenantError}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-3 rounded-xl border px-3 py-2 font-bold">
+          Reintentar
+        </button>
+      </main>
+    );
   }
 
   return (
@@ -640,6 +644,15 @@ export default function AdminDashboardPage() {
           </div>
         }
       />
+
+      {dataLoadError ? (
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div>{dataLoadError}</div>
+          <button type="button" onClick={() => window.location.reload()} className="mt-2 rounded-lg border border-red-300 bg-white px-3 py-2 font-bold">
+            Reintentar
+          </button>
+        </div>
+      ) : null}
 
       <section className="mt-5 min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white p-4 text-center shadow-sm sm:text-left md:p-5">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

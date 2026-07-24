@@ -42,7 +42,7 @@ import type {
 } from "@fullcalendar/core";
 
 import { supabase } from "@/lib/supabaseClient";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { resolveTenantFromHostname } from "@/lib/client/tenant-resolution";
 import { toast } from "@/components/ui/use-toast";
 import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
 
@@ -456,6 +456,7 @@ export default function AgendaPage() {
   // appointments
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [appointmentsLoadError, setAppointmentsLoadError] = useState("");
   const [visibleRange, setVisibleRange] = useState<{
     start: string;
     end: string;
@@ -496,40 +497,18 @@ export default function AgendaPage() {
       setTenantSlug("");
       setTenantId("");
 
-      const hostname = window.location.hostname;
-      const slug = getTenantSlugFromHostname(hostname);
-
-      if (!slug) {
-        setTenantError(
-          "Este panel debe abrirse desde el subdominio del cliente (ej: https://fajaspaola.citaya.online/admin/agenda).",
-        );
+      const result = await resolveTenantFromHostname(window.location.host);
+      if (!result.ok) {
+        setTenantSlug(result.slug ?? "");
+        setTenantError(result.message);
         setLoadingTenant(false);
         return;
       }
 
-      setTenantSlug(slug);
-
-      const { data, error } = await supabase
-        .from("tenants")
-        .select("id, slug, name, logo_url")
-        .eq("slug", slug)
-        .maybeSingle();
-
-      if (error) {
-        setTenantError(`Error buscando cliente (${slug}): ${error.message}`);
-        setLoadingTenant(false);
-        return;
-      }
-
-      if (!data?.id) {
-        setTenantError(`No existe un cliente configurado para: ${slug}`);
-        setLoadingTenant(false);
-        return;
-      }
-
-      setTenantId(data.id);
-      setTenantLogoUrl(data.logo_url ?? "");
-      setTenantName(data.name ?? "");
+      setTenantSlug(result.slug);
+      setTenantId(result.tenant.id);
+      setTenantLogoUrl(result.tenant.logo_url ?? "");
+      setTenantName(result.tenant.name);
       setLoadingTenant(false);
     };
 
@@ -737,6 +716,7 @@ export default function AgendaPage() {
       apptAbortRef.current = ac;
 
       setLoading(true);
+      setAppointmentsLoadError("");
       try {
         const qs = new URLSearchParams();
         qs.set("tenantId", tenantId);
@@ -755,8 +735,8 @@ export default function AgendaPage() {
         const json = await res.json().catch(() => null);
 
         if (!res.ok) {
-          console.error("Error loading appointments (API):", json);
           setEvents([]);
+          setAppointmentsLoadError("No se pudo cargar la agenda. Inténtalo nuevamente.");
           return;
         }
 
@@ -787,8 +767,8 @@ export default function AgendaPage() {
         setEvents(mapped);
       } catch (e: unknown) {
         if (getErrorName(e) !== "AbortError") {
-          console.error("loadAppointments error:", e);
           setEvents([]);
+          setAppointmentsLoadError("No se pudo cargar la agenda. Inténtalo nuevamente.");
         }
       } finally {
         setLoading(false);
@@ -1469,7 +1449,14 @@ export default function AgendaPage() {
               <div className="mt-2 text-sm text-muted-foreground">
                 {tenantError}
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="inline-flex h-9 items-center rounded-xl border bg-white px-3 text-sm font-semibold hover:bg-muted"
+                >
+                  Reintentar
+                </button>
                 <Link
                   href="https://app.citaya.online"
                   className="inline-flex h-9 items-center rounded-xl border bg-white px-3 text-sm font-semibold hover:bg-muted"
@@ -1702,6 +1689,18 @@ export default function AgendaPage() {
 
       <div className="mx-auto min-w-0 max-w-[1280px] px-3 py-4 sm:px-4 sm:py-5 lg:ml-72 lg:mr-6">
         <AdminNav />
+        {appointmentsLoadError ? (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div>{appointmentsLoadError}</div>
+            <button
+              type="button"
+              onClick={() => void loadAppointments(visibleStart, visibleEnd, selectedProfessionalId)}
+              className="mt-2 rounded-lg border border-red-300 bg-white px-3 py-2 font-bold"
+            >
+              Reintentar
+            </button>
+          </div>
+        ) : null}
         {/* Selector profesional + Horarios base */}
         <div className="mt-3">
           <Card>

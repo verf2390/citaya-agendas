@@ -237,7 +237,7 @@ function wrapGeneratedSignatureBase64(xml: string): string {
 export function signXmlInFinalContextControlled(input: { xml: string; referenceId: string; insertAfterXPath: string }, config: RealXmlSigningConfig): FinalContextXmlDsigResult {
   const preparation = prepareRealXmlSigning(input.xml, config);
   if (preparation.missing.length > 0 || preparation.status === "unsafe_repo_path" || preparation.status === "failed") throw new Error("XMLDSig final-context requires controlled external signing material");
-  if (config.mode !== "certification" || !config.privateKeyPath || !config.publicCertificatePath) throw new Error("XMLDSig final-context requires certification signing configuration");
+  if ((config.mode !== "certification" && config.mode !== "production") || !config.privateKeyPath || !config.publicCertificatePath) throw new Error("XMLDSig final-context requires controlled signing configuration");
   const privateKey = readFileSync(config.privateKeyPath, "utf8");
   const certificate = readFileSync(config.publicCertificatePath, "utf8");
   const keyInfo = extractRsaKeyInfo(certificate);

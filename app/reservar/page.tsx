@@ -32,6 +32,9 @@ import { Button } from "@/components/ui/button";
 import { Section } from "@/components/ui/section";
 import { SurfaceCard } from "@/components/ui/card";
 import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
+import { fetchWithClientTimeout } from "@/lib/client/async-timeout";
+import { resolveTenantBySlug } from "@/lib/client/tenant-resolution";
+import { getTenantSlugFromHostname, normalizeTenantSlug } from "@/lib/tenant";
 
 type Slot = { start_at: string; end_at: string };
 type WaitlistTarget =
@@ -384,25 +387,17 @@ function ReservarInner() {
   const [nameTouched, setNameTouched] = useState(false);
 
   useEffect(() => {
-    const qTenant = searchParams.get("tenant") || "";
+    const qTenant = normalizeTenantSlug(searchParams.get("tenant"));
     const qService = searchParams.get("service") || "";
-    setTenantFromQuery(qTenant);
+    setTenantFromQuery(qTenant ?? "");
     setServiceId(qService);
-
-    if (qTenant) {
-      setTenantSlug(qTenant);
-      return;
-    }
-
-    const host = window.location.hostname.split(":")[0].toLowerCase();
-    const fromSubdomain = host.endsWith(".citaya.online")
-      ? host.replace(".citaya.online", "").split(".")[0]
-      : "";
-
-    setTenantSlug(fromSubdomain || "");
+    setTenantSlug(
+      qTenant ?? getTenantSlugFromHostname(window.location.host) ?? "",
+    );
   }, [searchParams]);
 
   const [tenantId, setTenantId] = useState<string>("");
+  const [loadingTenant, setLoadingTenant] = useState(true);
   const [tenantName, setTenantName] = useState<string>("");
   const [tenantPaymentMode, setTenantPaymentMode] =
     useState<TenantPaymentMode>("none");
@@ -468,6 +463,7 @@ function ReservarInner() {
 
   useEffect(() => {
     if (!tenantSlug) {
+      setLoadingTenant(false);
       setTenantId("");
       setTenantName("");
       setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
@@ -488,25 +484,22 @@ function ReservarInner() {
 
     (async () => {
       try {
+        setLoadingTenant(true);
         setLoadError(null);
 
-        const res = await fetch(
-          `/api/tenants/by-slug?slug=${encodeURIComponent(tenantSlug)}`,
-          { cache: "no-store" },
-        );
-        const json = await res.json();
-
-        if (!res.ok) throw new Error(json?.error ?? "No se pudo cargar tenant");
+        const result = await resolveTenantBySlug(tenantSlug);
+        if (!result.ok) throw new Error(result.message);
+        const tenant = result.tenant;
 
         if (!cancelled) {
-          setTenantId(json?.tenant?.id ?? "");
-          setTenantName(json?.tenant?.name ?? "");
+          setTenantId(tenant.id ?? "");
+          setTenantName(tenant.name ?? "");
           setTenantPaymentMode(
-            (json?.tenant?.payment_mode as TenantPaymentMode | undefined) ??
+            (tenant.payment_mode as TenantPaymentMode | undefined) ??
               "none",
           );
-          const methods = Array.isArray(json?.tenant?.payment_methods_enabled)
-            ? json.tenant.payment_methods_enabled.filter(
+          const methods = Array.isArray(tenant.payment_methods_enabled)
+            ? tenant.payment_methods_enabled.filter(
                 (method: unknown): method is PaymentProviderId =>
                   method === "mercadopago" ||
                   method === "webpay" ||
@@ -514,35 +507,35 @@ function ReservarInner() {
                   method === "manual",
               )
             : [];
-          const nextMethods = methods.length > 0 ? methods : ["mercadopago"];
+          const nextMethods: PaymentProviderId[] =
+            methods.length > 0 ? methods : ["mercadopago"];
 
           setPaymentMethodsEnabled(nextMethods);
           setSelectedPaymentProvider((prev) =>
             nextMethods.includes(prev) ? prev : nextMethods[0],
           );
           setTenantPaymentCollectionMode(
-            (json?.tenant?.payment_collection_mode as
+            (tenant.payment_collection_mode as
               | PaymentCollectionMode
               | undefined) ?? "full",
           );
           setTenantDepositType(
-            (json?.tenant?.deposit_type as TenantDepositType | undefined) ??
+            (tenant.deposit_type as TenantDepositType | undefined) ??
               null,
           );
           setTenantDepositValue(
-            typeof json?.tenant?.deposit_value === "number"
-              ? json.tenant.deposit_value
+            typeof tenant.deposit_value === "number"
+              ? tenant.deposit_value
               : null,
           );
 
           setMinLeadTimeMin(
-            typeof json?.tenant?.min_lead_time_min === "number"
-              ? json.tenant.min_lead_time_min
+            typeof tenant.min_lead_time_min === "number"
+              ? tenant.min_lead_time_min
               : DEFAULT_MIN_LEAD_TIME_MIN,
           );
         }
       } catch (error: unknown) {
-        console.error(error);
         if (!cancelled) {
           setTenantId("");
           setTenantName("");
@@ -555,6 +548,8 @@ function ReservarInner() {
           setTenantDepositValue(null);
           setLoadError(errorMessage(error, "No se pudo cargar tenant"));
         }
+      } finally {
+        if (!cancelled) setLoadingTenant(false);
       }
     })();
 
@@ -571,7 +566,7 @@ function ReservarInner() {
 
     (async () => {
       try {
-        const res = await fetch(
+        const res = await fetchWithClientTimeout(
           `/api/professionals/by-tenant?tenant=${encodeURIComponent(tenantSlug)}`,
           { cache: "no-store" },
         );
@@ -589,8 +584,7 @@ function ReservarInner() {
           const exists = !!prev && list.some((p) => p.id === prev);
           return exists ? prev : (list[0]?.id ?? "");
         });
-      } catch (error: unknown) {
-        console.error(error);
+      } catch {
         if (!cancelled) {
           setProfessionals([]);
           setProfessionalId("");
@@ -616,9 +610,7 @@ function ReservarInner() {
 
     (async () => {
       try {
-        setLoadError(null);
-
-        const res = await fetch(
+        const res = await fetchWithClientTimeout(
           `/api/services/by-tenant?tenant=${encodeURIComponent(tenantSlug)}`,
           { cache: "no-store" },
         );
@@ -641,7 +633,6 @@ function ReservarInner() {
           setService(null);
         }
       } catch (error: unknown) {
-        console.error(error);
         if (!cancelled) {
           setServices([]);
           setService(null);
@@ -723,7 +714,9 @@ function ReservarInner() {
     setSelectedSlot(null);
 
     try {
-      const res = await fetch(availabilityUrl, { cache: "no-store" });
+      const res = await fetchWithClientTimeout(availabilityUrl, {
+        cache: "no-store",
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Error cargando slots");
 
@@ -1655,9 +1648,22 @@ function ReservarInner() {
                 </div>
               ) : null}
 
+              {loadingTenant ? (
+                <div className="mt-3 rounded-2xl border bg-white/80 p-3 text-[11px] text-muted-foreground sm:text-sm">
+                  Cargando negocio…
+                </div>
+              ) : null}
+
               {loadError ? (
                 <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-[11px] text-red-700 sm:text-sm">
-                  {loadError}
+                  <div>{loadError}</div>
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="mt-2 rounded-xl border border-red-300 bg-white px-3 py-2 font-bold"
+                  >
+                    Reintentar
+                  </button>
                 </div>
               ) : null}
 

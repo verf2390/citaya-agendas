@@ -46,7 +46,7 @@ export type ImportedCaf = {
   trustStatus: CafTrustStatus;
   fixtureKey: boolean;
   weakLegacyFixture: boolean;
-  realUseBlocked: true;
+  realUseBlocked: boolean;
 };
 export type LoadCafOptions = {
   repoRoot: string;
@@ -122,14 +122,15 @@ function pem(raw: string, field: string): string {
   return `${decoded}\n`;
 }
 
-export function loadCafAuthorization(
+function loadCafAuthorizationInternal(
   path: string,
   options: LoadCafOptions,
+  allowProduction: boolean,
 ): ImportedCaf {
   const materialKind =
     options.materialKind ??
     (options.fixtureMode ? "fixture" : "certification_real");
-  if (materialKind === "production_real") reject("production");
+  if (materialKind === "production_real" && !allowProduction) reject("production");
   if (options.fixtureMode !== (materialKind === "fixture"))
     reject("materialKind");
   const absolute = resolve(path);
@@ -329,8 +330,24 @@ export function loadCafAuthorization(
     trustStatus,
     fixtureKey: materialKind === "fixture",
     weakLegacyFixture: Buffer.from(jwk.n, "base64url").length * 8 < 1024,
-    realUseBlocked: true,
+    realUseBlocked: materialKind !== "production_real",
   };
+}
+
+export function loadCafAuthorization(
+  path: string,
+  options: LoadCafOptions,
+): ImportedCaf {
+  return loadCafAuthorizationInternal(path, options, false);
+}
+
+export function loadProductionCafAuthorization(
+  path: string,
+  options: Omit<LoadCafOptions, "fixtureMode" | "materialKind">,
+): ImportedCaf & { materialKind: "production_real"; trustStatus: "verified_official"; realUseBlocked: false } {
+  const imported = loadCafAuthorizationInternal(path, { ...options, fixtureMode: false, materialKind: "production_real", allowPendingOfficialTrustAnchor: false }, true);
+  if (imported.materialKind !== "production_real" || imported.trustStatus !== "verified_official" || imported.realUseBlocked) reject("production.trust");
+  return imported as ImportedCaf & { materialKind: "production_real"; trustStatus: "verified_official"; realUseBlocked: false };
 }
 
 export function assertNoOverlappingOrDuplicateCafs(

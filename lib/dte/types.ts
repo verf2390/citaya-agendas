@@ -168,7 +168,7 @@ export type DteGenerationResult = {
   warnings: string[];
 };
 
-export type DteXmlBuildMode = "lab" | "xsd-structure" | "certification";
+export type DteXmlBuildMode = "lab" | "xsd-structure" | "certification" | "production";
 
 export type DteEnvelopeBuildOptions = {
   mode?: DteXmlBuildMode;
@@ -308,8 +308,8 @@ export type FrmtSignatureResult =
   | {
       ok: true;
       frmtXml: string;
-      mode: "xsd-structure" | "certification";
-      isProductionValid: false;
+      mode: "xsd-structure" | "certification" | "production";
+      isProductionValid: boolean;
       warnings: string[];
     }
   | {
@@ -324,7 +324,7 @@ export type FrmtSignatureResult =
 export type XmlDsigBuildInput = {
   referenceUri: string;
   signedXmlFragment: string;
-  mode: "xsd-structure" | "certification";
+  mode: "xsd-structure" | "certification" | "production";
   signatureId?: string;
 };
 
@@ -341,8 +341,8 @@ export type XmlSignatureStatus =
 
 export type XmlDsigBuildResult = {
   signatureXml: string;
-  mode: "xsd-structure" | "certification";
-  isProductionValid: false;
+  mode: "xsd-structure" | "certification" | "production";
+  isProductionValid: boolean;
   warnings: string[];
   signed?: boolean;
   xmlSignatureStatus?: XmlSignatureStatus;

@@ -25,7 +25,7 @@ export type DteReadinessItem = {
 };
 
 export type DteReadinessResult = {
-  mode: "lab" | "xsd-structure" | "certification";
+  mode: "lab" | "xsd-structure" | "certification" | "production";
   labScore: number;
   certificationScore: number;
   productionTechnicalScore: number;

@@ -25,6 +25,7 @@ import {
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
+import { ProductionDtePanel } from "@/components/admin/dte/ProductionDtePanel";
 import {
   AdminKpiCard,
   AdminPageHeader,
@@ -38,7 +39,7 @@ import { buildDtePdfLab } from "@/lib/dte/pdf/build-dte-pdf";
 import { buildDtePrintHtml } from "@/lib/dte/pdf/build-dte-print-view";
 import type { DteDocumentType } from "@/lib/dte/dte-types";
 import { supabase } from "@/lib/supabaseClient";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { resolveTenantFromHostname } from "@/lib/client/tenant-resolution";
 
 type DocumentType = "boleta" | "factura" | "exenta";
 type BillingProvider = "none" | "manual_sii" | "api_provider";
@@ -754,33 +755,23 @@ export default function AdminFacturacionPage() {
 
   useEffect(() => {
     const run = async () => {
-      const slug = getTenantSlugFromHostname(window.location.hostname);
-      if (!slug) {
-        setTenantError("Este panel debe abrirse desde el subdominio del cliente.");
+      const result = await resolveTenantFromHostname(window.location.host);
+      if (!result.ok) {
+        setTenantSlug(result.slug ?? "");
+        setTenantError(result.message);
         setLoading(false);
         return;
       }
+      const slug = result.slug;
+      const tenant = result.tenant;
       setTenantSlug(slug);
 
       const { data: sessionData } = await supabase.auth.getSession();
       if (!sessionData.session) {
-        router.push(`/login?redirectTo=${encodeURIComponent("/admin/facturacion")}`);
+        router.push("/login?redirectTo=%2Fadmin%2Ffacturacion");
         return;
       }
       setAuthChecked(true);
-
-      const { data: tenant, error } = await supabase
-        .from("tenants")
-        .select("id, slug")
-        .eq("slug", slug)
-        .maybeSingle();
-
-      if (error || !tenant?.id) {
-        setTenantError(error?.message ?? `No existe tenant para ${slug}`);
-        setLoading(false);
-        return;
-      }
-
       setTenantId(tenant.id);
 
       const res = await adminFetch(
@@ -881,7 +872,10 @@ export default function AdminFacturacionPage() {
       setLoading(false);
     };
 
-    void run();
+    void run().catch(() => {
+      setTenantError("No se pudo cargar facturación. Inténtalo nuevamente.");
+      setLoading(false);
+    });
   }, [router]);
 
   const statusTone = providerStatusTone(settings.providerStatus);
@@ -1073,8 +1067,8 @@ export default function AdminFacturacionPage() {
           description={
             schemaHint ? `${tenantError} ${schemaHint}` : tenantError
           }
-          actionLabel="Volver a integraciones"
-          actionHref="/admin/integraciones"
+          actionLabel="Reintentar"
+          actionHref="/admin/facturacion"
         />
       </AdminPageShell>
     );
@@ -1086,7 +1080,7 @@ export default function AdminFacturacionPage() {
       <AdminPageHeader
         eyebrow="Tributario"
         title="Facturación electrónica"
-        description="Prepara datos tributarios, certificación SII y trazabilidad DTE sin habilitar emisión legal."
+        description="Administra certificación y emisión DTE productiva con gates por tenant."
         actions={
           <button
             type="button"
@@ -1125,6 +1119,8 @@ export default function AdminFacturacionPage() {
           tone={hasTaxIdentity ? "green" : "amber"}
         />
       </div>
+
+      {!loading ? <div className="mt-5"><ProductionDtePanel tenantId={tenantId} tenantSlug={tenantSlug} /></div> : null}
 
       {!loading ? (
         <AdminSectionCard

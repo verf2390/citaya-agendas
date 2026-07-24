@@ -2,7 +2,7 @@
 
 import { adminFetch } from "@/lib/api/adminFetch";
 
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { resolveTenantFromHostname } from "@/lib/client/tenant-resolution";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -76,6 +76,7 @@ export default function CustomersPage() {
 
   // Data
   const [loading, setLoading] = useState(true);
+  const [dataLoadError, setDataLoadError] = useState("");
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [query, setQuery] = useState("");
   const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
@@ -110,38 +111,16 @@ export default function CustomersPage() {
       setTenantSlug("");
       setTenantId("");
 
-      const hostname = window.location.hostname;
-      const slug = getTenantSlugFromHostname(hostname);
-
-      if (!slug) {
-        setTenantError(
-          "Este panel debe abrirse desde el subdominio del cliente (ej: https://fajaspaola.citaya.online/admin/customers).",
-        );
+      const result = await resolveTenantFromHostname(window.location.host);
+      if (!result.ok) {
+        setTenantSlug(result.slug ?? "");
+        setTenantError(result.message);
         setLoadingTenant(false);
         return;
       }
 
-      setTenantSlug(slug);
-
-      const { data, error } = await supabase
-        .from("tenants")
-        .select("id, slug")
-        .eq("slug", slug)
-        .maybeSingle();
-
-      if (error) {
-        setTenantError(`Error buscando cliente (${slug}): ${error.message}`);
-        setLoadingTenant(false);
-        return;
-      }
-
-      if (!data?.id) {
-        setTenantError(`No existe un cliente configurado para: ${slug}`);
-        setLoadingTenant(false);
-        return;
-      }
-
-      setTenantId(data.id);
+      setTenantSlug(result.slug);
+      setTenantId(result.tenant.id);
       setLoadingTenant(false);
     };
 
@@ -177,6 +156,7 @@ export default function CustomersPage() {
     if (!tenantId) return;
 
     setLoading(true);
+    setDataLoadError("");
 
     const { data: sess } = await supabase.auth.getSession();
     const token = sess.session?.access_token;
@@ -184,6 +164,7 @@ export default function CustomersPage() {
     if (!token) {
       setLoading(false);
       setCustomers([]);
+      setDataLoadError("La sesión expiró. Inicia sesión e inténtalo nuevamente.");
       return;
     }
 
@@ -204,8 +185,8 @@ export default function CustomersPage() {
     }
 
     if (!res.ok || !json?.ok) {
-      console.error("Error loading customers (API):", json);
       setCustomers([]);
+      setDataLoadError("No se pudieron cargar los clientes. Inténtalo nuevamente.");
       setLoading(false);
       return;
     }
@@ -536,9 +517,11 @@ export default function CustomersPage() {
         json.message ||
           `Campaña enviada a automatización (${bulkRecipients.length} destinatarios).`,
       );
-    } catch (e: any) {
+    } catch (error: unknown) {
       setBulkError(
-        e?.message || "No se pudo enviar la campaña a automatización.",
+        error instanceof Error
+          ? error.message
+          : "No se pudo enviar la campaña a automatización.",
       );
     } finally {
       setBulkSending(false);
@@ -553,6 +536,13 @@ export default function CustomersPage() {
       <main style={{ padding: 20, fontFamily: "system-ui" }}>
         <h2 style={{ marginTop: 0 }}>⚠️ Acceso inválido</h2>
         <p style={{ opacity: 0.8 }}>{tenantError}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{ marginRight: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "white", fontWeight: 700 }}
+        >
+          Reintentar
+        </button>
         <Link
           href="https://app.citaya.online"
           style={{
@@ -587,6 +577,17 @@ export default function CustomersPage() {
     return (
       <main style={{ padding: 20, fontFamily: "system-ui" }}>
         <p>Validando sesión…</p>
+      </main>
+    );
+  }
+
+  if (dataLoadError) {
+    return (
+      <main style={{ padding: 20, fontFamily: "system-ui" }}>
+        <p>{dataLoadError}</p>
+        <button type="button" onClick={() => void loadCustomers()} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd", background: "white", fontWeight: 700 }}>
+          Reintentar
+        </button>
       </main>
     );
   }

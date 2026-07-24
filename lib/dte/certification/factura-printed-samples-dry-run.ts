@@ -23,6 +23,7 @@ const SOURCE_NAMES = Array.from({ length: 8 }, (_, index) => `4959698-${index + 
 const COMMERCIAL_TEXT = /pago|inter[eé]s|garant[ií]a|contrato|despacho|vencimiento|cuenta bancaria/i;
 
 export type PrintedSamplesOptions = FacturaSetDryRunOptions & {
+  productionMetadata?: { resolutionNumber: string; resolutionYear: string; siiOffice: string };
   printedOutputDir?: string;
   sourceDir?: string;
   skipSourceGeneration?: boolean;
@@ -138,14 +139,14 @@ export async function buildPdf(spec: CopySpec, options: PrintedSamplesOptions = 
   const receiverRut = formatChileanRut(source.receiverRut);
   const barcodeWidth = override?.barcodeWidth ?? BARCODE_WIDTH; const barcodeX = override?.barcodeX ?? BARCODE_X;
   const pdf = new jsPDF({ unit: "pt", format: "letter", compress: false });
-  pdf.setProperties({ title: "MUESTRA FIXTURE SIN VALIDEZ", subject: "PRE-CAF 11 offline fixture" });
+  pdf.setProperties(options.productionMetadata ? { title: documentName(source.type) + " " + source.folio, subject: "Documento tributario electronico" } : { title: "MUESTRA FIXTURE SIN VALIDEZ", subject: "PRE-CAF 11 offline fixture" });
   pdf.setFont("helvetica", "bold"); pdf.setFontSize(15); pdf.text(source.issuerName, 36, 38);
   pdf.setFont("helvetica", "normal"); pdf.setFontSize(8); pdf.text(`RUT: ${issuerRut}`, 36, 51);
   const issuerAddressY = safeText(pdf, `GIRO: ${source.issuerActivity}`, 36, 62, 350) + 4;
   safeText(pdf, `DIRECCIÓN: ${source.issuerAddress}, ${source.issuerCommune} ${source.issuerCity}`, 36, issuerAddressY, 350);
   pdf.setDrawColor(190, 0, 0); pdf.setLineWidth(1.4); pdf.rect(405, 25, 170, 88);
   pdf.setTextColor(160, 0, 0); pdf.setFont("helvetica", "bold"); pdf.setFontSize(11); pdf.text(`RUT ${issuerRut}`, 420, 45);
-  pdf.text(documentName(source.type), 420, 64, { maxWidth: 145 }); pdf.text(`N° ${source.folio}`, 420, 88); pdf.text("S.I.I. - LA SERENA", 420, 103); pdf.setTextColor(0, 0, 0);
+  pdf.text(documentName(source.type), 420, 64, { maxWidth: 145 }); pdf.text(`N° ${source.folio}`, 420, 88); pdf.text("S.I.I. - " + (options.productionMetadata?.siiOffice ?? "LA SERENA"), 420, 103); pdf.setTextColor(0, 0, 0);
   pdf.setFontSize(8); pdf.text(`FECHA EMISIÓN: ${source.date}`, 36, 119); pdf.line(36, 126, 576, 126);
   let y = 139; pdf.setFont("helvetica", "bold"); pdf.text("RECEPTOR", 36, y); pdf.setFont("helvetica", "normal");
   y = safeText(pdf, `${source.receiverName} | RUT ${receiverRut}`, 36, y + 11);
@@ -174,7 +175,7 @@ export async function buildPdf(spec: CopySpec, options: PrintedSamplesOptions = 
   const barcode = await barcodePng(barcodeSource, Boolean(override?.corruptBarcode));
   pdf.addImage(barcode, "PNG", barcodeX, BARCODE_Y, barcodeWidth, BARCODE_HEIGHT);
   pdf.setFontSize(9); pdf.setFont("helvetica", "bold"); pdf.text("Timbre Electrónico SII", barcodeX + 65, BARCODE_Y + BARCODE_HEIGHT + 12);
-  pdf.setFont("helvetica", "normal"); pdf.setFontSize(7); pdf.text("Res. 0 de 2026 - Verifique documento: www.sii.cl", barcodeX + 30, BARCODE_Y + BARCODE_HEIGHT + 23);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(7); pdf.text(options.productionMetadata ? "Res. " + options.productionMetadata.resolutionNumber + " de " + options.productionMetadata.resolutionYear + " - Verifique documento: www.sii.cl" : "Res. 0 de 2026 - Verifique documento: www.sii.cl", barcodeX + 30, BARCODE_Y + BARCODE_HEIGHT + 23);
   if (override?.clippedContent) pdf.text("CONTENIDO FUERA", PAGE_WIDTH + 5, 300);
   if (override?.extraPage) { pdf.addPage("letter"); pdf.text("PÁGINA EXTRA", 36, 36); }
   const bytes = Buffer.from(pdf.output("arraybuffer"));

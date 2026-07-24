@@ -650,10 +650,10 @@ function verifyXmlsecReferences(
   }
 }
 
-function signingConfig(material: FixtureMaterial, target: string): RealXmlSigningConfig {
+function signingConfig(material: FixtureMaterial, target: string, mode: "certification" | "production" = "certification", tenantId = FIXTURE_TENANT_ID): RealXmlSigningConfig {
   return {
-    tenantId: FIXTURE_TENANT_ID,
-    mode: "certification",
+    tenantId,
+    mode,
     signatureTarget: target,
     privateKeyPath: material.privateKeyPath,
     certificatePath: material.certPath,
@@ -661,7 +661,7 @@ function signingConfig(material: FixtureMaterial, target: string): RealXmlSignin
   };
 }
 
-function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureMaterial, cafMaterial: FixtureMaterial, outputDir: string, overrides: FacturaSetDryRunOptions["overrides"] = {}, timestamp = FIXTURE_TIMESTAMP, onStage?: (stage: FacturaSetDryRunStage) => void, caseIds: readonly string[] = PRE_CAF_REQUIRED_CASE_ORDER): SignedDocument[] {
+function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureMaterial, cafMaterial: FixtureMaterial, outputDir: string, overrides: FacturaSetDryRunOptions["overrides"] = {}, timestamp = FIXTURE_TIMESTAMP, onStage?: (stage: FacturaSetDryRunStage) => void, caseIds: readonly string[] = PRE_CAF_REQUIRED_CASE_ORDER, executionEnvironment: "certification" | "production" = "certification", tenantId = FIXTURE_TENANT_ID): SignedDocument[] {
   if (caseIds.length !== drafts.length || new Set(caseIds).size !== drafts.length) fail("case_ids_invalid");
   return drafts.map((draft, index) => {
     const caseId = caseIds[index] ?? fail("case_id_missing");
@@ -691,7 +691,7 @@ function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureM
       cafPrivateKeyPem,
     });
     onStage?.("document_build");
-    const caf = parseCafRealControlledXml(cafXml, FIXTURE_TENANT_ID);
+    const caf = parseCafRealControlledXml(cafXml, tenantId);
     validateCafForDraftOrThrow(caf, draft);
     onStage?.("ted_frmt");
     const tedWithoutFrmt = buildTedControlled({
@@ -711,7 +711,7 @@ function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureM
       ddXml: tedWithoutFrmt.ddXml,
       inputEncoding: "latin1",
       privateKeyPem: cafPrivateKeyPem,
-      mode: "certification",
+      mode: executionEnvironment,
     });
     if (!frmt.ok) fail("FRMT fixture no pudo firmarse");
     const ted = buildTedControlled({
@@ -729,7 +729,7 @@ function signAndBuildDocuments(drafts: TaxDocumentDraft[], xmlMaterial: FixtureM
       frmtStatus: "real_controlled",
       compact: true,
     });
-    const unsignedDteXml = withDteNamespace(buildDteDocumentoXmlLab(draft, { tedXml: ted.tedXml, documentSignedAt: timestamp, mode: "certification", preserveTedWhitespace: true }));
+    const unsignedDteXml = withDteNamespace(buildDteDocumentoXmlLab(draft, { tedXml: ted.tedXml, documentSignedAt: timestamp, mode: executionEnvironment, preserveTedWhitespace: true }));
     const unsignedDocumentoXml = extractDocumentoForSignature(unsignedDteXml);
     onStage?.("dte_signature");
     const finalDteXml = `${XML_DECLARATION_ISO_8859_1}\n${unsignedDteXml}`;
@@ -760,6 +760,8 @@ function buildEnvioXml(
   onStage?: (stage: FacturaSetDryRunStage) => void,
   setDteIdOverride?: string,
   validationLabel?: string,
+  executionEnvironment: "certification" | "production" = "certification",
+  tenantId = FIXTURE_TENANT_ID,
 ): string {
   const documentCount = signedDocuments.length;
   const documentKeys = signedDocuments.map((doc) => dteTypeFolioKey(doc.draft));
@@ -790,7 +792,7 @@ function buildEnvioXml(
     setDteId,
     rutEnvia,
     perDocumentXml,
-    mode: "certification",
+    mode: executionEnvironment,
   }).replace("<SetDTE ", `<SetDTE xmlns="${SII_DTE_NAMESPACE}" `);
   const warning = realCertification
     ? ""
@@ -798,7 +800,7 @@ function buildEnvioXml(
   let unsignedEnvioXml = `${SII_ENVIO_DTE_ROOT_OPENING}\n${warning}${setDteXml}\n</EnvioDTE>`;
   for (const doc of signedDocuments) {
     const documentId = buildDteDocumentId(doc.draft);
-    const signedContext = signXmlInFinalContextControlled({ xml: unsignedEnvioXml, referenceId: documentId, insertAfterXPath: `//*[local-name()='Documento' and @ID='${documentId}']` }, signingConfig(documentMaterial, documentId));
+    const signedContext = signXmlInFinalContextControlled({ xml: unsignedEnvioXml, referenceId: documentId, insertAfterXPath: `//*[local-name()='Documento' and @ID='${documentId}']` }, signingConfig(documentMaterial, documentId, executionEnvironment, tenantId));
     unsignedEnvioXml = signedContext.signedXml;
     doc.signatureXml = signedContext.signatureXml;
     const dteMatch = [...unsignedEnvioXml.matchAll(/<DTE\b[^>]*>[\s\S]*?<\/DTE>/g)].find((match) => match[0].includes("<Documento") && match[0].includes(`ID="${documentId}"`));
@@ -831,7 +833,7 @@ function buildEnvioXml(
   );
   if (dteSignatureOk !== documentCount)
     fail("firmas DTE fixture no verifican " + dteSignatureOk + "/" + documentCount);
-  const signedEnvelope = signXmlInFinalContextControlled({ xml: unsignedEnvioXml, referenceId: setDteId, insertAfterXPath: `//*[local-name()='SetDTE' and @ID='${setDteId}']` }, signingConfig(material, setDteId));
+  const signedEnvelope = signXmlInFinalContextControlled({ xml: unsignedEnvioXml, referenceId: setDteId, insertAfterXPath: `//*[local-name()='SetDTE' and @ID='${setDteId}']` }, signingConfig(material, setDteId, executionEnvironment, tenantId));
   const envioXml = `${XML_DECLARATION_ISO_8859_1}\n${signedEnvelope.signedXml}`;
   onStage?.("xsd_validation");
   validateXsd(
@@ -1133,6 +1135,8 @@ export function runFacturaSetDryRun(
 
 
 export type ControlledCertificationSetOptions = {
+  executionEnvironment?: "certification" | "production";
+  tenantId?: string;
   env?: NodeJS.ProcessEnv;
   outputDir: string;
   signingMaterial: { privateKeyPath: string; certificatePath: string };
@@ -1149,6 +1153,7 @@ export type ControlledCertificationSetOptions = {
 };
 
 export type ControlledCertificationSetResult = {
+  environment: "certification" | "production";
   documents: number;
   type33: number;
   type56: number;
@@ -1174,7 +1179,9 @@ export function runControlledCertificationSet(
   options: ControlledCertificationSetOptions,
 ): ControlledCertificationSetResult {
   const env = options.env ?? process.env;
-  assertCertificationEnvironment(env);
+  const executionEnvironment = options.executionEnvironment ?? "certification";
+  if (executionEnvironment === "certification") assertCertificationEnvironment(env);
+  else if (env.DTE_MODE !== "production" || env.DTE_SII_ENV !== "production" || env.DTE_SIGNING_MODE !== "production" || env.DTE_PRODUCTION_ENABLED !== "true") fail("production_environment_blocked");
   const count = options.drafts.length;
   if (
     count < 1 ||
@@ -1213,6 +1220,8 @@ export function runControlledCertificationSet(
       options.generationTimestamp,
       options.onStage,
       options.caseIds,
+      executionEnvironment,
+      options.tenantId ?? options.drafts[0]?.tenantId ?? FIXTURE_TENANT_ID,
     );
     const frmtOk = signed.filter((doc) => verifyFrmt(doc.ddXml, doc.frmtXml, doc.cafPublicKeyPem)).length;
     if (frmtOk !== count) fail("FRMT no verifica " + frmtOk + "/" + count);
@@ -1227,7 +1236,9 @@ export function runControlledCertificationSet(
       undefined,
       options.onStage,
       options.setDteId,
-      "envio-dte-controlled-certification",
+      executionEnvironment === "production" ? "envio-dte-controlled-production" : "envio-dte-controlled-certification",
+      executionEnvironment,
+      options.tenantId ?? options.drafts[0]?.tenantId ?? FIXTURE_TENANT_ID,
     );
     assertNoPendingFolios(envioXml);
     const writtenPaths: string[] = [];
@@ -1249,6 +1260,7 @@ export function runControlledCertificationSet(
       options.manifestFileName,
     );
     return {
+      environment: executionEnvironment,
       documents: count,
       type33,
       type56,

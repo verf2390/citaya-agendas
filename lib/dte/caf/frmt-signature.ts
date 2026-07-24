@@ -61,7 +61,7 @@ export function signFrmtControlled(
 
   const privateKey: string = keyResult.key;
 
-  if (input.mode !== "certification") {
+  if (input.mode !== "certification" && input.mode !== "production") {
     return {
       ok: false,
       status: "blocked",
@@ -69,8 +69,8 @@ export function signFrmtControlled(
       isProductionValid: false,
       missing: [],
       warnings: [
-        "FRMT real bloqueado fuera de modo certification controlado.",
-        "No usar claves reales en modo lab/xsd-structure/production sin aprobacion explicita.",
+        "FRMT real bloqueado fuera de modos certification/production controlados.",
+        "No usar claves reales en modo lab/xsd-structure.",
       ],
     };
   }
@@ -97,10 +97,10 @@ export function signFrmtControlled(
   return {
     ok: true,
     frmtXml: `<FRMT algoritmo="SHA1withRSA">${wrapBase64Lines(signature)}</FRMT>`,
-    mode: "certification",
-    isProductionValid: false,
+    mode: input.mode,
+    isProductionValid: input.mode === "production",
     warnings: [
-      "FRMT generado en modo certification controlado. Sigue pendiente validar con CAF real y ambiente SII.",
+      input.mode === "production" ? "FRMT productivo generado con CAF oficial validado." : "FRMT generado en modo certification controlado.",
     ],
   };
 }

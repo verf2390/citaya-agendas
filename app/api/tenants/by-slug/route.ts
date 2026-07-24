@@ -66,11 +66,18 @@ export async function GET(req: Request) {
       ].join(","),
     )
     .eq("slug", slug)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
     return NextResponse.json(
-      { error: error?.message ?? "Tenant not found" },
+      { error: "Tenant lookup unavailable" },
+      { status: 503 },
+    );
+  }
+
+  if (!data) {
+    return NextResponse.json(
+      { error: "Tenant not found" },
       { status: 404 },
     );
   }
