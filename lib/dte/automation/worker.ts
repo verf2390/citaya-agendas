@@ -90,6 +90,17 @@ async function loadIntent(item: ClaimedOutbox): Promise<IssuanceIntent> {
   return result.data as IssuanceIntent;
 }
 
+async function assertTenantReadyForIssuance(item: ClaimedOutbox) {
+  const result = await supabaseAdmin.rpc(
+    "dte_tenant_operational_readiness",
+    { p_tenant_id: item.tenant_id },
+  );
+  if (result.error) throw new Error("DTE_TENANT_READINESS_FAILED");
+  const row = Array.isArray(result.data) ? result.data[0] : null;
+  if (!row || row.ready_for_issuance !== true)
+    throw new Error("DTE_TENANT_NOT_READY_FOR_ISSUANCE");
+}
+
 async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED", networkAttempts: number, reason: string | null) {
   const result = await supabaseAdmin
     .from("dte_issuance_outbox")
@@ -120,6 +131,7 @@ export async function runOneAutomaticIssuanceWorker() {
     if (intent.status !== "PENDING" || intent.resolved_dte_type !== 33) {
       throw new Error("DTE_INTENT_STATE_INVALID");
     }
+    await assertTenantReadyForIssuance(item);
     const appointment = intent.appointment_snapshot ?? {};
     const receiver = intent.receiver_snapshot ?? {};
     const treatment = value(appointment, "taxTreatment");

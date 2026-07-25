@@ -61,6 +61,10 @@ test("hostname con puerto conserva el subdominio", () => {
   assert.equal(getTenantSlugFromHostname("demo.citaya.online:443"), "demo");
 });
 
+test("rg-spa.citaya.online resuelve inequívocamente rg-spa", () => {
+  assert.equal(getTenantSlugFromHostname("rg-spa.citaya.online"), "rg-spa");
+});
+
 test("localhost no se interpreta como tenant", () => {
   assert.equal(getTenantSlugFromHostname("localhost:3000"), null);
   assert.equal(getTenantSlugFromHostname("demo.localhost:3000"), null);
