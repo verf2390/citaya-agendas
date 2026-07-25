@@ -10,6 +10,11 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { DOMParser } from "@xmldom/xmldom";
 import { normalizeRut } from "../rut";
+import {
+  isOfficialSiiTrustAnchorProvenance,
+  isPinnedSha256,
+  isValidSiiTrustAnchorIdk,
+} from "../trust-anchor-contract";
 
 export type CafTrustAnchor = {
   idk: string;
@@ -223,8 +228,24 @@ function loadCafAuthorizationInternal(
   const authorizationDate = value(daXml, "FA");
   assertDate(authorizationDate);
   const idk = value(daXml, "IDK");
-  if (!idk || (options.expectedIdk && idk !== options.expectedIdk))
+  if (
+    !isValidSiiTrustAnchorIdk(idk) ||
+    (options.expectedIdk && idk !== options.expectedIdk)
+  )
     reject("IDK");
+  let daPublicKey: ReturnType<typeof createPublicKey>;
+  try {
+    daPublicKey = createPublicKey({
+      key: {
+        kty: "RSA",
+        n: Buffer.from(value(daXml, "M"), "base64").toString("base64url"),
+        e: Buffer.from(value(daXml, "E"), "base64").toString("base64url"),
+      },
+      format: "jwk",
+    });
+  } catch {
+    reject("RSAPK");
+  }
   const anchor = options.trustStore.get(idk);
   let trustStatus: CafTrustStatus;
   if (!anchor) {
@@ -240,8 +261,14 @@ function loadCafAuthorizationInternal(
       options.fixtureMode ? anchor.mode !== "fixture" : anchor.mode !== "real"
     )
       reject("trustAnchor.mode");
-    if (!options.fixtureMode && !anchor.provenance.startsWith("official:"))
+    if (anchor.idk !== idk || !isValidSiiTrustAnchorIdk(anchor.idk))
+      reject("trustAnchor.IDK");
+    if (
+      !options.fixtureMode &&
+      !isOfficialSiiTrustAnchorProvenance(anchor.provenance)
+    )
       reject("trustAnchor.provenance");
+    if (!isPinnedSha256(anchor.sha256)) reject("trustAnchor.sha256");
     const anchorPath = resolve(anchor.publicKeyPath);
     if (isInside(options.repoRoot, anchorPath)) reject("trustAnchor.path");
     const anchorStat = lstatSync(anchorPath);
@@ -251,15 +278,35 @@ function loadCafAuthorizationInternal(
       realpathSync(anchorPath) !== anchorPath
     )
       reject("trustAnchor.path");
+    if ((anchorStat.mode & 0o777) !== 0o600)
+      reject("trustAnchor.permissions");
+    if (
+      options.expectedOwnerUid !== undefined &&
+      anchorStat.uid !== options.expectedOwnerUid
+    )
+      reject("trustAnchor.owner");
     const anchorBytes = readFileSync(anchorPath);
     if (
       createHash("sha256").update(anchorBytes).digest("hex") !==
       anchor.sha256.toLowerCase()
     )
       reject("trustAnchor.sha256");
+    let anchorPublicKey: ReturnType<typeof createPublicKey>;
+    try {
+      anchorPublicKey = createPublicKey(anchorBytes);
+    } catch {
+      reject("trustAnchor.format");
+    }
+    const anchorDer = anchorPublicKey.export({
+      type: "spki",
+      format: "der",
+    });
+    const daDer = daPublicKey.export({ type: "spki", format: "der" });
+    if (anchorDer.compare(daDer) === 0) reject("trustAnchor.role");
     const frmaVerifier = createVerify("RSA-SHA1");
     frmaVerifier.update(Buffer.from(daXml, "latin1"));
-    if (!frmaVerifier.verify(anchorBytes, frmaValue, "base64")) reject("FRMA");
+    if (!frmaVerifier.verify(anchorPublicKey, frmaValue, "base64"))
+      reject("FRMA");
     trustStatus = options.fixtureMode
       ? "verified_fixture"
       : "verified_official";
@@ -277,6 +324,8 @@ function loadCafAuthorizationInternal(
   const derivedDer = derived.export({ type: "spki", format: "der" });
   const suppliedDer = supplied.export({ type: "spki", format: "der" });
   if (derivedDer.compare(suppliedDer)) reject("RSASK/RSAPUBK");
+  const daDer = daPublicKey.export({ type: "spki", format: "der" });
+  if (suppliedDer.compare(daDer)) reject("RSAPK");
   const jwk = supplied.export({ format: "jwk" }) as {
     kty?: string;
     n?: string;

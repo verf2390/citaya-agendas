@@ -10,6 +10,9 @@ export type ProductionReadinessEvidence = {
   certificateRutMatch: boolean;
   privateKeyMatchesCertificate: boolean;
   trustAnchorValid: boolean;
+  trustAnchorSha256Pinned: boolean;
+  trustAnchorAcquisitionProcedureReady: boolean;
+  cafImportFailClosed: boolean;
   privateBucketReady: boolean;
   persistenceReady: boolean;
   ledgerReady: boolean;
@@ -52,7 +55,11 @@ export function evaluateProductionReadiness(
     ["certificateValid", "CERTIFICATE_NOT_VALID"],
     ["certificateRutMatch", "CERTIFICATE_RUT_MISMATCH"],
     ["privateKeyMatchesCertificate", "PRIVATE_KEY_MISMATCH"],
-    ["trustAnchorValid", "TRUST_ANCHOR_NOT_VALID"],
+    [
+      "trustAnchorAcquisitionProcedureReady",
+      "TRUST_ANCHOR_ACQUISITION_PROCEDURE_NOT_READY",
+    ],
+    ["cafImportFailClosed", "CAF_IMPORT_NOT_FAIL_CLOSED"],
     ["privateBucketReady", "PRIVATE_BUCKET_NOT_READY"],
     ["persistenceReady", "PERSISTENCE_NOT_READY"],
     ["ledgerReady", "LEDGER_NOT_READY"],
@@ -74,6 +81,10 @@ export function evaluateProductionReadiness(
     declarationBlockers.push("GLOBAL_PRODUCTION_MUST_REMAIN_DISABLED");
 
   const issuanceBlockers = [...commonBlockers];
+  if (!evidence.trustAnchorValid)
+    issuanceBlockers.push("TRUST_ANCHOR_NOT_VALID");
+  if (!evidence.trustAnchorSha256Pinned)
+    issuanceBlockers.push("TRUST_ANCHOR_SHA256_NOT_PINNED");
   if (
     !["declared", "ready_for_issuance"].includes(
       evidence.issuerProfileState,

@@ -17,6 +17,9 @@ import {
 
 import AdminNav from "@/components/admin/AdminNav";
 import AdvancedBillingTechnicalPanel from "@/components/admin/dte/AdvancedBillingTechnicalPanel";
+import DeclarationReadinessCard, {
+  type DeclarationReadinessState,
+} from "@/components/admin/dte/DeclarationReadinessCard";
 import {
   AdminPageHeader,
   AdminPageShell,
@@ -65,6 +68,7 @@ type BillingState = {
     lastCheck: string | null;
     folios: Record<string, { available: number; reserved: number; issued: number }>;
   };
+  declaration: DeclarationReadinessState;
   documents: DocumentRow[];
 };
 
@@ -235,6 +239,8 @@ export default function AdminFacturacionPage() {
           <button type="button" onClick={() => void load()} className="rounded-lg border border-red-300 px-3 py-1.5">Reintentar</button>
         </div>
       ) : null}
+
+      <DeclarationReadinessCard state={state.declaration} />
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <AdminSectionCard

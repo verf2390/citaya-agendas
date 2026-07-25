@@ -14,7 +14,10 @@ function declarationEvidence(): ProductionReadinessEvidence {
     certificateValid: true,
     certificateRutMatch: true,
     privateKeyMatchesCertificate: true,
-    trustAnchorValid: true,
+    trustAnchorValid: false,
+    trustAnchorSha256Pinned: false,
+    trustAnchorAcquisitionProcedureReady: true,
+    cafImportFailClosed: true,
     privateBucketReady: true,
     persistenceReady: true,
     ledgerReady: true,
@@ -41,19 +44,36 @@ test("pre-declaration can be ready without being ready for issuance", () => {
   assert.ok(result.issuanceBlockers.includes("PRODUCTION_CAF_NOT_IMPORTED"));
 });
 
-test("trust anchor is mandatory and cannot be replaced by certification CAF", () => {
-  const result = evaluateProductionReadiness({
+test("declaration requires a secure anchor acquisition procedure and fail-closed import", () => {
+  const missingProcedure = evaluateProductionReadiness({
     ...declarationEvidence(),
-    trustAnchorValid: false,
+    trustAnchorAcquisitionProcedureReady: false,
   });
-  assert.equal(result.readyForDeclaration, false);
-  assert.ok(result.declarationBlockers.includes("TRUST_ANCHOR_NOT_VALID"));
+  assert.equal(missingProcedure.readyForDeclaration, false);
+  assert.ok(
+    missingProcedure.declarationBlockers.includes(
+      "TRUST_ANCHOR_ACQUISITION_PROCEDURE_NOT_READY",
+    ),
+  );
+
+  const importNotFailClosed = evaluateProductionReadiness({
+    ...declarationEvidence(),
+    cafImportFailClosed: false,
+  });
+  assert.equal(importNotFailClosed.readyForDeclaration, false);
+  assert.ok(
+    importNotFailClosed.declarationBlockers.includes(
+      "CAF_IMPORT_NOT_FAIL_CLOSED",
+    ),
+  );
 });
 
 test("issuance requires approval, real CAF, folios, endpoints and flags", () => {
   const result = evaluateProductionReadiness({
     ...declarationEvidence(),
     issuerProfileState: "ready_for_issuance",
+    trustAnchorValid: true,
+    trustAnchorSha256Pinned: true,
     siiAuthorizationApproved: true,
     productionCafCount: 1,
     availableFolioCount: 10,
@@ -64,4 +84,20 @@ test("issuance requires approval, real CAF, folios, endpoints and flags", () => 
   });
   assert.equal(result.readyForDeclaration, false);
   assert.equal(result.readyForIssuance, true);
+});
+
+test("issuance remains blocked without the official anchor and production CAF", () => {
+  const result = evaluateProductionReadiness({
+    ...declarationEvidence(),
+    issuerProfileState: "declared",
+    siiAuthorizationApproved: true,
+    productionEndpointsReady: true,
+  });
+  assert.equal(result.readyForDeclaration, true);
+  assert.equal(result.readyForIssuance, false);
+  assert.ok(result.issuanceBlockers.includes("TRUST_ANCHOR_NOT_VALID"));
+  assert.ok(
+    result.issuanceBlockers.includes("TRUST_ANCHOR_SHA256_NOT_PINNED"),
+  );
+  assert.ok(result.issuanceBlockers.includes("PRODUCTION_CAF_NOT_IMPORTED"));
 });

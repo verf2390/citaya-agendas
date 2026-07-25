@@ -60,7 +60,7 @@ const productionEnv: NodeJS.ProcessEnv = {
   DTE_PRODUCTION_PRIVATE_KEY_ROOT: "/tmp/citaya-production-cert",
   DTE_PRODUCTION_TRUST_ANCHOR_IDK: "100",
   DTE_PRODUCTION_TRUST_ANCHOR_PATH: "/tmp/citaya-production-anchor.pem",
-  DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE: "official:test",
+  DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE: "official:https://www.sii.cl/test-fixture-only",
   DTE_PRODUCTION_TRUST_ANCHOR_SHA256: "a".repeat(64),
   DTE_PRODUCTION_DATA_KEY: randomBytes(32).toString("base64"),
   DTE_PRODUCTION_TIMEOUT_MS: "30000",

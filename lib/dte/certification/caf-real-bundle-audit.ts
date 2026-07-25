@@ -4,6 +4,11 @@ import {
   type CafTrustStore,
   type ImportedCaf,
 } from "./caf-secure-import";
+import {
+  isOfficialSiiTrustAnchorProvenance,
+  isPinnedSha256,
+  isValidSiiTrustAnchorIdk,
+} from "../trust-anchor-contract";
 
 type CafType = 33 | 56 | 61;
 const SPECS = [
@@ -78,8 +83,10 @@ function trustStore(env: NodeJS.ProcessEnv): CafTrustStore {
   ].map((value) => String(value ?? "").trim());
   if (values.every((value) => !value)) return new Map();
   if (values.some((value) => !value)) reject("trustAnchor.incomplete");
-  if (!values[2].startsWith("official:")) reject("trustAnchor.provenance");
-  if (!/^[a-f0-9]{64}$/i.test(values[3])) reject("trustAnchor.sha256");
+  if (!isValidSiiTrustAnchorIdk(values[0])) reject("trustAnchor.IDK");
+  if (!isOfficialSiiTrustAnchorProvenance(values[2]))
+    reject("trustAnchor.provenance");
+  if (!isPinnedSha256(values[3])) reject("trustAnchor.sha256");
   return new Map([
     [
       values[0],

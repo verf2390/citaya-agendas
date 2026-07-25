@@ -7,6 +7,11 @@ import {
   type ImportedCaf,
 } from "../certification/caf-secure-import";
 import { normalizeRut } from "../rut";
+import {
+  isOfficialSiiTrustAnchorProvenance,
+  isPinnedSha256,
+  isValidSiiTrustAnchorIdk,
+} from "../trust-anchor-contract";
 import type { ProductionDteRepository } from "./repository";
 import type {
   ProductionCafMetadata,
@@ -135,10 +140,10 @@ export function buildProductionTrustStore(env: NodeJS.ProcessEnv): CafTrustStore
     env.DTE_PRODUCTION_TRUST_ANCHOR_SHA256 ?? "",
   ).trim().toLowerCase();
   if (
-    !idk ||
+    !isValidSiiTrustAnchorIdk(idk) ||
     !path ||
-    !provenance.startsWith("official:") ||
-    !/^[a-f0-9]{64}$/.test(sha256)
+    !isOfficialSiiTrustAnchorProvenance(provenance) ||
+    !isPinnedSha256(sha256)
   )
     throw new Error("DTE_PRODUCTION_TRUST_ANCHOR_INCOMPLETE");
   return new Map([

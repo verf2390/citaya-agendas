@@ -1,5 +1,10 @@
 import { loadFacturaPreCafInputFromPath } from "./pre-caf-input-loader";
 import { loadCafAuthorization, type CafTrustStore } from "./caf-secure-import";
+import {
+  isOfficialSiiTrustAnchorProvenance,
+  isPinnedSha256,
+  isValidSiiTrustAnchorIdk,
+} from "../trust-anchor-contract";
 
 export type RealCafAuditStatus =
   | "VERIFIED_LOCAL_AND_OFFICIAL"
@@ -59,8 +64,10 @@ function buildTrustStore(env: NodeJS.ProcessEnv): CafTrustStore {
   ).length;
   if (supplied === 0) return new Map();
   if (supplied !== 4) reject("trustAnchor.incomplete");
-  if (!provenance.startsWith("official:")) reject("trustAnchor.provenance");
-  if (!/^[a-f0-9]{64}$/.test(sha256)) reject("trustAnchor.sha256");
+  if (!isValidSiiTrustAnchorIdk(idk)) reject("trustAnchor.IDK");
+  if (!isOfficialSiiTrustAnchorProvenance(provenance))
+    reject("trustAnchor.provenance");
+  if (!isPinnedSha256(sha256)) reject("trustAnchor.sha256");
   return new Map([
     [idk, { idk, mode: "real", publicKeyPath, provenance, sha256 }],
   ]);

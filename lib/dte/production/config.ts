@@ -1,4 +1,9 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import {
+  isOfficialSiiTrustAnchorProvenance,
+  isPinnedSha256,
+  isValidSiiTrustAnchorIdk,
+} from "../trust-anchor-contract";
 
 export const PRODUCTION_CONFIRMATION_PREFIX = "EMITIR DTE PRODUCCION";
 
@@ -91,8 +96,25 @@ export function validateProductionConfig(
     const configuredPath = value(env, pathName);
     if (configuredPath && (!isAbsolute(configuredPath) || insideRepo(configuredPath, repoRoot))) invalid.push(pathName);
   }
-  if (value(env, "DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE") && !value(env, "DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE").startsWith("official:")) invalid.push("DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE");
-  if (value(env, "DTE_PRODUCTION_TRUST_ANCHOR_SHA256") && !/^[a-f0-9]{64}$/i.test(value(env, "DTE_PRODUCTION_TRUST_ANCHOR_SHA256"))) invalid.push("DTE_PRODUCTION_TRUST_ANCHOR_SHA256");
+  if (
+    value(env, "DTE_PRODUCTION_TRUST_ANCHOR_IDK") &&
+    !isValidSiiTrustAnchorIdk(
+      value(env, "DTE_PRODUCTION_TRUST_ANCHOR_IDK"),
+    )
+  )
+    invalid.push("DTE_PRODUCTION_TRUST_ANCHOR_IDK");
+  if (
+    value(env, "DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE") &&
+    !isOfficialSiiTrustAnchorProvenance(
+      value(env, "DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE"),
+    )
+  )
+    invalid.push("DTE_PRODUCTION_TRUST_ANCHOR_PROVENANCE");
+  if (
+    value(env, "DTE_PRODUCTION_TRUST_ANCHOR_SHA256") &&
+    !isPinnedSha256(value(env, "DTE_PRODUCTION_TRUST_ANCHOR_SHA256"))
+  )
+    invalid.push("DTE_PRODUCTION_TRUST_ANCHOR_SHA256");
   if (value(env, "DTE_PRODUCTION_DATA_KEY") && Buffer.from(value(env, "DTE_PRODUCTION_DATA_KEY"), "base64").length !== 32) invalid.push("DTE_PRODUCTION_DATA_KEY");
   const bucket = value(env, "DTE_PRODUCTION_STORAGE_BUCKET");
   if (bucket && (!/^[a-z0-9][a-z0-9_-]{2,62}$/.test(bucket) || /public/i.test(bucket)))

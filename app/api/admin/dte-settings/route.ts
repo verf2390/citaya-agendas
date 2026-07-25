@@ -38,6 +38,22 @@ type DocumentIntentRow = {
   receiver_snapshot: { legalName?: string } | null;
   appointment_snapshot: { customerName?: string } | null; created_at: string;
 };
+type OperationalReadinessRow = {
+  ready_for_declaration: boolean;
+  ready_for_issuance: boolean;
+  production_caf_count: number;
+  available_folio_count: number;
+};
+type ReadinessEvidenceRow = {
+  trust_anchor_valid: boolean;
+  trust_anchor_sha256: string | null;
+  trust_anchor_acquisition_ready: boolean;
+  caf_import_fail_closed: boolean;
+};
+type IssuerProfileRow = {
+  issuer_profile_state: string;
+  enabled: boolean;
+};
 
 function text(value: unknown, max = 180) {
   return String(value ?? "").trim().slice(0, max);
@@ -51,18 +67,58 @@ function statusLabel(input: { ready: boolean; missing: number; globalEnabled: bo
 }
 
 async function loadState(tenantId: string, authMode: string) {
-  const [billingResult, configResult, cafResult, folioResult, documentsResult] = await Promise.all([
+  const [
+    billingResult,
+    configResult,
+    cafResult,
+    folioResult,
+    documentsResult,
+    operationalReadinessResult,
+    readinessEvidenceResult,
+    issuerProfileResult,
+  ] = await Promise.all([
     supabaseAdmin.from("tenant_billing_settings").select(BILLING_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("dte_tenant_issuance_settings").select(CONFIG_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("dte_production_cafs").select("dte_type,active").eq("tenant_id", tenantId),
     supabaseAdmin.from("dte_production_folio_ledger").select("dte_type,state").eq("tenant_id", tenantId),
     supabaseAdmin.from("dte_payment_document_intents").select("id,resolved_dte_type,amount_snapshot,status,safe_blocking_reason,production_document_id,receiver_snapshot,appointment_snapshot,created_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(12),
+    supabaseAdmin.rpc("dte_tenant_operational_readiness", {
+      p_tenant_id: tenantId,
+    }),
+    supabaseAdmin
+      .from("dte_tenant_readiness_evidence")
+      .select("trust_anchor_valid,trust_anchor_sha256,trust_anchor_acquisition_ready,caf_import_fail_closed")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("dte_production_tenant_settings")
+      .select("issuer_profile_state,enabled")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
   ]);
-  const firstError = [billingResult.error, configResult.error, cafResult.error, folioResult.error, documentsResult.error].find(Boolean);
+  const firstError = [
+    billingResult.error,
+    configResult.error,
+    cafResult.error,
+    folioResult.error,
+    documentsResult.error,
+    operationalReadinessResult.error,
+    readinessEvidenceResult.error,
+    issuerProfileResult.error,
+  ].find(Boolean);
   if (firstError) throw new Error("DTE_TENANT_STATE_UNAVAILABLE");
 
   const billing = (billingResult.data ?? {}) as Partial<BillingRow>;
   const config = (configResult.data ?? {}) as Partial<ConfigRow>;
+  const operationalReadiness = (
+    (operationalReadinessResult.data ?? []) as OperationalReadinessRow[]
+  )[0];
+  const readinessEvidence = (
+    readinessEvidenceResult.data ?? {}
+  ) as Partial<ReadinessEvidenceRow>;
+  const issuerProfile = (
+    issuerProfileResult.data ?? {}
+  ) as Partial<IssuerProfileRow>;
   const folios = (folioResult.data ?? []) as FolioRow[];
   const cafs = (cafResult.data ?? []) as CafRow[];
   const now = Date.now();
@@ -139,6 +195,24 @@ async function loadState(tenantId: string, authMode: string) {
       cafReady: cafFoliosReady,
       lastCheck: config.last_readiness_check ?? null,
       folios: Object.fromEntries([...byType.entries()].map(([type, counts]) => [String(type), counts])),
+    },
+    declaration: {
+      readyForDeclaration: operationalReadiness?.ready_for_declaration === true,
+      readyForIssuance: operationalReadiness?.ready_for_issuance === true,
+      issuerProfileState:
+        issuerProfile.issuer_profile_state ?? "pre_declaration",
+      trustAnchorValid: readinessEvidence.trust_anchor_valid === true,
+      trustAnchorSha256Pinned: Boolean(readinessEvidence.trust_anchor_sha256),
+      trustAnchorAcquisitionReady:
+        readinessEvidence.trust_anchor_acquisition_ready === true,
+      cafImportFailClosed:
+        readinessEvidence.caf_import_fail_closed === true,
+      productionCafCount: Number(
+        operationalReadiness?.production_caf_count ?? 0,
+      ),
+      availableFolioCount: Number(
+        operationalReadiness?.available_folio_count ?? 0,
+      ),
     },
     documents: ((documentsResult.data ?? []) as DocumentIntentRow[]).map((row) => ({
       id: row.id,
