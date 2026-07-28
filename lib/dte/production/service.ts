@@ -17,6 +17,7 @@ import {
   requiredArtifact,
   type ProductionDteRepository,
 } from "./repository";
+import { assertValidProductionIssuerResolution } from "./issuer-settings";
 import {
   ProductionSiiClient,
   type ProductionSiiMilestone,
@@ -168,6 +169,7 @@ export class ProductionDteService {
   ): Promise<ReturnType<typeof safeDocument>> {
     this.config();
     const settings = await this.requireTenantSettings(tenantId, true);
+    assertValidProductionIssuerResolution(settings.issuer);
     const current = await this.requireDocument(tenantId, documentId);
     if (current.status === "ready") return safeDocument(current);
     if (!["draft", "prepared"].includes(current.status))

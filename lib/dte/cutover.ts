@@ -20,6 +20,7 @@ export type CustomerTaxProfileInput = {
 export type ActivationGates = {
   issuerDataExact: boolean;
   issuerLegalNameMatch: boolean;
+  issuerResolutionConfigured: boolean;
   typeAuthorized: boolean;
   certificateCurrent: boolean;
   certificateKeyMatch: boolean;

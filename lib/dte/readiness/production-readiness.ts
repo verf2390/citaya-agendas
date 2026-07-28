@@ -6,6 +6,7 @@ export type ProductionReadinessEvidence = {
     | "declared"
     | "ready_for_issuance"
     | "suspended";
+  issuerResolutionConfigured: boolean;
   certificateValid: boolean;
   certificateRutMatch: boolean;
   privateKeyMatchesCertificate: boolean;
@@ -81,6 +82,8 @@ export function evaluateProductionReadiness(
     declarationBlockers.push("GLOBAL_PRODUCTION_MUST_REMAIN_DISABLED");
 
   const issuanceBlockers = [...commonBlockers];
+  if (!evidence.issuerResolutionConfigured)
+    issuanceBlockers.push("SII_RESOLUTION_NOT_CONFIGURED");
   if (!evidence.trustAnchorValid)
     issuanceBlockers.push("TRUST_ANCHOR_NOT_VALID");
   if (!evidence.trustAnchorSha256Pinned)

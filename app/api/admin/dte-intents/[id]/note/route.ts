@@ -29,15 +29,21 @@ export async function POST(
   if (!original?.production_document_id || ![33, 39].includes(Number(original.resolved_dte_type)) || adjustmentAmount > Number(original.amount_snapshot)) {
     return NextResponse.json({ ok: false, error: "Recurso no encontrado" }, { status: 404 });
   }
-  const [{ data: authorization }, { data: activation }] = await Promise.all([
+  const [{ data: authorization }, { data: activation }, gateResult] = await Promise.all([
     supabaseAdmin.from("dte_sii_authorization_evidence").select("authorized_types")
       .eq("tenant_id", auth.tenantId).eq("status", "current").maybeSingle(),
     supabaseAdmin.from("dte_legal_activation").select("status")
       .eq("tenant_id", auth.tenantId).eq("dte_type", dteType).maybeSingle(),
+    supabaseAdmin.rpc("dte_activation_gate_report", {
+      p_tenant_id: auth.tenantId,
+      p_dte_type: dteType,
+      p_global_feature_enabled: process.env.DTE_PRODUCTION_ENABLED === "true",
+    }),
   ]);
   const authorized = Array.isArray(authorization?.authorized_types) &&
     authorization.authorized_types.includes(dteType);
-  const active = activation?.status === "active" && process.env.DTE_PRODUCTION_ENABLED === "true";
+  const gate = gateResult.data as { ready?: boolean } | null;
+  const active = !gateResult.error && gate?.ready === true && activation?.status === "active";
   const blockingReason = !authorized ? "DOCUMENT_TYPE_NOT_AUTHORIZED"
     : !active ? "LEGAL_ISSUANCE_NOT_ACTIVE" : null;
   const idempotencyKey = createHash("sha256")

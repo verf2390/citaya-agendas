@@ -11,6 +11,7 @@ function declarationEvidence(): ProductionReadinessEvidence {
     tenantResolved: true,
     issuerProfileComplete: true,
     issuerProfileState: "pre_declaration",
+    issuerResolutionConfigured: false,
     certificateValid: true,
     certificateRutMatch: true,
     privateKeyMatchesCertificate: true,
@@ -72,6 +73,7 @@ test("issuance requires approval, real CAF, folios, endpoints and flags", () => 
   const result = evaluateProductionReadiness({
     ...declarationEvidence(),
     issuerProfileState: "ready_for_issuance",
+    issuerResolutionConfigured: true,
     trustAnchorValid: true,
     trustAnchorSha256Pinned: true,
     siiAuthorizationApproved: true,

@@ -9,9 +9,14 @@
 - Los CAF conocidos de certificación usan `IDK=100`, pero ese dato no autoriza
   a asumir, reconstruir ni sustituir la llave correspondiente.
 - El formato aceptado es una llave pública que `node:crypto.createPublicKey`
-  pueda parsear y exportar como SPKI. La instalación recomendada es PEM SPKI.
-- La procedencia debe ser una URL HTTPS del dominio `sii.cl` o un subdominio,
-  registrada con el prefijo `official:`.
+  pueda parsear y exportar como SPKI, o un certificado X.509 cuyo DER sea el
+  material fijado. La instalación recomendada sigue siendo PEM SPKI.
+- La procedencia primaria es una URL HTTPS del dominio `sii.cl` o un
+  subdominio, registrada con el prefijo `official:`. Para el certificado
+  histórico `IDK=300` se admite exclusivamente la procedencia cerrada
+  `historical_sii_idk300_certificate_cryptographically_cross_validated_against_3_authenticated_production_cafs`;
+  requiere validación independiente de `FRMA` contra los tres CAF productivos
+  autenticados y no se generaliza a ningún otro `IDK`.
 - El SHA-256 completo en minúsculas debe fijarse antes de habilitar cualquier
   importación.
 
@@ -25,11 +30,26 @@ folios válida, que `IDK` identifica su llave pública y que esa llave verifica 
 integridad y autenticidad de `FRMA`. La revisión de esas publicaciones no
 encontró una descarga oficial de la llave asociada a `IDK=100`.
 
+## Estado controlado al 28 de julio de 2026
+
+- Los CAF productivos 33, 56 y 61 de R&G SpA declaran `IDK=300` y sus tres
+  firmas `FRMA` fueron verificadas con el mismo certificado histórico externo.
+- El certificado no coincide con ninguna `RSAPK`/`RSAPUBK` del contribuyente;
+  su DER y SHA-256 están fijados fuera del repositorio.
+- Los tres CAF están importados como metadata tenant-scoped y los folios siguen
+  disponibles. El XML CAF y las llaves permanecen sólo en almacenamiento
+  externo `0600`.
+- La emisión legal 33/56/61 está pausada y el flag local está cerrado porque
+  faltan `resolution_date`, `resolution_number` y `sii_office` exactos. No se
+  debe reactivar ni procesar el outbox hasta registrar esos datos desde la
+  resolución SII real y aplicar `202607280001_dte_sii_resolution_gate.sql`.
+
 ## Procedimiento posterior a la autorización
 
-1. Obtener la llave únicamente desde una publicación HTTPS oficial del SII. No
-   aceptar GitHub, paquetes, blogs, ejemplos, correo ni material proporcionado
-   por terceros.
+1. Preferir una publicación HTTPS oficial del SII. No aceptar GitHub, paquetes,
+   blogs, ejemplos ni llaves reconstruidas. La única excepción implementada es
+   el certificado histórico `IDK=300` bajo la procedencia cerrada y triple
+   validación `FRMA` descritas arriba.
 2. Guardarla fuera del repositorio y fuera del laboratorio, en el directorio
    exclusivo de producción del tenant. El directorio debe ser `0700`; el
    archivo debe ser regular, sin symlink, del propietario del servicio y
@@ -54,8 +74,10 @@ anchor ni de CAF productivos.
 
 `readyForIssuance` requiere adicionalmente el anchor oficial con SHA-256
 fijado, autorización productiva del SII, CAF productivo verificado, folios
-disponibles, endpoints productivos y flags productivos habilitados.
+disponibles, resolución SII exacta, endpoints productivos y flags productivos
+habilitados.
 
 Ante IDK desconocido, anchor ausente, archivo inseguro, SHA incorrecto,
 procedencia no oficial, confusión con RSAPK o `FRMA` inválida, la importación se
-rechaza antes de persistir CAF o folios.
+rechaza antes de persistir CAF o folios. Ante resolución SII incompleta, el
+gate y el generador bloquean antes de preparar artefactos o reservar un folio.

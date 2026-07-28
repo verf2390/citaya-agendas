@@ -103,6 +103,8 @@ test("notes require an accepted tenant-owned primary document and preserve its r
   assert.match(route, /referenceCode !== "3"/);
   assert.match(route, /adjustmentAmount > Number\(original\.amount_snapshot\)/);
   assert.match(route, /\[56, 61\]\.includes\(dteType\)/);
+  assert.match(route, /dte_activation_gate_report/);
+  assert.match(route, /gate\?\.ready === true/);
 });
 
 test("historical payment and manual issuance require a valid customer RUT", () => {

@@ -107,6 +107,7 @@ test("all activation gates are fail closed", () => {
   const allGreen: ActivationGates = {
     issuerDataExact: true,
     issuerLegalNameMatch: true,
+    issuerResolutionConfigured: true,
     typeAuthorized: true,
     certificateCurrent: true,
     certificateKeyMatch: true,
@@ -166,6 +167,7 @@ test("manual API revalidates associated resources and server-side amounts", () =
   assert.match(route, /\.eq\("tenant_id", auth\.tenantId\)/);
   assert.match(route, /\.eq\("customer_id", customerId\)/);
   assert.match(route, /\.eq\("status", "succeeded"\)/);
+  assert.match(route, /dte_activation_gate_report/);
   assert.match(route, /verifiedPayment\?\.amount[\s\S]*appointment\?\.payment_paid_amount/);
   assert.doesNotMatch(route, /body\?\.(amount|tenantId|total)/);
 });

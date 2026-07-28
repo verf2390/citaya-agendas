@@ -271,6 +271,29 @@ test("production config is disabled by default and rejects certification URLs", 
   );
 });
 
+test("missing SII resolution blocks before reserving a production folio", async () => {
+  const context = await preparedService({});
+  context.repository.seedTenantSettings({
+    ...settings(context.tenantId),
+    issuer: {
+      ...settings(context.tenantId).issuer,
+      resolutionDate: "",
+      resolutionNumber: "",
+      siiOffice: "",
+    },
+  });
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 33, "missing-resolution"),
+    "admin-user",
+  );
+  await assert.rejects(
+    context.service.prepare(context.tenantId, draft.id, "admin-user"),
+    /DTE_PRODUCTION_SII_RESOLUTION_INVALID/,
+  );
+  assert.ok(context.repository.folioRows().every((row) => row.state === "available"));
+  assert.deepEqual(context.generator.types, []);
+});
+
 test("CAF metadata rejects duplicate, overlap and cross-tenant selection", async () => {
   const repository = new InMemoryProductionDteRepository();
   await repository.importCaf(caf("tenant-a", 33, 1, 10));

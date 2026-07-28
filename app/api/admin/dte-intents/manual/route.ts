@@ -178,7 +178,7 @@ export async function POST(req: Request) {
     if (!original) return responseError(404, "Recurso no encontrado");
   }
 
-  const [{ data: issuer }, { data: authorization }, { data: activation }] = await Promise.all([
+  const [{ data: issuer }, { data: authorization }, { data: activation }, gateResult] = await Promise.all([
     supabaseAdmin.from("dte_production_tenant_settings")
       .select("issuer_rut,issuer_legal_name,issuer_activity,issuer_address,issuer_commune,issuer_city")
       .eq("tenant_id", auth.tenantId).maybeSingle(),
@@ -186,10 +186,16 @@ export async function POST(req: Request) {
       .select("authorized_types,status").eq("tenant_id", auth.tenantId).eq("status", "current").maybeSingle(),
     supabaseAdmin.from("dte_legal_activation")
       .select("status").eq("tenant_id", auth.tenantId).eq("dte_type", dteType).maybeSingle(),
+    supabaseAdmin.rpc("dte_activation_gate_report", {
+      p_tenant_id: auth.tenantId,
+      p_dte_type: dteType,
+      p_global_feature_enabled: process.env.DTE_PRODUCTION_ENABLED === "true",
+    }),
   ]);
   const typeAuthorized = Array.isArray(authorization?.authorized_types) &&
     authorization.authorized_types.includes(dteType);
-  const active = activation?.status === "active" && process.env.DTE_PRODUCTION_ENABLED === "true";
+  const gate = gateResult.data as { ready?: boolean } | null;
+  const active = !gateResult.error && gate?.ready === true && activation?.status === "active";
   const reason = !typeAuthorized
     ? (dteType === 39 ? "BLOCKED_NOT_AUTHORIZED" : "DOCUMENT_TYPE_NOT_AUTHORIZED")
     : !active
