@@ -84,7 +84,6 @@ export async function importProductionCaf(input: {
 }): Promise<ProductionCafMetadata> {
   if (input.request.tenantId !== input.settings.tenantId)
     throw new Error("DTE_CAF_TENANT_MISMATCH");
-  if (!input.settings.enabled) throw new Error("DTE_TENANT_PRODUCTION_DISABLED");
   const imported = loadProductionCafForTenant({
     cafRoot: input.cafRoot,
     repoRoot: input.repoRoot,

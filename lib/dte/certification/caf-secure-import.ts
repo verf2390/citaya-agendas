@@ -4,6 +4,7 @@ import {
   createPublicKey,
   createSign,
   createVerify,
+  X509Certificate,
   randomBytes,
 } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
@@ -125,6 +126,16 @@ function pem(raw: string, field: string): string {
   if (!decoded.includes("-----BEGIN") || !decoded.includes("-----END"))
     reject(field);
   return `${decoded}\n`;
+}
+
+/**
+ * SII FRMA signs the source DA with only inter-tag whitespace removed.
+ * Keep text, entities, ordering and casing byte-for-byte intact.
+ */
+export function flattenCafDaForFrma(daXml: string): Buffer {
+  if (typeof daXml !== "string" || !/^<DA>[\s\S]*<\/DA>$/.test(daXml))
+    reject("DA");
+  return Buffer.from(daXml.replace(/>\s+</g, "><"), "latin1");
 }
 
 function loadCafAuthorizationInternal(
@@ -286,17 +297,24 @@ function loadCafAuthorizationInternal(
     )
       reject("trustAnchor.owner");
     const anchorBytes = readFileSync(anchorPath);
+    let anchorPublicKey: ReturnType<typeof createPublicKey>;
+    let anchorHashBytes = anchorBytes;
+    try {
+      const certificate = new X509Certificate(anchorBytes);
+      anchorPublicKey = certificate.publicKey;
+      anchorHashBytes = certificate.raw;
+    } catch {
+      try {
+        anchorPublicKey = createPublicKey(anchorBytes);
+      } catch {
+        reject("trustAnchor.format");
+      }
+    }
     if (
-      createHash("sha256").update(anchorBytes).digest("hex") !==
+      createHash("sha256").update(anchorHashBytes).digest("hex") !==
       anchor.sha256.toLowerCase()
     )
       reject("trustAnchor.sha256");
-    let anchorPublicKey: ReturnType<typeof createPublicKey>;
-    try {
-      anchorPublicKey = createPublicKey(anchorBytes);
-    } catch {
-      reject("trustAnchor.format");
-    }
     const anchorDer = anchorPublicKey.export({
       type: "spki",
       format: "der",
@@ -304,7 +322,7 @@ function loadCafAuthorizationInternal(
     const daDer = daPublicKey.export({ type: "spki", format: "der" });
     if (anchorDer.compare(daDer) === 0) reject("trustAnchor.role");
     const frmaVerifier = createVerify("RSA-SHA1");
-    frmaVerifier.update(Buffer.from(daXml, "latin1"));
+    frmaVerifier.update(flattenCafDaForFrma(daXml));
     if (!frmaVerifier.verify(anchorPublicKey, frmaValue, "base64"))
       reject("FRMA");
     trustStatus = options.fixtureMode
@@ -363,7 +381,7 @@ function loadCafAuthorizationInternal(
     cafXml,
     cafBytes: Buffer.from(cafXml, "latin1"),
     daXml,
-    daBytes: Buffer.from(daXml, "latin1"),
+    daBytes: flattenCafDaForFrma(daXml),
     issuerRut,
     issuerName: value(daXml, "RS"),
     typeCode: typeCode as 33 | 56 | 61,

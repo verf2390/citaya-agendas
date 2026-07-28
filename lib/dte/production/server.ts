@@ -57,7 +57,9 @@ export function createServerProductionDteService(): ProductionDteService {
 export async function importServerProductionCaf(
   request: ProductionCafImportInput,
 ) {
-  const config = assertProductionConfig(process.env, process.cwd());
+  const config = assertProductionConfig(process.env, process.cwd(), {
+    requireEnabled: false,
+  });
   const repository = createServerProductionRepository();
   const settings = await repository.getTenantSettings(request.tenantId);
   if (!settings) throw new Error("DTE_TENANT_SETTINGS_MISSING");

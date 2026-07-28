@@ -30,7 +30,7 @@ test("PRE-CAF 12 preserves exact blocks and rejects duplicate/overlap", () => {
 });
 test("PRE-CAF 12 rejects altered signatures, semantics and keys", () => {
   const { caf, trust } = fixture(); const options = { repoRoot: process.cwd(), expectedIssuerRut: caf.issuerRut, expectedType: caf.typeCode, minimumAvailable: 4, trustStore: trust, fixtureMode: true };
-  const mutations = [(x: string) => x.replace(/(<FRMA[^>]*>)(.)/, "$1X"), (x: string) => x.replace("<DA>", "<DA> "), (x: string) => x.replace(`<IDK>${caf.idk}</IDK>`, "<IDK>999999</IDK>"), (x: string) => x.replace(`<TD>${caf.typeCode}</TD>`, "<TD>34</TD>"), (x: string) => x.replace(/<H>\d+<\/H>/, "<H>1</H>"), (x: string) => x.replace(/(<M>)(.)/, "$1A")];
+  const mutations = [(x: string) => x.replace(/(<FRMA[^>]*>)(.)/, "$1X"), (x: string) => x.replace(/<RS>[^<]*<\/RS>/, "<RS>ALTERADO</RS>"), (x: string) => x.replace(`<IDK>${caf.idk}</IDK>`, "<IDK>999999</IDK>"), (x: string) => x.replace(`<TD>${caf.typeCode}</TD>`, "<TD>34</TD>"), (x: string) => x.replace(/<H>\d+<\/H>/, "<H>1</H>"), (x: string) => x.replace(/(<M>)(.)/, "$1A")];
   for (const mutate of mutations) assert.throws(() => loadCafAuthorization(copy(caf.originalBytes, mutate), options), /CAF_REJECTED/);
 });
 test("PRE-CAF 12 rejects XXE, symlink, unsafe permissions and production", () => {

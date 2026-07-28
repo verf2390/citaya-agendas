@@ -26,6 +26,10 @@ export type ProductionConfigResult =
   | { ok: true; config: ProductionRuntimeConfig }
   | { ok: false; missing: string[]; invalid: string[] };
 
+export type ProductionConfigOptions = {
+  requireEnabled?: boolean;
+};
+
 const REQUIRED = [
   "DTE_PRODUCTION_SEED_URL",
   "DTE_PRODUCTION_TOKEN_URL",
@@ -70,6 +74,7 @@ function insideRepo(path: string, repoRoot: string): boolean {
 export function validateProductionConfig(
   env: NodeJS.ProcessEnv = process.env,
   repoRoot = process.cwd(),
+  options: ProductionConfigOptions = {},
 ): ProductionConfigResult {
   const missing = REQUIRED.filter((name) => !value(env, name));
   const invalid: string[] = [];
@@ -123,13 +128,14 @@ export function validateProductionConfig(
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 120000)
     invalid.push("DTE_PRODUCTION_TIMEOUT_MS");
   const enabled = value(env, "DTE_PRODUCTION_ENABLED") === "true";
-  if (!enabled) invalid.push("DTE_PRODUCTION_ENABLED");
+  if (options.requireEnabled !== false && !enabled)
+    invalid.push("DTE_PRODUCTION_ENABLED");
   if (missing.length || invalid.length)
     return { ok: false, missing: [...missing], invalid: [...new Set(invalid)] };
   return {
     ok: true,
     config: {
-      enabled: true,
+      enabled,
       environment: "production",
       signingMode: "production",
       seedUrl: value(env, "DTE_PRODUCTION_SEED_URL"),
@@ -148,8 +154,9 @@ export function validateProductionConfig(
 export function assertProductionConfig(
   env: NodeJS.ProcessEnv = process.env,
   repoRoot = process.cwd(),
+  options: ProductionConfigOptions = {},
 ): ProductionRuntimeConfig {
-  const result = validateProductionConfig(env, repoRoot);
+  const result = validateProductionConfig(env, repoRoot, options);
   if (!result.ok) {
     throw new Error(
       `DTE_PRODUCTION_BLOCKED missing=${result.missing.join(",")} invalid=${result.invalid.join(",")}`,

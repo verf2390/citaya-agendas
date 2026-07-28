@@ -16,6 +16,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  flattenCafDaForFrma,
   loadProductionCafAuthorization,
   type CafTrustAnchor,
   type CafTrustStore,
@@ -127,6 +128,16 @@ function load(
     expectedOwnerUid: process.getuid?.(),
   });
 }
+
+test("FRMA flattens only inter-tag whitespace and preserves entities", () => {
+  const da =
+    "<DA>\n  <RE>76086428-5</RE>\n  <RS>R&amp;G SPA</RS>\n" +
+    "  <TD>33</TD>\n</DA>";
+  assert.equal(
+    flattenCafDaForFrma(da).toString("latin1"),
+    "<DA><RE>76086428-5</RE><RS>R&amp;G SPA</RS><TD>33</TD></DA>",
+  );
+});
 
 function mutation(fixture: Fixture, from: string, to: string): string {
   const path = join(
