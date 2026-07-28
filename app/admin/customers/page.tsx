@@ -25,6 +25,7 @@ type CustomerRow = {
   full_name: string;
   phone: string | null;
   email: string | null;
+  rut_normalized?: string | null;
   notes?: string | null;
   created_at?: string;
   stats?: {
@@ -256,7 +257,7 @@ export default function CustomersPage() {
         0,
       ),
     };
-  }, [customers]);
+  }, [customers, recentWindowMs]);
 
   useEffect(() => {
     setSelectedCustomerIds((prev) => {
@@ -1011,7 +1012,6 @@ export default function CustomersPage() {
 
             {filtered.map((c) => {
               const hasEmail = !!c.email?.trim();
-              const hasPhone = !!c.phone?.trim();
               const customerStatus = getCustomerVisualStatus(c);
               const hasPendingPayments = Number(c.stats?.pending_payments ?? 0) > 0;
               const isSelected = selectedCustomerIds.includes(c.id);

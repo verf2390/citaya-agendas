@@ -6,12 +6,14 @@ import { useEffect, useMemo, useState } from "react";
 import { normalizeCLPhone } from "@/app/lib/phone";
 import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { normalizeRut, validateRut } from "@/lib/dte/rut";
 
 type InitialCustomer = {
   id: string;
   full_name: string;
   phone: string | null;
   email: string | null;
+  rut_normalized?: string | null;
 };
 
 export default function CustomerUpsertModal(props: {
@@ -28,6 +30,14 @@ export default function CustomerUpsertModal(props: {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [customerRut, setCustomerRut] = useState("");
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxLegalName, setTaxLegalName] = useState("");
+  const [taxActivity, setTaxActivity] = useState("");
+  const [taxAddress, setTaxAddress] = useState("");
+  const [taxCommune, setTaxCommune] = useState("");
+  const [taxCity, setTaxCity] = useState("");
+  const [taxEmail, setTaxEmail] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -35,6 +45,22 @@ export default function CustomerUpsertModal(props: {
     setFullName(initial?.full_name ?? "");
     setPhone(initial?.phone ?? "");
     setEmail(initial?.email ?? "");
+    setCustomerRut(initial?.rut_normalized ?? "");
+    setTaxEnabled(false);
+    setTaxLegalName(""); setTaxActivity(""); setTaxAddress("");
+    setTaxCommune(""); setTaxCity(""); setTaxEmail("");
+    if (initial?.id) {
+      void adminFetch("/api/admin/customers/" + initial.id + "/tax-profile", { cache: "no-store" })
+        .then(async (response) => response.ok ? response.json() : null)
+        .then((payload) => {
+          const profile = payload?.profile;
+          if (!profile) return;
+          setTaxEnabled(true); setTaxLegalName(profile.legal_name ?? "");
+          setTaxActivity(profile.business_activity ?? ""); setTaxAddress(profile.tax_address ?? "");
+          setTaxCommune(profile.tax_commune ?? ""); setTaxCity(profile.tax_city ?? "");
+          setTaxEmail(profile.tax_email ?? "");
+        }).catch(() => undefined);
+    }
   }, [open, initial]);
 
   // ✅ Cerrar con ESC / Guardar con Enter
@@ -53,15 +79,17 @@ export default function CustomerUpsertModal(props: {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, fullName, phone, email, tenantId, initial, onClose]);
+  }, [open, fullName, phone, email, customerRut, tenantId, initial, onClose]);
 
   const phoneNormalized = useMemo(() => normalizeCLPhone(phone), [phone]);
 
   const canSave = useMemo(() => {
     if (fullName.trim().length < 2) return false;
-    if (phoneNormalized.length < 9) return false; // regla simple MVP
+    if (phoneNormalized.length < 9) return false;
+    if (!validateRut(customerRut)) return false;
+    if (taxEnabled && (taxLegalName.trim().length < 2 || taxActivity.trim().length < 2 || taxAddress.trim().length < 2 || taxCommune.trim().length < 2 || taxCity.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(taxEmail))) return false;
     return true;
-  }, [fullName, phoneNormalized]);
+  }, [customerRut, fullName, phoneNormalized, taxActivity, taxAddress, taxCity, taxCommune, taxEmail, taxEnabled, taxLegalName]);
 
   const handleSave = async () => {
     if (!canSave || saving) return;
@@ -91,6 +119,7 @@ export default function CustomerUpsertModal(props: {
           name: fullName.trim(), // endpoint recibe "name" y lo guarda en full_name
           phone: phoneNormalized,
           email: email.trim() ? email.trim() : null,
+          customerRut: normalizeRut(customerRut),
         }),
       });
 
@@ -108,6 +137,16 @@ export default function CustomerUpsertModal(props: {
       }
 
       const reused = !!json?.reused;
+      if (taxEnabled) {
+        const taxResponse = await adminFetch("/api/admin/customers/" + json.customerId + "/tax-profile", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customerRut, profile: {
+            rut: customerRut, legalName: taxLegalName, businessActivity: taxActivity,
+            address: taxAddress, commune: taxCommune, city: taxCity, taxEmail,
+          } }),
+        });
+        if (!taxResponse.ok) throw new Error("No se pudo guardar el perfil tributario");
+      }
 
       // ✅ Aviso UX (puedes cambiarlo por toast)
       if (!isEdit && reused) {
@@ -122,11 +161,11 @@ export default function CustomerUpsertModal(props: {
 
       setSaving(false);
       onClose();
-    } catch (e: any) {
-      console.error("Error upsert customer (fetch):", e?.message || e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Error inesperado";
       toast({
         title: isEdit ? "Error editando cliente" : "Error creando cliente",
-        description: e?.message,
+        description: message,
         variant: "destructive",
       });
       setSaving(false);
@@ -245,6 +284,40 @@ export default function CustomerUpsertModal(props: {
               }}
             />
           </div>
+
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>RUT *</div>
+            <input
+              value={customerRut}
+              onChange={(event) => setCustomerRut(event.target.value)}
+              onBlur={() => { if (validateRut(customerRut)) setCustomerRut(normalizeRut(customerRut)); }}
+              placeholder="Ej: 12.345.678-5"
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid" }}
+            />
+            {customerRut.trim() && !validateRut(customerRut) ? <div style={{ color: "red", fontSize: 12 }}>RUT inválido</div> : null}
+          </div>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+            <input type="checkbox" checked={taxEnabled} onChange={(event) => setTaxEnabled(event.target.checked)} />
+            Crear o editar datos tributarios
+          </label>
+          {taxEnabled ? (
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
+              {[
+                ["Razón social", taxLegalName, setTaxLegalName],
+                ["Giro", taxActivity, setTaxActivity],
+                ["Dirección tributaria", taxAddress, setTaxAddress],
+                ["Comuna", taxCommune, setTaxCommune],
+                ["Ciudad", taxCity, setTaxCity],
+                ["Email tributario", taxEmail, setTaxEmail],
+              ].map(([label, value, setter]) => (
+                <label key={String(label)} style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                  {String(label)}
+                  <input value={String(value)} onChange={(event) => (setter as (value: string) => void)(event.target.value)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid" }} />
+                </label>
+              ))}
+            </div>
+          ) : null}
 
           <button
             onClick={handleSave}

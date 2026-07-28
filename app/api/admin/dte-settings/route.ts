@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { friendlyDteStatus } from "@/lib/dte/cutover";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const BILLING_COLUMNS = [
@@ -59,13 +60,6 @@ function text(value: unknown, max = 180) {
   return String(value ?? "").trim().slice(0, max);
 }
 
-function statusLabel(input: { ready: boolean; missing: number; globalEnabled: boolean }) {
-  if (input.ready && input.globalEnabled) return "Listo para emitir";
-  if (input.ready) return "Preparado, pendiente de activación";
-  if (input.missing > 0) return `Faltan ${input.missing} pasos`;
-  return "Desactivado";
-}
-
 async function loadState(tenantId: string, authMode: string) {
   const [
     billingResult,
@@ -76,6 +70,8 @@ async function loadState(tenantId: string, authMode: string) {
     operationalReadinessResult,
     readinessEvidenceResult,
     issuerProfileResult,
+    authorizationResult,
+    activationResult,
   ] = await Promise.all([
     supabaseAdmin.from("tenant_billing_settings").select(BILLING_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("dte_tenant_issuance_settings").select(CONFIG_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
@@ -92,9 +88,15 @@ async function loadState(tenantId: string, authMode: string) {
       .maybeSingle(),
     supabaseAdmin
       .from("dte_production_tenant_settings")
-      .select("issuer_profile_state,enabled")
+      .select("issuer_profile_state,enabled,issuer_rut,issuer_legal_name")
       .eq("tenant_id", tenantId)
       .maybeSingle(),
+    supabaseAdmin.from("dte_sii_authorization_evidence")
+      .select("authorization_date,authorized_types,evidence_source,evidence_fingerprint,registered_at,status")
+      .eq("tenant_id", tenantId).eq("status", "current").maybeSingle(),
+    supabaseAdmin.from("dte_legal_activation")
+      .select("dte_type,status,activated_at,paused_at,pause_reason")
+      .eq("tenant_id", tenantId),
   ]);
   const firstError = [
     billingResult.error,
@@ -105,6 +107,8 @@ async function loadState(tenantId: string, authMode: string) {
     operationalReadinessResult.error,
     readinessEvidenceResult.error,
     issuerProfileResult.error,
+    authorizationResult.error,
+    activationResult.error,
   ].find(Boolean);
   if (firstError) throw new Error("DTE_TENANT_STATE_UNAVAILABLE");
 
@@ -134,7 +138,10 @@ async function loadState(tenantId: string, authMode: string) {
     config.caf_ready && config.folio_ready &&
     cafs.some((row) => row.active) && folios.some((row) => row.state === "available"),
   );
-  const authorizationReady = config.sii_authorization_status === "approved";
+  const authorizedTypes = Array.isArray(authorizationResult.data?.authorized_types)
+    ? authorizationResult.data.authorized_types.map(Number)
+    : [];
+  const authorizationReady = authorizedTypes.includes(33);
   const automationReady = Boolean(
     config.endpoints_ready && config.storage_ready && config.worker_ready &&
     config.readiness_tests_green,
@@ -149,6 +156,20 @@ async function loadState(tenantId: string, authMode: string) {
   const missing = steps.filter((step) => !step.ready).length;
   const tenantReady = missing === 0 && config.production_enabled === true;
   const globalEnabled = process.env.DTE_PRODUCTION_ENABLED === "true";
+  const activationStatuses = (activationResult.data ?? []).map((row) => row.status);
+  const overallLabel = activationStatuses.includes("active") && globalEnabled
+    ? "Emisión activa"
+    : activationStatuses.includes("paused")
+      ? "Emisión pausada"
+      : !authorizationReady
+        ? "Autorización pendiente"
+        : !certificateReady
+          ? "Falta certificado"
+          : !cafFoliosReady
+            ? "Falta CAF"
+            : missing === 0
+              ? "Lista para activar"
+              : "Autorización pendiente";
 
   const byType = new Map<number, { available: number; reserved: number; issued: number }>();
   for (const row of folios) {
@@ -163,7 +184,7 @@ async function loadState(tenantId: string, authMode: string) {
     globalProductionEnabled: globalEnabled,
     technicalAccess: authMode === "platform_admin",
     status: {
-      label: statusLabel({ ready: tenantReady, missing, globalEnabled }),
+      label: overallLabel,
       ready: tenantReady && globalEnabled,
       preparedPendingActivation: tenantReady && !globalEnabled,
       missingSteps: missing,
@@ -195,6 +216,9 @@ async function loadState(tenantId: string, authMode: string) {
       cafReady: cafFoliosReady,
       lastCheck: config.last_readiness_check ?? null,
       folios: Object.fromEntries([...byType.entries()].map(([type, counts]) => [String(type), counts])),
+      authorizedTypes,
+      authorizationEvidence: authorizationResult.data ?? null,
+      activations: activationResult.data ?? [],
     },
     declaration: {
       readyForDeclaration: operationalReadiness?.ready_for_declaration === true,
@@ -216,16 +240,19 @@ async function loadState(tenantId: string, authMode: string) {
     },
     documents: ((documentsResult.data ?? []) as DocumentIntentRow[]).map((row) => ({
       id: row.id,
+      productionDocumentId: row.production_document_id,
       type: row.resolved_dte_type,
       folio: null,
       customer: row.receiver_snapshot?.legalName ?? row.appointment_snapshot?.customerName ?? "Consumidor final",
       amount: row.amount_snapshot,
-      status: row.status,
+      status: friendlyDteStatus(row.status, row.safe_blocking_reason),
       date: row.created_at,
       blockingReason: row.safe_blocking_reason,
       canView: Boolean(row.production_document_id),
       canDownload: Boolean(row.production_document_id) && ["ACCEPTED", "DELIVERY_PENDING", "DELIVERED"].includes(row.status),
       canQuery: Boolean(row.production_document_id) && ["SUBMITTED", "AMBIGUOUS"].includes(row.status),
+      canCreateNote: Boolean(row.production_document_id) && row.status === "ACCEPTED" && [33,39].includes(Number(row.resolved_dte_type)),
+      canEmail: Boolean(row.production_document_id) && ["ACCEPTED","DELIVERY_PENDING","DELIVERED"].includes(row.status),
     })),
   };
 }

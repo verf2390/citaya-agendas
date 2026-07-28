@@ -10,13 +10,17 @@ import {
   ReceiptText,
   RefreshCcw,
   Save,
-  Send,
   SlidersHorizontal,
   XCircle,
 } from "lucide-react";
 
 import AdminNav from "@/components/admin/AdminNav";
 import AdvancedBillingTechnicalPanel from "@/components/admin/dte/AdvancedBillingTechnicalPanel";
+import ManualIssuanceForm from "@/components/admin/dte/ManualIssuanceForm";
+import LegalActivationControl from "@/components/admin/dte/LegalActivationControl";
+import AuthorizationEvidencePanel from "@/components/admin/dte/AuthorizationEvidencePanel";
+import DteNoteActions from "@/components/admin/dte/DteNoteActions";
+import DteDocumentActions from "@/components/admin/dte/DteDocumentActions";
 import DeclarationReadinessCard, {
   type DeclarationReadinessState,
 } from "@/components/admin/dte/DeclarationReadinessCard";
@@ -32,6 +36,7 @@ import { adminFetch } from "@/lib/api/adminFetch";
 type Step = { key: string; label: string; ready: boolean; detail: string; action: string };
 type DocumentRow = {
   id: string;
+  productionDocumentId: string | null;
   type: number | null;
   folio: number | null;
   customer: string;
@@ -42,6 +47,8 @@ type DocumentRow = {
   canView: boolean;
   canDownload: boolean;
   canQuery: boolean;
+  canCreateNote: boolean;
+  canEmail: boolean;
 };
 type BillingState = {
   globalProductionEnabled: boolean;
@@ -124,7 +131,6 @@ export default function AdminFacturacionPage() {
   const [editingTax, setEditingTax] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [manualType, setManualType] = useState<"33" | "39" | "41">("33");
 
   const load = async () => {
     setLoading(true);
@@ -142,6 +148,9 @@ export default function AdminFacturacionPage() {
 
   useEffect(() => {
     let active = true;
+    void Promise.resolve().then(() => {
+      if (new URLSearchParams(window.location.search).has("appointmentId")) setManualOpen(true);
+    });
     void fetchBillingState()
       .then((nextState) => {
         if (!active) return;
@@ -242,6 +251,10 @@ export default function AdminFacturacionPage() {
 
       <DeclarationReadinessCard state={state.declaration} />
 
+      <AdminSectionCard className="mt-5" title="Autorización SII" description="Separada de la declaración, CAF y activación técnica; sólo platform admin puede reconciliar evidencia.">
+        <AuthorizationEvidencePanel />
+      </AdminSectionCard>
+
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <AdminSectionCard
           title="Estado de activación"
@@ -310,13 +323,19 @@ export default function AdminFacturacionPage() {
 
       <AdminSectionCard className="mt-5" title="Documentos recientes" description="Sólo documentos e intenciones pertenecientes al tenant autenticado.">
         {state.documents.length ? (
-          <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-500">{["Tipo", "Folio", "Cliente", "Monto", "Estado", "Fecha", "Acciones"].map((value) => <th key={value} className="px-3 py-2">{value}</th>)}</tr></thead><tbody>{state.documents.map((document) => <tr key={document.id} className="border-b border-slate-100"><td className="px-3 py-3 font-bold">{documentLabel(document.type)}</td><td className="px-3 py-3">{document.folio ?? "—"}</td><td className="px-3 py-3">{document.customer}</td><td className="px-3 py-3 font-bold">{money(document.amount)}</td><td className="px-3 py-3"><StatusBadge label={document.status} tone={document.status === "BLOCKED" ? "amber" : document.status === "ACCEPTED" ? "green" : "blue"} /></td><td className="px-3 py-3">{dateLabel(document.date)}</td><td className="px-3 py-3"><div className="flex gap-2"><button disabled={!document.canView} className="font-bold text-blue-700 disabled:text-slate-300">Ver</button><button disabled={!document.canDownload} className="font-bold text-blue-700 disabled:text-slate-300">Descargar</button><button disabled={!document.canQuery} className="font-bold text-blue-700 disabled:text-slate-300">Consultar</button></div></td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-500">{["Tipo", "Folio", "Cliente", "Monto", "Estado", "Fecha", "Acciones"].map((value) => <th key={value} className="px-3 py-2">{value}</th>)}</tr></thead><tbody>{state.documents.map((document) => <tr key={document.id} className="border-b border-slate-100"><td className="px-3 py-3 font-bold">{documentLabel(document.type)}</td><td className="px-3 py-3">{document.folio ?? "—"}</td><td className="px-3 py-3">{document.customer}</td><td className="px-3 py-3 font-bold">{money(document.amount)}</td><td className="px-3 py-3"><StatusBadge label={document.status} tone={document.status === "BLOCKED" ? "amber" : document.status === "ACCEPTED" ? "green" : "blue"} /></td><td className="px-3 py-3">{dateLabel(document.date)}</td><td className="px-3 py-3"><div className="flex gap-2">{document.productionDocumentId ? <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canDownload={document.canDownload} canEmail={document.canEmail} /> : <span className="text-xs text-slate-400">Sin artefactos</span>}{document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void load()} /> : null}</div></td></tr>)}</tbody></table></div>
         ) : <EmptyState title="Aún no hay documentos" description="Las emisiones e intenciones de este negocio aparecerán aquí." />}
       </AdminSectionCard>
 
       <AdminSectionCard className="mt-5" title="Emitir manualmente" description="Acción secundaria y auditada; nunca usa montos enviados por el navegador." actions={<button type="button" onClick={() => setManualOpen((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><ReceiptText className="h-4 w-4" />{manualOpen ? "Cerrar" : "Nueva emisión"}</button>}>
-        {manualOpen ? <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-bold">Tipo<select value={manualType} onChange={(event) => setManualType(event.target.value as typeof manualType)} className="h-11 rounded-xl border border-slate-200 bg-white px-3"><option value="33">Factura electrónica 33</option><option value="39">Boleta 39 — no soportada</option><option value="41">Boleta 41 — no soportada</option></select></label>{manualType === "33" ? <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">Los datos del receptor se obtienen de la reserva y deben estar completos.</div> : <div className="rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-900">Tipo no implementado productivamente. No se generará XML, folio ni Track ID.</div>}<div className="sm:col-span-2"><button type="button" disabled className="inline-flex items-center gap-2 rounded-xl bg-slate-300 px-4 py-2 text-sm font-black text-white"><Send className="h-4 w-4" />Pendiente de activación legal</button></div></div> : null}
+        {manualOpen ? <ManualIssuanceForm onCreated={() => void load()} /> : null}
       </AdminSectionCard>
+
+      {state.technicalAccess ? (
+        <AdminSectionCard className="mt-5" title="Activación legal" description="Única acción controlada, transaccional y reversible por tipo de documento.">
+          <LegalActivationControl />
+        </AdminSectionCard>
+      ) : null}
 
       {state.technicalAccess ? (
         <AdminSectionCard className="mt-5" title="Modo técnico avanzado" description="XML, XSD, XMLDSig, Track ID, trazas, runbook, laboratorio y diagnóstico para personal autorizado." actions={<button type="button" onClick={() => setAdvancedOpen((value) => !value)} aria-expanded={advancedOpen} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><SlidersHorizontal className="h-4 w-4" />{advancedOpen ? "Contraer" : "Abrir"}<ChevronDown className={`h-4 w-4 transition ${advancedOpen ? "rotate-180" : ""}`} /></button>}>

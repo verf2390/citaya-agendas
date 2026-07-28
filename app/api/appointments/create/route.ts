@@ -15,7 +15,8 @@ import {
   requestIp,
 } from "@/lib/security/request";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
-import { normalizeRut, validateRut } from "@/lib/dte/rut";
+import { normalizeRut } from "@/lib/dte/rut";
+import { validateBookingTaxInput } from "@/lib/dte/cutover";
 
 function publicError(status = 400, error = "No se pudo crear la reserva") {
   return NextResponse.json({ ok: false, error }, { status });
@@ -27,30 +28,51 @@ async function resolveCustomerId(input: {
   name: string;
   phone?: string | null;
   email?: string | null;
+  rut: string;
 }) {
+  const rut = normalizeRut(input.rut);
   if (input.customerId) {
-    const { data } = await supabaseAdmin.from("customers").select("id")
+    const { data } = await supabaseAdmin.from("customers").select("id,rut_normalized")
       .eq("id", input.customerId).eq("tenant_id", input.tenantId).maybeSingle();
     if (!data) throw new Error("invalid_customer");
+    if (data.rut_normalized && data.rut_normalized !== rut) throw new Error("customer_rut_mismatch");
+    const { error } = await supabaseAdmin.from("customers").update({ rut_normalized: rut })
+      .eq("id", data.id).eq("tenant_id", input.tenantId);
+    if (error) throw error;
     return data.id;
   }
   const phone = String(input.phone ?? "").replace(/[^+\d]/g, "").slice(0, 32) || null;
   const email = String(input.email ?? "").trim().toLowerCase().slice(0, 254) || null;
-  let existing = null;
-  if (phone) {
-    existing = (await supabaseAdmin.from("customers").select("id")
+  let existing = (await supabaseAdmin.from("customers").select("id,rut_normalized")
+    .eq("tenant_id", input.tenantId).eq("rut_normalized", rut).maybeSingle()).data;
+  if (!existing && phone) {
+    existing = (await supabaseAdmin.from("customers").select("id,rut_normalized")
       .eq("tenant_id", input.tenantId).eq("phone", phone).maybeSingle()).data;
   }
   if (!existing && email) {
-    existing = (await supabaseAdmin.from("customers").select("id")
+    existing = (await supabaseAdmin.from("customers").select("id,rut_normalized")
       .eq("tenant_id", input.tenantId).eq("email", email).maybeSingle()).data;
   }
-  if (existing?.id) return existing.id;
+  if (existing?.id) {
+    if (existing.rut_normalized && existing.rut_normalized !== rut) {
+      throw new Error("customer_rut_mismatch");
+    }
+    const { error } = await supabaseAdmin.from("customers").update({
+      rut_normalized: rut,
+      full_name: input.name.slice(0, 120),
+      phone,
+      email,
+    })
+      .eq("id", existing.id).eq("tenant_id", input.tenantId);
+    if (error) throw error;
+    return existing.id;
+  }
   const { data, error } = await supabaseAdmin.from("customers").insert({
     tenant_id: input.tenantId,
     full_name: input.name.slice(0, 120),
     phone,
     email,
+    rut_normalized: rut,
   }).select("id").single();
   if (error) throw error;
   return data.id;
@@ -61,6 +83,26 @@ export async function POST(req: Request) {
     const parsed = await parseJson(req, AppointmentCreateSchema);
     if (!parsed.ok) return parsed.res;
     const input = parsed.data;
+    let bookingTax;
+    try {
+      bookingTax = validateBookingTaxInput({
+        customerRut: input.customerRut,
+        invoiceRequested: input.invoiceRequested === true,
+        taxProfile: input.invoiceRequested ? {
+          rut: input.invoiceReceiverRut ?? "",
+          legalName: input.invoiceReceiverLegalName ?? "",
+          businessActivity: input.invoiceReceiverActivity ?? "",
+          address: input.invoiceReceiverAddress ?? "",
+          commune: input.invoiceReceiverCommune ?? "",
+          city: input.invoiceReceiverCity ?? "",
+          taxEmail: input.invoiceReceiverTaxEmail ?? input.customerEmail,
+        } : null,
+      });
+    } catch {
+      return publicError(400, input.invoiceRequested
+        ? "Datos tributarios de factura incompletos"
+        : "RUT inválido");
+    }
     const key = idempotencyKey(req, input.idempotencyKey);
     const pepper = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();
     if (!key || !pepper) return publicError(503);
@@ -106,19 +148,24 @@ export async function POST(req: Request) {
       return publicError(409);
     }
 
-    if (input.invoiceRequested && (
-      !input.invoiceReceiverRut || !validateRut(input.invoiceReceiverRut) ||
-      !input.invoiceReceiverLegalName || !input.invoiceReceiverActivity ||
-      !input.invoiceReceiverAddress || !input.invoiceReceiverCommune
-    )) return publicError(400, "Datos tributarios de factura incompletos");
-
     const customerId = await resolveCustomerId({
       tenantId: input.tenantId,
       customerId: input.customerId,
       name: input.customerName,
       phone: input.customerPhone,
       email: input.customerEmail,
+      rut: bookingTax.customerRut,
     });
+    if (bookingTax.taxProfile) {
+      const profile = bookingTax.taxProfile;
+      const { error: taxProfileError } = await supabaseAdmin.from("customer_tax_profiles").upsert({
+        tenant_id: input.tenantId, customer_id: customerId, rut_normalized: profile.rut,
+        legal_name: profile.legalName, business_activity: profile.businessActivity,
+        tax_address: profile.address, tax_commune: profile.commune, tax_city: profile.city,
+        tax_email: profile.taxEmail, updated_at: new Date().toISOString(),
+      }, { onConflict: "tenant_id,customer_id" });
+      if (taxProfileError) return publicError(409, "Perfil tributario duplicado o inválido");
+    }
     const paymentRequired = isAdminRequest
       ? input.paymentRequired === true
       : paymentConfig.enabled && paymentConfig.collectionMode !== "none";
@@ -157,6 +204,8 @@ export async function POST(req: Request) {
         invoice_receiver_address: input.invoiceRequested ? input.invoiceReceiverAddress ?? null : null,
         invoice_receiver_commune: input.invoiceRequested ? input.invoiceReceiverCommune ?? null : null,
         invoice_receiver_city: input.invoiceRequested ? input.invoiceReceiverCity ?? null : null,
+        customer_rut_snapshot: bookingTax.customerRut,
+        requested_document_type: bookingTax.requestedDocumentType,
         tax_treatment_snapshot: taxTreatmentSnapshot,
       })
       .eq("id", row.appointment_id)

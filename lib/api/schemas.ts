@@ -16,8 +16,9 @@ export const AppointmentCreateSchema = z.object({
   // Accepted during the transition but ignored: duration is server-derived.
   endAt: z.string().max(64).optional(),
   customerName: z.string().trim().min(1).max(120),
-  customerPhone: optionalShortText(32),
-  customerEmail: z.string().trim().email().max(254).nullable().optional(),
+  customerPhone: z.string().trim().min(8).max(32),
+  customerEmail: z.string().trim().email().max(254),
+  customerRut: z.string().trim().min(8).max(32),
   customerId: z.string().uuid().nullable().optional(),
   status: optionalShortText(32),
   currency: optionalShortText(3),
@@ -32,6 +33,7 @@ export const AppointmentCreateSchema = z.object({
   invoiceReceiverAddress: optionalShortText(180),
   invoiceReceiverCommune: optionalShortText(100),
   invoiceReceiverCity: optionalShortText(100),
+  invoiceReceiverTaxEmail: z.string().trim().email().max(254).nullable().optional(),
 });
 
 export type AppointmentCreateInput = z.infer<typeof AppointmentCreateSchema>;

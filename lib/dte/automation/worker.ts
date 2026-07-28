@@ -19,6 +19,9 @@ type IssuanceIntent = {
   amount_snapshot: number;
   appointment_snapshot: Record<string, unknown>;
   receiver_snapshot: Record<string, unknown>;
+  immutable_snapshot: Record<string, unknown>;
+  original_production_document_id: string | null;
+  operational_reason: string | null;
   production_document_id: string | null;
   created_by: string | null;
 };
@@ -82,7 +85,7 @@ async function block(item: ClaimedOutbox, reason: string, deterministicAttempts 
 async function loadIntent(item: ClaimedOutbox): Promise<IssuanceIntent> {
   const result = await supabaseAdmin
     .from("dte_payment_document_intents")
-    .select("id,tenant_id,status,resolved_dte_type,amount_snapshot,appointment_snapshot,receiver_snapshot,production_document_id,created_by")
+    .select("id,tenant_id,status,resolved_dte_type,amount_snapshot,appointment_snapshot,receiver_snapshot,immutable_snapshot,original_production_document_id,operational_reason,production_document_id,created_by")
     .eq("id", item.intent_id)
     .eq("tenant_id", item.tenant_id)
     .single();
@@ -90,14 +93,17 @@ async function loadIntent(item: ClaimedOutbox): Promise<IssuanceIntent> {
   return result.data as IssuanceIntent;
 }
 
-async function assertTenantReadyForIssuance(item: ClaimedOutbox) {
-  const result = await supabaseAdmin.rpc(
-    "dte_tenant_operational_readiness",
-    { p_tenant_id: item.tenant_id },
-  );
-  if (result.error) throw new Error("DTE_TENANT_READINESS_FAILED");
-  const row = Array.isArray(result.data) ? result.data[0] : null;
-  if (!row || row.ready_for_issuance !== true)
+async function assertTenantReadyForIssuance(item: ClaimedOutbox, dteType: number) {
+  const [gateResult, activationResult] = await Promise.all([
+    supabaseAdmin.rpc("dte_activation_gate_report", {
+      p_tenant_id: item.tenant_id, p_dte_type: dteType, p_global_feature_enabled: true,
+    }),
+    supabaseAdmin.from("dte_legal_activation").select("status")
+      .eq("tenant_id", item.tenant_id).eq("dte_type", dteType).maybeSingle(),
+  ]);
+  if (gateResult.error || activationResult.error) throw new Error("DTE_TENANT_READINESS_FAILED");
+  const gates = gateResult.data as { ready?: boolean } | null;
+  if (gates?.ready !== true || activationResult.data?.status !== "active")
     throw new Error("DTE_TENANT_NOT_READY_FOR_ISSUANCE");
 }
 
@@ -128,13 +134,19 @@ export async function runOneAutomaticIssuanceWorker() {
   let intent: IssuanceIntent | null = null;
   try {
     intent = await loadIntent(item);
-    if (intent.status !== "PENDING" || intent.resolved_dte_type !== 33) {
+    if (intent.status !== "PENDING" || ![33, 56, 61].includes(Number(intent.resolved_dte_type))) {
       throw new Error("DTE_INTENT_STATE_INVALID");
     }
-    await assertTenantReadyForIssuance(item);
+    const dteType = Number(intent.resolved_dte_type) as 33 | 56 | 61;
+    await assertTenantReadyForIssuance(item, dteType);
     const appointment = intent.appointment_snapshot ?? {};
     const receiver = intent.receiver_snapshot ?? {};
-    const treatment = value(appointment, "taxTreatment");
+    const immutable = intent.immutable_snapshot ?? {};
+    const taxSnapshot = immutable.taxes && typeof immutable.taxes === "object"
+      ? immutable.taxes as Record<string, unknown>
+      : {};
+    const treatment = value(appointment, "taxTreatment") ||
+      (Number(taxSnapshot.exempt ?? 0) === Number(intent.amount_snapshot) ? "exempt" : "affected");
     if (!Number.isSafeInteger(Number(intent.amount_snapshot)) || Number(intent.amount_snapshot) <= 0) {
       throw new Error("DTE_AMOUNT_SNAPSHOT_INVALID");
     }
@@ -143,39 +155,77 @@ export async function runOneAutomaticIssuanceWorker() {
     }
 
     const total = Number(intent.amount_snapshot);
-    const unitPrice = treatment === "exempt" ? total : affectedNetFromGross(total);
+    const rawLines = Array.isArray(immutable.lines) ? immutable.lines : [];
+    const sourceLines = rawLines.length ? rawLines : [{
+      description: value(appointment, "serviceName") || "Servicio reservado",
+      quantity: 1,
+      unitPrice: total,
+    }];
+    const productionLines = sourceLines.map((candidate) => {
+      if (!candidate || typeof candidate !== "object") throw new Error("DTE_LINES_INVALID");
+      const line = candidate as Record<string, unknown>;
+      const quantity = Number(line.quantity);
+      const grossUnitPrice = Number(line.unitPrice);
+      const name = value(line, "description") || value(line, "name");
+      if (!name || !Number.isInteger(quantity) || quantity < 1 || !Number.isSafeInteger(grossUnitPrice) || grossUnitPrice < 0) {
+        throw new Error("DTE_LINES_INVALID");
+      }
+      return {
+        name, quantity,
+        unitPrice: treatment === "exempt" ? grossUnitPrice : affectedNetFromGross(grossUnitPrice),
+        exempt: treatment === "exempt",
+      };
+    });
+    let references: Array<{ code: string; reason: string; documentType: string; folio: string; date: string }> | undefined;
+    if ([56, 61].includes(dteType)) {
+      if (!intent.original_production_document_id || value(immutable, "referenceCode") !== "3") {
+        throw new Error("DTE_REFERENCE_REQUIRED");
+      }
+      const originalResult = await supabaseAdmin.from("dte_production_documents")
+        .select("dte_type,folio,issue_date")
+        .eq("tenant_id", item.tenant_id)
+        .eq("id", intent.original_production_document_id)
+        .maybeSingle();
+      const original = originalResult.data;
+      if (originalResult.error || !original || !original.folio) throw new Error("DTE_ORIGINAL_DOCUMENT_NOT_FOUND");
+      const reason = value(immutable, "operationalReason") || String(intent.operational_reason ?? "").trim();
+      if (reason.length < 10) throw new Error("DTE_REFERENCE_REASON_REQUIRED");
+      references = [{
+        code: "3", reason: reason.slice(0, 90), documentType: String(original.dte_type),
+        folio: String(original.folio), date: String(original.issue_date),
+      }];
+    }
     const actorId = intent.created_by ?? SYSTEM_ACTOR_ID;
     const service = createServerProductionDteService();
     const draft = intent.production_document_id
       ? { id: intent.production_document_id }
       : await service.createDraft({
           tenantId: item.tenant_id,
-          dteType: 33,
-          businessOperationId: `auto:${intent.id}`,
+          dteType,
+          businessOperationId: `intent:${intent.id}`,
           recipient: {
             rut: value(receiver, "rut"),
             legalName: value(receiver, "legalName"),
-            businessActivity: value(receiver, "activity"),
+            businessActivity: value(receiver, "activity") || value(receiver, "businessActivity"),
             address: value(receiver, "address"),
             commune: value(receiver, "commune"),
             city: value(receiver, "city"),
-            email: value(receiver, "email"),
+            email: value(receiver, "taxEmail") || value(receiver, "email"),
           },
-          lines: [{
-            name: value(appointment, "serviceName") || "Servicio reservado",
-            quantity: 1,
-            unitPrice,
-            exempt: treatment === "exempt",
-          }],
+          lines: productionLines,
+          references,
         }, actorId);
 
+    if ("totalAmount" in draft && Number(draft.totalAmount) !== total) {
+      throw new Error("DTE_AMOUNT_TAX_RECONCILIATION_FAILED");
+    }
     intent.production_document_id = draft.id;
     await updateIntent(item, {
       status: "PREPARING",
       production_document_id: draft.id,
       safe_blocking_reason: null,
     });
-    await appendEvent(item, "ISSUANCE_PREPARING", { productionDocumentId: draft.id, dteType: 33 });
+    await appendEvent(item, "ISSUANCE_PREPARING", { productionDocumentId: draft.id, dteType });
 
     await service.prepare(item.tenant_id, draft.id, actorId);
     await updateIntent(item, { status: "READY" });

@@ -2060,6 +2060,14 @@ export default function AgendaPage() {
                 </SecondaryButton>
 
                 <SecondaryButton
+                  onClick={() => {
+                    window.location.href = "/admin/facturacion?appointmentId=" + encodeURIComponent(selectedEvent.id);
+                  }}
+                >
+                  Solicitar documento tributario
+                </SecondaryButton>
+
+                <SecondaryButton
                   onClick={async () => {
                     const ok = confirm("¿Cancelar esta cita?");
                     if (!ok) return;

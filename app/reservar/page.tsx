@@ -36,7 +36,7 @@ import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 import { fetchWithClientTimeout } from "@/lib/client/async-timeout";
 import { resolveTenantBySlug } from "@/lib/client/tenant-resolution";
 import { getTenantSlugFromHostname, normalizeTenantSlug } from "@/lib/tenant";
-import { validateRut } from "@/lib/dte/rut";
+import { normalizeRut, validateRut } from "@/lib/dte/rut";
 
 type Slot = { start_at: string; end_at: string };
 type WaitlistTarget =
@@ -431,6 +431,7 @@ function ReservarInner() {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [customerRut, setCustomerRut] = useState("");
   const [invoiceRequested, setInvoiceRequested] = useState(false);
   const [invoiceRut, setInvoiceRut] = useState("");
   const [invoiceLegalName, setInvoiceLegalName] = useState("");
@@ -438,6 +439,7 @@ function ReservarInner() {
   const [invoiceAddress, setInvoiceAddress] = useState("");
   const [invoiceCommune, setInvoiceCommune] = useState("");
   const [invoiceCity, setInvoiceCity] = useState("");
+  const [invoiceTaxEmail, setInvoiceTaxEmail] = useState("");
   const [paymentChoice, setPaymentChoice] = useState<PaymentChoice>("pay_later");
   const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState<
     PaymentProviderId[]
@@ -469,6 +471,26 @@ function ReservarInner() {
 
   const phoneNorm = useMemo(() => normalizeCLPhone(phone), [phone]);
   const isPhoneValid = useMemo(() => isValidCLMobile(phone), [phone]);
+
+  useEffect(() => {
+    if (!invoiceRequested || !tenantId || !isValidEmail(email) || !validateRut(customerRut)) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void fetch("/api/customers/tax-profile/lookup", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, email: email.trim(), rut: customerRut }),
+        signal: controller.signal,
+      }).then(async (response) => response.ok ? response.json() : null).then((payload) => {
+        const profile = payload?.profile;
+        if (!profile || controller.signal.aborted) return;
+        setInvoiceRut(profile.rut ?? ""); setInvoiceLegalName(profile.legalName ?? "");
+        setInvoiceActivity(profile.businessActivity ?? ""); setInvoiceAddress(profile.address ?? "");
+        setInvoiceCommune(profile.commune ?? ""); setInvoiceCity(profile.city ?? "");
+        setInvoiceTaxEmail(profile.taxEmail ?? "");
+      }).catch(() => undefined);
+    }, 350);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [customerRut, email, invoiceRequested, tenantId]);
 
   useEffect(() => {
     if (!tenantSlug) {
@@ -833,7 +855,8 @@ function ReservarInner() {
     fullName.trim().length >= 2 &&
     isPhoneValid &&
     isValidEmail(email) &&
-    (!invoiceRequested || (validateRut(invoiceRut) && invoiceLegalName.trim().length >= 2 && invoiceActivity.trim().length >= 2 && invoiceAddress.trim().length >= 2 && invoiceCommune.trim().length >= 2)) &&
+    validateRut(customerRut) &&
+    (!invoiceRequested || (validateRut(invoiceRut) && invoiceLegalName.trim().length >= 2 && invoiceActivity.trim().length >= 2 && invoiceAddress.trim().length >= 2 && invoiceCommune.trim().length >= 2 && invoiceCity.trim().length >= 2 && isValidEmail(invoiceTaxEmail))) &&
     (tenantPaymentMode !== "required" || paymentChoice === "pay_now") &&
     !saving;
 
@@ -894,9 +917,15 @@ function ReservarInner() {
       return;
     }
 
+    if (!validateRut(customerRut)) {
+      alert("Ingresa un RUT chileno válido.");
+      scrollToRef(contactRef);
+      return;
+    }
+
     if (invoiceRequested && (
       !validateRut(invoiceRut) || !invoiceLegalName.trim() || !invoiceActivity.trim() ||
-      !invoiceAddress.trim() || !invoiceCommune.trim()
+      !invoiceAddress.trim() || !invoiceCommune.trim() || !invoiceCity.trim() || !isValidEmail(invoiceTaxEmail)
     )) {
       alert("Completa los datos tributarios para solicitar factura.");
       scrollToRef(contactRef);
@@ -926,6 +955,7 @@ function ReservarInner() {
         customerName: fullName.trim(),
         customerPhone: normalizeToE164CLMobile(phoneNorm.trim()),
         customerEmail: email.trim().toLowerCase(),
+        customerRut: normalizeRut(customerRut),
 
         customerId: null,
         serviceId: serviceId || null,
@@ -943,6 +973,7 @@ function ReservarInner() {
         invoiceReceiverAddress: invoiceRequested ? invoiceAddress : null,
         invoiceReceiverCommune: invoiceRequested ? invoiceCommune : null,
         invoiceReceiverCity: invoiceRequested ? invoiceCity : null,
+        invoiceReceiverTaxEmail: invoiceRequested ? invoiceTaxEmail.trim().toLowerCase() : null,
       };
 
       const res = await fetch("/api/appointments/create", {
@@ -2200,6 +2231,27 @@ function ReservarInner() {
                   </div>
                 </div>
 
+                <div className="min-w-0">
+                  <label className="mb-1.5 block text-[11px] font-semibold sm:text-sm">RUT</label>
+                  <input
+                    value={customerRut}
+                    disabled={saving || !tenantId}
+                    onChange={(event) => setCustomerRut(event.target.value)}
+                    onBlur={() => { if (validateRut(customerRut)) setCustomerRut(normalizeRut(customerRut)); }}
+                    placeholder="Ej: 12.345.678-5"
+                    autoComplete="off"
+                    className={cn(
+                      "h-11 w-full rounded-2xl border bg-white/90 px-3 text-[12px] outline-none focus:ring-2 sm:text-sm",
+                      customerRut.trim() && !validateRut(customerRut)
+                        ? "border-red-300 focus:ring-red-200"
+                        : "border-slate-200 focus:ring-foreground/20",
+                    )}
+                  />
+                  {customerRut.trim() && !validateRut(customerRut) ? (
+                    <p className="mt-1 text-xs font-bold text-red-700">RUT inválido.</p>
+                  ) : null}
+                </div>
+
                 <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                   <label className="flex items-center gap-2 text-[11px] font-extrabold sm:text-sm">
                     <input
@@ -2209,7 +2261,7 @@ function ReservarInner() {
                       disabled={saving || !tenantId}
                       className="h-4 w-4 accent-slate-900"
                     />
-                    Necesito factura electrónica
+                    Necesito factura
                   </label>
                   {invoiceRequested ? (
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -2220,6 +2272,7 @@ function ReservarInner() {
                         ["Dirección", invoiceAddress, setInvoiceAddress, "Calle 123"],
                         ["Comuna", invoiceCommune, setInvoiceCommune, "Santiago"],
                         ["Ciudad", invoiceCity, setInvoiceCity, "Santiago"],
+                        ["Email tributario", invoiceTaxEmail, setInvoiceTaxEmail, "facturacion@empresa.cl"],
                       ].map(([label, value, setter, placeholder]) => (
                         <label key={String(label)} className="grid gap-1 text-[10px] font-semibold sm:text-xs">
                           {String(label)}

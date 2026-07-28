@@ -5,6 +5,7 @@ import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { normalizeRut, validateRut } from "@/lib/dte/rut";
 
 function cleanTextOrNull(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -56,6 +57,8 @@ export async function POST(req: Request) {
     const phone = cleanPhoneOrNull(body?.phone);
     const email = cleanEmailOrNull(body?.email);
     const notes = cleanTextOrNull(body?.notes);
+    const customerRutRaw = cleanTextOrNull(body?.customerRut);
+    const customerRut = customerRutRaw && validateRut(customerRutRaw) ? normalizeRut(customerRutRaw) : null;
 
     // ✅ soporte edición directa (si viene)
     const customerId = typeof body?.customerId === "string" ? body.customerId : null;
@@ -70,6 +73,10 @@ export async function POST(req: Request) {
 
     const access = await requireTenantAdmin({ req, tenantId });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+
+    if (!customerId && !customerRut) {
+      return NextResponse.json({ ok: false, error: "RUT válido requerido" }, { status: 400 });
+    }
 
     if (!full_name) {
       return NextResponse.json({ ok: false, error: "name requerido" }, { status: 400 });
@@ -89,13 +96,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "customerId inválido" }, { status: 400 });
       }
 
-      const patch: Record<string, any> = {
+      const patch: Record<string, unknown> = {
         full_name,
         phone,
         email,
       };
       if (professionalId) patch.professional_id = professionalId;
       if (notes) patch.notes = notes;
+      if (customerRut) patch.rut_normalized = customerRut;
 
       const { error: upErr } = await supabaseAdmin
         .from("customers")
@@ -109,12 +117,23 @@ export async function POST(req: Request) {
     }
 
     // 🔥 Usamos SERVICE ROLE SOLO después de validar sesión (token válido)
-    let existing: { id: string; phone: string | null; email: string | null } | null = null;
+    let existing: { id: string; phone: string | null; email: string | null; rut_normalized: string | null } | null = null;
 
-    if (phone) {
+    if (customerRut) {
       const { data, error } = await supabaseAdmin
         .from("customers")
-        .select("id, phone, email")
+        .select("id, phone, email, rut_normalized")
+        .eq("tenant_id", tenantId)
+        .eq("rut_normalized", customerRut)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) existing = data;
+    }
+
+    if (!existing && phone) {
+      const { data, error } = await supabaseAdmin
+        .from("customers")
+        .select("id, phone, email, rut_normalized")
         .eq("tenant_id", tenantId)
         .eq("phone", phone)
         .maybeSingle();
@@ -126,7 +145,7 @@ export async function POST(req: Request) {
     if (!existing && email) {
       const { data, error } = await supabaseAdmin
         .from("customers")
-        .select("id, phone, email")
+        .select("id, phone, email, rut_normalized")
         .eq("tenant_id", tenantId)
         .eq("email", email)
         .maybeSingle();
@@ -137,9 +156,13 @@ export async function POST(req: Request) {
 
     // update por match (reusar cliente existente)
     if (existing) {
-      const patch: Record<string, any> = { full_name };
+      if (existing.rut_normalized && existing.rut_normalized !== customerRut) {
+        return NextResponse.json({ ok: false, error: "Los datos corresponden a otro RUT" }, { status: 409 });
+      }
+      const patch: Record<string, unknown> = { full_name };
       if (!existing.phone && phone) patch.phone = phone;
       if (!existing.email && email) patch.email = email;
+      if (customerRut) patch.rut_normalized = customerRut;
       if (professionalId) patch.professional_id = professionalId;
       if (notes) patch.notes = notes;
 
@@ -163,6 +186,7 @@ export async function POST(req: Request) {
         phone,
         email,
         notes,
+        rut_normalized: customerRut,
       })
       .select("id")
       .single();
@@ -170,10 +194,10 @@ export async function POST(req: Request) {
     if (insErr) throw insErr;
 
     return NextResponse.json({ ok: true, customerId: created.id, reused: false });
-  } catch (e: any) {
-    console.error("[customers/create] error:", e?.message || e);
+  } catch (e: unknown) {
+    console.error("[customers/create] error", { name: e instanceof Error ? e.name : "UnknownError" });
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error inesperado" },
+      { ok: false, error: "Error inesperado" },
       { status: 500 }
     );
   }

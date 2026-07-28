@@ -49,7 +49,7 @@ export async function GET(req: Request) {
     // ✅ Listar customers por tenant (service role)
     const { data: customers, error } = await supabaseAdmin
       .from("customers")
-      .select("id, tenant_id, full_name, phone, email, notes, created_at")
+      .select("id, tenant_id, full_name, phone, email, rut_normalized, notes, created_at")
       .eq("tenant_id", tenantId)
       .order("full_name", { ascending: true })
       .limit(1000);
@@ -138,10 +138,10 @@ export async function GET(req: Request) {
     }));
 
     return NextResponse.json({ ok: true, customers: enrichedCustomers });
-  } catch (e: any) {
-    console.error("[api/customers/list] error:", e?.message || e);
+  } catch (e: unknown) {
+    console.error("[api/customers/list] error", { name: e instanceof Error ? e.name : "UnknownError" });
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error listando customers" },
+      { ok: false, error: "Error listando customers" },
       { status: 500 },
     );
   }

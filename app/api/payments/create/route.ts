@@ -15,6 +15,7 @@ import {
   isPaymentProviderId,
 } from "@/services/payments/provider-factory";
 import type { PaymentProviderConfig } from "@/services/payments/providers/types";
+import { normalizeRut, validateRut } from "@/lib/dte/rut";
 
 function jsonError(status: number, error = "No se pudo iniciar el pago") {
   return NextResponse.json({ ok: false, error }, { status });
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from("appointments")
       .select(
-        "id, tenant_id, service_id, service_name, customer_name, customer_email, status, payment_status, payment_url, payment_reference, service_price, currency, manage_token, manage_token_hash, manage_token_expires_at, manage_token_revoked_at, manage_token_legacy_expires_at",
+        "id, tenant_id, service_id, service_name, customer_id, customer_rut_snapshot, customer_name, customer_email, status, payment_status, payment_url, payment_reference, service_price, currency, manage_token, manage_token_hash, manage_token_expires_at, manage_token_revoked_at, manage_token_legacy_expires_at",
       )
       .eq("id", appointmentId)
       .maybeSingle();
@@ -64,6 +65,30 @@ export async function POST(req: Request) {
     }
     if (!appointment.service_id || String(appointment.payment_status) === "paid") {
       return jsonError(409);
+    }
+
+    let customerRut = String(appointment.customer_rut_snapshot ?? "");
+    if (!validateRut(customerRut) && appointment.customer_id) {
+      const { data: customer } = await supabaseAdmin.from("customers")
+        .select("rut_normalized").eq("tenant_id", appointment.tenant_id)
+        .eq("id", appointment.customer_id).maybeSingle();
+      customerRut = String(customer?.rut_normalized ?? body?.customerRut ?? "");
+    }
+    if (!validateRut(customerRut)) {
+      return jsonError(409, "Completa el RUT válido del cliente antes de pagar");
+    }
+    const normalizedCustomerRut = normalizeRut(customerRut);
+    if (appointment.customer_id) {
+      const customerUpdate = await supabaseAdmin.from("customers")
+        .update({ rut_normalized: normalizedCustomerRut })
+        .eq("tenant_id", appointment.tenant_id).eq("id", appointment.customer_id);
+      if (customerUpdate.error) return jsonError(409, "No se pudo validar el RUT del cliente");
+    }
+    if (appointment.customer_rut_snapshot !== normalizedCustomerRut) {
+      const appointmentUpdate = await supabaseAdmin.from("appointments")
+        .update({ customer_rut_snapshot: normalizedCustomerRut })
+        .eq("tenant_id", appointment.tenant_id).eq("id", appointment.id);
+      if (appointmentUpdate.error) return jsonError(409, "No se pudo completar el RUT de la reserva");
     }
 
     const allowed = await consumeRateLimit({

@@ -116,26 +116,6 @@ function isPendingPayment(row: AppointmentPayment) {
   );
 }
 
-function paymentBadge(
-  status: string | null | undefined,
-): "slate" | "green" | "amber" | "red" | "blue" {
-  const normalized = normalizedStatus(status);
-  if (normalized === "paid") return "green";
-  if (normalized === "failed") return "red";
-  if (normalized === "pending" || normalized === "pending_payment") return "amber";
-  if (normalized === "not_required" || normalized === "pay_later") return "blue";
-  return "slate";
-}
-
-function paymentLabel(status: string | null | undefined) {
-  const normalized = normalizedStatus(status);
-  if (normalized === "paid") return "Pagado";
-  if (normalized === "failed") return "Fallido";
-  if (normalized === "pending" || normalized === "pending_payment") return "Pendiente";
-  if (normalized === "not_required" || normalized === "pay_later") return "No requerido";
-  return "Sin estado";
-}
-
 export default function AdminPagosPage() {
   const router = useRouter();
   const [tenantId, setTenantId] = useState("");
@@ -611,8 +591,8 @@ export default function AdminPagosPage() {
       const text = "Correo de pago reenviado correctamente";
       setResendMessage({ type: "success", text });
       toast({ title: text });
-    } catch (e: any) {
-      const text = e?.message ?? "No se pudo conectar con el endpoint de reenvio";
+    } catch (e: unknown) {
+      const text = e instanceof Error ? e.message : "No se pudo conectar con el endpoint de reenvio";
       setResendMessage({ type: "error", text });
       toast({ title: "Error reenviando pago", description: text, variant: "destructive" });
     } finally {
@@ -1111,19 +1091,17 @@ export default function AdminPagosPage() {
                       <StatusBadge label="Sin documento" tone="slate" />
                       <button
                         type="button"
-                        disabled
-                        className="rounded-xl border bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400 disabled:cursor-not-allowed"
-                        title="Disponible cuando facturación esté conectada"
+                        onClick={() => { window.location.href = "/admin/facturacion?appointmentId=" + encodeURIComponent(row.id) + "&dteType=39"; }}
+                        className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-900"
                       >
-                        Emitir boleta
+                        Solicitar boleta
                       </button>
                       <button
                         type="button"
-                        disabled
-                        className="rounded-xl border bg-slate-100 px-3 py-2 text-xs font-bold text-slate-400 disabled:cursor-not-allowed"
-                        title="Disponible cuando facturación esté conectada"
+                        onClick={() => { window.location.href = "/admin/facturacion?appointmentId=" + encodeURIComponent(row.id) + "&dteType=33"; }}
+                        className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-900"
                       >
-                        Emitir factura
+                        Solicitar factura
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
