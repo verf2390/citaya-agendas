@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { adminFetch } from "@/lib/api/adminFetch";
-import CustomerUpsertModal from "@/app/admin/customers/components/CustomerUpsertModal";
 
 type TaxProfile = { rut_normalized: string; legal_name: string; business_activity: string; tax_address: string; tax_commune: string; tax_city: string; tax_email: string };
 type Customer = { id: string; full_name: string; email: string | null; phone: string | null; rut_normalized: string | null; tax_profile: TaxProfile | null };
@@ -24,8 +24,6 @@ function clp(value: number) {
 
 export default function ManualIssuanceForm({ onCreated }: { onCreated: () => void }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [tenantId, setTenantId] = useState("");
-  const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [issuer, setIssuer] = useState<{ issuer_rut: string; issuer_legal_name: string } | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -53,11 +51,13 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.ok) throw new Error("No se pudieron cargar clientes, reservas y pagos.");
       setCustomers(payload.customers);
-      setTenantId(String(payload.tenantId ?? ""));
       setIssuer(payload.issuer ?? null);
       setAppointments(payload.appointments);
       setPayments(payload.payments);
       const params = new URLSearchParams(window.location.search);
+      const requestedCustomerId = params.get("customerId") ?? "";
+      const requestedCustomer = (payload.customers as Customer[]).find((item) => item.id === requestedCustomerId);
+      if (requestedCustomer) setCustomerId(requestedCustomer.id);
       const requestedAppointmentId = params.get("appointmentId") ?? "";
       const requestedAppointment = (payload.appointments as Appointment[]).find((item) => item.id === requestedAppointmentId);
       if (requestedAppointment?.customer_id) {
@@ -98,6 +98,14 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
       ? Number(selectedAppointment?.payment_paid_amount ?? 0)
       : quantity * unitPrice;
   const selectedCustomer = customers.find((item) => item.id === customerId);
+  const customerActionHref = selectedCustomer
+    ? `/admin/customers?edit=${encodeURIComponent(selectedCustomer.id)}&returnTo=/admin/facturacion`
+    : "/admin/customers?new=1&returnTo=/admin/facturacion";
+  const customerActionLabel = selectedCustomer
+    ? selectedCustomer.tax_profile
+      ? "Editar cliente / perfil tributario"
+      : "Completar datos"
+    : "Crear cliente";
   const taxProfileReady = dteType !== 33 || Boolean(selectedCustomer?.tax_profile);
   const isExempt = selectedAppointment?.tax_treatment_snapshot === "exempt";
   const netAmount = isExempt ? 0 : Math.round(serverAmount / 1.19);
@@ -171,7 +179,7 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
             <option value="">Seleccionar cliente</option>
             {customers.map((item) => <option key={item.id} value={item.id}>{item.full_name} · {item.rut_normalized || "RUT pendiente"}</option>)}
           </select>
-          <button type="button" onClick={() => setCustomerModalOpen(true)} className="w-fit text-xs font-black text-blue-700 underline">{selectedCustomer ? "Editar cliente / perfil tributario" : "Crear cliente"}</button>
+          <Link href={customerActionHref} className="w-fit text-xs font-black text-blue-700 underline">{customerActionLabel}</Link>
           {dteType === 33 && selectedCustomer && !selectedCustomer.tax_profile ? <span className="text-xs font-bold text-amber-700">La factura requiere completar el perfil tributario.</span> : null}
         </label>
         <label className="grid gap-1 text-sm font-bold">Documento
@@ -230,17 +238,6 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
         <button type="button" onClick={requestReview} disabled={!canReview} className="w-fit rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:bg-slate-300">Revisar emisión</button>
       )}
       {feedback ? <p role="status" className="rounded-xl bg-blue-50 p-3 text-sm font-bold text-blue-900">{feedback}</p> : null}
-      <CustomerUpsertModal
-        open={customerModalOpen}
-        onClose={() => setCustomerModalOpen(false)}
-        tenantId={tenantId}
-        initial={selectedCustomer ? { id: selectedCustomer.id, full_name: selectedCustomer.full_name, phone: selectedCustomer.phone, email: selectedCustomer.email, rut_normalized: selectedCustomer.rut_normalized } : null}
-        onSaved={(result) => {
-          setCustomerId(result.id);
-          setCustomerModalOpen(false);
-          void load();
-        }}
-      />
     </div>
   );
 }

@@ -3,12 +3,16 @@
 import { adminFetch } from "@/lib/api/adminFetch";
 
 import { resolveTenantFromHostname } from "@/lib/client/tenant-resolution";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
 import { digitsOnly } from "@/app/lib/phone";
+import {
+  buildCustomerReturnPath,
+  resolveCustomerUpsertFlow,
+} from "@/lib/admin/customer-flow.mjs";
 
 import CustomerUpsertModal from "./components/CustomerUpsertModal";
 import AdminNav from "@/components/admin/AdminNav";
@@ -85,6 +89,8 @@ export default function CustomersPage() {
   // Modal states
   const [upsertOpen, setUpsertOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerRow | null>(null);
+  const [flowReturnTo, setFlowReturnTo] = useState("");
+  const savedReturnRef = useRef(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkChannel, setBulkChannel] = useState<BulkChannel>("email");
   const [bulkAudience, setBulkAudience] = useState<BulkAudience>("all");
@@ -192,7 +198,17 @@ export default function CustomersPage() {
       return;
     }
 
-    setCustomers((json.customers ?? []) as CustomerRow[]);
+    const nextCustomers = (json.customers ?? []) as CustomerRow[];
+    setCustomers(nextCustomers);
+    const flow = resolveCustomerUpsertFlow(
+      new URLSearchParams(window.location.search),
+      nextCustomers,
+    );
+    setFlowReturnTo(flow.returnTo);
+    if (flow.shouldOpen) {
+      setEditing(flow.editing);
+      setUpsertOpen(true);
+    }
     setLoading(false);
   };
 
@@ -766,6 +782,7 @@ export default function CustomersPage() {
 
           <button
             onClick={() => {
+              setFlowReturnTo("");
               setEditing(null);
               setUpsertOpen(true);
             }}
@@ -1152,6 +1169,7 @@ export default function CustomersPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
+                      setFlowReturnTo("");
                       setEditing(c);
                       setUpsertOpen(true);
                     }}
@@ -1535,10 +1553,21 @@ export default function CustomersPage() {
         onClose={() => {
           setUpsertOpen(false);
           setEditing(null);
+          if (savedReturnRef.current) {
+            savedReturnRef.current = false;
+            return;
+          }
+          if (flowReturnTo) router.push(flowReturnTo);
         }}
         tenantId={tenantId}
         initial={editing}
-        onSaved={async () => {
+        onSaved={async (result) => {
+          const returnPath = buildCustomerReturnPath(flowReturnTo, result.id);
+          if (returnPath) {
+            savedReturnRef.current = true;
+            router.push(returnPath);
+            return;
+          }
           await loadCustomers();
           setUpsertOpen(false);
           setEditing(null);

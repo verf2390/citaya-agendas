@@ -149,7 +149,8 @@ export default function AdminFacturacionPage() {
   useEffect(() => {
     let active = true;
     void Promise.resolve().then(() => {
-      if (new URLSearchParams(window.location.search).has("appointmentId")) setManualOpen(true);
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("appointmentId") || params.has("customerId")) setManualOpen(true);
     });
     void fetchBillingState()
       .then((nextState) => {
