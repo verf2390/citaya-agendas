@@ -77,6 +77,18 @@ test("billing polling updates documents incrementally without full reload", () =
   assert.match(form, /if \(intent\.terminal\) return/);
   assert.match(endpoint, /requireHostTenantAdmin/);
   assert.match(page, /Total IVA incluido/);
+
+  const rows = read("lib/dte/admin-document-rows.ts");
+  const actions = read("components/admin/dte/DteDocumentActions.tsx");
+  assert.match(rows, /dte_production_artifacts/);
+  assert.match(rows, /track_id_fingerprint/);
+  assert.match(rows, /canDownloadXml: Boolean\(input\.productionDocumentId && hasDteXml\)/);
+  assert.match(rows, /canDownloadPdf: Boolean\(input\.productionDocumentId && hasPdf\)/);
+  assert.match(rows, /canEmail: Boolean\(input\.productionDocumentId && deliverable && hasDteXml && hasPdf\)/);
+  assert.match(actions, /disabled=\{!props\.canViewTrackId \|\| Boolean\(busy\)\}/);
+  assert.match(actions, /disabled=\{!props\.canDownloadXml \|\| Boolean\(busy\)\}/);
+  assert.match(actions, /disabled=\{!props\.canDownloadPdf \|\| Boolean\(busy\)\}/);
+  assert.match(actions, /disabled=\{!props\.canEmail \|\| Boolean\(busy\)\}/);
 });
 
 test("folio RPC is qualified and exact recovery is single-use fail-closed", () => {
@@ -89,6 +101,26 @@ test("folio RPC is qualified and exact recovery is single-use fail-closed", () =
   assert.match(migration, /document\.folio is null/);
   assert.match(migration, /dte_production_submission_attempts/);
   assert.match(migration, /MANUAL_ISSUANCE_RETRY_AUTHORIZED/);
+  assert.doesNotMatch(migration, /status\s*=\s*'CANCELED'/);
+});
+
+test("controlled XSD resume is single-use and preserves the exact existing folio", () => {
+  const migration = read("migrations/202607290002_dte_manual_xsd_resume.sql");
+  const worker = read("lib/dte/automation/worker.ts");
+  assert.match(worker, /dte_claim_manual_xsd_resume_exact/);
+  assert.match(migration, /claimed\.deterministic_attempts <> 2/);
+  assert.match(migration, /claimed\.network_attempts <> 0/);
+  assert.match(migration, /claimed\.last_safe_error <> 'XSD'/);
+  assert.match(migration, /document_row\.status <> 'prepared'/);
+  assert.match(migration, /document_row\.folio <> p_expected_folio/);
+  assert.match(migration, /ledger_row\.state <> 'reserved'/);
+  assert.match(migration, /ledger_row\.document_id <> document_row\.id/);
+  assert.match(migration, /dte_production_artifacts/);
+  assert.match(migration, /dte_production_submission_attempts/);
+  assert.match(migration, /additionalFolioReserved', false/);
+  assert.match(migration, /MANUAL_ISSUANCE_XSD_RESUME_AUTHORIZED/);
+  assert.doesNotMatch(migration, /state\s*=\s*'available'/);
+  assert.doesNotMatch(migration, /reserve_dte_production_folio/);
   assert.doesNotMatch(migration, /status\s*=\s*'CANCELED'/);
 });
 

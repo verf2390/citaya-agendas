@@ -17,7 +17,10 @@ import {
   requiredArtifact,
   type ProductionDteRepository,
 } from "./repository";
-import { assertValidProductionIssuerResolution } from "./issuer-settings";
+import {
+  assertValidProductionIssuerActivityCode,
+  assertValidProductionIssuerResolution,
+} from "./issuer-settings";
 import {
   ProductionSiiClient,
   type ProductionSiiMilestone,
@@ -49,6 +52,7 @@ export type ProductionPreparationFailureStage =
   | "runtime_config"
   | "tenant_settings"
   | "issuer_resolution"
+  | "issuer_activity_code"
   | "document_load"
   | "material_preflight"
   | "folio_reservation"
@@ -219,6 +223,8 @@ export class ProductionDteService {
       const settings = await this.requireTenantSettings(tenantId, true);
       failureStage = "issuer_resolution";
       assertValidProductionIssuerResolution(settings.issuer);
+      failureStage = "issuer_activity_code";
+      assertValidProductionIssuerActivityCode(settings.issuer);
       failureStage = "document_load";
       const current = await this.requireDocument(tenantId, documentId);
       if (current.status === "ready") return safeDocument(current);

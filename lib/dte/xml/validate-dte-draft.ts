@@ -38,6 +38,11 @@ export function validateDteDraftForXmlLab(draft: TaxDocumentDraft): void {
     throw new Error("Issuer RUT is invalid");
   }
 
+  const issuerActivityCode = String(draft.issuer.businessActivityCode ?? "").trim();
+  if (!/^\d{1,6}$/.test(issuerActivityCode) || Number(issuerActivityCode) <= 0) {
+    throw new Error("DTE_ISSUER_ACTIVITY_CODE_REQUIRED");
+  }
+
   if (!validateRut(draft.recipient.rut)) {
     throw new Error("Recipient RUT is invalid");
   }

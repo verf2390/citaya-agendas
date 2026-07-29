@@ -16,7 +16,31 @@ type DocumentIntentRow = {
 type ProductionDocumentRow = {
   id: string;
   folio: number | null;
+  track_id_fingerprint: string | null;
 };
+
+type ProductionArtifactRow = {
+  document_id: string;
+  kind: string;
+};
+
+export function adminDocumentActionAvailability(input: {
+  productionDocumentId: string | null;
+  trackIdFingerprint: string | null;
+  artifactKinds: readonly string[];
+  status: string;
+}) {
+  const hasDteXml = input.artifactKinds.includes("dte_xml");
+  const hasPdf = input.artifactKinds.includes("pdf");
+  const deliverable = ["ACCEPTED", "DELIVERY_PENDING", "DELIVERED"]
+    .includes(input.status);
+  return {
+    canViewTrackId: Boolean(input.productionDocumentId && input.trackIdFingerprint),
+    canDownloadXml: Boolean(input.productionDocumentId && hasDteXml),
+    canDownloadPdf: Boolean(input.productionDocumentId && hasPdf),
+    canEmail: Boolean(input.productionDocumentId && deliverable && hasDteXml && hasPdf),
+  };
+}
 
 export async function loadAdminDocumentRows(tenantId: string) {
   const intentsResult = await supabaseAdmin
@@ -33,7 +57,7 @@ export async function loadAdminDocumentRows(tenantId: string) {
   const productionResult = productionIds.length
     ? await supabaseAdmin
         .from("dte_production_documents")
-        .select("id,folio")
+        .select("id,folio,track_id_fingerprint")
         .eq("tenant_id", tenantId)
         .in("id", productionIds)
     : { data: [], error: null };
@@ -42,11 +66,33 @@ export async function loadAdminDocumentRows(tenantId: string) {
     ((productionResult.data ?? []) as ProductionDocumentRow[])
       .map((document) => [document.id, document]),
   );
+  const artifactsResult = productionIds.length
+    ? await supabaseAdmin
+        .from("dte_production_artifacts")
+        .select("document_id,kind")
+        .eq("tenant_id", tenantId)
+        .in("document_id", productionIds)
+    : { data: [], error: null };
+  if (artifactsResult.error) throw new Error("DTE_DOCUMENT_ROWS_UNAVAILABLE");
+  const artifactKindsByDocument = new Map<string, string[]>();
+  for (const artifact of (artifactsResult.data ?? []) as ProductionArtifactRow[]) {
+    const kinds = artifactKindsByDocument.get(artifact.document_id) ?? [];
+    kinds.push(artifact.kind);
+    artifactKindsByDocument.set(artifact.document_id, kinds);
+  }
 
   return intents.map((row) => {
     const production = row.production_document_id
       ? productionById.get(row.production_document_id)
       : null;
+    const actions = adminDocumentActionAvailability({
+      productionDocumentId: row.production_document_id,
+      trackIdFingerprint: production?.track_id_fingerprint ?? null,
+      artifactKinds: row.production_document_id
+        ? artifactKindsByDocument.get(row.production_document_id) ?? []
+        : [],
+      status: row.status,
+    });
     return {
       id: row.id,
       productionDocumentId: row.production_document_id,
@@ -63,16 +109,15 @@ export async function loadAdminDocumentRows(tenantId: string) {
         "BLOCKED", "SUBMITTED", "ACCEPTED", "ACCEPTED_WITH_OBJECTIONS",
         "REJECTED", "AMBIGUOUS", "CANCELED", "DELIVERY_PENDING", "DELIVERED",
       ].includes(row.status),
-      canView: Boolean(row.production_document_id),
-      canDownload: Boolean(row.production_document_id) &&
-        ["ACCEPTED", "DELIVERY_PENDING", "DELIVERED"].includes(row.status),
+      canView: actions.canViewTrackId,
+      canDownloadXml: actions.canDownloadXml,
+      canDownloadPdf: actions.canDownloadPdf,
       canQuery: Boolean(row.production_document_id) &&
         ["SUBMITTED", "AMBIGUOUS"].includes(row.status),
       canCreateNote: Boolean(row.production_document_id) &&
         row.status === "ACCEPTED" &&
         [33, 39].includes(Number(row.resolved_dte_type)),
-      canEmail: Boolean(row.production_document_id) &&
-        ["ACCEPTED", "DELIVERY_PENDING", "DELIVERED"].includes(row.status),
+      canEmail: actions.canEmail,
     };
   });
 }

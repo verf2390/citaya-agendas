@@ -13,7 +13,10 @@ import {
 import type { ImportedCaf } from "../certification/caf-secure-import";
 import type { TaxDocumentDraft } from "../types";
 import { assertProductionConfig } from "./config";
-import { assertValidProductionIssuerResolution } from "./issuer-settings";
+import {
+  assertValidProductionIssuerActivityCode,
+  assertValidProductionIssuerResolution,
+} from "./issuer-settings";
 import { loadValidatedProductionSigningMaterial } from "./signing-material";
 import type {
   ProductionDocument,
@@ -111,6 +114,7 @@ export class CertifiedProductionDteGenerator
   }): Promise<ProductionGeneratedArtifacts> {
     const config = assertProductionConfig(input.env, process.cwd());
     assertValidProductionIssuerResolution(input.settings.issuer);
+    assertValidProductionIssuerActivityCode(input.settings.issuer);
     loadValidatedProductionSigningMaterial({
       certificatePath: input.settings.certificatePath,
       privateKeyPath: input.settings.privateKeyPath,

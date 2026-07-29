@@ -169,15 +169,44 @@ async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED"
 
 export async function runOneManualIssuanceWorker(options: {
   targetOutboxId?: string;
+  controlledResume?: {
+    intentId: string;
+    documentId: string;
+    folio: number;
+    grossAmount: number;
+    netAmount: number;
+    taxAmount: number;
+  };
 } = {}) {
   const globalProductionEnabled = process.env.DTE_PRODUCTION_ENABLED === "true";
   if (!globalProductionEnabled) return { processed: false, status: "DISABLED", siiContacted: false, networkAttempts: 0 };
   const targetOutboxId = String(options.targetOutboxId ?? "").trim();
-  if (targetOutboxId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetOutboxId)) {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const resume = options.controlledResume;
+  if (targetOutboxId && !uuid.test(targetOutboxId)) {
     throw new Error("DTE_TARGET_OUTBOX_INVALID");
   }
+  if (resume && (
+    !targetOutboxId || !uuid.test(resume.intentId) ||
+    !uuid.test(resume.documentId) ||
+    !Number.isSafeInteger(resume.folio) || resume.folio < 1 ||
+    ![resume.grossAmount, resume.netAmount, resume.taxAmount]
+      .every((amount) => Number.isSafeInteger(amount) && amount >= 0) ||
+    resume.grossAmount !== resume.netAmount + resume.taxAmount
+  )) throw new Error("DTE_CONTROLLED_RESUME_INVALID");
   const workerId = `citaya-manual:${process.pid}`;
-  const claimed = targetOutboxId
+  const claimed = resume
+    ? await supabaseAdmin.rpc("dte_claim_manual_xsd_resume_exact", {
+        p_worker_id: workerId,
+        p_outbox_id: targetOutboxId,
+        p_intent_id: resume.intentId,
+        p_document_id: resume.documentId,
+        p_expected_folio: resume.folio,
+        p_expected_gross: resume.grossAmount,
+        p_expected_net: resume.netAmount,
+        p_expected_tax: resume.taxAmount,
+      })
+    : targetOutboxId
     ? await supabaseAdmin.rpc("dte_claim_manual_issuance_outbox_exact", {
         p_worker_id: workerId,
         p_outbox_id: targetOutboxId,

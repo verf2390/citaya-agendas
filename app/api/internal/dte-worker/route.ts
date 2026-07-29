@@ -19,7 +19,10 @@ export async function POST(req: Request) {
     const targetOutboxId = typeof body?.targetOutboxId === "string"
       ? body.targetOutboxId
       : undefined;
-    const result = await runOneManualIssuanceWorker({ targetOutboxId });
+    const controlledResume = body?.controlledResume &&
+      typeof body.controlledResume === "object"
+      ? body.controlledResume : undefined;
+    const result = await runOneManualIssuanceWorker({ targetOutboxId, controlledResume });
     return NextResponse.json({ ok: true, result });
   } catch {
     return NextResponse.json({ ok: false, error: "DTE_WORKER_FAILED" }, { status: 503 });

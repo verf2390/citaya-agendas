@@ -128,6 +128,9 @@ function buildDocumentoXml(
       : `\n${indentXml(options.documentSignatureXml, 6)}`
     : "";
   const referencesXml = buildReferenceXml(draft);
+  const issuerActivityCode = String(
+    draft.issuer.businessActivityCode ?? "",
+  ).trim();
 
   return `    <DTE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.0">
       <Documento ID="${documentId}">
@@ -141,7 +144,7 @@ function buildDocumentoXml(
             <RUTEmisor>${escapeXml(issuerRut)}</RUTEmisor>
             <RznSoc>${escapeXml(draft.issuer.legalName)}</RznSoc>
             <GiroEmis>${escapeXml(draft.issuer.businessActivity)}</GiroEmis>
-            <Acteco>${escapeXml(draft.issuer.businessActivityCode ?? "")}</Acteco>
+            <Acteco>${escapeXml(issuerActivityCode)}</Acteco>
             <DirOrigen>${escapeXml(draft.issuer.address)}</DirOrigen>
             <CmnaOrigen>${escapeXml(draft.issuer.commune)}</CmnaOrigen>
             <CiudadOrigen>${escapeXml(draft.issuer.city)}</CiudadOrigen>

@@ -151,10 +151,15 @@ function importedCaf(dteType: ProductionDteType): ImportedCaf {
 
 class MockGenerator implements ProductionDteGenerator {
   types: number[] = [];
+  failuresRemaining = 0;
   async generate(input: {
     document: { dteType: ProductionDteType; id: string };
   }): Promise<ProductionGeneratedArtifacts> {
     this.types.push(input.document.dteType);
+    if (this.failuresRemaining > 0) {
+      this.failuresRemaining -= 1;
+      throw new Error("XSD");
+    }
     return {
       dteXml: Buffer.from(
         '<?xml version="1.0" encoding="ISO-8859-1"?><DTE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><FRMT algoritmo="SHA1withRSA">fixture</FRMT><Signature>fixture</Signature></DTE>',
@@ -321,6 +326,39 @@ test("material preflight failure happens before production folio reservation", a
   );
   assert.equal(preflightCalls, 1);
   assert.deepEqual(context.repository.folioRows(), before);
+});
+
+test("resume after pre-submit XSD failure reuses the same folio without another reservation", async () => {
+  const context = await preparedService({});
+  context.generator.failuresRemaining = 1;
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 33, "same-folio-resume"),
+    "admin-user",
+  );
+  await assert.rejects(
+    context.service.prepare(context.tenantId, draft.id, "admin-user"),
+    (error: unknown) => error instanceof Error &&
+      error.message === "XSD" &&
+      (error as { failureStage?: string }).failureStage === "artifact_generation",
+  );
+  const failed = await context.repository.getDocument(context.tenantId, draft.id);
+  assert.equal(failed?.status, "prepared");
+  assert.equal(failed?.folio, 1);
+  const afterFailure = context.repository.folioRows();
+  assert.equal(afterFailure.filter((row) => row.state === "reserved").length, 1);
+  assert.equal(afterFailure.find((row) => row.state === "reserved")?.folio, 1);
+
+  const resumed = await context.service.prepare(
+    context.tenantId,
+    draft.id,
+    "admin-user",
+  );
+  assert.equal(resumed.status, "ready");
+  assert.equal(resumed.folio, 1);
+  const afterResume = context.repository.folioRows();
+  assert.equal(afterResume.length, afterFailure.length);
+  assert.equal(afterResume.filter((row) => row.state === "reserved").length, 1);
+  assert.equal(afterResume.find((row) => row.state === "reserved")?.folio, 1);
 });
 
 test("CAF metadata rejects duplicate, overlap and cross-tenant selection", async () => {

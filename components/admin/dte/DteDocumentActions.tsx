@@ -6,7 +6,9 @@ import { adminFetch } from "@/lib/api/adminFetch";
 export default function DteDocumentActions(props: {
   intentId: string;
   productionDocumentId: string;
-  canDownload: boolean;
+  canViewTrackId: boolean;
+  canDownloadXml: boolean;
+  canDownloadPdf: boolean;
   canEmail: boolean;
 }) {
   const [detail, setDetail] = useState<{ hasTrackId: boolean; trackIdFingerprint: string | null; status: string; siiStatus: string | null } | null>(null);
@@ -60,9 +62,9 @@ export default function DteDocumentActions(props: {
   return (
     <div className="grid gap-1">
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => void view()} disabled={Boolean(busy)} className="font-bold text-blue-700 disabled:text-slate-300">Ver / Track ID</button>
-        <button type="button" onClick={() => void download("dte_xml")} disabled={!props.canDownload || Boolean(busy)} className="font-bold text-blue-700 disabled:text-slate-300">XML</button>
-        <button type="button" onClick={() => void download("pdf")} disabled={!props.canDownload || Boolean(busy)} className="font-bold text-blue-700 disabled:text-slate-300">PDF</button>
+        <button type="button" onClick={() => void view()} disabled={!props.canViewTrackId || Boolean(busy)} className="font-bold text-blue-700 disabled:text-slate-300">Track ID</button>
+        <button type="button" onClick={() => void download("dte_xml")} disabled={!props.canDownloadXml || Boolean(busy)} className="font-bold text-blue-700 disabled:text-slate-300">XML</button>
+        <button type="button" onClick={() => void download("pdf")} disabled={!props.canDownloadPdf || Boolean(busy)} className="font-bold text-blue-700 disabled:text-slate-300">PDF</button>
         <button type="button" onClick={() => void email()} disabled={!props.canEmail || Boolean(busy)} className="font-bold text-blue-700 disabled:text-slate-300">Reenviar email</button>
       </div>
       {detail ? <p className="text-xs text-slate-600">Track ID: {detail.hasTrackId ? `registrado (${detail.trackIdFingerprint})` : "aún no asignado"} · {detail.siiStatus || detail.status}</p> : null}

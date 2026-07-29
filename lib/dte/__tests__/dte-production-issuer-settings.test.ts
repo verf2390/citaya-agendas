@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertValidProductionIssuerActivityCode,
+  hasValidProductionIssuerActivityCode,
   assertValidProductionIssuerResolution,
   hasValidProductionIssuerResolution,
 } from "../production/issuer-settings";
@@ -63,5 +65,18 @@ test("production issuer resolution fails closed before generation", () => {
         siiOffice: "",
       }),
     /DTE_PRODUCTION_SII_RESOLUTION_INVALID/,
+  );
+});
+
+test("production issuer Acteco is mandatory and must satisfy the official XSD scalar", () => {
+  assert.equal(hasValidProductionIssuerActivityCode({
+    businessActivityCode: "620900",
+  }), true);
+  for (const businessActivityCode of [null, "", "ABC", "000000", "1234567"]) {
+    assert.equal(hasValidProductionIssuerActivityCode({ businessActivityCode }), false);
+  }
+  assert.throws(
+    () => assertValidProductionIssuerActivityCode({ businessActivityCode: null }),
+    /DTE_PRODUCTION_ISSUER_ACTIVITY_CODE_REQUIRED/,
   );
 });
