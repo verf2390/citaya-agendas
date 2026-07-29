@@ -21,6 +21,7 @@ type IssuanceIntent = {
   appointment_snapshot: Record<string, unknown>;
   receiver_snapshot: Record<string, unknown>;
   immutable_snapshot: Record<string, unknown>;
+  customer_id: string | null;
   original_production_document_id: string | null;
   operational_reason: string | null;
   production_document_id: string | null;
@@ -130,7 +131,7 @@ async function block(
 async function loadIntent(item: ClaimedOutbox): Promise<IssuanceIntent> {
   const result = await supabaseAdmin
     .from("dte_payment_document_intents")
-    .select("id,tenant_id,status,resolved_dte_type,amount_snapshot,appointment_snapshot,receiver_snapshot,immutable_snapshot,original_production_document_id,operational_reason,production_document_id,created_by")
+    .select("id,tenant_id,status,resolved_dte_type,amount_snapshot,appointment_snapshot,receiver_snapshot,immutable_snapshot,customer_id,original_production_document_id,operational_reason,production_document_id,created_by")
     .eq("id", item.intent_id)
     .eq("tenant_id", item.tenant_id)
     .single();
@@ -229,6 +230,10 @@ export async function runOneManualIssuanceWorker(options: {
     const appointment = intent.appointment_snapshot ?? {};
     const receiver = intent.receiver_snapshot ?? {};
     const immutable = intent.immutable_snapshot ?? {};
+    const frozenIssuer =
+      immutable.issuer && typeof immutable.issuer === "object"
+        ? immutable.issuer as Record<string, unknown>
+        : {};
     const moneySnapshot = immutable.money && typeof immutable.money === "object"
       ? immutable.money as Record<string, unknown>
       : {};
@@ -262,20 +267,35 @@ export async function runOneManualIssuanceWorker(options: {
       if (!candidate || typeof candidate !== "object") throw new Error("DTE_LINES_INVALID");
       const line = candidate as Record<string, unknown>;
       const quantity = Number(line.quantity);
-      const unitGrossAmount = Number(line.unitGrossAmount ?? line.unitPrice);
-      const lineGrossAmount = Number(line.grossAmount ?? quantity * unitGrossAmount);
+      const hasNetContract = line.unitNetAmount !== undefined;
+      const sourceUnitAmount = Number(
+        hasNetContract ? line.unitNetAmount : line.unitGrossAmount ?? line.unitPrice,
+      );
+      const lineGrossAmount = Number(
+        line.grossAmount ?? quantity * sourceUnitAmount,
+      );
       const name = value(line, "description") || value(line, "name");
+      const discountBasisPoints = Number(line.discountBasisPoints ?? 0);
       if (
         !name || !Number.isInteger(quantity) || quantity < 1 ||
-        !Number.isSafeInteger(unitGrossAmount) || unitGrossAmount <= 0 ||
-        !Number.isSafeInteger(lineGrossAmount) || lineGrossAmount !== quantity * unitGrossAmount
+        !Number.isSafeInteger(sourceUnitAmount) || sourceUnitAmount <= 0 ||
+        !Number.isSafeInteger(lineGrossAmount) ||
+        !Number.isSafeInteger(discountBasisPoints) ||
+        discountBasisPoints < 0 ||
+        discountBasisPoints > 10_000 ||
+        (!hasNetContract && lineGrossAmount !== quantity * sourceUnitAmount)
       ) {
         throw new Error("DTE_LINES_INVALID");
       }
       return {
         name, quantity,
-        unitPrice: treatment === "exempt" ? unitGrossAmount : affectedNetFromGross(unitGrossAmount),
+        unitPrice: hasNetContract
+          ? sourceUnitAmount
+          : treatment === "exempt"
+            ? sourceUnitAmount
+            : affectedNetFromGross(sourceUnitAmount),
         exempt: treatment === "exempt",
+        discountPercent: discountBasisPoints / 100,
       };
     });
     let references: Array<{ code: string; reason: string; documentType: string; folio: string; date: string }> | undefined;
@@ -305,6 +325,22 @@ export async function runOneManualIssuanceWorker(options: {
           tenantId: item.tenant_id,
           dteType,
           businessOperationId: `intent:${intent.id}`,
+          issuerSnapshot: {
+            rut: value(frozenIssuer, "rut"),
+            legalName: value(frozenIssuer, "legalName"),
+            businessActivity:
+              value(frozenIssuer, "businessActivity") ||
+              value(frozenIssuer, "activity"),
+            businessActivityCode:
+              value(frozenIssuer, "businessActivityCode") || null,
+            address: value(frozenIssuer, "address"),
+            commune: value(frozenIssuer, "commune"),
+            city: value(frozenIssuer, "city"),
+            resolutionDate: value(frozenIssuer, "resolutionDate"),
+            resolutionNumber: value(frozenIssuer, "resolutionNumber"),
+            siiOffice: value(frozenIssuer, "siiOffice") || null,
+          },
+          taxSnapshotAt: value(immutable, "capturedAt"),
           recipient: {
             rut: value(receiver, "rut"),
             legalName: value(receiver, "legalName"),

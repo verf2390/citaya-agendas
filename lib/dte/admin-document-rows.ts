@@ -24,6 +24,16 @@ type ProductionArtifactRow = {
   kind: string;
 };
 
+type InvoiceDraftRow = {
+  id: string;
+  source_intent_id: string | null;
+  status: string;
+  total_amount: number;
+  review_reason: string | null;
+  recipient_preview: { legalName?: string } | null;
+  created_at: string;
+};
+
 export function adminDocumentActionAvailability(input: {
   productionDocumentId: string | null;
   trackIdFingerprint: string | null;
@@ -43,13 +53,23 @@ export function adminDocumentActionAvailability(input: {
 }
 
 export async function loadAdminDocumentRows(tenantId: string) {
-  const intentsResult = await supabaseAdmin
-    .from("dte_payment_document_intents")
-    .select("id,resolved_dte_type,amount_snapshot,status,safe_blocking_reason,production_document_id,receiver_snapshot,appointment_snapshot,created_at")
-    .eq("tenant_id", tenantId)
-    .order("created_at", { ascending: false })
-    .limit(12);
+  const [intentsResult, draftsResult] = await Promise.all([
+    supabaseAdmin
+      .from("dte_payment_document_intents")
+      .select("id,resolved_dte_type,amount_snapshot,status,safe_blocking_reason,production_document_id,receiver_snapshot,appointment_snapshot,created_at")
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabaseAdmin
+      .from("dte_invoice_drafts")
+      .select("id,source_intent_id,status,total_amount,review_reason,recipient_preview,created_at")
+      .eq("tenant_id", tenantId)
+      .in("status", ["DRAFT", "REVIEW_REQUIRED", "VALIDATED"])
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
   if (intentsResult.error) throw new Error("DTE_DOCUMENT_ROWS_UNAVAILABLE");
+  if (draftsResult.error) throw new Error("DTE_DOCUMENT_ROWS_UNAVAILABLE");
   const intents = (intentsResult.data ?? []) as DocumentIntentRow[];
   const productionIds = intents
     .map((row) => row.production_document_id)
@@ -81,7 +101,12 @@ export async function loadAdminDocumentRows(tenantId: string) {
     artifactKindsByDocument.set(artifact.document_id, kinds);
   }
 
-  return intents.map((row) => {
+  const mirroredIntentIds = new Set(
+    ((draftsResult.data ?? []) as InvoiceDraftRow[])
+      .map((draft) => draft.source_intent_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const intentRows = intents.filter((row) => !mirroredIntentIds.has(row.id)).map((row) => {
     const production = row.production_document_id
       ? productionById.get(row.production_document_id)
       : null;
@@ -120,4 +145,26 @@ export async function loadAdminDocumentRows(tenantId: string) {
       canEmail: actions.canEmail,
     };
   });
+  const draftRows = ((draftsResult.data ?? []) as InvoiceDraftRow[]).map((row) => ({
+    id: row.id,
+    productionDocumentId: null,
+    type: 33,
+    folio: null,
+    customer: row.recipient_preview?.legalName ?? "Receptor pendiente",
+    amount: Number(row.total_amount),
+    status: friendlyDteStatus(row.status, row.review_reason),
+    rawStatus: row.status,
+    date: row.created_at,
+    blockingReason: row.review_reason,
+    terminal: row.status === "CANCELED",
+    canView: false,
+    canDownloadXml: false,
+    canDownloadPdf: false,
+    canQuery: false,
+    canCreateNote: false,
+    canEmail: false,
+  }));
+  return [...draftRows, ...intentRows]
+    .sort((left, right) => right.date.localeCompare(left.date))
+    .slice(0, 20);
 }

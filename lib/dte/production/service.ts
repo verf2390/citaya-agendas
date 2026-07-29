@@ -190,6 +190,8 @@ export class ProductionDteService {
     const draft = await this.repository.createDraft({
       ...input,
       tenantId: settings.tenantId,
+      issuerSnapshot: input.issuerSnapshot ?? settings.issuer,
+      taxSnapshotAt: input.taxSnapshotAt ?? new Date().toISOString(),
       businessOperationId: safeBusinessOperationId(input.businessOperationId),
       createdBy: actorId,
       issueDate: new Date().toISOString().slice(0, 10),
@@ -219,17 +221,24 @@ export class ProductionDteService {
     let failureStage: ProductionPreparationFailureStage = "runtime_config";
     try {
       this.config();
-      failureStage = "tenant_settings";
-      const settings = await this.requireTenantSettings(tenantId, true);
-      failureStage = "issuer_resolution";
-      assertValidProductionIssuerResolution(settings.issuer);
-      failureStage = "issuer_activity_code";
-      assertValidProductionIssuerActivityCode(settings.issuer);
       failureStage = "document_load";
       const current = await this.requireDocument(tenantId, documentId);
       if (current.status === "ready") return safeDocument(current);
       if (!["draft", "prepared"].includes(current.status))
         throw new Error("DTE_PREPARE_STATE_INVALID");
+      if (!current.issuerSnapshot || !current.taxSnapshotAt)
+        throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
+      failureStage = "issuer_resolution";
+      assertValidProductionIssuerResolution(current.issuerSnapshot);
+      failureStage = "issuer_activity_code";
+      assertValidProductionIssuerActivityCode(current.issuerSnapshot);
+      validateRecipient(current.recipient);
+      failureStage = "tenant_settings";
+      const settings = await this.requireOperationalSettings(
+        tenantId,
+        current.issuerSnapshot,
+        true,
+      );
 
       // Read-only material checks deliberately precede the first folio lock.
       failureStage = "material_preflight";
@@ -325,8 +334,9 @@ export class ProductionDteService {
     statusAutomatic: false;
   }> {
     this.config();
-    await this.requireTenantSettings(tenantId, true);
     const document = await this.requireDocument(tenantId, documentId);
+    if (!document.issuerSnapshot) throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
+    await this.requireOperationalSettings(tenantId, document.issuerSnapshot, true);
     const artifacts = await this.repository.listArtifacts(tenantId, documentId);
     return {
       ready:
@@ -349,10 +359,15 @@ export class ProductionDteService {
   }): Promise<ReturnType<typeof safeDocument>> {
     const config = this.config();
     assertExactProductionConfirmation(input.documentId, input.confirmation);
-    const settings = await this.requireTenantSettings(input.tenantId, true);
     const document = await this.requireDocument(
       input.tenantId,
       input.documentId,
+    );
+    if (!document.issuerSnapshot) throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
+    const settings = await this.requireOperationalSettings(
+      input.tenantId,
+      document.issuerSnapshot,
+      true,
     );
     if (document.status === "ambiguous")
       throw new Error("DTE_AMBIGUOUS_RETRY_BLOCKED");
@@ -421,7 +436,7 @@ export class ProductionDteService {
       result = await this.siiClientFactory(config).uploadExactlyOnce({
         envelope: envelope.bytes,
         fileName: `${document.dteType}-${document.folio}.xml`,
-        issuerRut: settings.issuer.rut,
+        issuerRut: document.issuerSnapshot.rut,
         senderRut: settings.senderRut,
         certificatePath: settings.certificatePath,
         privateKeyPath: settings.privateKeyPath,
@@ -480,10 +495,15 @@ export class ProductionDteService {
     actorId: string;
   }): Promise<ProductionStatusResult> {
     const config = this.config();
-    const settings = await this.requireTenantSettings(input.tenantId, true);
     const document = await this.requireDocument(
       input.tenantId,
       input.documentId,
+    );
+    if (!document.issuerSnapshot) throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
+    const settings = await this.requireOperationalSettings(
+      input.tenantId,
+      document.issuerSnapshot,
+      true,
     );
     const recoveryAttempt = document.trackId
       ? null
@@ -598,6 +618,29 @@ export class ProductionDteService {
     requireEnabled: boolean,
   ): Promise<ProductionTenantSettings> {
     const settings = await this.repository.getTenantSettings(tenantId);
+    if (!settings || settings.tenantId !== tenantId)
+      throw new Error("DTE_TENANT_SETTINGS_MISSING");
+    if (requireEnabled && !settings.enabled)
+      throw new Error("DTE_TENANT_PRODUCTION_DISABLED");
+    const now = Date.now();
+    if (
+      requireEnabled &&
+      (new Date(settings.certificateValidFrom).valueOf() > now ||
+        new Date(settings.certificateValidTo).valueOf() <= now)
+    )
+      throw new Error("DTE_CERTIFICATE_NOT_CURRENT");
+    return settings;
+  }
+
+  private async requireOperationalSettings(
+    tenantId: string,
+    issuerSnapshot: ProductionTenantSettings["issuer"],
+    requireEnabled: boolean,
+  ): Promise<ProductionTenantSettings> {
+    const settings = await this.repository.getOperationalSettings(
+      tenantId,
+      issuerSnapshot,
+    );
     if (!settings || settings.tenantId !== tenantId)
       throw new Error("DTE_TENANT_SETTINGS_MISSING");
     if (requireEnabled && !settings.enabled)

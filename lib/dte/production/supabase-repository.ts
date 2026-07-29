@@ -124,6 +124,10 @@ function mapDocument(
     status: text(row.status) as ProductionDocumentStatus,
     folio: row.folio === null ? null : number(row.folio),
     cafId: row.caf_id ? text(row.caf_id) : null,
+    issuerSnapshot: row.issuer_snapshot
+      ? row.issuer_snapshot as ProductionDocument["issuerSnapshot"]
+      : null,
+    taxSnapshotAt: row.tax_snapshot_at ? text(row.tax_snapshot_at) : null,
     recipient: row.recipient as ProductionDocument["recipient"],
     lines: row.lines as ProductionDocument["lines"],
     references:
@@ -191,6 +195,46 @@ export class SupabaseProductionDteRepository
     };
   }
 
+  async getOperationalSettings(
+    tenantId: string,
+    issuerSnapshot: ProductionTenantSettings["issuer"],
+  ): Promise<ProductionTenantSettings | null> {
+    const result = await this.client
+      .from("dte_production_tenant_settings")
+      .select(
+        "tenant_id,enabled,sender_rut,certificate_valid_from,certificate_valid_to",
+      )
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (result.error) fail(result.error);
+    if (!result.data) return null;
+    const certificateRoot = String(
+      this.env.DTE_PRODUCTION_CERTIFICATE_ROOT ?? "",
+    ).trim();
+    const privateKeyRoot = String(
+      this.env.DTE_PRODUCTION_PRIVATE_KEY_ROOT ?? "",
+    ).trim();
+    if (!certificateRoot) throw new Error("DTE_PRODUCTION_CERTIFICATE_ROOT_MISSING");
+    if (!privateKeyRoot) throw new Error("DTE_PRODUCTION_PRIVATE_KEY_ROOT_MISSING");
+    const delivery = await this.client
+      .from("dte_tenant_issuance_settings")
+      .select("auto_email_delivery")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (delivery.error) fail(delivery.error);
+    return {
+      tenantId,
+      enabled: result.data.enabled === true,
+      issuer: structuredClone(issuerSnapshot),
+      senderRut: text(result.data.sender_rut),
+      certificatePath: resolve(certificateRoot, tenantId, "certificate.pem"),
+      privateKeyPath: resolve(privateKeyRoot, tenantId, "private-key.pem"),
+      certificateValidFrom: text(result.data.certificate_valid_from),
+      certificateValidTo: text(result.data.certificate_valid_to),
+      autoEmailDelivery: delivery.data?.auto_email_delivery === true,
+    };
+  }
+
   async importCaf(metadata: ProductionCafMetadata): Promise<void> {
     const result = await this.client.rpc("import_dte_production_caf_metadata", {
       p_id: metadata.id,
@@ -242,6 +286,8 @@ export class SupabaseProductionDteRepository
         tenant_id: input.tenantId,
         dte_type: input.dteType,
         business_operation_id: input.businessOperationId,
+        issuer_snapshot: input.issuerSnapshot ?? null,
+        tax_snapshot_at: input.taxSnapshotAt ?? null,
         recipient: input.recipient,
         lines: input.lines,
         document_references: input.references ?? [],

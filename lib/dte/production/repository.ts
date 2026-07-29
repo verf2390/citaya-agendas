@@ -23,6 +23,10 @@ export type ReserveProductionFolioInput = {
 
 export interface ProductionDteRepository {
   getTenantSettings(tenantId: string): Promise<ProductionTenantSettings | null>;
+  getOperationalSettings(
+    tenantId: string,
+    issuerSnapshot: ProductionTenantSettings["issuer"],
+  ): Promise<ProductionTenantSettings | null>;
   importCaf(metadata: ProductionCafMetadata): Promise<void>;
   selectCaf(
     tenantId: string,
@@ -136,6 +140,14 @@ export class InMemoryProductionDteRepository implements ProductionDteRepository 
     return clone(this.settings.get(tenantId) ?? null);
   }
 
+  async getOperationalSettings(
+    tenantId: string,
+    issuerSnapshot: ProductionTenantSettings["issuer"],
+  ): Promise<ProductionTenantSettings | null> {
+    const settings = this.settings.get(tenantId);
+    return settings ? { ...clone(settings), issuer: clone(issuerSnapshot) } : null;
+  }
+
   async importCaf(metadata: ProductionCafMetadata): Promise<void> {
     await this.transaction(async () => {
       if (
@@ -214,6 +226,8 @@ export class InMemoryProductionDteRepository implements ProductionDteRepository 
       status: "draft",
       folio: null,
       cafId: null,
+      issuerSnapshot: clone(input.issuerSnapshot ?? null),
+      taxSnapshotAt: input.taxSnapshotAt ?? null,
       recipient: clone(input.recipient),
       lines: clone(input.lines),
       references: clone(input.references ?? []),
