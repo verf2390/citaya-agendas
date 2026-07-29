@@ -29,6 +29,7 @@
     "dte:cert:convert": "node scripts/dte/convert-cert-to-pem.mjs",
     "dte:boleta:certification:dry-run": "node scripts/dte/generate-boleta-certification-dry-run.mjs",
     "dte:boleta:pre-caf-check": "node scripts/dte/boleta-pre-caf-check.mjs",
+    "dte:boleta:pre-caf": "node scripts/dte/boleta-pre-caf.mjs",
     "dte:sii:auth:smoke": "node scripts/dte/sii-auth-smoke.mjs",
     "dte:books:xsd:check": "node scripts/dte/books-xsd-check.mjs",
     "dte:pre-caf:check": "node scripts/dte/pre-caf-check.mjs",
