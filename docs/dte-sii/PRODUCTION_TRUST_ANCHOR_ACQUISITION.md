@@ -39,10 +39,11 @@ encontró una descarga oficial de la llave asociada a `IDK=100`.
 - Los tres CAF están importados como metadata tenant-scoped y los folios siguen
   disponibles. El XML CAF y las llaves permanecen sólo en almacenamiento
   externo `0600`.
-- La emisión legal 33/56/61 está pausada y el flag local está cerrado porque
-  faltan `resolution_date`, `resolution_number` y `sii_office` exactos. No se
-  debe reactivar ni procesar el outbox hasta registrar esos datos desde la
-  resolución SII real y aplicar `202607280001_dte_sii_resolution_gate.sql`.
+- La emisión legal 33/56/61 está pausada y el flag local está cerrado hasta
+  registrar `resolution_date` y `resolution_number` desde la resolución SII
+  real y aplicar `202607280001_dte_sii_resolution_gate.sql`. `sii_office` es
+  metadato auditable opcional: `EnvioDTE_v10.xsd` exige `FchResol` y
+  `NroResol`, pero no define una oficina SII; nunca debe inferirse una.
 
 ## Procedimiento posterior a la autorización
 

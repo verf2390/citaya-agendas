@@ -18,6 +18,17 @@ test("production issuer requires a real, past SII resolution", () => {
     ),
     true,
   );
+  assert.equal(
+    hasValidProductionIssuerResolution(
+      {
+        resolutionDate: "2014-08-22",
+        resolutionNumber: "80",
+        siiOffice: null,
+      },
+      "2026-07-28",
+    ),
+    true,
+  );
   for (const issuer of [
     { resolutionDate: "", resolutionNumber: "", siiOffice: "" },
     {

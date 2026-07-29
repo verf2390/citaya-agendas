@@ -176,7 +176,7 @@ export class CertifiedProductionDteGenerator
           productionMetadata: {
             resolutionNumber: input.settings.issuer.resolutionNumber,
             resolutionYear: input.settings.issuer.resolutionDate.slice(0, 4),
-            siiOffice: input.settings.issuer.siiOffice,
+            siiOffice: input.settings.issuer.siiOffice ?? null,
           },
         },
       );

@@ -74,7 +74,7 @@ function mapSettings(row: Record<string, unknown>, env: NodeJS.ProcessEnv): Omit
       city: text(row.issuer_city),
       resolutionDate: text(row.resolution_date),
       resolutionNumber: text(row.resolution_number),
-      siiOffice: text(row.sii_office),
+      siiOffice: row.sii_office === null ? null : text(row.sii_office),
     },
     senderRut: text(row.sender_rut),
     certificatePath: resolve(certificateRoot, tenantId, "certificate.pem"),

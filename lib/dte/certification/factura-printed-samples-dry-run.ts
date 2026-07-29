@@ -23,7 +23,7 @@ const SOURCE_NAMES = Array.from({ length: 8 }, (_, index) => `4959698-${index + 
 const COMMERCIAL_TEXT = /pago|inter[eé]s|garant[ií]a|contrato|despacho|vencimiento|cuenta bancaria/i;
 
 export type PrintedSamplesOptions = FacturaSetDryRunOptions & {
-  productionMetadata?: { resolutionNumber: string; resolutionYear: string; siiOffice: string };
+  productionMetadata?: { resolutionNumber: string; resolutionYear: string; siiOffice?: string | null };
   printedOutputDir?: string;
   sourceDir?: string;
   skipSourceGeneration?: boolean;
@@ -146,7 +146,10 @@ export async function buildPdf(spec: CopySpec, options: PrintedSamplesOptions = 
   safeText(pdf, `DIRECCIÓN: ${source.issuerAddress}, ${source.issuerCommune} ${source.issuerCity}`, 36, issuerAddressY, 350);
   pdf.setDrawColor(190, 0, 0); pdf.setLineWidth(1.4); pdf.rect(405, 25, 170, 88);
   pdf.setTextColor(160, 0, 0); pdf.setFont("helvetica", "bold"); pdf.setFontSize(11); pdf.text(`RUT ${issuerRut}`, 420, 45);
-  pdf.text(documentName(source.type), 420, 64, { maxWidth: 145 }); pdf.text(`N° ${source.folio}`, 420, 88); pdf.text("S.I.I. - " + (options.productionMetadata?.siiOffice ?? "LA SERENA"), 420, 103); pdf.setTextColor(0, 0, 0);
+  const siiOffice = options.productionMetadata
+    ? String(options.productionMetadata.siiOffice ?? "").trim()
+    : "LA SERENA";
+  pdf.text(documentName(source.type), 420, 64, { maxWidth: 145 }); pdf.text(`N° ${source.folio}`, 420, 88); pdf.text(siiOffice ? `S.I.I. - ${siiOffice}` : "S.I.I.", 420, 103); pdf.setTextColor(0, 0, 0);
   pdf.setFontSize(8); pdf.text(`FECHA EMISIÓN: ${source.date}`, 36, 119); pdf.line(36, 126, 576, 126);
   let y = 139; pdf.setFont("helvetica", "bold"); pdf.text("RECEPTOR", 36, y); pdf.setFont("helvetica", "normal");
   y = safeText(pdf, `${source.receiverName} | RUT ${receiverRut}`, 36, y + 11);

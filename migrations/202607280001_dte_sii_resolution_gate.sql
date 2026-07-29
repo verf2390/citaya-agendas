@@ -1,8 +1,39 @@
 begin;
 
--- A current authorization record is not enough to render a legal DTE. The
--- resolution number, date and SII office are printed into production XML/PDF
--- and therefore must be explicit, plausible and present before activation.
+-- A current authorization record is not enough to render a legal DTE.
+-- EnvioDTE_v10.xsd requires FchResol and NroResol in Caratula. The official
+-- schema does not define an SII office field, so sii_office remains optional,
+-- auditable issuer metadata and must never be inferred.
+alter table public.dte_production_tenant_settings
+  alter column sii_office drop not null;
+
+comment on column public.dte_production_tenant_settings.sii_office is
+  'Optional auditable metadata. Not exposed by every official SII authorization view and not required by EnvioDTE; never infer a regional office.';
+
+do $$
+declare
+  constraint_name text;
+begin
+  select conname into constraint_name
+    from pg_constraint
+   where conrelid = 'public.dte_sii_authorization_evidence'::regclass
+     and contype = 'c'
+     and pg_get_constraintdef(oid) like '%authorized_types%';
+  if constraint_name is not null then
+    execute format(
+      'alter table public.dte_sii_authorization_evidence drop constraint %I',
+      constraint_name
+    );
+  end if;
+end;
+$$;
+
+alter table public.dte_sii_authorization_evidence
+  add constraint dte_sii_authorization_evidence_authorized_types_check
+  check (
+    cardinality(authorized_types) > 0 and
+    authorized_types <@ array[33,34,39,52,56,61]::integer[]
+  );
 create or replace function public.dte_activation_gate_report(
   p_tenant_id uuid,
   p_dte_type integer,
@@ -60,8 +91,7 @@ as $$
         issuer_legal_name_match and trim(issuer_legal_name) = trim(billing_legal_name),
       'issuerResolutionConfigured',
         resolution_date is not null and resolution_date <= current_date and
-        trim(coalesce(resolution_number, '')) ~ '^[1-9][0-9]{0,9}$' and
-        length(trim(coalesce(sii_office, ''))) between 2 and 100,
+        trim(coalesce(resolution_number, '')) ~ '^[1-9][0-9]{0,9}$',
       'typeAuthorized', type_authorized,
       'certificateCurrent',
         certificate_ready and certificate_valid and
@@ -111,8 +141,7 @@ join public.dte_production_tenant_settings p on p.tenant_id = a.tenant_id
 where a.status = 'active'
   and (
     p.resolution_date is null or p.resolution_date > current_date or
-    trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$' or
-    length(trim(coalesce(p.sii_office, ''))) not between 2 and 100
+    trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$'
   );
 
 update public.dte_legal_activation a
@@ -126,15 +155,13 @@ update public.dte_legal_activation a
    and a.status = 'active'
    and (
      p.resolution_date is null or p.resolution_date > current_date or
-     trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$' or
-     length(trim(coalesce(p.sii_office, ''))) not between 2 and 100
+     trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$'
    );
 
 update public.dte_production_tenant_settings p
    set enabled = false, updated_at = now()
  where p.resolution_date is null or p.resolution_date > current_date or
-       trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$' or
-       length(trim(coalesce(p.sii_office, ''))) not between 2 and 100;
+       trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$';
 
 update public.dte_tenant_issuance_settings i
    set production_enabled = false,
@@ -145,11 +172,10 @@ update public.dte_tenant_issuance_settings i
  where p.tenant_id = i.tenant_id
    and (
      p.resolution_date is null or p.resolution_date > current_date or
-     trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$' or
-     length(trim(coalesce(p.sii_office, ''))) not between 2 and 100
+     trim(coalesce(p.resolution_number, '')) !~ '^[1-9][0-9]{0,9}$'
    );
 
 comment on function public.dte_activation_gate_report(uuid, integer, boolean) is
-  'Fail-closed legal issuance gate. Requires explicit valid SII resolution metadata in addition to authorization, CAF, folios, certificate and runtime evidence.';
+  'Fail-closed legal issuance gate. Requires explicit valid SII resolution date and number in addition to authorization, CAF, folios, certificate and runtime evidence. SII office is optional audit metadata.';
 
 commit;

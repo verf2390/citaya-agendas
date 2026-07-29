@@ -26,7 +26,7 @@ export type ProductionIssuer = {
   city: string;
   resolutionDate: string;
   resolutionNumber: string;
-  siiOffice: string;
+  siiOffice?: string | null;
 };
 
 export type ProductionTenantSettings = {

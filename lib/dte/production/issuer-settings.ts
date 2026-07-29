@@ -6,19 +6,16 @@ const RESOLUTION_NUMBER = /^[1-9]\d{0,9}$/;
 export function hasValidProductionIssuerResolution(
   issuer: Pick<
     ProductionIssuer,
-    "resolutionDate" | "resolutionNumber" | "siiOffice"
+    "resolutionDate" | "resolutionNumber"
   >,
   today = new Date().toISOString().slice(0, 10),
 ): boolean {
   const resolutionDate = String(issuer.resolutionDate ?? "").trim();
   const resolutionNumber = String(issuer.resolutionNumber ?? "").trim();
-  const siiOffice = String(issuer.siiOffice ?? "").trim();
   if (
     !ISO_DATE.test(resolutionDate) ||
     resolutionDate > today ||
-    !RESOLUTION_NUMBER.test(resolutionNumber) ||
-    siiOffice.length < 2 ||
-    siiOffice.length > 100
+    !RESOLUTION_NUMBER.test(resolutionNumber)
   )
     return false;
   const parsed = new Date(`${resolutionDate}T00:00:00.000Z`);
@@ -31,7 +28,7 @@ export function hasValidProductionIssuerResolution(
 export function assertValidProductionIssuerResolution(
   issuer: Pick<
     ProductionIssuer,
-    "resolutionDate" | "resolutionNumber" | "siiOffice"
+    "resolutionDate" | "resolutionNumber"
   >,
 ): void {
   if (!hasValidProductionIssuerResolution(issuer))
