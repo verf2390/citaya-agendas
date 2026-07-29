@@ -60,8 +60,6 @@ export type ProductionDraftInput = {
   tenantId: string;
   dteType: ProductionDteType;
   businessOperationId: string;
-  issuerSnapshot?: ProductionIssuer | null;
-  taxSnapshotAt?: string | null;
   recipient: {
     rut: string;
     legalName: string;
@@ -90,8 +88,6 @@ export type ProductionDocument = {
   status: ProductionDocumentStatus;
   folio: number | null;
   cafId: string | null;
-  issuerSnapshot: ProductionIssuer | null;
-  taxSnapshotAt: string | null;
   recipient: ProductionDraftInput["recipient"];
   lines: ProductionDraftInput["lines"];
   references: NonNullable<ProductionDraftInput["references"]>;

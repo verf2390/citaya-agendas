@@ -260,10 +260,10 @@ export default function AdminFacturacionPage() {
       <AdminPageHeader
         eyebrow="Tributario"
         title="Facturación electrónica"
-        description="Crea borradores, revisa documentos y administra la configuración tributaria."
+        description={`Estado del negocio: ${state.status.label}.`}
         actions={
-          <button type="button" onClick={() => setManualOpen(true)} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white">
-            Nueva factura
+          <button type="button" onClick={() => state.status.missingSteps ? setEditingTax(true) : setManualOpen(true)} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white">
+            {state.status.missingSteps ? "Completar activación" : "Emitir manualmente"}
           </button>
         }
       />
@@ -275,37 +275,11 @@ export default function AdminFacturacionPage() {
         </div>
       ) : null}
 
-      <nav className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Secciones de facturación">
-        {[
-          ["#resumen", "Resumen"],
-          ["#nueva-factura", "Nueva factura"],
-          ["#documentos", "Documentos"],
-          ["#configuracion", "Configuración tributaria"],
-          ["#diagnostico", "Diagnóstico"],
-        ].map(([href, label]) => (
-          <a key={href} href={href} className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">
-            {label}
-          </a>
-        ))}
-      </nav>
+      <DeclarationReadinessCard state={state.declaration} />
 
-      <div id="nueva-factura" className="scroll-mt-24">
-        <AdminSectionCard className="mt-5" title="Nueva factura" description="Documento tipo 33 con uno o varios servicios. Los precios se ingresan netos y el IVA se muestra por separado." actions={<button type="button" onClick={() => setManualOpen((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><ReceiptText className="h-4 w-4" />{manualOpen ? "Cerrar editor" : "Crear borrador"}</button>}>
-          {manualOpen ? <ManualIssuanceForm onCreated={() => void refreshDocuments()} /> : (
-            <button type="button" onClick={() => setManualOpen(true)} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white">Comenzar factura</button>
-          )}
-        </AdminSectionCard>
-      </div>
-
-      <div id="resumen" className="scroll-mt-24">
-      <AdminSectionCard className="mt-5" title="Resumen" description="Lo necesario para operar facturación hoy." actions={<StatusBadge label={state.status.label} tone={activationTone} />}>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl bg-emerald-50 p-4"><p className="text-xs font-bold uppercase text-emerald-700">Emisión manual</p><p className="mt-1 font-black text-emerald-950">{state.status.ready ? "Disponible" : "Requiere configuración"}</p></div>
-          <div className="rounded-2xl bg-slate-100 p-4"><p className="text-xs font-bold uppercase text-slate-600">Automatización</p><p className="mt-1 font-black text-slate-950">{state.policy.effectiveAutomatic ? "Activa" : "Desactivada"}</p></div>
-          <div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-700">Documentos visibles</p><p className="mt-1 text-2xl font-black text-blue-950">{state.documents.length}</p></div>
-        </div>
+      <AdminSectionCard className="mt-5" title="Autorización SII" description="Separada de la declaración, CAF y activación técnica; sólo platform admin puede reconciliar evidencia.">
+        <AuthorizationEvidencePanel />
       </AdminSectionCard>
-      </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <AdminSectionCard
@@ -333,12 +307,12 @@ export default function AdminFacturacionPage() {
             <input
               type="checkbox"
               checked={automaticConfigured}
-              disabled
+              onChange={(event) => setDraft({ ...draft, policy: { ...draft.policy, issuanceMode: event.target.checked ? "automatic_on_verified_payment" : "manual" } })}
               className="h-5 w-5 accent-slate-900"
               aria-describedby="automatic-gate"
             />
           </label>
-          <p id="automatic-gate" className="mt-2 text-xs font-bold text-amber-800">{automaticGateReason || (state.policy.effectiveAutomatic ? "Automatización activa." : "Permanece desactivada. Los pagos confirmados quedan listos para revisión.")}</p>
+          <p id="automatic-gate" className="mt-2 text-xs font-bold text-amber-800">{automaticGateReason || (state.policy.effectiveAutomatic ? "Automatización activa." : "Configuración guardada; todavía no activa.")}</p>
           <label className="mt-4 grid gap-1.5 text-sm font-bold">
             Documento para consumidor final
             <select value={draft.policy.consumerDocumentType} onChange={(event) => setDraft({ ...draft, policy: { ...draft.policy, consumerDocumentType: event.target.value as BillingState["policy"]["consumerDocumentType"] } })} className="h-11 rounded-xl border border-slate-200 bg-white px-3">
@@ -353,8 +327,7 @@ export default function AdminFacturacionPage() {
         </AdminSectionCard>
       </div>
 
-      <div id="configuracion" className="scroll-mt-24">
-      <AdminSectionCard className="mt-5" title="Configuración tributaria" description="Fuente maestra de la identidad fiscal utilizada únicamente por este negocio." actions={<button type="button" onClick={() => setEditingTax((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><Pencil className="h-4 w-4" />{editingTax ? "Cerrar" : "Editar"}</button>}>
+      <AdminSectionCard className="mt-5" title="Datos tributarios" description="Identidad fiscal utilizada únicamente por este negocio." actions={<button type="button" onClick={() => setEditingTax((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><Pencil className="h-4 w-4" />{editingTax ? "Cerrar" : "Editar"}</button>}>
         {!editingTax ? (
           <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             {[ ["Razón social", state.tax.legalName], ["RUT", state.tax.taxId], ["Giro", state.tax.businessActivity], ["Dirección", [state.tax.address, state.tax.commune, state.tax.city].filter(Boolean).join(", ")] ].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><dt className="text-xs font-bold uppercase text-slate-500">{label}</dt><dd className="mt-1 font-black text-slate-900">{value || "Pendiente"}</dd></div>)}
@@ -373,27 +346,27 @@ export default function AdminFacturacionPage() {
           </div>
         )}
       </AdminSectionCard>
-      </div>
 
-      <div id="documentos" className="scroll-mt-24">
-      <AdminSectionCard className="mt-5" title="Documentos" description={documentsRefreshing ? "Actualizando estados en segundo plano…" : "Borradores, documentos en revisión y emisiones del negocio."}>
+      <AdminSectionCard className="mt-5" title="Documentos recientes" description={documentsRefreshing ? "Actualizando estados en segundo plano…" : "Sólo documentos e intenciones pertenecientes al tenant autenticado."}>
         {state.documents.length ? (
           <div className="overflow-x-auto" aria-live="polite"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-500">{["Tipo", "Folio", "Cliente", "Total IVA incluido", "Estado", "Fecha", "Acciones"].map((value) => <th key={value} className="px-3 py-2">{value}</th>)}</tr></thead><tbody>{state.documents.map((document) => <tr key={document.id} className="border-b border-slate-100"><td className="px-3 py-3 font-bold">{documentLabel(document.type)}</td><td className="px-3 py-3">{document.folio ?? "—"}</td><td className="px-3 py-3">{document.customer}</td><td className="px-3 py-3 font-bold">{money(document.amount)}</td><td className="px-3 py-3"><StatusBadge label={document.status} tone={document.rawStatus === "BLOCKED" ? "amber" : document.rawStatus === "ACCEPTED" ? "green" : "blue"} />{document.blockingReason ? <p className="mt-1 text-xs font-bold text-amber-800">{document.blockingReason}</p> : null}</td><td className="px-3 py-3">{dateLabel(document.date)}</td><td className="px-3 py-3"><div className="flex gap-2">{document.productionDocumentId ? <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} /> : <span className="text-xs text-slate-400">Sin artefactos</span>}{document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void refreshDocuments()} /> : null}</div></td></tr>)}</tbody></table></div>
         ) : <EmptyState title="Aún no hay documentos" description="Las emisiones e intenciones de este negocio aparecerán aquí." />}
       </AdminSectionCard>
-      </div>
+
+      <AdminSectionCard className="mt-5" title="Emitir manualmente" description="Acción secundaria y auditada; nunca usa montos enviados por el navegador." actions={<button type="button" onClick={() => setManualOpen((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><ReceiptText className="h-4 w-4" />{manualOpen ? "Cerrar" : "Nueva emisión"}</button>}>
+        {manualOpen ? <ManualIssuanceForm onCreated={() => void refreshDocuments()} /> : null}
+      </AdminSectionCard>
 
       {state.technicalAccess ? (
-        <div id="diagnostico" className="scroll-mt-24">
-        <AdminSectionCard className="mt-5" title="Diagnóstico y detalles técnicos" description="Autorización, activación legal, XML, XSD, firma, identificadores y trazas para soporte autorizado." actions={<button type="button" onClick={() => setAdvancedOpen((value) => !value)} aria-expanded={advancedOpen} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><SlidersHorizontal className="h-4 w-4" />{advancedOpen ? "Cerrar detalles" : "Abrir detalles"}<ChevronDown className={`h-4 w-4 transition ${advancedOpen ? "rotate-180" : ""}`} /></button>}>
-          {advancedOpen ? <div className="grid gap-5 border-t border-slate-200 pt-4">
-            <DeclarationReadinessCard state={state.declaration} />
-            <section><h3 className="mb-3 font-black">Autorización SII</h3><AuthorizationEvidencePanel /></section>
-            <section><h3 className="mb-3 font-black">Activación legal</h3><LegalActivationControl /></section>
-            <AdvancedBillingTechnicalPanel />
-          </div> : <p className="text-sm text-slate-600">Cerrado por defecto. La operación diaria no muestra hashes, firma, XSD ni trazas.</p>}
+        <AdminSectionCard className="mt-5" title="Activación legal" description="Única acción controlada, transaccional y reversible por tipo de documento.">
+          <LegalActivationControl />
         </AdminSectionCard>
-        </div>
+      ) : null}
+
+      {state.technicalAccess ? (
+        <AdminSectionCard className="mt-5" title="Modo técnico avanzado" description="XML, XSD, XMLDSig, Track ID, trazas, runbook, laboratorio y diagnóstico para personal autorizado." actions={<button type="button" onClick={() => setAdvancedOpen((value) => !value)} aria-expanded={advancedOpen} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><SlidersHorizontal className="h-4 w-4" />{advancedOpen ? "Contraer" : "Abrir"}<ChevronDown className={`h-4 w-4 transition ${advancedOpen ? "rotate-180" : ""}`} /></button>}>
+          {advancedOpen ? <div className="mt-3 border-t border-slate-200 pt-4"><AdvancedBillingTechnicalPanel /></div> : <p className="text-sm text-slate-600">Colapsado por defecto. No se muestran detalles técnicos en la vista ejecutiva.</p>}
+        </AdminSectionCard>
       ) : null}
     </AdminPageShell>
   );

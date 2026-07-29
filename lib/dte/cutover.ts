@@ -156,10 +156,6 @@ export function friendlyDteStatus(
   reason?: string | null,
 ): string {
   const normalized = String(status ?? "").toUpperCase();
-  if (normalized === "DRAFT") return "Borrador";
-  if (normalized === "REVIEW_REQUIRED") return "Requiere revisión";
-  if (normalized === "VALIDATED") return "Validado";
-  if (normalized === "QUEUED") return "En cola";
   if (normalized === "BLOCKED" && ["BLOCKED_NOT_AUTHORIZED", "DOCUMENT_TYPE_NOT_AUTHORIZED"].includes(String(reason))) {
     return "Boleta no autorizada";
   }

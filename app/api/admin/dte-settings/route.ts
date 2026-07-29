@@ -46,12 +46,6 @@ type ReadinessEvidenceRow = {
 type IssuerProfileRow = {
   issuer_profile_state: string;
   enabled: boolean;
-  issuer_rut: string | null;
-  issuer_legal_name: string | null;
-  issuer_activity: string | null;
-  issuer_address: string | null;
-  issuer_commune: string | null;
-  issuer_city: string | null;
 };
 
 function text(value: unknown, max = 180) {
@@ -86,7 +80,7 @@ async function loadState(tenantId: string, authMode: string) {
       .maybeSingle(),
     supabaseAdmin
       .from("dte_production_tenant_settings")
-      .select("issuer_profile_state,enabled,issuer_rut,issuer_legal_name,issuer_activity,issuer_address,issuer_commune,issuer_city")
+      .select("issuer_profile_state,enabled,issuer_rut,issuer_legal_name")
       .eq("tenant_id", tenantId)
       .maybeSingle(),
     supabaseAdmin.from("dte_sii_authorization_evidence")
@@ -138,9 +132,8 @@ async function loadState(tenantId: string, authMode: string) {
   const cafs = (cafResult.data ?? []) as CafRow[];
   const now = Date.now();
   const taxDataReady = Boolean(
-    issuerProfile.issuer_legal_name && issuerProfile.issuer_rut &&
-    issuerProfile.issuer_activity && issuerProfile.issuer_address &&
-    issuerProfile.issuer_commune,
+    billing.legal_name && billing.tax_id && billing.business_activity &&
+    billing.tax_address && billing.tax_commune,
   );
   const certificateReady = Boolean(
     config.certificate_ready && config.certificate_valid_to &&
@@ -230,12 +223,12 @@ async function loadState(tenantId: string, authMode: string) {
       effectiveAutomatic: compliance.issuanceEnabled && config.issuance_mode === "automatic_on_verified_payment",
     },
     tax: {
-      legalName: issuerProfile.issuer_legal_name ?? billing.legal_name ?? "",
-      taxId: issuerProfile.issuer_rut ?? billing.tax_id ?? "",
-      businessActivity: issuerProfile.issuer_activity ?? billing.business_activity ?? "",
-      address: issuerProfile.issuer_address ?? billing.tax_address ?? "",
-      commune: issuerProfile.issuer_commune ?? billing.tax_commune ?? "",
-      city: issuerProfile.issuer_city ?? billing.tax_city ?? "",
+      legalName: billing.legal_name ?? "",
+      taxId: billing.tax_id ?? "",
+      businessActivity: billing.business_activity ?? "",
+      address: billing.tax_address ?? "",
+      commune: billing.tax_commune ?? "",
+      city: billing.tax_city ?? "",
       email: billing.tax_email ?? "",
       phone: billing.tax_phone ?? "",
       taxTreatment: config.tax_treatment ?? "unconfigured",
@@ -315,24 +308,6 @@ export async function PATCH(req: Request) {
     };
     const billingResult = await supabaseAdmin.from("tenant_billing_settings").upsert(billingPayload, { onConflict: "tenant_id" });
     if (billingResult.error) return NextResponse.json({ ok: false, error: "No se pudieron guardar los datos tributarios." }, { status: 500 });
-    const issuerResult = await supabaseAdmin
-      .from("dte_production_tenant_settings")
-      .update({
-        issuer_legal_name: billingPayload.legal_name,
-        issuer_rut: billingPayload.tax_id,
-        issuer_activity: billingPayload.business_activity,
-        issuer_address: billingPayload.tax_address,
-        issuer_commune: billingPayload.tax_commune,
-        issuer_city: billingPayload.tax_city,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("tenant_id", auth.tenantId);
-    if (issuerResult.error) {
-      return NextResponse.json(
-        { ok: false, error: "No se pudo actualizar la identidad tributaria maestra." },
-        { status: 500 },
-      );
-    }
   }
 
   return NextResponse.json({ ok: true, state: await loadState(auth.tenantId, auth.authMode) });

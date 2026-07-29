@@ -8,7 +8,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export async function GET(req: Request) {
   const auth = await requireHostTenantAdmin(req);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-  const [customers, appointments, payments, taxProfiles, issuer, services] = await Promise.all([
+  const [customers, appointments, payments, taxProfiles, issuer] = await Promise.all([
     supabaseAdmin.from("customers")
       .select("id,full_name,email,phone,rut_normalized")
       .eq("tenant_id", auth.tenantId).order("full_name").limit(500),
@@ -23,15 +23,10 @@ export async function GET(req: Request) {
       .select("customer_id,rut_normalized,legal_name,business_activity,tax_address,tax_commune,tax_city,tax_email")
       .eq("tenant_id", auth.tenantId).limit(500),
     supabaseAdmin.from("dte_production_tenant_settings")
-      .select("issuer_rut,issuer_legal_name,issuer_activity,issuer_address,issuer_commune,issuer_city")
+      .select("issuer_rut,issuer_legal_name")
       .eq("tenant_id", auth.tenantId).maybeSingle(),
-    supabaseAdmin.from("services")
-      .select("id,name,description,price,currency,tax_treatment,is_active")
-      .eq("tenant_id", auth.tenantId)
-      .eq("is_active", true)
-      .order("name").limit(500),
   ]);
-  if (customers.error || appointments.error || payments.error || taxProfiles.error || issuer.error || services.error) {
+  if (customers.error || appointments.error || payments.error || taxProfiles.error || issuer.error) {
     return NextResponse.json({ ok: false, error: "No se pudieron cargar las referencias" }, { status: 503 });
   }
   return NextResponse.json({
@@ -44,9 +39,5 @@ export async function GET(req: Request) {
     issuer: issuer.data ?? null,
     appointments: appointments.data ?? [],
     payments: payments.data ?? [],
-    services: (services.data ?? []).map((service) => ({
-      ...service,
-      priceIncludesVat: service.tax_treatment !== "exempt",
-    })),
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

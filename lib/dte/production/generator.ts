@@ -52,10 +52,11 @@ function documentType(type: number): TaxDocumentDraft["documentType"] {
   throw new Error("DTE_PRODUCTION_TYPE_UNSUPPORTED");
 }
 
-function buildDraft(document: ProductionDocument): TaxDocumentDraft {
+function buildDraft(
+  document: ProductionDocument,
+  settings: ProductionTenantSettings,
+): TaxDocumentDraft {
   if (document.folio === null) throw new Error("DTE_FOLIO_NOT_RESERVED");
-  if (!document.issuerSnapshot) throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
-  const issuer = document.issuerSnapshot;
   return {
     tenantId: document.tenantId,
     issueMode: "citaya_own_dte",
@@ -65,15 +66,15 @@ function buildDraft(document: ProductionDocument): TaxDocumentDraft {
     issueDate: document.issueDate,
     issuer: {
       tenantId: document.tenantId,
-      rut: issuer.rut,
-      legalName: issuer.legalName,
-      businessActivity: issuer.businessActivity,
-      businessActivityCode: issuer.businessActivityCode,
-      address: issuer.address,
-      commune: issuer.commune,
-      city: issuer.city,
-      siiResolutionDate: issuer.resolutionDate,
-      siiResolutionNumber: issuer.resolutionNumber,
+      rut: settings.issuer.rut,
+      legalName: settings.issuer.legalName,
+      businessActivity: settings.issuer.businessActivity,
+      businessActivityCode: settings.issuer.businessActivityCode,
+      address: settings.issuer.address,
+      commune: settings.issuer.commune,
+      city: settings.issuer.city,
+      siiResolutionDate: settings.issuer.resolutionDate,
+      siiResolutionNumber: settings.issuer.resolutionNumber,
       dteEnvironment: "production",
     },
     recipient: {
@@ -112,10 +113,8 @@ export class CertifiedProductionDteGenerator
     env: NodeJS.ProcessEnv;
   }): Promise<ProductionGeneratedArtifacts> {
     const config = assertProductionConfig(input.env, process.cwd());
-    if (!input.document.issuerSnapshot)
-      throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
-    assertValidProductionIssuerResolution(input.document.issuerSnapshot);
-    assertValidProductionIssuerActivityCode(input.document.issuerSnapshot);
+    assertValidProductionIssuerResolution(input.settings.issuer);
+    assertValidProductionIssuerActivityCode(input.settings.issuer);
     loadValidatedProductionSigningMaterial({
       certificatePath: input.settings.certificatePath,
       privateKeyPath: input.settings.privateKeyPath,
@@ -141,7 +140,7 @@ export class CertifiedProductionDteGenerator
           privateKeyPath: input.settings.privateKeyPath,
           certificatePath: input.settings.certificatePath,
         },
-        drafts: [buildDraft(input.document)],
+        drafts: [buildDraft(input.document, input.settings)],
         caseIds: [caseId],
         rutEnvia: input.settings.senderRut,
         importedCafs: [input.caf],
@@ -179,10 +178,9 @@ export class CertifiedProductionDteGenerator
         },
         {
           productionMetadata: {
-            resolutionNumber: input.document.issuerSnapshot.resolutionNumber,
-            resolutionYear:
-              input.document.issuerSnapshot.resolutionDate.slice(0, 4),
-            siiOffice: input.document.issuerSnapshot.siiOffice ?? null,
+            resolutionNumber: input.settings.issuer.resolutionNumber,
+            resolutionYear: input.settings.issuer.resolutionDate.slice(0, 4),
+            siiOffice: input.settings.issuer.siiOffice ?? null,
           },
         },
       );
