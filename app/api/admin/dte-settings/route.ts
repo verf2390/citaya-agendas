@@ -3,6 +3,10 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import {
+  deriveBillingCompliance,
+  type BillingActivationGate,
+} from "@/lib/dte/billing-compliance";
 import { friendlyDteStatus } from "@/lib/dte/cutover";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -39,12 +43,6 @@ type DocumentIntentRow = {
   receiver_snapshot: { legalName?: string } | null;
   appointment_snapshot: { customerName?: string } | null; created_at: string;
 };
-type OperationalReadinessRow = {
-  ready_for_declaration: boolean;
-  ready_for_issuance: boolean;
-  production_caf_count: number;
-  available_folio_count: number;
-};
 type ReadinessEvidenceRow = {
   trust_anchor_valid: boolean;
   trust_anchor_sha256: string | null;
@@ -61,26 +59,26 @@ function text(value: unknown, max = 180) {
 }
 
 async function loadState(tenantId: string, authMode: string) {
+  const globalEnabled = process.env.DTE_PRODUCTION_ENABLED === "true";
   const [
     billingResult,
     configResult,
     cafResult,
     folioResult,
     documentsResult,
-    operationalReadinessResult,
     readinessEvidenceResult,
     issuerProfileResult,
     authorizationResult,
     activationResult,
+    gate33Result,
+    gate56Result,
+    gate61Result,
   ] = await Promise.all([
     supabaseAdmin.from("tenant_billing_settings").select(BILLING_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("dte_tenant_issuance_settings").select(CONFIG_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("dte_production_cafs").select("dte_type,active").eq("tenant_id", tenantId),
     supabaseAdmin.from("dte_production_folio_ledger").select("dte_type,state").eq("tenant_id", tenantId),
     supabaseAdmin.from("dte_payment_document_intents").select("id,resolved_dte_type,amount_snapshot,status,safe_blocking_reason,production_document_id,receiver_snapshot,appointment_snapshot,created_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(12),
-    supabaseAdmin.rpc("dte_tenant_operational_readiness", {
-      p_tenant_id: tenantId,
-    }),
     supabaseAdmin
       .from("dte_tenant_readiness_evidence")
       .select("trust_anchor_valid,trust_anchor_sha256,trust_anchor_acquisition_ready,caf_import_fail_closed")
@@ -97,6 +95,21 @@ async function loadState(tenantId: string, authMode: string) {
     supabaseAdmin.from("dte_legal_activation")
       .select("dte_type,status,activated_at,paused_at,pause_reason")
       .eq("tenant_id", tenantId),
+    supabaseAdmin.rpc("dte_activation_gate_report", {
+      p_tenant_id: tenantId,
+      p_dte_type: 33,
+      p_global_feature_enabled: globalEnabled,
+    }),
+    supabaseAdmin.rpc("dte_activation_gate_report", {
+      p_tenant_id: tenantId,
+      p_dte_type: 56,
+      p_global_feature_enabled: globalEnabled,
+    }),
+    supabaseAdmin.rpc("dte_activation_gate_report", {
+      p_tenant_id: tenantId,
+      p_dte_type: 61,
+      p_global_feature_enabled: globalEnabled,
+    }),
   ]);
   const firstError = [
     billingResult.error,
@@ -104,19 +117,18 @@ async function loadState(tenantId: string, authMode: string) {
     cafResult.error,
     folioResult.error,
     documentsResult.error,
-    operationalReadinessResult.error,
     readinessEvidenceResult.error,
     issuerProfileResult.error,
     authorizationResult.error,
     activationResult.error,
+    gate33Result.error,
+    gate56Result.error,
+    gate61Result.error,
   ].find(Boolean);
   if (firstError) throw new Error("DTE_TENANT_STATE_UNAVAILABLE");
 
   const billing = (billingResult.data ?? {}) as Partial<BillingRow>;
   const config = (configResult.data ?? {}) as Partial<ConfigRow>;
-  const operationalReadiness = (
-    (operationalReadinessResult.data ?? []) as OperationalReadinessRow[]
-  )[0];
   const readinessEvidence = (
     readinessEvidenceResult.data ?? {}
   ) as Partial<ReadinessEvidenceRow>;
@@ -141,6 +153,24 @@ async function loadState(tenantId: string, authMode: string) {
   const authorizedTypes = Array.isArray(authorizationResult.data?.authorized_types)
     ? authorizationResult.data.authorized_types.map(Number)
     : [];
+  const activations = activationResult.data ?? [];
+  const activeTypes = activations
+    .filter((row) => row.status === "active")
+    .map((row) => Number(row.dte_type));
+  const compliance = deriveBillingCompliance({
+    globalProductionEnabled: globalEnabled,
+    tenantProductionEnabled: config.production_enabled === true,
+    issuerEnabled: issuerProfile.enabled === true,
+    issuerProfileState: issuerProfile.issuer_profile_state ?? "pre_declaration",
+    authorizationEvidenceCurrent: authorizationResult.data?.status === "current",
+    authorizedTypes,
+    activeTypes,
+    activationGates: {
+      33: gate33Result.data as BillingActivationGate,
+      56: gate56Result.data as BillingActivationGate,
+      61: gate61Result.data as BillingActivationGate,
+    },
+  });
   const authorizationReady = authorizedTypes.includes(33);
   const automationReady = Boolean(
     config.endpoints_ready && config.storage_ready && config.worker_ready &&
@@ -154,10 +184,9 @@ async function loadState(tenantId: string, authMode: string) {
     { key: "automation", label: "Automatización", ready: automationReady, detail: automationReady ? "Storage, endpoints, worker y pruebas están listos." : "Completa storage, endpoints, worker y pruebas de readiness.", action: "Ver diagnóstico" },
   ];
   const missing = steps.filter((step) => !step.ready).length;
-  const tenantReady = missing === 0 && config.production_enabled === true;
-  const globalEnabled = process.env.DTE_PRODUCTION_ENABLED === "true";
-  const activationStatuses = (activationResult.data ?? []).map((row) => row.status);
-  const overallLabel = activationStatuses.includes("active") && globalEnabled
+  const tenantReady = compliance.readyForFirstInvoiceFromUi;
+  const activationStatuses = activations.map((row) => row.status);
+  const overallLabel = compliance.issuanceEnabled
     ? "Emisión activa"
     : activationStatuses.includes("paused")
       ? "Emisión pausada"
@@ -188,7 +217,9 @@ async function loadState(tenantId: string, authMode: string) {
       ready: tenantReady && globalEnabled,
       preparedPendingActivation: tenantReady && !globalEnabled,
       missingSteps: missing,
-      blockingReason: config.safe_blocking_reason ?? (!globalEnabled ? "Activación legal global pendiente." : null),
+      blockingReason: compliance.readyForFirstInvoiceFromUi
+        ? null
+        : config.safe_blocking_reason ?? (!globalEnabled ? "Activación legal global pendiente." : null),
     },
     steps,
     policy: {
@@ -196,7 +227,7 @@ async function loadState(tenantId: string, authMode: string) {
       consumerDocumentType: config.consumer_document_type ?? "unsupported",
       invoiceOnRequest: config.invoice_on_request ?? true,
       autoEmailDelivery: config.auto_email_delivery ?? false,
-      effectiveAutomatic: globalEnabled && tenantReady && config.issuance_mode === "automatic_on_verified_payment",
+      effectiveAutomatic: compliance.issuanceEnabled && config.issuance_mode === "automatic_on_verified_payment",
     },
     tax: {
       legalName: billing.legal_name ?? "",
@@ -221,8 +252,9 @@ async function loadState(tenantId: string, authMode: string) {
       activations: activationResult.data ?? [],
     },
     declaration: {
-      readyForDeclaration: operationalReadiness?.ready_for_declaration === true,
-      readyForIssuance: operationalReadiness?.ready_for_issuance === true,
+      ...compliance,
+      readyForDeclaration: compliance.declarationRegistered,
+      readyForIssuance: compliance.issuanceEnabled,
       issuerProfileState:
         issuerProfile.issuer_profile_state ?? "pre_declaration",
       trustAnchorValid: readinessEvidence.trust_anchor_valid === true,
@@ -231,12 +263,10 @@ async function loadState(tenantId: string, authMode: string) {
         readinessEvidence.trust_anchor_acquisition_ready === true,
       cafImportFailClosed:
         readinessEvidence.caf_import_fail_closed === true,
-      productionCafCount: Number(
-        operationalReadiness?.production_caf_count ?? 0,
-      ),
-      availableFolioCount: Number(
-        operationalReadiness?.available_folio_count ?? 0,
-      ),
+      productionCafCount: cafs.filter((row) => row.active).length,
+      availableFolioCount: folios.filter(
+        (row) => row.state === "available",
+      ).length,
     },
     documents: ((documentsResult.data ?? []) as DocumentIntentRow[]).map((row) => ({
       id: row.id,

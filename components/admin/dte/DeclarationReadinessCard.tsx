@@ -6,8 +6,12 @@ import {
   AdminSectionCard,
   StatusBadge,
 } from "@/components/admin/admin-ui";
+import {
+  billingComplianceLabels,
+  type BillingComplianceState,
+} from "@/lib/dte/billing-compliance";
 
-export type DeclarationReadinessState = {
+export type DeclarationReadinessState = BillingComplianceState & {
   readyForDeclaration: boolean;
   readyForIssuance: boolean;
   issuerProfileState: string;
@@ -24,33 +28,28 @@ export default function DeclarationReadinessCard({
 }: {
   state: DeclarationReadinessState;
 }) {
+  const labels = billingComplianceLabels(state);
   const items = [
     {
-      label: state.readyForDeclaration
-        ? "Listo para declaración"
-        : "Declaración pendiente",
-      detail: state.readyForDeclaration
-        ? "El representante legal puede efectuarla manualmente."
-        : "Aún faltan controles previos.",
-      ok: state.readyForDeclaration,
+      label: labels.declaration,
+      detail: state.declarationRegistered
+        ? "La declaración y su evidencia vigente están registradas."
+        : "Aún falta registrar la declaración de cumplimiento.",
+      ok: state.declarationRegistered,
     },
     {
-      label: state.readyForIssuance
-        ? "Autorizado para emitir"
-        : "No autorizado todavía",
-      detail: state.readyForIssuance
-        ? "El gate productivo está completo."
-        : "La autorización productiva del SII sigue pendiente.",
-      ok: state.readyForIssuance,
+      label: labels.authorization,
+      detail: state.authorizationCurrent
+        ? "La evidencia SII vigente cubre los tipos activos."
+        : "No existe evidencia vigente para todos los tipos activos.",
+      ok: state.authorizationCurrent,
     },
     {
-      label: state.readyForIssuance
-        ? "Emisión habilitada"
-        : "Emisión bloqueada",
-      detail: state.readyForIssuance
-        ? "Los controles de emisión están completos."
-        : "No se puede emitir ni consumir folios.",
-      ok: state.readyForIssuance,
+      label: labels.issuance,
+      detail: state.readyForFirstInvoiceFromUi
+        ? "La emisión manual está habilitada con gates persistidos vigentes."
+        : "La emisión permanece cerrada hasta completar los gates.",
+      ok: state.readyForFirstInvoiceFromUi,
     },
     {
       label: state.trustAnchorValid
@@ -78,15 +77,15 @@ export default function DeclarationReadinessCard({
     <AdminSectionCard
       className="mt-5"
       title="Declaración de cumplimiento"
-      description="La declaración habilita el paso regulatorio; no autoriza ni activa la emisión."
+      description="Estado regulatorio derivado de evidencia vigente, activación legal y readiness persistido."
       actions={
         <StatusBadge
           label={
-            state.readyForDeclaration
-              ? "Listo para declaración"
-              : "Declaración aún bloqueada"
+            state.readyForFirstInvoiceFromUi
+              ? "Cumplimiento vigente"
+              : "Cumplimiento pendiente"
           }
-          tone={state.readyForDeclaration ? "green" : "amber"}
+          tone={state.readyForFirstInvoiceFromUi ? "green" : "amber"}
         />
       }
     >
