@@ -159,14 +159,15 @@ export function friendlyDteStatus(
   if (normalized === "BLOCKED" && ["BLOCKED_NOT_AUTHORIZED", "DOCUMENT_TYPE_NOT_AUTHORIZED"].includes(String(reason))) {
     return "Boleta no autorizada";
   }
-  if (normalized === "BLOCKED") return "Autorización pendiente";
-  if (["PENDING", "PREPARING", "READY", "SUBMITTING", "SUBMITTED"].includes(normalized)) {
-    return "Documento en proceso";
-  }
+  if (normalized === "PENDING") return "Pendiente de procesamiento";
+  if (["PREPARING", "READY", "SUBMITTING"].includes(normalized)) return "Procesando emisión";
+  if (normalized === "SUBMITTED") return "Enviado al SII";
   if (normalized === "ACCEPTED") return "Documento aceptado";
   if (normalized === "ACCEPTED_WITH_OBJECTIONS") return "Documento con reparos";
-  if (normalized === "REJECTED") return "Documento rechazado";
-  if (normalized === "AMBIGUOUS") return "Resultado ambiguo";
+  if (normalized === "REJECTED") return "Emisión fallida: rechazo SII";
+  if (normalized === "AMBIGUOUS") return "Emisión fallida: resultado ambiguo";
+  if (normalized === "BLOCKED") return `Emisión fallida: ${reason ?? "control pendiente"}`;
+  if (normalized === "CANCELED") return "Emisión cancelada";
   if (normalized === "PAUSED") return "Emisión pausada";
-  return "Autorización pendiente";
+  return "Estado no disponible";
 }

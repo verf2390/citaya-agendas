@@ -9,8 +9,13 @@ import {
   manualIssuanceIdempotencyMaterial,
   normalizeRequiredCustomerRut,
   normalizeTaxProfile,
-  validateStandaloneLines,
 } from "@/lib/dte/cutover";
+import {
+  calculateManualMoney,
+  manualReviewMaterial,
+  type ManualGrossLine,
+  validateManualGrossLines,
+} from "@/lib/dte/manual-money";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type AppointmentRow = {
@@ -42,17 +47,11 @@ function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function grossBreakdown(total: number, exempt: boolean) {
-  if (exempt) return { net: 0, exempt: total, tax: 0, total };
-  const net = Math.round(total / 1.19);
-  const tax = total - net;
-  return { net, exempt: 0, tax, total };
-}
-
 export async function POST(req: Request) {
   const auth = await requireHostTenantAdmin(req);
   if (!auth.ok) return responseError(auth.status === 403 ? 404 : auth.status, auth.error);
   const body = await req.json().catch(() => null);
+  const previewOnly = body?.previewOnly === true;
   const source = String(body?.source ?? "");
   const dteType = Number(body?.dteType);
   const customerId = String(body?.customerId ?? "");
@@ -63,8 +62,10 @@ export async function POST(req: Request) {
     !["appointment", "payment", "standalone", "credit_note", "debit_note"].includes(source) ||
     ![33, 39, 56, 61].includes(dteType) ||
     !isUuid(customerId) ||
-    !/^[A-Za-z0-9:_-]{16,128}$/.test(key) ||
-    body?.reviewAccepted !== true
+    (!previewOnly && (
+      !/^[A-Za-z0-9:_-]{16,128}$/.test(key) ||
+      body?.reviewAccepted !== true
+    ))
   ) return responseError(400, "Solicitud de emisión inválida");
 
   const { data: customer } = await supabaseAdmin.from("customers")
@@ -110,33 +111,35 @@ export async function POST(req: Request) {
   }
 
   const operationalReason = String(body?.operationalReason ?? "").trim().slice(0, 500);
-  let lines: Array<{ description: string; quantity: number; unitPrice: number }>;
-  let total: number;
+  let lines: ManualGrossLine[];
   if (source === "standalone") {
     if (operationalReason.length < 10) return responseError(400, "Motivo operacional obligatorio");
     try {
-      lines = validateStandaloneLines(body?.lines);
+      lines = validateManualGrossLines(body?.lines);
     } catch {
       return responseError(400, "Detalle o montos inválidos");
     }
-    total = lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0);
   } else {
-    const serverAmount = Number(
+    const grossAmountFromDatabase = Number(
       verifiedPayment?.amount ??
       appointment?.payment_paid_amount ??
       appointment?.service_price ??
       appointment?.price,
     );
-    if (!Number.isSafeInteger(serverAmount) || serverAmount <= 0) {
+    if (!Number.isSafeInteger(grossAmountFromDatabase) || grossAmountFromDatabase <= 0) {
       return responseError(409, "El monto server-side no está disponible");
     }
-    total = serverAmount;
     lines = [{
       description: String(appointment?.service_name ?? "Servicio").slice(0, 180),
       quantity: 1,
-      unitPrice: total,
+      unitGrossAmount: grossAmountFromDatabase,
+      grossAmount: grossAmountFromDatabase,
     }];
   }
+  const money = calculateManualMoney(
+    lines,
+    appointment?.tax_treatment_snapshot === "exempt",
+  );
 
   let receiver: Record<string, unknown> = {
     rut: customer.rut_normalized,
@@ -201,7 +204,34 @@ export async function POST(req: Request) {
     : !active
       ? "LEGAL_ISSUANCE_NOT_ACTIVE"
       : null;
-  const breakdown = grossBreakdown(total, appointment?.tax_treatment_snapshot === "exempt");
+  const reviewFingerprint = sha256(manualReviewMaterial({
+    tenantId: auth.tenantId,
+    source,
+    dteType,
+    customerId,
+    appointmentId,
+    paymentIntentId,
+    lines,
+    money,
+  }));
+  if (previewOnly) {
+    return NextResponse.json({
+      ok: true,
+      preview: {
+        source,
+        dteType,
+        receiver,
+        issuer,
+        lines,
+        money,
+        reviewFingerprint,
+        blockingReason: reason,
+      },
+    });
+  }
+  if (String(body?.reviewFingerprint ?? "") !== reviewFingerprint) {
+    return responseError(409, "La revisión cambió; vuelve a previsualizar antes de emitir");
+  }
   const idempotencyKey = sha256(manualIssuanceIdempotencyMaterial({
     tenantId: auth.tenantId,
     key,
@@ -215,7 +245,7 @@ export async function POST(req: Request) {
     issuer,
     receiver,
     lines,
-    taxes: breakdown,
+    money,
     appointment: appointment ? { id: appointment.id, serviceId: appointment.service_id } : null,
     payment: verifiedPayment ? {
       id: verifiedPayment.id,
@@ -246,7 +276,7 @@ export async function POST(req: Request) {
       idempotency_key: idempotencyKey,
       requested_document: dteType === 33 ? "invoice" : "consumer",
       resolved_dte_type: dteType,
-      amount_snapshot: total,
+      amount_snapshot: money.grossAmount,
       currency: "CLP",
       appointment_snapshot: snapshot.appointment ?? {},
       receiver_snapshot: receiver,
@@ -259,11 +289,11 @@ export async function POST(req: Request) {
       created_by: auth.userId,
       requested_by_role: auth.authMode === "platform_admin" ? "platform_admin" : "tenant_admin",
     })
-    .select("id,status,safe_blocking_reason,amount_snapshot,resolved_dte_type")
+    .select("id,status,safe_blocking_reason,amount_snapshot,resolved_dte_type,immutable_snapshot")
     .single();
   if (error) {
     const { data: existing } = await supabaseAdmin.from("dte_payment_document_intents")
-      .select("id,status,safe_blocking_reason,amount_snapshot,resolved_dte_type")
+      .select("id,status,safe_blocking_reason,amount_snapshot,resolved_dte_type,immutable_snapshot")
       .eq("tenant_id", auth.tenantId).eq("idempotency_key", idempotencyKey).maybeSingle();
     if (existing) return NextResponse.json({ ok: true, intent: existing, duplicate: true });
     return responseError(409, "La emisión ya existe o los datos son incompatibles");

@@ -15,6 +15,11 @@ type Payment = {
   id: string; appointment_id: string; amount: number; currency: string; provider: string; processed_at: string;
 };
 type Source = "appointment" | "payment" | "standalone";
+type ManualPreview = {
+  reviewFingerprint: string;
+  blockingReason: string | null;
+  money: { grossAmount: number; netAmount: number; exemptAmount: number; taxAmount: number };
+};
 
 function clp(value: number) {
   return new Intl.NumberFormat("es-CL", {
@@ -36,12 +41,14 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
   const [dteType, setDteType] = useState<33 | 39>(33);
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [unitPrice, setUnitPrice] = useState(0);
+  const [unitGrossAmount, setUnitGrossAmount] = useState(0);
   const [reason, setReason] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [idempotencyKey, setIdempotencyKey] = useState("");
+  const [preview, setPreview] = useState<ManualPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -92,11 +99,11 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
     ? selectedPayment?.appointment_id ?? ""
     : appointmentId;
   const selectedAppointment = appointments.find((item) => item.id === selectedAppointmentId);
-  const serverAmount = source === "payment"
+  const grossAmount = source === "payment"
     ? Number(selectedPayment?.amount ?? 0)
     : source === "appointment"
       ? Number(selectedAppointment?.payment_paid_amount ?? 0)
-      : quantity * unitPrice;
+      : quantity * unitGrossAmount;
   const selectedCustomer = customers.find((item) => item.id === customerId);
   const customerActionHref = selectedCustomer
     ? `/admin/customers?edit=${encodeURIComponent(selectedCustomer.id)}&returnTo=/admin/facturacion`
@@ -107,54 +114,92 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
       : "Completar datos"
     : "Crear cliente";
   const taxProfileReady = dteType !== 33 || Boolean(selectedCustomer?.tax_profile);
-  const isExempt = selectedAppointment?.tax_treatment_snapshot === "exempt";
-  const netAmount = isExempt ? 0 : Math.round(serverAmount / 1.19);
-  const taxAmount = isExempt ? 0 : serverAmount - netAmount;
   const canReview = Boolean(
     customerId && taxProfileReady &&
     (source === "standalone"
-      ? description.trim().length >= 2 && quantity > 0 && unitPrice >= 0 && reason.trim().length >= 10
+      ? description.trim().length >= 2 && quantity > 0 && unitGrossAmount > 0 && reason.trim().length >= 10
       : source === "payment" ? paymentId : appointmentId && selectedAppointment?.payment_status === "paid"),
   );
+  const requestBody = {
+    source,
+    customerId,
+    appointmentId: selectedAppointmentId || null,
+    paymentIntentId: source === "payment" ? paymentId : null,
+    dteType,
+    operationalReason: source === "standalone" ? reason : null,
+    lines: source === "standalone" ? [{ description, quantity, unitGrossAmount }] : undefined,
+  };
 
-  const requestReview = () => {
-    if (!canReview) return;
-    setIdempotencyKey(crypto.randomUUID());
+  const requestReview = async () => {
+    if (!canReview || previewing) return;
+    setPreviewing(true);
     setFeedback("");
+    const response = await adminFetch("/api/admin/dte-intents/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...requestBody, previewOnly: true }),
+    });
+    const payload = await response.json().catch(() => null);
+    setPreviewing(false);
+    if (!response.ok || !payload?.ok) {
+      setFeedback(payload?.error ?? "No se pudo calcular la revisión server-side.");
+      return;
+    }
+    setIdempotencyKey(crypto.randomUUID());
+    setPreview(payload.preview as ManualPreview);
     setReviewing(true);
   };
 
+  const pollIntent = async (intentId: string) => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const response = await adminFetch(`/api/admin/dte-intents/${intentId}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        setFeedback(payload?.error ?? "No se pudo verificar el estado de emisión.");
+        return;
+      }
+      const intent = payload.intent;
+      const label = intent.uiState === "pending"
+        ? "Pendiente: el worker persistente aún no toma el outbox."
+        : intent.uiState === "processing"
+          ? "Procesando la emisión real."
+          : intent.uiState === "sent"
+            ? "Factura enviada al SII; no se consultará estado automáticamente."
+            : intent.uiState === "accepted"
+              ? "Factura aceptada."
+              : `Emisión fallida: ${intent.error ?? intent.status}.`;
+      setFeedback(label);
+      onCreated();
+      if (intent.terminal) return;
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    }
+    setFeedback("La emisión sigue pendiente; revisa el estado visible antes de cualquier acción explícita.");
+  };
+
   const submit = async () => {
-    if (!reviewing || saving || !idempotencyKey) return;
+    if (!reviewing || saving || !idempotencyKey || !preview) return;
     setSaving(true);
-    setFeedback("");
+    setFeedback("Registrando intent y outbox de forma transaccional…");
     const response = await adminFetch("/api/admin/dte-intents/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({
-        source,
-        customerId,
-        appointmentId: selectedAppointmentId || null,
-        paymentIntentId: source === "payment" ? paymentId : null,
-        dteType,
-        operationalReason: source === "standalone" ? reason : null,
-        lines: source === "standalone" ? [{ description, quantity, unitPrice }] : undefined,
+        ...requestBody,
         reviewAccepted: true,
+        reviewFingerprint: preview.reviewFingerprint,
       }),
     });
     const payload = await response.json().catch(() => null);
-    setSaving(false);
     if (!response.ok || !payload?.ok) {
+      setSaving(false);
       setFeedback(payload?.error ?? "No se pudo registrar la intención.");
       return;
     }
-    setFeedback(payload.intent?.safe_blocking_reason === "BLOCKED_NOT_AUTHORIZED"
-      ? "Intención guardada. El documento está bloqueado porque el tipo aún no está autorizado."
-      : payload.intent?.safe_blocking_reason
-        ? "Intención guardada y bloqueada hasta completar la activación legal."
-        : "Intención guardada y lista para el worker.");
     setReviewing(false);
+    setFeedback("Intent registrado. Pendiente de procesamiento persistente.");
     onCreated();
+    await pollIntent(String(payload.intent.id));
+    setSaving(false);
   };
 
   if (loading) return <p role="status" className="text-sm font-bold text-slate-600">Cargando opciones…</p>;
@@ -210,14 +255,14 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
         <div className="grid gap-3 md:grid-cols-4">
           <label className="grid gap-1 text-sm font-bold md:col-span-2">Detalle<input value={description} onChange={(event) => { setDescription(event.target.value); setReviewing(false); }} className="h-11 rounded-xl border px-3" /></label>
           <label className="grid gap-1 text-sm font-bold">Cantidad<input type="number" min={1} value={quantity} onChange={(event) => { setQuantity(Number(event.target.value)); setReviewing(false); }} className="h-11 rounded-xl border px-3" /></label>
-          <label className="grid gap-1 text-sm font-bold">Precio unitario<input type="number" min={0} value={unitPrice} onChange={(event) => { setUnitPrice(Number(event.target.value)); setReviewing(false); }} className="h-11 rounded-xl border px-3" /></label>
+          <label className="grid gap-1 text-sm font-bold">Precio final IVA incluido<input type="number" min={1} value={unitGrossAmount} onChange={(event) => { setUnitGrossAmount(Number(event.target.value)); setReviewing(false); }} className="h-11 rounded-xl border px-3" /></label>
           <label className="grid gap-1 text-sm font-bold md:col-span-4">Motivo operacional
             <textarea value={reason} onChange={(event) => { setReason(event.target.value); setReviewing(false); }} minLength={10} maxLength={500} className="min-h-20 rounded-xl border p-3" placeholder="Explica por qué se emite sin pago ni reserva." />
           </label>
         </div>
       ) : null}
 
-      {reviewing ? (
+      {reviewing && preview ? (
         <div className="rounded-2xl border-2 border-slate-900 bg-slate-50 p-4">
           <h4 className="font-black">Revisión final explícita</h4>
           <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
@@ -225,17 +270,17 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
             <div><dt className="font-bold text-slate-500">Receptor</dt><dd>{dteType === 33 ? selectedCustomer?.tax_profile?.legal_name : selectedCustomer?.full_name} · {dteType === 33 ? selectedCustomer?.tax_profile?.rut_normalized : selectedCustomer?.rut_normalized}</dd></div>
             <div><dt className="font-bold text-slate-500">Documento</dt><dd>{dteType === 33 ? "Factura 33" : "Boleta 39 bloqueada"}</dd></div>
             <div><dt className="font-bold text-slate-500">Detalle</dt><dd>{source === "standalone" ? description : selectedAppointment?.service_name}</dd></div>
-            <div><dt className="font-bold text-slate-500">Cantidad × precio</dt><dd>{source === "standalone" ? `${quantity} × ${clp(unitPrice)}` : `1 × ${clp(serverAmount)}`}</dd></div>
-            <div><dt className="font-bold text-slate-500">Neto / exento</dt><dd>{clp(isExempt ? serverAmount : netAmount)}</dd></div>
-            <div><dt className="font-bold text-slate-500">IVA</dt><dd>{clp(taxAmount)}</dd></div>
-            <div><dt className="font-bold text-slate-500">Total server-side</dt><dd className="font-black">{clp(serverAmount)}</dd></div>
+            <div><dt className="font-bold text-slate-500">Cantidad × precio</dt><dd>{source === "standalone" ? `${quantity} × ${clp(unitGrossAmount)}` : `1 × ${clp(grossAmount)}`}</dd></div>
+            <div><dt className="font-bold text-slate-500">Neto / exento</dt><dd>{clp(preview.money.exemptAmount || preview.money.netAmount)}</dd></div>
+            <div><dt className="font-bold text-slate-500">IVA</dt><dd>{clp(preview.money.taxAmount)}</dd></div>
+            <div><dt className="font-bold text-slate-500">Total IVA incluido (server-side)</dt><dd className="font-black">{clp(preview.money.grossAmount)}</dd></div>
             {source === "standalone" ? <div><dt className="font-bold text-slate-500">Motivo</dt><dd>{reason}</dd></div> : null}
           </dl>
           <p className="mt-3 text-xs text-slate-600">El servidor volverá a validar tenant, cliente, reserva, pago, monto, impuestos e idempotencia.</p>
-          <button type="button" onClick={() => void submit()} disabled={saving} className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{saving ? "Registrando…" : "Confirmar intención de emisión"}</button>
+          <button type="button" onClick={() => void submit()} disabled={saving} className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-50">{saving ? "Emitiendo…" : "Confirmar y emitir factura real"}</button>
         </div>
       ) : (
-        <button type="button" onClick={requestReview} disabled={!canReview} className="w-fit rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:bg-slate-300">Revisar emisión</button>
+        <button type="button" onClick={() => void requestReview()} disabled={!canReview || previewing} className="w-fit rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:bg-slate-300">{previewing ? "Calculando…" : "Revisar emisión"}</button>
       )}
       {feedback ? <p role="status" className="rounded-xl bg-blue-50 p-3 text-sm font-bold text-blue-900">{feedback}</p> : null}
     </div>

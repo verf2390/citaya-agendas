@@ -74,6 +74,7 @@ async function block(item: ClaimedOutbox, reason: string, deterministicAttempts 
       status: "BLOCKED",
       deterministic_attempts: Math.min(Math.max(deterministicAttempts, 0), 3),
       last_safe_error: reason,
+      lease_expires_at: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", item.id)
@@ -114,6 +115,7 @@ async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED"
       status,
       network_attempts: networkAttempts,
       last_safe_error: reason,
+      lease_expires_at: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", item.id)
@@ -121,11 +123,11 @@ async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED"
   if (result.error) throw new Error("DTE_OUTBOX_PERSISTENCE_FAILED");
 }
 
-export async function runOneAutomaticIssuanceWorker() {
+export async function runOneManualIssuanceWorker() {
   const globalProductionEnabled = process.env.DTE_PRODUCTION_ENABLED === "true";
   if (!globalProductionEnabled) return { processed: false, status: "DISABLED", siiContacted: false, networkAttempts: 0 };
-  const claimed = await supabaseAdmin.rpc("dte_claim_issuance_outbox", {
-    p_worker_id: `citaya:${process.pid}`,
+  const claimed = await supabaseAdmin.rpc("dte_claim_manual_issuance_outbox", {
+    p_worker_id: `citaya-manual:${process.pid}`,
   });
   if (claimed.error) throw new Error("DTE_OUTBOX_CLAIM_FAILED");
   const item = (Array.isArray(claimed.data) ? claimed.data[0] : null) as ClaimedOutbox | null;
@@ -142,37 +144,52 @@ export async function runOneAutomaticIssuanceWorker() {
     const appointment = intent.appointment_snapshot ?? {};
     const receiver = intent.receiver_snapshot ?? {};
     const immutable = intent.immutable_snapshot ?? {};
-    const taxSnapshot = immutable.taxes && typeof immutable.taxes === "object"
+    const moneySnapshot = immutable.money && typeof immutable.money === "object"
+      ? immutable.money as Record<string, unknown>
+      : {};
+    const legacyTaxes = immutable.taxes && typeof immutable.taxes === "object"
       ? immutable.taxes as Record<string, unknown>
       : {};
-    const treatment = value(appointment, "taxTreatment") ||
-      (Number(taxSnapshot.exempt ?? 0) === Number(intent.amount_snapshot) ? "exempt" : "affected");
-    if (!Number.isSafeInteger(Number(intent.amount_snapshot)) || Number(intent.amount_snapshot) <= 0) {
+    const grossAmount = Number(intent.amount_snapshot);
+    const snapshotGrossAmount = Number(moneySnapshot.grossAmount ?? legacyTaxes.total ?? grossAmount);
+    const snapshotNetAmount = Number(moneySnapshot.netAmount ?? legacyTaxes.net ?? 0);
+    const snapshotExemptAmount = Number(moneySnapshot.exemptAmount ?? legacyTaxes.exempt ?? 0);
+    const snapshotTaxAmount = Number(moneySnapshot.taxAmount ?? legacyTaxes.tax ?? 0);
+    if (
+      ![grossAmount, snapshotGrossAmount, snapshotNetAmount, snapshotExemptAmount, snapshotTaxAmount]
+        .every((amount) => Number.isSafeInteger(amount) && amount >= 0) ||
+      grossAmount <= 0 ||
+      snapshotGrossAmount !== grossAmount ||
+      snapshotNetAmount + snapshotExemptAmount + snapshotTaxAmount !== grossAmount
+    ) {
       throw new Error("DTE_AMOUNT_SNAPSHOT_INVALID");
     }
-    if (!['affected', 'exempt'].includes(treatment)) {
-      throw new Error("DTE_TAX_TREATMENT_SNAPSHOT_REQUIRED");
-    }
+    const treatment = snapshotExemptAmount === grossAmount ? "exempt" : "affected";
 
-    const total = Number(intent.amount_snapshot);
     const rawLines = Array.isArray(immutable.lines) ? immutable.lines : [];
     const sourceLines = rawLines.length ? rawLines : [{
       description: value(appointment, "serviceName") || "Servicio reservado",
       quantity: 1,
-      unitPrice: total,
+      unitGrossAmount: grossAmount,
+      grossAmount,
     }];
     const productionLines = sourceLines.map((candidate) => {
       if (!candidate || typeof candidate !== "object") throw new Error("DTE_LINES_INVALID");
       const line = candidate as Record<string, unknown>;
       const quantity = Number(line.quantity);
-      const grossUnitPrice = Number(line.unitPrice);
+      const unitGrossAmount = Number(line.unitGrossAmount ?? line.unitPrice);
+      const lineGrossAmount = Number(line.grossAmount ?? quantity * unitGrossAmount);
       const name = value(line, "description") || value(line, "name");
-      if (!name || !Number.isInteger(quantity) || quantity < 1 || !Number.isSafeInteger(grossUnitPrice) || grossUnitPrice < 0) {
+      if (
+        !name || !Number.isInteger(quantity) || quantity < 1 ||
+        !Number.isSafeInteger(unitGrossAmount) || unitGrossAmount <= 0 ||
+        !Number.isSafeInteger(lineGrossAmount) || lineGrossAmount !== quantity * unitGrossAmount
+      ) {
         throw new Error("DTE_LINES_INVALID");
       }
       return {
         name, quantity,
-        unitPrice: treatment === "exempt" ? grossUnitPrice : affectedNetFromGross(grossUnitPrice),
+        unitPrice: treatment === "exempt" ? unitGrossAmount : affectedNetFromGross(unitGrossAmount),
         exempt: treatment === "exempt",
       };
     });
@@ -216,7 +233,7 @@ export async function runOneAutomaticIssuanceWorker() {
           references,
         }, actorId);
 
-    if ("totalAmount" in draft && Number(draft.totalAmount) !== total) {
+    if ("totalAmount" in draft && Number(draft.totalAmount) !== grossAmount) {
       throw new Error("DTE_AMOUNT_TAX_RECONCILIATION_FAILED");
     }
     intent.production_document_id = draft.id;
@@ -254,7 +271,7 @@ export async function runOneAutomaticIssuanceWorker() {
     await appendEvent(item, `SUBMISSION_${status}`, { automaticRetry: false });
     return { processed: true, status, siiContacted: true, networkAttempts: 1 };
   } catch (error) {
-    const reason = safeReason(error, "DTE_AUTOMATIC_PREPARATION_FAILED");
+    const reason = safeReason(error, "DTE_MANUAL_PREPARATION_FAILED");
     const productionDocumentId = intent?.production_document_id;
     if (productionDocumentId) {
       const attempt = await supabaseAdmin

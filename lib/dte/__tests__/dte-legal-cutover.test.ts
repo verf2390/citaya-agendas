@@ -134,7 +134,7 @@ test("all activation gates are fail closed", () => {
 
 test("boleta authorization and delivery statuses are explicit and safe", () => {
   assert.equal(friendlyDteStatus("BLOCKED", "DOCUMENT_TYPE_NOT_AUTHORIZED"), "Boleta no autorizada");
-  assert.equal(friendlyDteStatus("AMBIGUOUS"), "Resultado ambiguo");
+  assert.equal(friendlyDteStatus("AMBIGUOUS"), "Emisión fallida: resultado ambiguo");
   assert.equal(canEmailDte("SUBMITTED"), false);
   assert.equal(canEmailDte("AMBIGUOUS"), false);
   assert.equal(canEmailDte("ACCEPTED"), true);
