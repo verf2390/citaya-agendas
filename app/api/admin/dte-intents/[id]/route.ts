@@ -43,7 +43,7 @@ export async function GET(
   if (!isUuid(id)) {
     return NextResponse.json({ ok: false, error: "Recurso no encontrado" }, { status: 404 });
   }
-  const [{ data: intent, error }, { data: outbox }] = await Promise.all([
+  const [{ data: intent, error }, { data: outbox }, { data: failureEvent }] = await Promise.all([
     supabaseAdmin
       .from("dte_payment_document_intents")
       .select("id,status,safe_blocking_reason,production_document_id,amount_snapshot,updated_at")
@@ -56,6 +56,14 @@ export async function GET(
       .eq("tenant_id", auth.tenantId)
       .eq("intent_id", id)
       .maybeSingle(),
+    supabaseAdmin
+      .from("dte_document_events")
+      .select("safe_metadata,created_at")
+      .eq("tenant_id", auth.tenantId)
+      .eq("intent_id", id)
+      .eq("event_type", "ISSUANCE_BLOCKED")
+      .order("created_at", { ascending: false })
+      .limit(1).maybeSingle(),
   ]);
   if (error || !intent) {
     return NextResponse.json({ ok: false, error: "Recurso no encontrado" }, { status: 404 });
@@ -69,6 +77,7 @@ export async function GET(
       uiState: uiState(status),
       terminal: TERMINAL_STATUSES.has(status),
       error: intent.safe_blocking_reason ?? outbox?.last_safe_error ?? null,
+      failure: failureEvent?.safe_metadata ?? null,
     },
   });
 }

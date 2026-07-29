@@ -167,7 +167,11 @@ export default function ManualIssuanceForm({ onCreated }: { onCreated: () => voi
             ? "Factura enviada al SII; no se consultará estado automáticamente."
             : intent.uiState === "accepted"
               ? "Factura aceptada."
-              : `Emisión fallida: ${intent.error ?? intent.status}.`;
+              : `Emisión fallida: ${intent.error ?? intent.status}.${
+                  intent.failure?.failureStage
+                    ? ` Etapa: ${intent.failure.failureStage}.`
+                    : ""
+                }`;
       setFeedback(label);
       onCreated();
       if (intent.terminal) return;

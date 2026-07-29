@@ -15,7 +15,11 @@ function authorized(req: Request) {
 export async function POST(req: Request) {
   if (!authorized(req)) return NextResponse.json({ ok: false }, { status: 404 });
   try {
-    const result = await runOneManualIssuanceWorker();
+    const body = await req.json().catch(() => ({}));
+    const targetOutboxId = typeof body?.targetOutboxId === "string"
+      ? body.targetOutboxId
+      : undefined;
+    const result = await runOneManualIssuanceWorker({ targetOutboxId });
     return NextResponse.json({ ok: true, result });
   } catch {
     return NextResponse.json({ ok: false, error: "DTE_WORKER_FAILED" }, { status: 503 });

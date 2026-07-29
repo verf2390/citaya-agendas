@@ -45,6 +45,49 @@ export type ManualStatusTokenProvider = (input: {
   milestone: (event: ProductionSiiMilestone) => Promise<void>;
 }) => Promise<string>;
 
+export type ProductionPreparationFailureStage =
+  | "runtime_config"
+  | "tenant_settings"
+  | "issuer_resolution"
+  | "document_load"
+  | "material_preflight"
+  | "folio_reservation"
+  | "document_transition"
+  | "caf_load"
+  | "artifact_generation"
+  | "artifact_persistence"
+  | "ready_transition";
+
+export type ProductionPreparationPreflight = (input: {
+  tenantId: string;
+  dteType: ProductionDteType;
+  settings: ProductionTenantSettings;
+  document: ProductionDocument;
+}) => Promise<void>;
+
+function safePreparationCode(error: unknown): string {
+  if (error instanceof ProductionPreparationError) return error.code;
+  const message = error instanceof Error ? error.message : "";
+  return message.match(/^([A-Z][A-Z0-9_]{2,180})/)?.[1] ??
+    "DTE_PRODUCTION_PREPARATION_FAILED";
+}
+
+export class ProductionPreparationError extends Error {
+  readonly code: string;
+  readonly failureStage: ProductionPreparationFailureStage;
+
+  constructor(
+    failureStage: ProductionPreparationFailureStage,
+    cause: unknown,
+  ) {
+    const code = safePreparationCode(cause);
+    super(code, { cause });
+    this.name = "ProductionPreparationError";
+    this.code = code;
+    this.failureStage = failureStage;
+  }
+}
+
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -118,6 +161,8 @@ export class ProductionDteService {
     private readonly manualStatusTokenProvider: ManualStatusTokenProvider,
     private readonly env: NodeJS.ProcessEnv = process.env,
     private readonly repoRoot = process.cwd(),
+    private readonly preparationPreflight: ProductionPreparationPreflight =
+      async () => {},
   ) {}
 
   async createDraft(
@@ -167,75 +212,100 @@ export class ProductionDteService {
     documentId: string,
     actorId: string,
   ): Promise<ReturnType<typeof safeDocument>> {
-    this.config();
-    const settings = await this.requireTenantSettings(tenantId, true);
-    assertValidProductionIssuerResolution(settings.issuer);
-    const current = await this.requireDocument(tenantId, documentId);
-    if (current.status === "ready") return safeDocument(current);
-    if (!["draft", "prepared"].includes(current.status))
-      throw new Error("DTE_PREPARE_STATE_INVALID");
-    const reservation =
-      current.folio === null
-        ? await this.repository.reserveFolio({
-            tenantId,
-            dteType: current.dteType,
-            documentId,
-            businessOperationId: current.businessOperationId,
-          })
-        : {
-            folio: current.folio,
-            cafId: String(current.cafId),
-            reused: true,
-          };
-    const prepared =
-      current.status === "prepared"
-        ? current
-        : await this.repository.transitionDocument({
-            tenantId,
-            documentId,
-            from: ["draft"],
-            to: "prepared",
-            patch: { folio: reservation.folio, cafId: reservation.cafId },
-          });
-    const cafMetadata = await this.repository.selectCaf(
-      tenantId,
-      prepared.dteType,
-      reservation.folio,
-    );
-    if (!cafMetadata || cafMetadata.id !== reservation.cafId)
-      throw new Error("DTE_CAF_COVERAGE_NOT_UNIQUE");
-    const caf = this.cafLoader({
-      settings,
-      dteType: prepared.dteType,
-      expectedSha256: cafMetadata.sha256,
-    });
-    const generated = await this.generator.generate({
-      document: prepared,
-      settings,
-      caf,
-      env: this.env,
-    });
-    await this.persistGeneratedArtifacts(prepared, generated);
-    const ready = await this.repository.transitionDocument({
-      tenantId,
-      documentId,
-      from: ["prepared"],
-      to: "ready",
-    });
-    await this.repository.appendAudit({
-      tenantId,
-      documentId,
-      action: "production_document_ready",
-      actorId,
-      metadata: {
-        dteType: ready.dteType,
-        folio: ready.folio,
-        xsd: generated.metadata.xsd,
-        xmlsec1: generated.metadata.xmlsec1,
-        frmt: generated.metadata.frmt,
-      },
-    });
-    return safeDocument(ready);
+    let failureStage: ProductionPreparationFailureStage = "runtime_config";
+    try {
+      this.config();
+      failureStage = "tenant_settings";
+      const settings = await this.requireTenantSettings(tenantId, true);
+      failureStage = "issuer_resolution";
+      assertValidProductionIssuerResolution(settings.issuer);
+      failureStage = "document_load";
+      const current = await this.requireDocument(tenantId, documentId);
+      if (current.status === "ready") return safeDocument(current);
+      if (!["draft", "prepared"].includes(current.status))
+        throw new Error("DTE_PREPARE_STATE_INVALID");
+
+      // Read-only material checks deliberately precede the first folio lock.
+      failureStage = "material_preflight";
+      await this.preparationPreflight({
+        tenantId,
+        dteType: current.dteType,
+        settings,
+        document: current,
+      });
+
+      failureStage = "folio_reservation";
+      const reservation =
+        current.folio === null
+          ? await this.repository.reserveFolio({
+              tenantId,
+              dteType: current.dteType,
+              documentId,
+              businessOperationId: current.businessOperationId,
+            })
+          : {
+              folio: current.folio,
+              cafId: String(current.cafId),
+              reused: true,
+            };
+      failureStage = "document_transition";
+      const prepared =
+        current.status === "prepared"
+          ? current
+          : await this.repository.transitionDocument({
+              tenantId,
+              documentId,
+              from: ["draft"],
+              to: "prepared",
+              patch: { folio: reservation.folio, cafId: reservation.cafId },
+            });
+      failureStage = "caf_load";
+      const cafMetadata = await this.repository.selectCaf(
+        tenantId,
+        prepared.dteType,
+        reservation.folio,
+      );
+      if (!cafMetadata || cafMetadata.id !== reservation.cafId)
+        throw new Error("DTE_CAF_COVERAGE_NOT_UNIQUE");
+      const caf = this.cafLoader({
+        settings,
+        dteType: prepared.dteType,
+        expectedSha256: cafMetadata.sha256,
+      });
+      failureStage = "artifact_generation";
+      const generated = await this.generator.generate({
+        document: prepared,
+        settings,
+        caf,
+        env: this.env,
+      });
+      failureStage = "artifact_persistence";
+      await this.persistGeneratedArtifacts(prepared, generated);
+      failureStage = "ready_transition";
+      const ready = await this.repository.transitionDocument({
+        tenantId,
+        documentId,
+        from: ["prepared"],
+        to: "ready",
+      });
+      await this.repository.appendAudit({
+        tenantId,
+        documentId,
+        action: "production_document_ready",
+        actorId,
+        metadata: {
+          dteType: ready.dteType,
+          folio: ready.folio,
+          xsd: generated.metadata.xsd,
+          xmlsec1: generated.metadata.xmlsec1,
+          frmt: generated.metadata.frmt,
+        },
+      });
+      return safeDocument(ready);
+    } catch (error) {
+      if (error instanceof ProductionPreparationError) throw error;
+      throw new ProductionPreparationError(failureStage, error);
+    }
   }
 
   async preflight(

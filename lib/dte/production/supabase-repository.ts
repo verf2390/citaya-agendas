@@ -21,7 +21,7 @@ import type {
   SafeProductionAudit,
 } from "./types";
 
-type DbResponse<T> = { data: T | null; error: { message?: string } | null };
+type DbResponse<T> = { data: T | null; error: { message?: string; code?: string } | null };
 type Query = {
   select(columns?: string): Query;
   insert(value: unknown): Query;
@@ -43,8 +43,19 @@ type SupabaseLike = {
   ): Promise<DbResponse<Array<Record<string, unknown>>>>;
 };
 
-function fail(error: { message?: string } | null): never {
-  throw new Error(`DTE_PRODUCTION_PERSISTENCE_FAILED:${error?.message ?? "unknown"}`);
+function fail(error: { message?: string; code?: string } | null): never {
+  const databaseCode = String(error?.code ?? "")
+    .trim()
+    .match(/^[A-Z0-9]{5}$/)?.[0] ?? null;
+  const cause = databaseCode
+    ? Object.assign(new Error(`DATABASE_ERROR_${databaseCode}`), {
+        name: "DatabaseError",
+        code: databaseCode,
+      })
+    : undefined;
+  const failure = new Error("DTE_PRODUCTION_PERSISTENCE_FAILED", { cause });
+  failure.name = "ProductionPersistenceError";
+  throw failure;
 }
 
 function text(value: unknown): string {

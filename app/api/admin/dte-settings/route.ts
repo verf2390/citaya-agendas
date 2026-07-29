@@ -7,7 +7,7 @@ import {
   deriveBillingCompliance,
   type BillingActivationGate,
 } from "@/lib/dte/billing-compliance";
-import { friendlyDteStatus } from "@/lib/dte/cutover";
+import { loadAdminDocumentRows } from "@/lib/dte/admin-document-rows";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const BILLING_COLUMNS = [
@@ -37,12 +37,6 @@ type ConfigRow = {
 };
 type CafRow = { dte_type: number; active: boolean };
 type FolioRow = { dte_type: number; state: string };
-type DocumentIntentRow = {
-  id: string; resolved_dte_type: number | null; amount_snapshot: number; status: string;
-  safe_blocking_reason: string | null; production_document_id: string | null;
-  receiver_snapshot: { legalName?: string } | null;
-  appointment_snapshot: { customerName?: string } | null; created_at: string;
-};
 type ReadinessEvidenceRow = {
   trust_anchor_valid: boolean;
   trust_anchor_sha256: string | null;
@@ -78,7 +72,7 @@ async function loadState(tenantId: string, authMode: string) {
     supabaseAdmin.from("dte_tenant_issuance_settings").select(CONFIG_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("dte_production_cafs").select("dte_type,active").eq("tenant_id", tenantId),
     supabaseAdmin.from("dte_production_folio_ledger").select("dte_type,state").eq("tenant_id", tenantId),
-    supabaseAdmin.from("dte_payment_document_intents").select("id,resolved_dte_type,amount_snapshot,status,safe_blocking_reason,production_document_id,receiver_snapshot,appointment_snapshot,created_at").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(12),
+    loadAdminDocumentRows(tenantId),
     supabaseAdmin
       .from("dte_tenant_readiness_evidence")
       .select("trust_anchor_valid,trust_anchor_sha256,trust_anchor_acquisition_ready,caf_import_fail_closed")
@@ -116,7 +110,6 @@ async function loadState(tenantId: string, authMode: string) {
     configResult.error,
     cafResult.error,
     folioResult.error,
-    documentsResult.error,
     readinessEvidenceResult.error,
     issuerProfileResult.error,
     authorizationResult.error,
@@ -268,22 +261,7 @@ async function loadState(tenantId: string, authMode: string) {
         (row) => row.state === "available",
       ).length,
     },
-    documents: ((documentsResult.data ?? []) as DocumentIntentRow[]).map((row) => ({
-      id: row.id,
-      productionDocumentId: row.production_document_id,
-      type: row.resolved_dte_type,
-      folio: null,
-      customer: row.receiver_snapshot?.legalName ?? row.appointment_snapshot?.customerName ?? "Consumidor final",
-      amount: row.amount_snapshot,
-      status: friendlyDteStatus(row.status, row.safe_blocking_reason),
-      date: row.created_at,
-      blockingReason: row.safe_blocking_reason,
-      canView: Boolean(row.production_document_id),
-      canDownload: Boolean(row.production_document_id) && ["ACCEPTED", "DELIVERY_PENDING", "DELIVERED"].includes(row.status),
-      canQuery: Boolean(row.production_document_id) && ["SUBMITTED", "AMBIGUOUS"].includes(row.status),
-      canCreateNote: Boolean(row.production_document_id) && row.status === "ACCEPTED" && [33,39].includes(Number(row.resolved_dte_type)),
-      canEmail: Boolean(row.production_document_id) && ["ACCEPTED","DELIVERY_PENDING","DELIVERED"].includes(row.status),
-    })),
+    documents: documentsResult,
   };
 }
 

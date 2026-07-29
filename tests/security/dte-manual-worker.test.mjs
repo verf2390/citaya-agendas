@@ -40,6 +40,10 @@ test("manual worker is durable, leased, manual-only and never retries terminal r
   assert.match(worker, /dte_claim_manual_issuance_outbox/);
   assert.match(worker, /networkAttempts: 1/);
   assert.match(service, /Type=oneshot/);
+  assert.match(service, /EnvironmentFile=\/home\/verf\/apps\/citaya-agendas\/\.env\.local/);
+  assert.match(service, /User=verf/);
+  assert.match(service, /WorkingDirectory=\/home\/verf\/apps\/citaya-agendas/);
+  assert.match(service, /node\/v20\.20\.0\/bin\/node/);
   assert.match(timer, /Persistent=true/);
   assert.match(timer, /OnUnitActiveSec=15s/);
 });
@@ -57,6 +61,35 @@ test("UI exposes pending, processing, failed, sent and accepted states", () => {
   assert.match(labels, /Pendiente de procesamiento/);
   assert.match(labels, /Procesando emisión/);
   assert.match(labels, /Enviado al SII/);
+});
+
+test("billing polling updates documents incrementally without full reload", () => {
+  const form = read("components/admin/dte/ManualIssuanceForm.tsx");
+  const page = read("app/admin/facturacion/page.tsx");
+  const endpoint = read("app/api/admin/dte-settings/documents/route.ts");
+  const source = `${form}\n${page}`;
+
+  assert.doesNotMatch(source, /(?:window\.)?location\.reload/);
+  assert.doesNotMatch(source, /router\.refresh/);
+  assert.match(page, /refreshDocuments/);
+  assert.match(page, /\/api\/admin\/dte-settings\/documents/);
+  assert.match(page, /setState\(\(current\)/);
+  assert.match(form, /if \(intent\.terminal\) return/);
+  assert.match(endpoint, /requireHostTenantAdmin/);
+  assert.match(page, /Total IVA incluido/);
+});
+
+test("folio RPC is qualified and exact recovery is single-use fail-closed", () => {
+  const migration = read("migrations/202607290001_dte_manual_first_invoice_recovery.sql");
+  assert.match(migration, /ledger\.folio = selected\.folio/);
+  assert.match(migration, /order by ledger\.folio/);
+  assert.match(migration, /claimed\.status <> 'BLOCKED'/);
+  assert.match(migration, /claimed\.deterministic_attempts <> 1/);
+  assert.match(migration, /claimed\.network_attempts <> 0/);
+  assert.match(migration, /document\.folio is null/);
+  assert.match(migration, /dte_production_submission_attempts/);
+  assert.match(migration, /MANUAL_ISSUANCE_RETRY_AUTHORIZED/);
+  assert.doesNotMatch(migration, /status\s*=\s*'CANCELED'/);
 });
 
 test("automatic payment enqueue stays blocked when automation is disabled", () => {

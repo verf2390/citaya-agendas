@@ -38,6 +38,8 @@ type DocumentRow = {
   id: string;
   productionDocumentId: string | null;
   type: number | null;
+  rawStatus: string;
+  terminal: boolean;
   folio: number | null;
   customer: string;
   amount: number;
@@ -126,6 +128,7 @@ export default function AdminFacturacionPage() {
   const [state, setState] = useState<BillingState | null>(null);
   const [draft, setDraft] = useState<BillingState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [documentsRefreshing, setDocumentsRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editingTax, setEditingTax] = useState(false);
@@ -166,6 +169,27 @@ export default function AdminFacturacionPage() {
       });
     return () => { active = false; };
   }, []);
+
+  const refreshDocuments = async () => {
+    if (documentsRefreshing) return;
+    setDocumentsRefreshing(true);
+    try {
+      const response = await adminFetch("/api/admin/dte-settings/documents", {
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? "No se pudieron actualizar los documentos.");
+      }
+      setState((current) => current
+        ? { ...current, documents: payload.documents as DocumentRow[] }
+        : current);
+    } catch (refreshError) {
+      setError(billingErrorMessage(refreshError));
+    } finally {
+      setDocumentsRefreshing(false);
+    }
+  };
 
   const save = async () => {
     if (!draft || saving) return;
@@ -322,14 +346,14 @@ export default function AdminFacturacionPage() {
         )}
       </AdminSectionCard>
 
-      <AdminSectionCard className="mt-5" title="Documentos recientes" description="Sólo documentos e intenciones pertenecientes al tenant autenticado.">
+      <AdminSectionCard className="mt-5" title="Documentos recientes" description={documentsRefreshing ? "Actualizando estados en segundo plano…" : "Sólo documentos e intenciones pertenecientes al tenant autenticado."}>
         {state.documents.length ? (
-          <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-500">{["Tipo", "Folio", "Cliente", "Total IVA incluido", "Estado", "Fecha", "Acciones"].map((value) => <th key={value} className="px-3 py-2">{value}</th>)}</tr></thead><tbody>{state.documents.map((document) => <tr key={document.id} className="border-b border-slate-100"><td className="px-3 py-3 font-bold">{documentLabel(document.type)}</td><td className="px-3 py-3">{document.folio ?? "—"}</td><td className="px-3 py-3">{document.customer}</td><td className="px-3 py-3 font-bold">{money(document.amount)}</td><td className="px-3 py-3"><StatusBadge label={document.status} tone={document.status === "BLOCKED" ? "amber" : document.status === "ACCEPTED" ? "green" : "blue"} /></td><td className="px-3 py-3">{dateLabel(document.date)}</td><td className="px-3 py-3"><div className="flex gap-2">{document.productionDocumentId ? <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canDownload={document.canDownload} canEmail={document.canEmail} /> : <span className="text-xs text-slate-400">Sin artefactos</span>}{document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void load()} /> : null}</div></td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto" aria-live="polite"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-500">{["Tipo", "Folio", "Cliente", "Total IVA incluido", "Estado", "Fecha", "Acciones"].map((value) => <th key={value} className="px-3 py-2">{value}</th>)}</tr></thead><tbody>{state.documents.map((document) => <tr key={document.id} className="border-b border-slate-100"><td className="px-3 py-3 font-bold">{documentLabel(document.type)}</td><td className="px-3 py-3">{document.folio ?? "—"}</td><td className="px-3 py-3">{document.customer}</td><td className="px-3 py-3 font-bold">{money(document.amount)}</td><td className="px-3 py-3"><StatusBadge label={document.status} tone={document.rawStatus === "BLOCKED" ? "amber" : document.rawStatus === "ACCEPTED" ? "green" : "blue"} />{document.blockingReason ? <p className="mt-1 text-xs font-bold text-amber-800">{document.blockingReason}</p> : null}</td><td className="px-3 py-3">{dateLabel(document.date)}</td><td className="px-3 py-3"><div className="flex gap-2">{document.productionDocumentId ? <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canDownload={document.canDownload} canEmail={document.canEmail} /> : <span className="text-xs text-slate-400">Sin artefactos</span>}{document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void refreshDocuments()} /> : null}</div></td></tr>)}</tbody></table></div>
         ) : <EmptyState title="Aún no hay documentos" description="Las emisiones e intenciones de este negocio aparecerán aquí." />}
       </AdminSectionCard>
 
       <AdminSectionCard className="mt-5" title="Emitir manualmente" description="Acción secundaria y auditada; nunca usa montos enviados por el navegador." actions={<button type="button" onClick={() => setManualOpen((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><ReceiptText className="h-4 w-4" />{manualOpen ? "Cerrar" : "Nueva emisión"}</button>}>
-        {manualOpen ? <ManualIssuanceForm onCreated={() => void load()} /> : null}
+        {manualOpen ? <ManualIssuanceForm onCreated={() => void refreshDocuments()} /> : null}
       </AdminSectionCard>
 
       {state.technicalAccess ? (

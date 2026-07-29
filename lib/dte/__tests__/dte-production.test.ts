@@ -24,6 +24,7 @@ import {
 } from "../production/repository";
 import {
   ProductionDteService,
+  type ProductionPreparationPreflight,
 } from "../production/service";
 import {
   ProductionSiiClient,
@@ -222,6 +223,7 @@ async function preparedService(input: {
   types?: ProductionDteType[];
   uploadResult?: ProductionUploadResult;
   env?: NodeJS.ProcessEnv;
+  preparationPreflight?: ProductionPreparationPreflight;
 }) {
   const tenantId = input.tenantId ?? "tenant-a";
   const repository = new InMemoryProductionDteRepository();
@@ -249,6 +251,7 @@ async function preparedService(input: {
     async () => "STATUS_TOKEN_NOT_EXPOSED",
     input.env ?? productionEnv,
     resolve("."),
+    input.preparationPreflight,
   );
   return { service, repository, artifactStore, generator, client, tenantId };
 }
@@ -292,6 +295,32 @@ test("missing SII resolution blocks before reserving a production folio", async 
   );
   assert.ok(context.repository.folioRows().every((row) => row.state === "available"));
   assert.deepEqual(context.generator.types, []);
+});
+
+test("material preflight failure happens before production folio reservation", async () => {
+  let preflightCalls = 0;
+  const context = await preparedService({
+    preparationPreflight: async ({ tenantId, dteType }) => {
+      preflightCalls += 1;
+      assert.equal(tenantId, "tenant-a");
+      assert.equal(dteType, 33);
+      throw new Error("DTE_SIGNING_FILE_UNSAFE");
+    },
+  });
+  const before = context.repository.folioRows();
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 33, "material-preflight"),
+    "admin-user",
+  );
+  await assert.rejects(
+    context.service.prepare(context.tenantId, draft.id, "admin-user"),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === "DTE_SIGNING_FILE_UNSAFE" &&
+      (error as { failureStage?: string }).failureStage === "material_preflight",
+  );
+  assert.equal(preflightCalls, 1);
+  assert.deepEqual(context.repository.folioRows(), before);
 });
 
 test("CAF metadata rejects duplicate, overlap and cross-tenant selection", async () => {

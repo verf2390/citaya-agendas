@@ -1,5 +1,6 @@
 import { expectedProductionConfirmation } from "@/lib/dte/production/config";
 import { createServerProductionDteService } from "@/lib/dte/production/server";
+import { ProductionPreparationError } from "@/lib/dte/production/service";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const SYSTEM_ACTOR_ID = "00000000-0000-4000-8000-000000000001";
@@ -25,6 +26,44 @@ type IssuanceIntent = {
   production_document_id: string | null;
   created_by: string | null;
 };
+
+type SafeFailureDetails = {
+  failureStage: string;
+  safeErrorCode: string;
+  errorName: string;
+  errorCode: string | null;
+  causeName: string | null;
+  causeCode: string | null;
+  stack: string[];
+};
+
+function safeToken(value: unknown): string | null {
+  const token = String(value ?? "").trim();
+  return /^[A-Z0-9_:-]{2,180}$/i.test(token) ? token : null;
+}
+
+function safeFailureDetails(error: unknown): SafeFailureDetails {
+  const failure = error instanceof Error ? error : new Error("DTE_UNKNOWN_ERROR");
+  const cause = failure.cause instanceof Error ? failure.cause : null;
+  const safeErrorCode = error instanceof ProductionPreparationError
+    ? error.code
+    : safeToken(failure.message) ?? "DTE_MANUAL_PREPARATION_FAILED";
+  return {
+    failureStage: error instanceof ProductionPreparationError
+      ? error.failureStage
+      : "worker",
+    safeErrorCode,
+    errorName: safeToken(failure.name) ?? "Error",
+    errorCode: safeToken((failure as Error & { code?: unknown }).code),
+    causeName: cause ? safeToken(cause.name) : null,
+    causeCode: cause
+      ? safeToken((cause as Error & { code?: unknown }).code ?? cause.message)
+      : null,
+    stack: String(failure.stack ?? "").split("\n").slice(0, 8)
+      .map((line) => line.replaceAll(process.cwd(), "<repo>").trim())
+      .filter((line) => /^[A-Za-z0-9_:.<>()/ -]{1,300}$/.test(line)),
+  };
+}
 
 function safeReason(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : "";
@@ -62,7 +101,12 @@ async function updateIntent(item: ClaimedOutbox, patch: Record<string, unknown>)
   if (result.error) throw new Error("DTE_INTENT_PERSISTENCE_FAILED");
 }
 
-async function block(item: ClaimedOutbox, reason: string, deterministicAttempts = item.deterministic_attempts) {
+async function block(
+  item: ClaimedOutbox,
+  reason: string,
+  deterministicAttempts = item.deterministic_attempts,
+  failure: SafeFailureDetails | null = null,
+) {
   await updateIntent(item, {
     status: "BLOCKED",
     safe_blocking_reason: reason,
@@ -80,7 +124,7 @@ async function block(item: ClaimedOutbox, reason: string, deterministicAttempts 
     .eq("id", item.id)
     .eq("tenant_id", item.tenant_id);
   if (result.error) throw new Error("DTE_OUTBOX_PERSISTENCE_FAILED");
-  await appendEvent(item, "ISSUANCE_BLOCKED", { reason });
+  await appendEvent(item, "ISSUANCE_BLOCKED", { reason, ...(failure ?? {}) });
 }
 
 async function loadIntent(item: ClaimedOutbox): Promise<IssuanceIntent> {
@@ -123,12 +167,24 @@ async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED"
   if (result.error) throw new Error("DTE_OUTBOX_PERSISTENCE_FAILED");
 }
 
-export async function runOneManualIssuanceWorker() {
+export async function runOneManualIssuanceWorker(options: {
+  targetOutboxId?: string;
+} = {}) {
   const globalProductionEnabled = process.env.DTE_PRODUCTION_ENABLED === "true";
   if (!globalProductionEnabled) return { processed: false, status: "DISABLED", siiContacted: false, networkAttempts: 0 };
-  const claimed = await supabaseAdmin.rpc("dte_claim_manual_issuance_outbox", {
-    p_worker_id: `citaya-manual:${process.pid}`,
-  });
+  const targetOutboxId = String(options.targetOutboxId ?? "").trim();
+  if (targetOutboxId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetOutboxId)) {
+    throw new Error("DTE_TARGET_OUTBOX_INVALID");
+  }
+  const workerId = `citaya-manual:${process.pid}`;
+  const claimed = targetOutboxId
+    ? await supabaseAdmin.rpc("dte_claim_manual_issuance_outbox_exact", {
+        p_worker_id: workerId,
+        p_outbox_id: targetOutboxId,
+      })
+    : await supabaseAdmin.rpc("dte_claim_manual_issuance_outbox", {
+        p_worker_id: workerId,
+      });
   if (claimed.error) throw new Error("DTE_OUTBOX_CLAIM_FAILED");
   const item = (Array.isArray(claimed.data) ? claimed.data[0] : null) as ClaimedOutbox | null;
   if (!item) return { processed: false, status: null, siiContacted: false, networkAttempts: 0 };
@@ -289,7 +345,8 @@ export async function runOneManualIssuanceWorker() {
         return { processed: true, status: "AMBIGUOUS", siiContacted: true, networkAttempts: 1 };
       }
     }
-    await block(item, reason, Math.min(item.deterministic_attempts + 1, 3));
+    await block(item, reason, Math.min(item.deterministic_attempts + 1, 3),
+      safeFailureDetails(error));
     return { processed: true, status: "BLOCKED", siiContacted: false, networkAttempts: 0 };
   }
 }
