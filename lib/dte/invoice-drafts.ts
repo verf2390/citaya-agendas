@@ -1,4 +1,5 @@
 import { calculateDteTaxTotals } from "./certification/dte-tax-engine";
+import { calculateBoletaGrossTotals } from "./boleta-money";
 
 export const INVOICE_DRAFT_EDITABLE_STATUSES = [
   "DRAFT",
@@ -25,6 +26,7 @@ export type InvoiceDraftLineInput = {
   discountBasisPoints?: number | null;
   pricingMode?: "manual_net" | "catalog_gross";
   catalogUnitGrossAmount?: number | null;
+  taxTreatment?: "affected" | "exempt";
 };
 
 export type CalculatedInvoiceLine = InvoiceDraftLineInput & {
@@ -105,6 +107,7 @@ export function validateInvoiceDraftLines(input: unknown): InvoiceDraftLineInput
           1,
         )
       : null;
+    const taxTreatment = line.taxTreatment === "exempt" ? "exempt" : "affected";
     if (
       !description ||
       discountBasisPoints > 10_000 ||
@@ -121,6 +124,7 @@ export function validateInvoiceDraftLines(input: unknown): InvoiceDraftLineInput
       discountBasisPoints,
       pricingMode,
       catalogUnitGrossAmount,
+      taxTreatment,
     };
   });
 }
@@ -275,6 +279,78 @@ export function calculateInvoiceTotals(
   };
 }
 
+/**
+ * Administrative type 39 drafts accept final gross CLP prices. The existing
+ * `unitNetAmount` request property is retained for API compatibility, but for
+ * manual boleta lines it represents the gross editor input. Frozen net/tax
+ * amounts are derived once at document level.
+ */
+export function calculateBoletaDraftTotals(
+  rawLines: readonly InvoiceDraftLineInput[],
+): InvoiceTotals {
+  const lines = validateInvoiceDraftLines(rawLines);
+  const grossLines = lines.map((line, index) => {
+    const unitGrossAmount =
+      line.pricingMode === "catalog_gross"
+        ? Number(line.catalogUnitGrossAmount)
+        : line.unitNetAmount;
+    const base = line.quantity * unitGrossAmount;
+    const discountAmount = roundDiv(
+      BigInt(base) * BigInt(line.discountBasisPoints ?? 0),
+      10_000n,
+    );
+    const grossAmount = base - discountAmount;
+    if (!Number.isSafeInteger(grossAmount) || grossAmount < 1) {
+      throw new Error(`DTE_BOLETA_LINE_${index}_GROSS_INVALID`);
+    }
+    return {
+      description: line.description,
+      quantity: 1,
+      unitGrossAmount: grossAmount,
+      exempt: line.taxTreatment === "exempt",
+    };
+  });
+  const totals = calculateBoletaGrossTotals(grossLines);
+  return {
+    netAmount: totals.netAmount,
+    taxAmount: totals.taxAmount,
+    totalAmount: totals.totalAmount,
+    lines: lines.map((line, index) => {
+      const calculated = totals.lines[index];
+      const originalUnitGross =
+        line.pricingMode === "catalog_gross"
+          ? Number(line.catalogUnitGrossAmount)
+          : line.unitNetAmount;
+      const discountAmount =
+        line.quantity * originalUnitGross - calculated.totalAmount;
+      return {
+        ...line,
+        position: index + 1,
+        discountBasisPoints: line.discountBasisPoints ?? 0,
+        // This column remains positive for the shared schema; the authoritative
+        // frozen line amount is netAmount and the gross input is in its snapshot.
+        unitNetAmount: Math.max(
+          1,
+          roundDiv(BigInt(Math.max(calculated.netAmount, 1)), BigInt(line.quantity)),
+        ),
+        discountAmount,
+        netAmount: calculated.netAmount,
+        taxAmount: calculated.taxAmount,
+        totalAmount: calculated.totalAmount,
+      };
+    }),
+  };
+}
+
+export function calculateDocumentDraftTotals(
+  dteType: 33 | 39,
+  rawLines: readonly InvoiceDraftLineInput[],
+): InvoiceTotals {
+  return dteType === 39
+    ? calculateBoletaDraftTotals(rawLines)
+    : calculateInvoiceTotals(rawLines);
+}
+
 export function catalogGrossPriceToNet(grossAmount: number): number {
   const gross = safeInteger(grossAmount, "DTE_CATALOG_GROSS", 1);
   return findNetForGross(gross);
@@ -327,6 +403,7 @@ type PaymentSignal = {
   lines: InvoiceDraftLineInput[];
   issuer: Partial<TaxIdentity> | null;
   recipient: Partial<TaxIdentity> | null;
+  requestedDocumentType?: 33 | 39 | null;
 };
 
 type PaymentDraft = {
@@ -342,6 +419,7 @@ type PaymentDraft = {
   activeIntentCount: number;
   executableOutboxCount: number;
   supersededIntentExecutable: boolean;
+  dteType: 33 | 39;
 };
 
 export class InMemoryPaymentInvoiceCoordinator {
@@ -352,20 +430,32 @@ export class InMemoryPaymentInvoiceCoordinator {
       throw new Error("DTE_PAYMENT_NOT_ELIGIBLE");
     }
     if (input.currency !== "CLP") throw new Error("DTE_CURRENCY_NOT_SUPPORTED");
-    const totals = calculateInvoiceTotals(input.lines);
+    if (input.requestedDocumentType === null) {
+      throw new Error("DTE_DOCUMENT_SELECTION_REQUIRED");
+    }
+    const dteType = input.requestedDocumentType ?? 33;
+    const totals = calculateDocumentDraftTotals(dteType, input.lines);
     if (totals.totalAmount !== safeInteger(input.amount, "DTE_PAYMENT_AMOUNT", 1)) {
       throw new Error("DTE_PAYMENT_AMOUNT_MISMATCH");
     }
-    const key = `${input.tenantId}|${input.paymentKey}|33`;
+    const key = `${input.tenantId}|${input.paymentKey}`;
     const existing = this.draftsByKey.get(key);
-    if (existing) return structuredClone(existing);
+    if (existing) {
+      if (existing.dteType !== dteType) {
+        throw new Error("DTE_PRIMARY_DOCUMENT_ALREADY_SELECTED");
+      }
+      return structuredClone(existing);
+    }
 
     let taxPreview: FinalTaxSnapshot | null = null;
     try {
-      taxPreview = createFinalTaxSnapshot({
-        issuer: input.issuer,
-        recipient: input.recipient,
-      });
+      taxPreview =
+        dteType === 33
+          ? createFinalTaxSnapshot({
+              issuer: input.issuer,
+              recipient: input.recipient,
+            })
+          : null;
     } catch {
       taxPreview = null;
     }
@@ -382,6 +472,7 @@ export class InMemoryPaymentInvoiceCoordinator {
       activeIntentCount: 1,
       executableOutboxCount: automaticIssuanceEnabled && taxPreview ? 1 : 0,
       supersededIntentExecutable: false,
+      dteType,
     };
     this.draftsByKey.set(key, draft);
     return structuredClone(draft);
@@ -397,7 +488,7 @@ export class InMemoryPaymentInvoiceCoordinator {
     currentIssuer: Partial<TaxIdentity>,
     currentRecipient: Partial<TaxIdentity>,
   ): PaymentDraft {
-    const key = `${tenantId}|${paymentKey}|33`;
+    const key = `${tenantId}|${paymentKey}`;
     const draft = this.draftsByKey.get(key);
     if (!draft) throw new Error("DTE_INVOICE_DRAFT_NOT_FOUND");
     if (draft.status === "QUEUED") return structuredClone(draft);
@@ -417,7 +508,7 @@ export class InMemoryPaymentInvoiceCoordinator {
     tenantId: string,
     paymentKey: string,
   ): PaymentDraft {
-    const draft = this.draftsByKey.get(`${tenantId}|${paymentKey}|33`);
+    const draft = this.draftsByKey.get(`${tenantId}|${paymentKey}`);
     if (!draft) throw new Error("DTE_INVOICE_DRAFT_NOT_FOUND");
     return structuredClone(draft);
   }

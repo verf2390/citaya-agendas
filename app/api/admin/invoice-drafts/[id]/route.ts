@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import {
-  calculateInvoiceTotals,
+  calculateDocumentDraftTotals,
   validateInvoiceDraftLines,
 } from "@/lib/dte/invoice-drafts";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -26,7 +26,8 @@ export async function PATCH(
   let totals;
   try {
     inputLines = validateInvoiceDraftLines(body?.lines);
-    totals = calculateInvoiceTotals(inputLines);
+    // The persisted document type is loaded below before totals are trusted.
+    totals = null;
   } catch {
     return responseError(
       400,
@@ -39,7 +40,7 @@ export async function PATCH(
 
   const currentResult = await supabaseAdmin
     .from("dte_invoice_drafts")
-    .select("id,customer_id,status,version,payment_amount_snapshot")
+    .select("id,customer_id,dte_type,status,version,payment_amount_snapshot")
     .eq("tenant_id", auth.tenantId)
     .eq("id", id)
     .maybeSingle();
@@ -50,6 +51,14 @@ export async function PATCH(
   }
   if (Number(current.version) !== expectedVersion) {
     return responseError(409, "El borrador cambió; vuelve a cargarlo antes de guardar.");
+  }
+  try {
+    totals = calculateDocumentDraftTotals(
+      Number(current.dte_type) === 39 ? 39 : 33,
+      inputLines,
+    );
+  } catch {
+    return responseError(400, "Revisa las líneas y sus montos.");
   }
 
   const serviceIds = [...new Set(
@@ -95,7 +104,10 @@ export async function PATCH(
         catalogUnitGrossAmount: Number(service.price),
       };
     });
-    totals = calculateInvoiceTotals(inputLines);
+    totals = calculateDocumentDraftTotals(
+      Number(current.dte_type) === 39 ? 39 : 33,
+      inputLines,
+    );
   } catch {
     return responseError(
       409,
@@ -113,7 +125,7 @@ export async function PATCH(
     .eq("draft_id", id);
   if (deleteResult.error) return responseError(500, "No se pudieron actualizar las líneas.");
   const insertResult = await supabaseAdmin.from("dte_invoice_draft_lines").insert(
-    totals.lines.map((line) => ({
+    totals.lines.map((line, index) => ({
       tenant_id: auth.tenantId,
       draft_id: id,
       service_id: line.serviceId,
@@ -130,7 +142,20 @@ export async function PATCH(
       tax_amount: line.taxAmount,
       total_amount: line.totalAmount,
       catalog_snapshot:
-        line.pricingMode === "catalog_gross"
+        Number(current.dte_type) === 39
+          ? {
+              serviceId: line.serviceId,
+              unitGrossAmount:
+                inputLines[index].pricingMode === "catalog_gross"
+                  ? inputLines[index].catalogUnitGrossAmount
+                  : inputLines[index].unitNetAmount,
+              capturedAs:
+                inputLines[index].pricingMode === "catalog_gross"
+                  ? "catalog_gross"
+                  : "manual_gross",
+              taxTreatment: inputLines[index].taxTreatment ?? "affected",
+            }
+          : line.pricingMode === "catalog_gross"
           ? {
               serviceId: line.serviceId,
               unitGrossAmount: line.catalogUnitGrossAmount,
@@ -148,13 +173,19 @@ export async function PATCH(
   const updateResult = await supabaseAdmin
     .from("dte_invoice_drafts")
     .update({
-      status: paymentMismatch ? "REVIEW_REQUIRED" : "DRAFT",
+      status:
+        Number(current.dte_type) === 39 || paymentMismatch
+          ? "REVIEW_REQUIRED"
+          : "DRAFT",
       net_amount: totals.netAmount,
       tax_amount: totals.taxAmount,
       total_amount: totals.totalAmount,
-      review_reason: paymentMismatch
-        ? "El total de la factura no coincide exactamente con el pago confirmado."
-        : null,
+      review_reason:
+        Number(current.dte_type) === 39
+          ? "Boleta tipo 39 preparada en modo PRE-CAF. La emisión permanece deshabilitada."
+          : paymentMismatch
+            ? "El total de la factura no coincide exactamente con el pago confirmado."
+            : null,
       version: expectedVersion + 1,
       updated_by: auth.userId,
       updated_at: new Date().toISOString(),

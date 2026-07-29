@@ -91,7 +91,16 @@ export async function GET(req: Request) {
 
   const address_display =
     [data.address, data.city].filter(Boolean).join(" · ").trim() || null;
-  const paymentConfig = await getTenantPaymentConfig(data.id);
+  const [paymentConfig, boletaCapability] = await Promise.all([
+    getTenantPaymentConfig(data.id),
+    supabaseAdmin
+      .from("dte_tenant_document_capabilities")
+      .select("customer_selection_enabled,issuance_enabled,certification_status")
+      .eq("tenant_id", data.id)
+      .eq("environment", "production")
+      .eq("dte_type", 39)
+      .maybeSingle(),
+  ]);
 
   const tenant = {
     id: data.id,
@@ -119,6 +128,10 @@ export async function GET(req: Request) {
     payment_collection_mode: paymentConfig.collectionMode,
     deposit_type: paymentConfig.depositType,
     deposit_value: paymentConfig.depositValue,
+    boleta_document_selection_enabled:
+      boletaCapability.data?.customer_selection_enabled === true &&
+      boletaCapability.data?.issuance_enabled === true &&
+      boletaCapability.data?.certification_status === "production_authorized",
   };
 
   return NextResponse.json({ tenant });

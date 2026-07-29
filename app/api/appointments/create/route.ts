@@ -83,12 +83,16 @@ export async function POST(req: Request) {
     const parsed = await parseJson(req, AppointmentCreateSchema);
     if (!parsed.ok) return parsed.res;
     const input = parsed.data;
+    const requestedDocumentType =
+      input.taxDocumentType ??
+      (input.invoiceRequested === true ? 33 : null);
     let bookingTax;
     try {
       bookingTax = validateBookingTaxInput({
         customerRut: input.customerRut,
         invoiceRequested: input.invoiceRequested === true,
-        taxProfile: input.invoiceRequested ? {
+        taxDocumentType: requestedDocumentType,
+        taxProfile: requestedDocumentType === 33 ? {
           rut: input.invoiceReceiverRut ?? "",
           legalName: input.invoiceReceiverLegalName ?? "",
           businessActivity: input.invoiceReceiverActivity ?? "",
@@ -99,9 +103,29 @@ export async function POST(req: Request) {
         } : null,
       });
     } catch {
-      return publicError(400, input.invoiceRequested
+      return publicError(400, requestedDocumentType === 33
         ? "Datos tributarios de factura incompletos"
         : "RUT inválido");
+    }
+    if (requestedDocumentType === 39) {
+      const { data: capability, error: capabilityError } = await supabaseAdmin
+        .from("dte_tenant_document_capabilities")
+        .select("customer_selection_enabled,issuance_enabled,certification_status")
+        .eq("tenant_id", input.tenantId)
+        .eq("environment", "production")
+        .eq("dte_type", 39)
+        .maybeSingle();
+      if (
+        capabilityError ||
+        !capability?.customer_selection_enabled ||
+        !capability.issuance_enabled ||
+        capability.certification_status !== "production_authorized"
+      ) {
+        return publicError(
+          409,
+          "La boleta electrónica estará disponible próximamente.",
+        );
+      }
     }
     const key = idempotencyKey(req, input.idempotencyKey);
     const pepper = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();
@@ -197,15 +221,16 @@ export async function POST(req: Request) {
     const { error: taxSnapshotError } = await supabaseAdmin
       .from("appointments")
       .update({
-        invoice_requested: input.invoiceRequested === true,
-        invoice_receiver_rut: input.invoiceRequested && input.invoiceReceiverRut ? normalizeRut(input.invoiceReceiverRut) : null,
-        invoice_receiver_legal_name: input.invoiceRequested ? input.invoiceReceiverLegalName ?? null : null,
-        invoice_receiver_activity: input.invoiceRequested ? input.invoiceReceiverActivity ?? null : null,
-        invoice_receiver_address: input.invoiceRequested ? input.invoiceReceiverAddress ?? null : null,
-        invoice_receiver_commune: input.invoiceRequested ? input.invoiceReceiverCommune ?? null : null,
-        invoice_receiver_city: input.invoiceRequested ? input.invoiceReceiverCity ?? null : null,
+        invoice_requested: requestedDocumentType === 33,
+        invoice_receiver_rut: requestedDocumentType === 33 && input.invoiceReceiverRut ? normalizeRut(input.invoiceReceiverRut) : null,
+        invoice_receiver_legal_name: requestedDocumentType === 33 ? input.invoiceReceiverLegalName ?? null : null,
+        invoice_receiver_activity: requestedDocumentType === 33 ? input.invoiceReceiverActivity ?? null : null,
+        invoice_receiver_address: requestedDocumentType === 33 ? input.invoiceReceiverAddress ?? null : null,
+        invoice_receiver_commune: requestedDocumentType === 33 ? input.invoiceReceiverCommune ?? null : null,
+        invoice_receiver_city: requestedDocumentType === 33 ? input.invoiceReceiverCity ?? null : null,
         customer_rut_snapshot: bookingTax.customerRut,
         requested_document_type: bookingTax.requestedDocumentType,
+        tax_document_selection: bookingTax.requestedDocumentType,
         tax_treatment_snapshot: taxTreatmentSnapshot,
       })
       .eq("id", row.appointment_id)

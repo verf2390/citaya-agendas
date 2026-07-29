@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import {
-  calculateInvoiceTotals,
+  calculateDocumentDraftTotals,
   validateInvoiceDraftLines,
 } from "@/lib/dte/invoice-drafts";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -70,7 +70,7 @@ async function loadDrafts(tenantId: string) {
   const draftsResult = await supabaseAdmin
     .from("dte_invoice_drafts")
     .select(
-      "id,customer_id,appointment_id,payment_intent_id,source,status,version,issuer_preview,recipient_preview,issuer_snapshot,recipient_snapshot,net_amount,tax_amount,total_amount,review_reason,operational_reason,intent_id,locked_at,created_at,updated_at",
+      "id,customer_id,appointment_id,payment_intent_id,dte_type,source,status,version,issuer_preview,recipient_preview,issuer_snapshot,recipient_snapshot,net_amount,tax_amount,total_amount,review_reason,operational_reason,intent_id,locked_at,created_at,updated_at",
     )
     .eq("tenant_id", tenantId)
     .order("updated_at", { ascending: false })
@@ -118,11 +118,13 @@ export async function POST(req: Request) {
     : null;
   const source = String(body?.source ?? "manual");
   const operationalReason = String(body?.operationalReason ?? "").trim().slice(0, 500);
+  const dteType = Number(body?.dteType ?? 33);
   if (
     !isUuid(customerId) ||
     (appointmentId !== null && !isUuid(appointmentId)) ||
     (paymentIntentId !== null && !isUuid(paymentIntentId)) ||
-    !["manual", "appointment", "payment"].includes(source)
+    !["manual", "appointment", "payment"].includes(source) ||
+    ![33, 39].includes(dteType)
   ) {
     return errorResponse(400, "Los datos del borrador no son válidos.");
   }
@@ -131,7 +133,7 @@ export async function POST(req: Request) {
   let totals;
   try {
     inputLines = validateInvoiceDraftLines(body?.lines);
-    totals = calculateInvoiceTotals(inputLines);
+    totals = calculateDocumentDraftTotals(dteType as 33 | 39, inputLines);
   } catch {
     return errorResponse(
       400,
@@ -193,7 +195,7 @@ export async function POST(req: Request) {
         catalogUnitGrossAmount: Number(service.price),
       };
     });
-    totals = calculateInvoiceTotals(inputLines);
+    totals = calculateDocumentDraftTotals(dteType as 33 | 39, inputLines);
   } catch {
     return errorResponse(
       409,
@@ -243,7 +245,9 @@ export async function POST(req: Request) {
   } catch {
     return errorResponse(503, "No se pudieron cargar los datos tributarios actuales.");
   }
-  const reviewReason = !tax.complete
+  const reviewReason = dteType === 39
+    ? "Boleta tipo 39 preparada en modo PRE-CAF. La emisión permanece deshabilitada."
+    : !tax.complete
     ? "Completa los datos tributarios del emisor o receptor."
     : paymentAmount !== null && paymentAmount !== totals.totalAmount
       ? "El total de la factura no coincide exactamente con el pago confirmado."
@@ -257,6 +261,7 @@ export async function POST(req: Request) {
       appointment_id: appointmentId,
       payment_intent_id: paymentIntentId,
       source,
+      dte_type: dteType,
       status: reviewReason ? "REVIEW_REQUIRED" : "DRAFT",
       issuer_preview: tax.issuer,
       recipient_preview: tax.recipient,
@@ -267,7 +272,9 @@ export async function POST(req: Request) {
       review_reason: reviewReason,
       operational_reason:
         operationalReason ||
-        (source === "manual" ? "Factura manual creada desde el editor" : null),
+        (source === "manual"
+          ? `${dteType === 39 ? "Boleta" : "Factura"} manual creada desde el editor`
+          : null),
       created_by: auth.userId,
       updated_by: auth.userId,
     })
@@ -282,7 +289,7 @@ export async function POST(req: Request) {
 
   const draftId = draftResult.data.id;
   const linesResult = await supabaseAdmin.from("dte_invoice_draft_lines").insert(
-    totals.lines.map((line) => ({
+    totals.lines.map((line, index) => ({
       tenant_id: auth.tenantId,
       draft_id: draftId,
       service_id: line.serviceId,
@@ -299,7 +306,20 @@ export async function POST(req: Request) {
       tax_amount: line.taxAmount,
       total_amount: line.totalAmount,
       catalog_snapshot:
-        line.pricingMode === "catalog_gross"
+        dteType === 39
+          ? {
+              serviceId: line.serviceId,
+              unitGrossAmount:
+                inputLines[index].pricingMode === "catalog_gross"
+                  ? inputLines[index].catalogUnitGrossAmount
+                  : inputLines[index].unitNetAmount,
+              capturedAs:
+                inputLines[index].pricingMode === "catalog_gross"
+                  ? "catalog_gross"
+                  : "manual_gross",
+              taxTreatment: inputLines[index].taxTreatment ?? "affected",
+            }
+          : line.pricingMode === "catalog_gross"
           ? {
               serviceId: line.serviceId,
               unitGrossAmount: line.catalogUnitGrossAmount,

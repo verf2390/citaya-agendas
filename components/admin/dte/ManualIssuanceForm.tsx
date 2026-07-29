@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, FileCheck2, Plus, Save, Trash2, X } from "lucide-react";
 
 import { adminFetch } from "@/lib/api/adminFetch";
-import { calculateInvoiceTotals } from "@/lib/dte/invoice-drafts";
+import { calculateDocumentDraftTotals } from "@/lib/dte/invoice-drafts";
 
 type TaxProfile = {
   rut_normalized: string;
@@ -57,12 +57,14 @@ type EditorLine = {
   discountPercent: number;
   pricingMode: "manual_net" | "catalog_gross";
   catalogUnitGrossAmount: number | null;
+  taxTreatment: "affected" | "exempt";
 };
 type SavedDraft = {
   id: string;
   status: string;
   version: number;
   review_reason?: string | null;
+  dte_type?: number;
 };
 type DraftRecord = SavedDraft & {
   customer_id: string;
@@ -77,9 +79,14 @@ type DraftRecord = SavedDraft & {
     description: string;
     quantity: number;
     unit_net_amount: number;
+    total_amount: number;
     discount_basis_points: number;
     pricing_mode?: "manual_net" | "catalog_gross";
     catalog_unit_gross_amount?: number | null;
+    catalog_snapshot?: {
+      unitGrossAmount?: number;
+      taxTreatment?: "affected" | "exempt";
+    } | null;
   }>;
 };
 
@@ -97,9 +104,10 @@ function roundDiv(numerator: bigint, denominator: bigint) {
   );
 }
 
-function totals(lines: EditorLine[]) {
+function totals(lines: EditorLine[], dteType: 33 | 39) {
   try {
-    return calculateInvoiceTotals(
+    return calculateDocumentDraftTotals(
+      dteType,
       lines.map((line) => ({
         ...line,
         discountBasisPoints: Math.round(line.discountPercent * 100),
@@ -142,6 +150,7 @@ function newLine(): EditorLine {
     discountPercent: 0,
     pricingMode: "manual_net",
     catalogUnitGrossAmount: null,
+    taxTreatment: "affected",
   };
 }
 
@@ -158,6 +167,7 @@ export default function ManualIssuanceForm({
   const [payments, setPayments] = useState<Payment[]>([]);
   const [issuer, setIssuer] = useState<Record<string, string> | null>(null);
   const [customerId, setCustomerId] = useState("");
+  const [dteType, setDteType] = useState<33 | 39>(33);
   const [source, setSource] = useState<"manual" | "appointment" | "payment">(
     "manual",
   );
@@ -216,7 +226,7 @@ export default function ManualIssuanceForm({
     };
   }, []);
 
-  const currentTotals = useMemo(() => totals(lines), [lines]);
+  const currentTotals = useMemo(() => totals(lines, dteType), [lines, dteType]);
   const selectedCustomer = customers.find((item) => item.id === customerId);
   const customerAppointments = appointments.filter(
     (item) => item.customer_id === customerId,
@@ -259,7 +269,9 @@ export default function ManualIssuanceForm({
       status: draft.status,
       version: Number(draft.version),
       review_reason: draft.review_reason,
+      dte_type: draft.dte_type,
     });
+    setDteType(Number(draft.dte_type) === 39 ? 39 : 33);
     setCustomerId(draft.customer_id);
     setSource(draft.source === "automatic_payment" ? "payment" : draft.source);
     setAppointmentId(draft.appointment_id ?? "");
@@ -272,7 +284,14 @@ export default function ManualIssuanceForm({
         appointmentId: line.appointment_id,
         description: line.description,
         quantity: Number(line.quantity),
-        unitNetAmount: Number(line.unit_net_amount),
+        unitNetAmount:
+          Number(draft.dte_type) === 39
+            ? Number(
+                line.catalog_snapshot?.unitGrossAmount ??
+                  line.catalog_unit_gross_amount ??
+                  line.total_amount / Math.max(1, Number(line.quantity)),
+              )
+            : Number(line.unit_net_amount),
         discountPercent: Number(line.discount_basis_points) / 100,
         pricingMode: line.pricing_mode ?? "manual_net",
         catalogUnitGrossAmount:
@@ -280,6 +299,10 @@ export default function ManualIssuanceForm({
           line.catalog_unit_gross_amount === undefined
             ? null
             : Number(line.catalog_unit_gross_amount),
+        taxTreatment:
+          line.catalog_snapshot?.taxTreatment === "exempt"
+            ? "exempt"
+            : "affected",
       })),
     );
     setFeedback(
@@ -299,9 +322,12 @@ export default function ManualIssuanceForm({
   const addService = (serviceId: string) => {
     const service = services.find((item) => item.id === serviceId);
     if (!service) return;
-    const net = service.priceIncludesVat
-      ? grossCatalogPriceToNet(Number(service.price))
-      : Number(service.price);
+    const editorPrice =
+      dteType === 39
+        ? Number(service.price)
+        : service.priceIncludesVat
+          ? grossCatalogPriceToNet(Number(service.price))
+          : Number(service.price);
     setLines((current) => [
       ...current.filter(
         (line) =>
@@ -315,7 +341,7 @@ export default function ManualIssuanceForm({
         appointmentId: null,
         description: service.name,
         quantity: 1,
-        unitNetAmount: net,
+        unitNetAmount: editorPrice,
         discountPercent: 0,
         pricingMode: service.priceIncludesVat
           ? "catalog_gross"
@@ -323,6 +349,8 @@ export default function ManualIssuanceForm({
         catalogUnitGrossAmount: service.priceIncludesVat
           ? Number(service.price)
           : null,
+        taxTreatment:
+          service.tax_treatment === "exempt" ? "exempt" : "affected",
       },
     ]);
     markChanged();
@@ -342,10 +370,12 @@ export default function ManualIssuanceForm({
           appointmentId: id,
           description: appointment.service_name || "Servicio reservado",
           quantity: 1,
-          unitNetAmount: grossCatalogPriceToNet(gross),
+          unitNetAmount:
+            dteType === 39 ? gross : grossCatalogPriceToNet(gross),
           discountPercent: 0,
           pricingMode: "catalog_gross",
           catalogUnitGrossAmount: gross,
+          taxTreatment: "affected",
         },
       ]);
     }
@@ -365,6 +395,7 @@ export default function ManualIssuanceForm({
       discountBasisPoints: Math.round(line.discountPercent * 100),
       pricingMode: line.pricingMode,
       catalogUnitGrossAmount: line.catalogUnitGrossAmount,
+      taxTreatment: line.taxTreatment,
     }));
     const response = savedDraft
       ? await adminFetch(`/api/admin/invoice-drafts/${savedDraft.id}`, {
@@ -377,6 +408,7 @@ export default function ManualIssuanceForm({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             customerId,
+            dteType,
             source,
             appointmentId: appointmentId || null,
             paymentIntentId: paymentIntentId || null,
@@ -447,6 +479,61 @@ export default function ManualIssuanceForm({
 
   return (
     <div className="grid gap-5">
+      <fieldset
+        disabled={Boolean(savedDraft)}
+        className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2"
+      >
+        <legend className="px-1 text-sm font-black text-slate-900">
+          Documento tributario
+        </legend>
+        {([
+          [
+            33,
+            "Factura electrónica",
+            "Empresa o cliente con datos tributarios. Precios netos más IVA.",
+          ],
+          [
+            39,
+            "Boleta electrónica",
+            "Consumidor final. Precios finales con IVA incluido; emisión PRE-CAF deshabilitada.",
+          ],
+        ] as const).map(([type, label, help]) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => {
+              if (type === dteType) return;
+              setLines((current) =>
+                current.map((line) => {
+                  if (
+                    line.pricingMode !== "catalog_gross" ||
+                    !line.catalogUnitGrossAmount
+                  ) {
+                    return line;
+                  }
+                  return {
+                    ...line,
+                    unitNetAmount:
+                      type === 39
+                        ? line.catalogUnitGrossAmount
+                        : grossCatalogPriceToNet(line.catalogUnitGrossAmount),
+                  };
+                }),
+              );
+              setDteType(type);
+              markChanged();
+            }}
+            className={`rounded-xl border p-3 text-left ${
+              dteType === type
+                ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100"
+                : "border-slate-200"
+            }`}
+          >
+            <span className="block text-sm font-black">{label}</span>
+            <span className="mt-1 block text-xs text-slate-600">{help}</span>
+          </button>
+        ))}
+      </fieldset>
       {availableDrafts.length ? (
         <label className="grid gap-1.5 text-sm font-bold text-slate-700">
           Continuar un borrador existente
@@ -520,7 +607,7 @@ export default function ManualIssuanceForm({
         </div>
       </div>
 
-      {selectedCustomer ? (
+      {selectedCustomer && dteType === 33 ? (
         <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -557,6 +644,14 @@ export default function ManualIssuanceForm({
               </div>
             ))}
           </dl>
+        </div>
+      ) : selectedCustomer ? (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm">
+          <p className="font-black text-blue-950">Consumidor final</p>
+          <p className="mt-1 text-xs text-blue-900">
+            La boleta no requiere datos tributarios de empresa. El correo del
+            cliente puede usarse para entregar su representación.
+          </p>
         </div>
       ) : null}
 
@@ -615,7 +710,9 @@ export default function ManualIssuanceForm({
           <div>
             <h4 className="font-black text-slate-950">Líneas de detalle</h4>
             <p className="text-xs text-slate-600">
-              El precio del editor es neto. El IVA 19% se agrega al total.
+              {dteType === 39
+                ? "El precio del editor es final e incluye IVA."
+                : "El precio del editor es neto. El IVA 19% se agrega al total."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -629,7 +726,7 @@ export default function ManualIssuanceForm({
               className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold"
             >
               <option value="">Agregar servicio del catálogo</option>
-              {services.filter((service) => service.tax_treatment !== "exempt").map((service) => (
+              {services.map((service) => (
                 <option key={service.id} value={service.id}>
                   {service.name} · {clp(service.price)} total catálogo
                 </option>
@@ -651,7 +748,7 @@ export default function ManualIssuanceForm({
 
         <div className="mt-3 grid gap-3">
           {lines.map((line, index) => {
-            const lineNet = totals([line]).netAmount;
+            const calculatedLine = totals([line], dteType);
             return (
               <div
                 key={line.key}
@@ -684,7 +781,9 @@ export default function ManualIssuanceForm({
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-bold text-slate-600">
-                  Precio neto unitario
+                  {dteType === 39
+                    ? "Precio final unitario (IVA incluido)"
+                    : "Precio neto unitario"}
                   <input
                     type="number"
                     min={1}
@@ -694,8 +793,12 @@ export default function ManualIssuanceForm({
                     onChange={(event) =>
                       updateLine(line.key, {
                         unitNetAmount: Number(event.target.value),
-                        pricingMode: "manual_net",
-                        catalogUnitGrossAmount: null,
+                        ...(line.serviceId
+                          ? {}
+                          : {
+                              pricingMode: "manual_net" as const,
+                              catalogUnitGrossAmount: null,
+                            }),
                       })
                     }
                     className="h-10 rounded-lg border border-slate-200 px-3 text-sm text-slate-900"
@@ -719,8 +822,16 @@ export default function ManualIssuanceForm({
                   />
                 </label>
                 <div className="grid content-end pb-1">
-                  <span className="text-xs font-bold text-slate-500">Neto línea</span>
-                  <span className="text-sm font-black">{clp(lineNet)}</span>
+                  <span className="text-xs font-bold text-slate-500">
+                    {dteType === 39 ? "Total línea" : "Neto línea"}
+                  </span>
+                  <span className="text-sm font-black">
+                    {clp(
+                      dteType === 39
+                        ? calculatedLine.totalAmount
+                        : calculatedLine.netAmount,
+                    )}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -767,11 +878,17 @@ export default function ManualIssuanceForm({
 
       <div className="grid gap-4 rounded-2xl bg-slate-950 p-5 text-white md:grid-cols-[1fr_auto]">
         <div>
-          <p className="text-sm font-black">Factura electrónica tipo 33</p>
+          <p className="text-sm font-black">
+            {dteType === 39
+              ? "Boleta electrónica · modo PRE-CAF"
+              : "Factura electrónica tipo 33"}
+          </p>
           <p className="mt-1 text-xs text-slate-300">
             {savedDraft
               ? `Estado: ${savedDraft.status}.`
-              : "Al guardar seguirá siendo borrador y no consumirá folio."}
+              : dteType === 39
+                ? "Se puede guardar y revisar, pero no emitir ni reservar folio."
+                : "Al guardar seguirá siendo borrador y no consumirá folio."}
           </p>
         </div>
         <dl className="grid grid-cols-3 gap-5 text-right">
@@ -810,7 +927,7 @@ export default function ManualIssuanceForm({
           <Save className="h-4 w-4" />
           {saving ? "Guardando…" : savedDraft ? "Guardar cambios" : "Guardar borrador"}
         </button>
-        {savedDraft && savedDraft.status !== "QUEUED" ? (
+        {savedDraft && savedDraft.status !== "QUEUED" && dteType === 33 ? (
           <button
             type="button"
             onClick={() => void issue()}
@@ -820,6 +937,11 @@ export default function ManualIssuanceForm({
             <FileCheck2 className="h-4 w-4" />
             {issuing ? "Encolando…" : "Revisar y emitir"}
           </button>
+        ) : null}
+        {savedDraft && dteType === 39 ? (
+          <p className="text-center text-xs font-bold text-amber-700 sm:text-left">
+            Emisión tipo 39 deshabilitada hasta autorización y CAF oficial.
+          </p>
         ) : null}
         <button
           type="button"

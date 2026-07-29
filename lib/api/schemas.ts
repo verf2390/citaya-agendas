@@ -27,6 +27,7 @@ export const AppointmentCreateSchema = z.object({
   paymentStatus: AppointmentPaymentStatusSchema.optional(),
   idempotencyKey: z.string().max(128).optional(),
   invoiceRequested: z.boolean().optional(),
+  taxDocumentType: z.union([z.literal(33), z.literal(39)]).nullable().optional(),
   invoiceReceiverRut: optionalShortText(32),
   invoiceReceiverLegalName: optionalShortText(180),
   invoiceReceiverActivity: optionalShortText(180),

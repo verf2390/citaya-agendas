@@ -432,7 +432,9 @@ function ReservarInner() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [customerRut, setCustomerRut] = useState("");
-  const [invoiceRequested, setInvoiceRequested] = useState(false);
+  const [taxDocumentType, setTaxDocumentType] = useState<33 | 39 | null>(null);
+  const [boletaSelectionEnabled, setBoletaSelectionEnabled] = useState(false);
+  const invoiceRequested = taxDocumentType === 33;
   const [invoiceRut, setInvoiceRut] = useState("");
   const [invoiceLegalName, setInvoiceLegalName] = useState("");
   const [invoiceActivity, setInvoiceActivity] = useState("");
@@ -525,6 +527,9 @@ function ReservarInner() {
         if (!cancelled) {
           setTenantId(tenant.id ?? "");
           setTenantName(tenant.name ?? "");
+          setBoletaSelectionEnabled(
+            tenant.boleta_document_selection_enabled === true,
+          );
           setTenantPaymentMode(
             (tenant.payment_mode as TenantPaymentMode | undefined) ??
               "none",
@@ -967,6 +972,7 @@ function ReservarInner() {
 
         notes: null,
         invoiceRequested,
+        taxDocumentType,
         invoiceReceiverRut: invoiceRequested ? invoiceRut : null,
         invoiceReceiverLegalName: invoiceRequested ? invoiceLegalName : null,
         invoiceReceiverActivity: invoiceRequested ? invoiceActivity : null,
@@ -2253,16 +2259,60 @@ function ReservarInner() {
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
-                  <label className="flex items-center gap-2 text-[11px] font-extrabold sm:text-sm">
-                    <input
-                      type="checkbox"
-                      checked={invoiceRequested}
-                      onChange={(event) => setInvoiceRequested(event.target.checked)}
+                  <p className="text-[11px] font-extrabold sm:text-sm">
+                    ¿Qué documento necesitas?
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      disabled={saving || !tenantId || !boletaSelectionEnabled}
+                      onClick={() => setTaxDocumentType(39)}
+                      className={cn(
+                        "rounded-xl border p-3 text-left text-xs transition",
+                        taxDocumentType === 39
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white",
+                        !boletaSelectionEnabled && "cursor-not-allowed opacity-55",
+                      )}
+                    >
+                      <span className="block font-extrabold">
+                        Boleta electrónica — compra personal
+                      </span>
+                      <span className="mt-1 block opacity-75">
+                        {boletaSelectionEnabled
+                          ? "Precio final con IVA incluido."
+                          : "Disponible próximamente."}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
                       disabled={saving || !tenantId}
-                      className="h-4 w-4 accent-slate-900"
-                    />
-                    Necesito factura
-                  </label>
+                      onClick={() =>
+                        setTaxDocumentType((current) =>
+                          current === 33 ? null : 33,
+                        )
+                      }
+                      className={cn(
+                        "rounded-xl border p-3 text-left text-xs transition",
+                        taxDocumentType === 33
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-200 bg-white",
+                      )}
+                    >
+                      <span className="block font-extrabold">
+                        Factura electrónica — empresa
+                      </span>
+                      <span className="mt-1 block opacity-75">
+                        Requiere datos tributarios completos.
+                      </span>
+                    </button>
+                  </div>
+                  {taxDocumentType === null ? (
+                    <p className="mt-2 text-[10px] text-slate-500 sm:text-xs">
+                      Sin selección: la operación quedará pendiente de revisión
+                      y no se emitirá automáticamente.
+                    </p>
+                  ) : null}
                   {invoiceRequested ? (
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       {[

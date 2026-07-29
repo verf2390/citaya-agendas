@@ -24,6 +24,21 @@ export async function POST(
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
     return responseError(400, "La versión del borrador no es válida.");
   }
+  const typeResult = await supabaseAdmin
+    .from("dte_invoice_drafts")
+    .select("dte_type")
+    .eq("tenant_id", auth.tenantId)
+    .eq("id", id)
+    .maybeSingle();
+  if (typeResult.error || !typeResult.data) {
+    return responseError(404, "Borrador no encontrado.");
+  }
+  if (Number(typeResult.data.dte_type) === 39) {
+    return responseError(
+      409,
+      "La boleta está preparada en modo PRE-CAF, pero su emisión aún no está autorizada.",
+    );
+  }
 
   const result = await supabaseAdmin.rpc("finalize_dte_invoice_draft", {
     p_tenant_id: auth.tenantId,

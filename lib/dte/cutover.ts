@@ -78,13 +78,20 @@ export function normalizeTaxProfile(
 export function validateBookingTaxInput(input: {
   customerRut: unknown;
   invoiceRequested: boolean;
+  taxDocumentType?: 33 | 39 | null;
   taxProfile?: Partial<CustomerTaxProfileInput> | null;
 }) {
   const customerRut = normalizeRequiredCustomerRut(input.customerRut);
-  if (!input.invoiceRequested) {
+  const requestedDocumentType =
+    input.taxDocumentType === 33 || input.taxDocumentType === 39
+      ? input.taxDocumentType
+      : input.invoiceRequested
+        ? 33
+        : null;
+  if (requestedDocumentType !== 33) {
     return {
       customerRut,
-      requestedDocumentType: 39 as const,
+      requestedDocumentType,
       taxProfile: null,
     };
   }
