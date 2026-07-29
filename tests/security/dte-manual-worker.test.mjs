@@ -124,6 +124,27 @@ test("controlled XSD resume is single-use and preserves the exact existing folio
   assert.doesNotMatch(migration, /status\s*=\s*'CANCELED'/);
 });
 
+test("rg-spa ACTECO evidence is exact, audited and leaves issuance ownership untouched", () => {
+  const migration = read("migrations/202607290003_rg_issuer_activity_code.sql");
+  assert.match(migration, /where tenant\.slug = 'rg-spa'/);
+  assert.match(migration, /issuer_activity_code = '620900'/);
+  assert.match(migration, /'activityCode', '620900'/);
+  assert.match(migration, /'effectiveDate', '2026-04-27'/);
+  assert.match(migration, /'vatAffected', true/);
+  assert.match(migration, /issuer_activity_code_evidence_recorded/);
+  assert.match(migration, /dte_production_audit/);
+  assert.match(migration, /document\.folio = 8/);
+  assert.match(migration, /ledger\.state = 'reserved'/);
+  assert.match(migration, /ledger\.document_id = document\.id/);
+  assert.match(migration, /dte_production_artifacts/);
+  assert.match(migration, /dte_production_submission_attempts/);
+  assert.doesNotMatch(migration, /479100/);
+  assert.doesNotMatch(
+    migration,
+    /update public\.dte_(?:payment_document_intents|issuance_outbox|production_folio_ledger)/,
+  );
+});
+
 test("automatic payment enqueue stays blocked when automation is disabled", () => {
   const automaticMigration = read("migrations/202607240002_dte_automatic_issuance.sql");
   assert.match(
