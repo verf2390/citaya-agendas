@@ -277,18 +277,25 @@ export class ProductionSiiClient {
     const raw = await response.text();
     await input.milestone("status_after_fetch");
     const parsed = parseSiiStatusResponse(raw);
-    return {
-      trackId: input.trackId,
-      siiStatus: parsed.status,
-      responseSha256: sha256(raw),
-      responseBytes: Buffer.from(raw, "utf8"),
-      responseSafe: safeResponse({
+    const responseSafe = {
+      ...safeResponse({
         httpStatus: response.status,
         contentType: response.headers.get("content-type"),
         bytes: Buffer.byteLength(raw),
         category: "manual_status",
         siiStatus: parsed.status,
       }),
+      informedCount: parsed.informedCount,
+      acceptedCount: parsed.acceptedCount,
+      rejectedCount: parsed.rejectedCount,
+      objectionCount: parsed.objectionCount,
+    };
+    return {
+      trackId: input.trackId,
+      siiStatus: parsed.status,
+      responseSha256: sha256(raw),
+      responseBytes: Buffer.from(raw, "utf8"),
+      responseSafe,
     };
   }
 }

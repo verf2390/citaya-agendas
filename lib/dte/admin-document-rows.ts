@@ -1,4 +1,4 @@
-import { friendlyDteStatus } from "@/lib/dte/cutover";
+import { friendlyDteReason, friendlyDteStatus } from "@/lib/dte/cutover";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type DocumentIntentRow = {
@@ -16,6 +16,7 @@ type DocumentIntentRow = {
 type ProductionDocumentRow = {
   id: string;
   folio: number | null;
+  sii_status: string | null;
   track_id_fingerprint: string | null;
 };
 
@@ -77,7 +78,7 @@ export async function loadAdminDocumentRows(tenantId: string) {
   const productionResult = productionIds.length
     ? await supabaseAdmin
         .from("dte_production_documents")
-        .select("id,folio,track_id_fingerprint")
+        .select("id,folio,sii_status,track_id_fingerprint")
         .eq("tenant_id", tenantId)
         .in("id", productionIds)
     : { data: [], error: null };
@@ -126,10 +127,15 @@ export async function loadAdminDocumentRows(tenantId: string) {
       customer: row.receiver_snapshot?.legalName ??
         row.appointment_snapshot?.customerName ?? "Consumidor final",
       amount: row.amount_snapshot,
-      status: friendlyDteStatus(row.status, row.safe_blocking_reason),
+      status: friendlyDteStatus(
+        row.status,
+        row.safe_blocking_reason,
+        production?.sii_status,
+      ),
       rawStatus: row.status,
+      siiStatus: production?.sii_status ?? null,
       date: row.created_at,
-      blockingReason: row.safe_blocking_reason,
+      blockingReason: friendlyDteReason(row.safe_blocking_reason),
       terminal: [
         "BLOCKED", "SUBMITTED", "ACCEPTED", "ACCEPTED_WITH_OBJECTIONS",
         "REJECTED", "AMBIGUOUS", "CANCELED", "DELIVERY_PENDING", "DELIVERED",

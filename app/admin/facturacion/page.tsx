@@ -7,10 +7,10 @@ import {
   ChevronDown,
   Loader2,
   Pencil,
-  ReceiptText,
   RefreshCcw,
   Save,
   SlidersHorizontal,
+  X,
   XCircle,
 } from "lucide-react";
 
@@ -53,6 +53,8 @@ type DocumentRow = {
   canCreateNote: boolean;
   canEmail: boolean;
 };
+type BillingView = "summary" | "new" | "documents" | "settings" | "diagnostics";
+type DocumentFilter = "current" | "canceled" | "all";
 type BillingState = {
   globalProductionEnabled: boolean;
   technicalAccess: boolean;
@@ -135,6 +137,8 @@ export default function AdminFacturacionPage() {
   const [editingTax, setEditingTax] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [activeView, setActiveView] = useState<BillingView>("summary");
+  const [documentFilter, setDocumentFilter] = useState<DocumentFilter>("current");
 
   const load = async () => {
     setLoading(true);
@@ -154,7 +158,10 @@ export default function AdminFacturacionPage() {
     let active = true;
     void Promise.resolve().then(() => {
       const params = new URLSearchParams(window.location.search);
-      if (params.has("appointmentId") || params.has("customerId")) setManualOpen(true);
+      if (params.has("appointmentId") || params.has("customerId")) {
+        setManualOpen(true);
+        setActiveView("new");
+      }
     });
     void fetchBillingState()
       .then((nextState) => {
@@ -227,6 +234,35 @@ export default function AdminFacturacionPage() {
     const missing = state.steps.filter((step) => !step.ready).map((step) => step.label);
     return missing.length ? `Completa: ${missing.join(", ")}.` : "";
   }, [state]);
+  const documentCounts = useMemo(() => {
+    const canceled = state?.documents.filter((document) =>
+      document.rawStatus === "CANCELED"
+    ).length ?? 0;
+    const drafts = state?.documents.filter((document) =>
+      ["DRAFT", "VALIDATED"].includes(document.rawStatus)
+    ).length ?? 0;
+    const review = state?.documents.filter((document) =>
+      document.rawStatus === "REVIEW_REQUIRED"
+    ).length ?? 0;
+    const issued = state?.documents.filter((document) =>
+      Boolean(document.productionDocumentId) && document.rawStatus !== "CANCELED"
+    ).length ?? 0;
+    return { issued, drafts, review, canceled };
+  }, [state?.documents]);
+  const filteredDocuments = useMemo(() => {
+    const documents = state?.documents ?? [];
+    if (documentFilter === "canceled") {
+      return documents.filter((document) => document.rawStatus === "CANCELED");
+    }
+    if (documentFilter === "current") {
+      return documents.filter((document) => document.rawStatus !== "CANCELED");
+    }
+    return documents;
+  }, [documentFilter, state?.documents]);
+  const openInvoiceEditor = () => {
+    setManualOpen(true);
+    setActiveView("new");
+  };
 
   if (loading) {
     return (
@@ -262,9 +298,15 @@ export default function AdminFacturacionPage() {
         title="Facturación electrónica"
         description="Crea borradores, revisa documentos y administra la configuración tributaria."
         actions={
-          <button type="button" onClick={() => setManualOpen(true)} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white">
-            Nueva factura
-          </button>
+          ["summary", "documents"].includes(activeView) && !manualOpen ? (
+            <button
+              type="button"
+              onClick={openInvoiceEditor}
+              className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white hover:bg-blue-700"
+            >
+              Nueva factura
+            </button>
+          ) : null
         }
       />
 
@@ -275,37 +317,86 @@ export default function AdminFacturacionPage() {
         </div>
       ) : null}
 
-      <nav className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Secciones de facturación">
+      <nav className="mt-5 flex flex-wrap gap-2" aria-label="Secciones de facturación">
         {[
-          ["#resumen", "Resumen"],
-          ["#nueva-factura", "Nueva factura"],
-          ["#documentos", "Documentos"],
-          ["#configuracion", "Configuración tributaria"],
-          ["#diagnostico", "Diagnóstico"],
-        ].map(([href, label]) => (
-          <a key={href} href={href} className="whitespace-nowrap rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700">
+          ["summary", "Resumen"],
+          ["new", "Nueva factura"],
+          ["documents", "Documentos"],
+          ["settings", "Configuración tributaria"],
+          ["diagnostics", "Diagnóstico"],
+        ].filter(([view]) => view !== "diagnostics" || state.technicalAccess)
+          .map(([view, label]) => (
+          <button
+            type="button"
+            key={view}
+            onClick={() => {
+              setActiveView(view as BillingView);
+              setManualOpen(view === "new");
+            }}
+            aria-current={activeView === view ? "page" : undefined}
+            className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-black ${
+              activeView === view
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-200 bg-white text-slate-700"
+            }`}
+          >
             {label}
-          </a>
+          </button>
         ))}
       </nav>
 
-      <div id="nueva-factura" className="scroll-mt-24">
-        <AdminSectionCard className="mt-5" title="Nueva factura" description="Documento tipo 33 con uno o varios servicios. Los precios se ingresan netos y el IVA se muestra por separado." actions={<button type="button" onClick={() => setManualOpen((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><ReceiptText className="h-4 w-4" />{manualOpen ? "Cerrar editor" : "Crear borrador"}</button>}>
-          {manualOpen ? <ManualIssuanceForm onCreated={() => void refreshDocuments()} /> : (
-            <button type="button" onClick={() => setManualOpen(true)} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white">Comenzar factura</button>
-          )}
+      {activeView === "new" ? (
+        <div id="nueva-factura">
+        <AdminSectionCard
+          className="mt-5"
+          title="Nueva factura"
+          description="Documento tipo 33 con uno o varios servicios. Los precios se ingresan netos y el IVA se muestra por separado."
+          actions={
+            manualOpen ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setManualOpen(false);
+                  setActiveView("summary");
+                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"
+              >
+                <X className="h-4 w-4" />
+                Cerrar editor
+              </button>
+            ) : null
+          }
+        >
+          {manualOpen ? (
+            <ManualIssuanceForm
+              onCreated={() => void refreshDocuments()}
+              onClose={() => {
+                setManualOpen(false);
+                setActiveView("summary");
+              }}
+            />
+          ) : null}
         </AdminSectionCard>
-      </div>
+        </div>
+      ) : null}
 
-      <div id="resumen" className="scroll-mt-24">
+      {activeView === "summary" ? (
+      <div id="resumen">
       <AdminSectionCard className="mt-5" title="Resumen" description="Lo necesario para operar facturación hoy." actions={<StatusBadge label={state.status.label} tone={activationTone} />}>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl bg-emerald-50 p-4"><p className="text-xs font-bold uppercase text-emerald-700">Emisión manual</p><p className="mt-1 font-black text-emerald-950">{state.status.ready ? "Disponible" : "Requiere configuración"}</p></div>
-          <div className="rounded-2xl bg-slate-100 p-4"><p className="text-xs font-bold uppercase text-slate-600">Automatización</p><p className="mt-1 font-black text-slate-950">{state.policy.effectiveAutomatic ? "Activa" : "Desactivada"}</p></div>
-          <div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-700">Documentos visibles</p><p className="mt-1 text-2xl font-black text-blue-950">{state.documents.length}</p></div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Emitidos", documentCounts.issued, "bg-emerald-50 text-emerald-950"],
+            ["Borradores", documentCounts.drafts, "bg-blue-50 text-blue-950"],
+            ["Requieren revisión", documentCounts.review, "bg-amber-50 text-amber-950"],
+            ["Cancelados", documentCounts.canceled, "bg-slate-100 text-slate-950"],
+          ].map(([label, value, tone]) => (
+            <div key={String(label)} className={`rounded-2xl p-4 ${tone}`}>
+              <p className="text-xs font-bold uppercase">{label}</p>
+              <p className="mt-1 text-2xl font-black">{value}</p>
+            </div>
+          ))}
         </div>
       </AdminSectionCard>
-      </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <AdminSectionCard
@@ -339,21 +430,16 @@ export default function AdminFacturacionPage() {
             />
           </label>
           <p id="automatic-gate" className="mt-2 text-xs font-bold text-amber-800">{automaticGateReason || (state.policy.effectiveAutomatic ? "Automatización activa." : "Permanece desactivada. Los pagos confirmados quedan listos para revisión.")}</p>
-          <label className="mt-4 grid gap-1.5 text-sm font-bold">
-            Documento para consumidor final
-            <select value={draft.policy.consumerDocumentType} onChange={(event) => setDraft({ ...draft, policy: { ...draft.policy, consumerDocumentType: event.target.value as BillingState["policy"]["consumerDocumentType"] } })} className="h-11 rounded-xl border border-slate-200 bg-white px-3">
-              <option value="unsupported">No disponible</option>
-              <option value="39">Boleta afecta 39 — soporte productivo pendiente</option>
-              <option value="41">Boleta exenta 41 — soporte productivo pendiente</option>
-            </select>
-          </label>
           <label className="mt-3 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={draft.policy.invoiceOnRequest} onChange={(event) => setDraft({ ...draft, policy: { ...draft.policy, invoiceOnRequest: event.target.checked } })} className="h-4 w-4" />Factura cuando el cliente la solicite</label>
           <label className="mt-3 flex items-center gap-2 text-sm font-bold"><input type="checkbox" checked={draft.policy.autoEmailDelivery} onChange={(event) => setDraft({ ...draft, policy: { ...draft.policy, autoEmailDelivery: event.target.checked } })} className="h-4 w-4" />Enviar por email al alcanzar un estado entregable</label>
           <button type="button" onClick={() => void save()} disabled={saving} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-50"><Save className="h-4 w-4" />{saving ? "Guardando…" : "Guardar política"}</button>
         </AdminSectionCard>
       </div>
+      </div>
+      ) : null}
 
-      <div id="configuracion" className="scroll-mt-24">
+      {activeView === "settings" ? (
+      <div id="configuracion">
       <AdminSectionCard className="mt-5" title="Configuración tributaria" description="Fuente maestra de la identidad fiscal utilizada únicamente por este negocio." actions={<button type="button" onClick={() => setEditingTax((value) => !value)} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><Pencil className="h-4 w-4" />{editingTax ? "Cerrar" : "Editar"}</button>}>
         {!editingTax ? (
           <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -374,17 +460,116 @@ export default function AdminFacturacionPage() {
         )}
       </AdminSectionCard>
       </div>
+      ) : null}
 
-      <div id="documentos" className="scroll-mt-24">
+      {activeView === "documents" ? (
+      <div id="documentos">
       <AdminSectionCard className="mt-5" title="Documentos" description={documentsRefreshing ? "Actualizando estados en segundo plano…" : "Borradores, documentos en revisión y emisiones del negocio."}>
-        {state.documents.length ? (
-          <div className="overflow-x-auto" aria-live="polite"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-500">{["Tipo", "Folio", "Cliente", "Total IVA incluido", "Estado", "Fecha", "Acciones"].map((value) => <th key={value} className="px-3 py-2">{value}</th>)}</tr></thead><tbody>{state.documents.map((document) => <tr key={document.id} className="border-b border-slate-100"><td className="px-3 py-3 font-bold">{documentLabel(document.type)}</td><td className="px-3 py-3">{document.folio ?? "—"}</td><td className="px-3 py-3">{document.customer}</td><td className="px-3 py-3 font-bold">{money(document.amount)}</td><td className="px-3 py-3"><StatusBadge label={document.status} tone={document.rawStatus === "BLOCKED" ? "amber" : document.rawStatus === "ACCEPTED" ? "green" : "blue"} />{document.blockingReason ? <p className="mt-1 text-xs font-bold text-amber-800">{document.blockingReason}</p> : null}</td><td className="px-3 py-3">{dateLabel(document.date)}</td><td className="px-3 py-3"><div className="flex gap-2">{document.productionDocumentId ? <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} /> : <span className="text-xs text-slate-400">Sin artefactos</span>}{document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void refreshDocuments()} /> : null}</div></td></tr>)}</tbody></table></div>
-        ) : <EmptyState title="Aún no hay documentos" description="Las emisiones e intenciones de este negocio aparecerán aquí." />}
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["Emitidos", documentCounts.issued],
+            ["Borradores", documentCounts.drafts],
+            ["Requieren revisión", documentCounts.review],
+            ["Cancelados", documentCounts.canceled],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-xl bg-slate-50 p-3">
+              <p className="text-xs font-bold uppercase text-slate-500">{label}</p>
+              <p className="mt-1 text-xl font-black text-slate-950">{value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2" aria-label="Filtros de documentos">
+          {[
+            ["current", "Vigentes"],
+            ["canceled", `Cancelados (${documentCounts.canceled})`],
+            ["all", "Todos"],
+          ].map(([filter, label]) => (
+            <button
+              type="button"
+              key={filter}
+              onClick={() => setDocumentFilter(filter as DocumentFilter)}
+              aria-pressed={documentFilter === filter}
+              className={`rounded-full border px-3 py-1.5 text-xs font-black ${
+                documentFilter === filter
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-slate-200 bg-white text-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {filteredDocuments.length ? (
+          <div className="mt-4" aria-live="polite">
+            <div className="grid gap-3 md:hidden">
+              {filteredDocuments.map((document) => (
+                <article key={document.id} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-black text-slate-950">{documentLabel(document.type)}</p>
+                      <p className="text-xs text-slate-500">
+                        Folio {document.folio ?? "pendiente"} · {dateLabel(document.date)}
+                      </p>
+                    </div>
+                    <StatusBadge
+                      label={document.status}
+                      tone={document.rawStatus === "BLOCKED"
+                        ? "amber"
+                        : document.status.startsWith("Aceptado")
+                          ? "green"
+                          : "blue"}
+                    />
+                  </div>
+                  <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div><dt className="text-xs text-slate-500">Cliente</dt><dd className="font-bold">{document.customer}</dd></div>
+                    <div><dt className="text-xs text-slate-500">Total IVA incluido</dt><dd className="font-black">{money(document.amount)}</dd></div>
+                  </dl>
+                  {document.blockingReason ? (
+                    <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900">
+                      {document.blockingReason}
+                    </p>
+                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {document.productionDocumentId ? (
+                      <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} />
+                    ) : <span className="text-xs text-slate-400">Sin artefactos</span>}
+                    {document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void refreshDocuments()} /> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="hidden md:block">
+              <table className="w-full text-left text-sm">
+                <thead><tr className="border-b text-xs uppercase text-slate-500">{["Tipo", "Folio", "Cliente", "Total IVA incluido", "Estado", "Fecha", "Acciones"].map((value) => <th key={value} className="px-3 py-2">{value}</th>)}</tr></thead>
+                <tbody>{filteredDocuments.map((document) => (
+                  <tr key={document.id} className="border-b border-slate-100">
+                    <td className="px-3 py-3 font-bold">{documentLabel(document.type)}</td>
+                    <td className="px-3 py-3">{document.folio ?? "—"}</td>
+                    <td className="px-3 py-3">{document.customer}</td>
+                    <td className="px-3 py-3 font-bold">{money(document.amount)}</td>
+                    <td className="px-3 py-3">
+                      <StatusBadge label={document.status} tone={document.rawStatus === "BLOCKED" ? "amber" : document.status.startsWith("Aceptado") ? "green" : "blue"} />
+                      {document.blockingReason ? <p className="mt-1 max-w-xs text-xs font-bold leading-5 text-amber-800">{document.blockingReason}</p> : null}
+                    </td>
+                    <td className="px-3 py-3">{dateLabel(document.date)}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {document.productionDocumentId ? <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} /> : <span className="text-xs text-slate-400">Sin artefactos</span>}
+                        {document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void refreshDocuments()} /> : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </div>
+        ) : <EmptyState title="No hay documentos en este filtro" description="Selecciona otro filtro o crea una nueva factura." />}
       </AdminSectionCard>
       </div>
+      ) : null}
 
-      {state.technicalAccess ? (
-        <div id="diagnostico" className="scroll-mt-24">
+      {activeView === "diagnostics" && state.technicalAccess ? (
+        <div id="diagnostico">
         <AdminSectionCard className="mt-5" title="Diagnóstico y detalles técnicos" description="Autorización, activación legal, XML, XSD, firma, identificadores y trazas para soporte autorizado." actions={<button type="button" onClick={() => setAdvancedOpen((value) => !value)} aria-expanded={advancedOpen} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black"><SlidersHorizontal className="h-4 w-4" />{advancedOpen ? "Cerrar detalles" : "Abrir detalles"}<ChevronDown className={`h-4 w-4 transition ${advancedOpen ? "rotate-180" : ""}`} /></button>}>
           {advancedOpen ? <div className="grid gap-5 border-t border-slate-200 pt-4">
             <DeclarationReadinessCard state={state.declaration} />

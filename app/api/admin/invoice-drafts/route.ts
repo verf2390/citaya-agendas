@@ -122,8 +122,7 @@ export async function POST(req: Request) {
     !isUuid(customerId) ||
     (appointmentId !== null && !isUuid(appointmentId)) ||
     (paymentIntentId !== null && !isUuid(paymentIntentId)) ||
-    !["manual", "appointment", "payment"].includes(source) ||
-    (source === "manual" && operationalReason.length < 10)
+    !["manual", "appointment", "payment"].includes(source)
   ) {
     return errorResponse(400, "Los datos del borrador no son válidos.");
   }
@@ -266,7 +265,9 @@ export async function POST(req: Request) {
       total_amount: totals.totalAmount,
       payment_amount_snapshot: paymentAmount,
       review_reason: reviewReason,
-      operational_reason: operationalReason || null,
+      operational_reason:
+        operationalReason ||
+        (source === "manual" ? "Factura manual creada desde el editor" : null),
       created_by: auth.userId,
       updated_by: auth.userId,
     })

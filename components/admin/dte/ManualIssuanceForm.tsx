@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, FileCheck2, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, FileCheck2, Plus, Save, Trash2, X } from "lucide-react";
 
 import { adminFetch } from "@/lib/api/adminFetch";
 import { calculateInvoiceTotals } from "@/lib/dte/invoice-drafts";
@@ -147,8 +147,10 @@ function newLine(): EditorLine {
 
 export default function ManualIssuanceForm({
   onCreated,
+  onClose,
 }: {
   onCreated: () => void;
+  onClose: () => void;
 }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -238,8 +240,7 @@ export default function ManualIssuanceForm({
         line.unitNetAmount > 0 &&
         line.discountPercent >= 0 &&
         line.discountPercent <= 100,
-    ) &&
-    (source !== "manual" || operationalReason.trim().length >= 10);
+    );
 
   const markChanged = () => {
     setFeedback("");
@@ -519,6 +520,46 @@ export default function ManualIssuanceForm({
         </div>
       </div>
 
+      {selectedCustomer ? (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-blue-700">
+                Datos tributarios vigentes del receptor
+              </p>
+              <p className="mt-1 text-xs leading-5 text-blue-900">
+                Estos datos maestros se volverán a validar y quedarán congelados
+                al confirmar la emisión.
+              </p>
+            </div>
+            <Link
+              href={`/admin/customers?edit=${selectedCustomer.id}&returnTo=/admin/facturacion`}
+              className="shrink-0 text-sm font-black text-blue-700 underline"
+            >
+              Editar datos tributarios
+            </Link>
+          </div>
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              ["Razón social", selectedCustomer.tax_profile?.legal_name],
+              ["RUT", selectedCustomer.tax_profile?.rut_normalized],
+              ["Giro", selectedCustomer.tax_profile?.business_activity],
+              ["Dirección", selectedCustomer.tax_profile?.tax_address],
+              ["Comuna", selectedCustomer.tax_profile?.tax_commune],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl bg-white/90 p-3">
+                <dt className="text-xs font-bold uppercase text-slate-500">
+                  {label}
+                </dt>
+                <dd className="mt-1 font-black text-slate-900">
+                  {value || "Pendiente"}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
       {source === "appointment" ? (
         <label className="grid gap-1.5 text-sm font-bold">
           Reserva relacionada
@@ -703,7 +744,10 @@ export default function ManualIssuanceForm({
 
       {source === "manual" ? (
         <label className="grid gap-1.5 text-sm font-bold">
-          Motivo operacional
+          <span>
+            Referencia u observación{" "}
+            <span className="font-medium text-slate-500">(opcional)</span>
+          </span>
           <textarea
             value={operationalReason}
             disabled={Boolean(savedDraft)}
@@ -711,11 +755,13 @@ export default function ManualIssuanceForm({
               setOperationalReason(event.target.value);
               markChanged();
             }}
-            minLength={10}
             maxLength={500}
             className="min-h-20 rounded-xl border border-slate-200 p-3"
-            placeholder="Describe el respaldo de esta venta manual."
+            placeholder="Agrega una referencia interna o una descripción adicional de la venta."
           />
+          <span className="text-xs font-medium text-slate-500">
+            Agrega una referencia interna o una descripción adicional de la venta.
+          </span>
         </label>
       ) : null}
 
@@ -754,12 +800,12 @@ export default function ManualIssuanceForm({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="sticky bottom-3 z-20 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:flex-wrap sm:items-center">
         <button
           type="button"
           onClick={() => void saveDraft()}
           disabled={!canSave || saving || savedDraft?.status === "QUEUED"}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-black disabled:opacity-40"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-black disabled:opacity-40 sm:w-auto"
         >
           <Save className="h-4 w-4" />
           {saving ? "Guardando…" : savedDraft ? "Guardar cambios" : "Guardar borrador"}
@@ -769,12 +815,20 @@ export default function ManualIssuanceForm({
             type="button"
             onClick={() => void issue()}
             disabled={issuing || !paymentMatches}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40 sm:w-auto"
           >
             <FileCheck2 className="h-4 w-4" />
             {issuing ? "Encolando…" : "Revisar y emitir"}
           </button>
         ) : null}
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black text-slate-700 sm:ml-auto sm:w-auto"
+        >
+          <X className="h-4 w-4" />
+          Cerrar editor
+        </button>
       </div>
     </div>
   );

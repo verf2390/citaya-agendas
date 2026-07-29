@@ -151,11 +151,60 @@ export function canEmailDte(status: string): boolean {
   return DTE_DELIVERABLE_STATES.has(String(status).toUpperCase());
 }
 
+export function canonicalIntentStatusForSiiStatus(
+  siiStatus: string | null | undefined,
+): "SUBMITTED" | "ACCEPTED" | "ACCEPTED_WITH_OBJECTIONS" | "REJECTED" {
+  const normalized = String(siiStatus ?? "").trim().toLowerCase();
+  if (["accepted", "epr", "aceptado"].includes(normalized)) return "ACCEPTED";
+  if (
+    ["accepted_with_observations", "accepted_with_objections", "eok"]
+      .includes(normalized)
+  ) {
+    return "ACCEPTED_WITH_OBJECTIONS";
+  }
+  if (["rejected", "rch", "rechazado"].includes(normalized)) return "REJECTED";
+  return "SUBMITTED";
+}
+
+export function planSiiStatusReconciliation(
+  currentIntentStatus: string | null | undefined,
+  siiStatus: string | null | undefined,
+) {
+  const normalizedSiiStatus = String(siiStatus ?? "").trim().toLowerCase();
+  const currentStatus = String(currentIntentStatus ?? "").toUpperCase();
+  const reconcilable = [
+    "accepted", "epr", "aceptado",
+    "accepted_with_observations", "accepted_with_objections", "eok",
+    "rejected", "rch", "rechazado",
+    "sent", "rec", "processing", "pdr",
+  ].includes(normalizedSiiStatus);
+  const targetStatus = canonicalIntentStatusForSiiStatus(siiStatus);
+  return {
+    targetStatus: reconcilable ? targetStatus : currentStatus || "SUBMITTED",
+    shouldReconcile: reconcilable && currentStatus !== targetStatus,
+  };
+}
+
+export function friendlyDteReason(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  if (reason === "operator_amount_error_before_issuance") {
+    return "El monto no coincidía con la operación y la emisión fue cancelada antes de utilizar un folio.";
+  }
+  return reason;
+}
+
 export function friendlyDteStatus(
   status: string | null | undefined,
   reason?: string | null,
+  siiStatus?: string | null,
 ): string {
   const normalized = String(status ?? "").toUpperCase();
+  const canonicalSiiStatus = canonicalIntentStatusForSiiStatus(siiStatus);
+  if (canonicalSiiStatus === "ACCEPTED") return "Aceptado por el SII";
+  if (canonicalSiiStatus === "ACCEPTED_WITH_OBJECTIONS") {
+    return "Aceptado por el SII con reparos";
+  }
+  if (canonicalSiiStatus === "REJECTED") return "Rechazado por el SII";
   if (normalized === "DRAFT") return "Borrador";
   if (normalized === "REVIEW_REQUIRED") return "Requiere revisión";
   if (normalized === "VALIDATED") return "Validado";
@@ -166,8 +215,8 @@ export function friendlyDteStatus(
   if (normalized === "PENDING") return "Pendiente de procesamiento";
   if (["PREPARING", "READY", "SUBMITTING"].includes(normalized)) return "Procesando emisión";
   if (normalized === "SUBMITTED") return "Enviado al SII";
-  if (normalized === "ACCEPTED") return "Documento aceptado";
-  if (normalized === "ACCEPTED_WITH_OBJECTIONS") return "Documento con reparos";
+  if (normalized === "ACCEPTED") return "Aceptado por el SII";
+  if (normalized === "ACCEPTED_WITH_OBJECTIONS") return "Aceptado por el SII con reparos";
   if (normalized === "REJECTED") return "Emisión fallida: rechazo SII";
   if (normalized === "AMBIGUOUS") return "Emisión fallida: resultado ambiguo";
   if (normalized === "BLOCKED") return `Emisión fallida: ${reason ?? "control pendiente"}`;

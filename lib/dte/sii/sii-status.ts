@@ -29,6 +29,33 @@ function valueFromRecord(record: Record<string, unknown>, keys: string[]): strin
   return "";
 }
 
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, "&");
+}
+
+function xmlValue(raw: string, names: readonly string[]): string | null {
+  for (const name of names) {
+    const match = raw.match(
+      new RegExp(
+        `<(?:[A-Za-z0-9_-]+:)?${name}[^>]*>\\s*([^<]+)`,
+        "i",
+      ),
+    );
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return null;
+}
+
+function integerXmlValue(raw: string, names: readonly string[]): number | null {
+  const value = xmlValue(raw, names);
+  return value !== null && /^\d+$/.test(value) ? Number(value) : null;
+}
+
 function parseRawResponse(rawResponse: unknown): Record<string, unknown> {
   if (!rawResponse) return {};
   if (typeof rawResponse === "object") return rawResponse as Record<string, unknown>;
@@ -37,10 +64,17 @@ function parseRawResponse(rawResponse: unknown): Record<string, unknown> {
   try {
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
-    const track = raw.match(/<(?:TRACKID|TRACK_ID|trackId)[^>]*>([^<]+)</i)?.[1];
-    const status = raw.match(/<(?:ESTADO|STATUS|estado|status)[^>]*>([^<]+)</i)?.[1];
-    const message = raw.match(/<(?:GLOSA|MESSAGE|message)[^>]*>([^<]+)</i)?.[1];
-    return { trackId: track, status, message, raw };
+    const decoded = decodeXmlEntities(raw);
+    return {
+      trackId: xmlValue(decoded, ["TRACKID", "TRACK_ID"]),
+      status: xmlValue(decoded, ["ESTADO", "STATUS"]),
+      message: xmlValue(decoded, ["GLOSA", "MESSAGE"]),
+      informedCount: integerXmlValue(decoded, ["INFORMADOS", "INFORMADO"]),
+      acceptedCount: integerXmlValue(decoded, ["ACEPTADOS", "ACEPTADO"]),
+      rejectedCount: integerXmlValue(decoded, ["RECHAZADOS", "RECHAZADO"]),
+      objectionCount: integerXmlValue(decoded, ["REPAROS", "REPARO"]),
+      raw,
+    };
   }
 }
 
@@ -71,12 +105,22 @@ export function mapSiiStatusToInternalStatus(
 
 export function parseSiiSubmissionResponse(rawResponse: unknown): SiiParsedResponse & {
   internalStatus: DteOperationalStatus;
+  informedCount: number | null;
+  acceptedCount: number | null;
+  rejectedCount: number | null;
+  objectionCount: number | null;
 } {
   const record = parseRawResponse(rawResponse);
   const rawStatus = valueFromRecord(record, ["status", "estado", "code", "STATUS", "ESTADO"]);
   const status = mapRawSiiStatus(rawStatus);
   const trackId = valueFromRecord(record, ["trackId", "track_id", "TRACKID", "TRACK_ID"]);
   const message = valueFromRecord(record, ["message", "glosa", "GLOSA", "error"]);
+  const count = (key: string) => {
+    const value = record[key];
+    return typeof value === "number" && Number.isSafeInteger(value)
+      ? value
+      : null;
+  };
 
   return {
     trackId: trackId || null,
@@ -84,11 +128,19 @@ export function parseSiiSubmissionResponse(rawResponse: unknown): SiiParsedRespo
     rawStatus: rawStatus || null,
     message: message || null,
     internalStatus: mapSiiStatusToInternalStatus(status),
+    informedCount: count("informedCount"),
+    acceptedCount: count("acceptedCount"),
+    rejectedCount: count("rejectedCount"),
+    objectionCount: count("objectionCount"),
   };
 }
 
 export function parseSiiStatusResponse(rawResponse: unknown): SiiParsedResponse & {
   internalStatus: DteOperationalStatus;
+  informedCount: number | null;
+  acceptedCount: number | null;
+  rejectedCount: number | null;
+  objectionCount: number | null;
 } {
   return parseSiiSubmissionResponse(rawResponse);
 }
