@@ -175,18 +175,20 @@ create or replace function public.dte_billing_assert_tenant_ownership()
 returns trigger language plpgsql set search_path = public as $$
 begin
   if tg_op='DELETE' then return old; end if;
-  if tg_table_name in ('billing_sales','dte_invoice_drafts') then
+  if tg_table_name='billing_sales' then
     if not exists (
       select 1 from public.customers c
       where c.id=new.customer_id and c.tenant_id=new.tenant_id
     ) then raise exception 'DTE_CUSTOMER_TENANT_MISMATCH'; end if;
-  end if;
-  if tg_table_name='billing_sales' and new.payment_intent_id is not null and
-     not exists (
-       select 1 from public.payment_intents p
-       where p.id=new.payment_intent_id and p.tenant_id=new.tenant_id
-     ) then raise exception 'DTE_PAYMENT_TENANT_MISMATCH'; end if;
-  if tg_table_name='dte_invoice_drafts' then
+    if new.payment_intent_id is not null and not exists (
+      select 1 from public.payment_intents p
+      where p.id=new.payment_intent_id and p.tenant_id=new.tenant_id
+    ) then raise exception 'DTE_PAYMENT_TENANT_MISMATCH'; end if;
+  elsif tg_table_name='dte_invoice_drafts' then
+    if not exists (
+      select 1 from public.customers c
+      where c.id=new.customer_id and c.tenant_id=new.tenant_id
+    ) then raise exception 'DTE_CUSTOMER_TENANT_MISMATCH'; end if;
     if new.payment_intent_id is not null and not exists (
       select 1 from public.payment_intents p
       where p.id=new.payment_intent_id and p.tenant_id=new.tenant_id
@@ -195,18 +197,27 @@ begin
       select 1 from public.appointments a
       where a.id=new.appointment_id and a.tenant_id=new.tenant_id
     ) then raise exception 'DTE_APPOINTMENT_TENANT_MISMATCH'; end if;
-  end if;
-  if tg_table_name in ('billing_sale_items','dte_invoice_draft_lines') then
+  elsif tg_table_name='billing_sale_items' then
     if new.service_id is not null and not exists (
       select 1 from public.services s
       where s.id=new.service_id and s.tenant_id=new.tenant_id
     ) then raise exception 'DTE_SERVICE_TENANT_MISMATCH'; end if;
-  end if;
-  if tg_table_name in ('billing_sale_appointments','dte_invoice_draft_lines') then
+  elsif tg_table_name='billing_sale_appointments' then
     if new.appointment_id is not null and not exists (
       select 1 from public.appointments a
       where a.id=new.appointment_id and a.tenant_id=new.tenant_id
     ) then raise exception 'DTE_APPOINTMENT_TENANT_MISMATCH'; end if;
+  elsif tg_table_name='dte_invoice_draft_lines' then
+    if new.service_id is not null and not exists (
+      select 1 from public.services s
+      where s.id=new.service_id and s.tenant_id=new.tenant_id
+    ) then raise exception 'DTE_SERVICE_TENANT_MISMATCH'; end if;
+    if new.appointment_id is not null and not exists (
+      select 1 from public.appointments a
+      where a.id=new.appointment_id and a.tenant_id=new.tenant_id
+    ) then raise exception 'DTE_APPOINTMENT_TENANT_MISMATCH'; end if;
+  else
+    raise exception 'DTE_TENANT_TRIGGER_TABLE_UNSUPPORTED';
   end if;
   return new;
 end;
