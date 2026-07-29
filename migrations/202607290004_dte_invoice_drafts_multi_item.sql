@@ -805,19 +805,34 @@ grant select on public.billing_sales,public.billing_sale_items,
 
 create policy billing_sales_tenant_read on public.billing_sales
   for select to authenticated
-  using (public.is_tenant_member(tenant_id) or public.is_platform_admin());
+  using (
+    public.is_tenant_member(tenant_id,auth.uid()) or
+    public.is_platform_admin(auth.uid())
+  );
 create policy billing_sale_items_tenant_read on public.billing_sale_items
   for select to authenticated
-  using (public.is_tenant_member(tenant_id) or public.is_platform_admin());
+  using (
+    public.is_tenant_member(tenant_id,auth.uid()) or
+    public.is_platform_admin(auth.uid())
+  );
 create policy billing_sale_appointments_tenant_read
   on public.billing_sale_appointments for select to authenticated
-  using (public.is_tenant_member(tenant_id) or public.is_platform_admin());
+  using (
+    public.is_tenant_member(tenant_id,auth.uid()) or
+    public.is_platform_admin(auth.uid())
+  );
 create policy dte_invoice_drafts_tenant_read on public.dte_invoice_drafts
   for select to authenticated
-  using (public.is_tenant_member(tenant_id) or public.is_platform_admin());
+  using (
+    public.is_tenant_member(tenant_id,auth.uid()) or
+    public.is_platform_admin(auth.uid())
+  );
 create policy dte_invoice_draft_lines_tenant_read
   on public.dte_invoice_draft_lines for select to authenticated
-  using (public.is_tenant_member(tenant_id) or public.is_platform_admin());
+  using (
+    public.is_tenant_member(tenant_id,auth.uid()) or
+    public.is_platform_admin(auth.uid())
+  );
 
 comment on table public.dte_invoice_drafts is
   'Editable multi-item factura 33 drafts. Folios are never reserved at this stage.';
