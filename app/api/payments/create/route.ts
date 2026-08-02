@@ -197,8 +197,9 @@ export async function POST(req: Request) {
         .in("status", ["PENDING", "PARTIALLY_PAID"])
         .order("created_at", { ascending: true }).limit(1).maybeSingle(),
     ]);
-    const requiredAmount = Number(schedule ? Number(schedule.amount) - Number(schedule.paid_amount) : sale?.balance_due ?? 0);
-    if (!sale || !Number.isSafeInteger(requiredAmount) || requiredAmount <= 0 || sale.payment_state === "PAID") return jsonError(409);
+    if (!sale || !schedule) return jsonError(409);
+    const requiredAmount = Number(schedule.amount) - Number(schedule.paid_amount);
+    if (!Number.isSafeInteger(requiredAmount) || requiredAmount <= 0 || sale.payment_state === "PAID") return jsonError(409);
     const config = providerConfig(providerId, paymentConfig);
     if (!paymentConfig.enabled || !config.enabled) {
       return jsonError(409);
