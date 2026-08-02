@@ -71,6 +71,7 @@ type BillingState = {
     boletaModelVerifiedAt: string | null;
     boletaModelVerifiedBy: string | null;
     boletaModelEvidenceReference: string | null;
+    paymentMethodTaxPolicies: Partial<Record<"mercadopago" | "webpay" | "khipu" | "manual", "voucher_as_boleta" | "requires_boleta">>;
   };
   tax: {
     legalName: string; taxId: string; businessActivity: string; address: string;
@@ -219,6 +220,7 @@ export default function AdminFacturacionPage() {
         depositTaxDocumentPolicyStatus: draft.policy.depositTaxDocumentPolicyStatus,
         boletaPaymentDocumentModel: draft.policy.boletaPaymentDocumentModel,
         boletaModelEvidenceReference: draft.policy.boletaModelEvidenceReference,
+        paymentMethodTaxPolicies: draft.policy.paymentMethodTaxPolicies,
         taxTreatment: draft.tax.taxTreatment,
         tax: draft.tax,
       }),
@@ -481,6 +483,35 @@ export default function AdminFacturacionPage() {
         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900">
           Citaya recomienda “Siempre emitir boleta”, pero no cambia automáticamente la declaración del contribuyente. Una configuración incorrecta puede duplicar el documento tributario.
         </div>
+        {draft.policy.boletaPaymentDocumentModel === "electronic_payment_voucher_as_boleta" ? (
+          <div className="mt-4 grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+            <p className="text-xs font-bold leading-5 text-slate-700 sm:col-span-2">Clasifica cada medio únicamente según la declaración verificada del contribuyente. Sin clasificación, Citaya bloquea el cobro que requiera boleta.</p>
+            {(["mercadopago", "webpay", "khipu", "manual"] as const).map((provider) => (
+              <label key={provider} className="grid gap-1 text-xs font-bold capitalize">{provider}
+                <select
+                  value={draft.policy.paymentMethodTaxPolicies?.[provider] ?? "unconfigured"}
+                  onChange={(event) => setDraft({
+                    ...draft,
+                    policy: {
+                      ...draft.policy,
+                      paymentMethodTaxPolicies: {
+                        ...draft.policy.paymentMethodTaxPolicies,
+                        [provider]: event.target.value === "unconfigured"
+                          ? undefined
+                          : event.target.value as "voucher_as_boleta" | "requires_boleta",
+                      },
+                    },
+                  })}
+                  className="h-10 rounded-xl border bg-white px-3 normal-case"
+                >
+                  <option value="unconfigured">Sin verificar — bloqueado</option>
+                  <option value="voucher_as_boleta">Voucher opera como boleta</option>
+                  <option value="requires_boleta">Requiere boleta Citaya</option>
+                </select>
+              </label>
+            ))}
+          </div>
+        ) : null}
         <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
           <div><dt className="font-bold text-slate-500">Verificado</dt><dd>{state.policy.boletaModelVerifiedAt ? dateLabel(state.policy.boletaModelVerifiedAt) : "Pendiente"}</dd></div>
           <div><dt className="font-bold text-slate-500">Administrador</dt><dd>{state.policy.boletaModelVerifiedBy ?? "Pendiente"}</dd></div>

@@ -13,9 +13,9 @@ type TenantResolution = {
 };
 
 const SERVICE_SELECT =
-  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
 const SERVICE_SELECT_NO_CREATED =
-  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
 
 function getHostnameFromReq(req: Request) {
   const host =
@@ -41,19 +41,31 @@ function parsePolicy(body: Record<string, unknown>, price: number) {
   const depositValue = depositValueRaw == null || depositValueRaw === ""
     ? null
     : parseNonNegativeNumber(depositValueRaw);
+  const minimumRaw = body?.depositMinimum ?? body?.deposit_min_amount ?? null;
+  const maximumRaw = body?.depositMaximum ?? body?.deposit_max_amount ?? null;
+  const depositMinimum = minimumRaw == null || minimumRaw === "" ? null : parseNonNegativeNumber(minimumRaw);
+  const depositMaximum = maximumRaw == null || maximumRaw === "" ? null : parseNonNegativeNumber(maximumRaw);
   const expiry = parsePositiveInteger(body?.provisionalExpiryMinutes ?? body?.provisional_expiry_minutes ?? 30);
   if (!new Set(["no_advance", "deposit", "full_payment"]).has(paymentPolicy)) return null;
   if (!expiry || expiry > 10080) return null;
+  if (paymentPolicy === "full_payment" && price <= 0) return null;
   if (paymentPolicy !== "deposit") return {
     payment_policy: paymentPolicy, deposit_type: null, deposit_value: null,
+    deposit_min_amount: null, deposit_max_amount: null,
     provisional_expiry_minutes: expiry, payment_configuration_complete: true,
   };
+  const validLimits = (depositMinimum == null || depositMinimum > 0 && depositMinimum <= price) &&
+    (depositMaximum == null || depositMaximum > 0 && depositMaximum <= price) &&
+    (depositMinimum == null || depositMaximum == null || depositMinimum <= depositMaximum);
+  if (!validLimits || price <= 0) return null;
   if (depositType === "fixed_amount" && depositValue != null && depositValue > 0 && depositValue <= price) {
     return { payment_policy: paymentPolicy, deposit_type: depositType, deposit_value: depositValue,
+      deposit_min_amount: depositMinimum, deposit_max_amount: depositMaximum,
       provisional_expiry_minutes: expiry, payment_configuration_complete: true };
   }
-  if (depositType === "percentage" && depositValue != null && depositValue >= 1 && depositValue <= 10000) {
+  if (depositType === "percentage" && depositValue != null && depositValue >= 1 && depositValue < 10000) {
     return { payment_policy: paymentPolicy, deposit_type: depositType, deposit_value: depositValue,
+      deposit_min_amount: depositMinimum, deposit_max_amount: depositMaximum,
       provisional_expiry_minutes: expiry, payment_configuration_complete: true };
   }
   return null;
@@ -320,7 +332,7 @@ export async function PATCH(req: Request) {
       }
       update.price = price;
     }
-    const changesPolicy = ["paymentPolicy","payment_policy","depositType","deposit_type","depositValue","deposit_value","provisionalExpiryMinutes","provisional_expiry_minutes"]
+    const changesPolicy = ["paymentPolicy","payment_policy","depositType","deposit_type","depositValue","deposit_value","depositMinimum","deposit_min_amount","depositMaximum","deposit_max_amount","provisionalExpiryMinutes","provisional_expiry_minutes"]
       .some((key) => key in (body ?? {}));
     if (changesPolicy) {
       const nextPrice = Number(update.price ?? existing.data.price ?? 0);

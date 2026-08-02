@@ -53,6 +53,15 @@ async function handleWebpayReturn(req: Request) {
     const transaction = await webpayTransaction(credentials).commit(token);
     const verified = verifyWebpayCommit(intent, transaction, token);
     if (!verified.ok) {
+      if (verified.reason === "amount_mismatch") {
+        await supabaseAdmin.rpc("billing_record_unapplied_provider_payment", {
+          p_intent_id: intent.id,
+          p_provider: "webpay",
+          p_provider_payment_id: token,
+          p_received_amount: Number(transaction.amount),
+          p_audit_metadata: safePaymentAuditMetadata("webpay", transaction),
+        });
+      }
       console.warn("[payments/webpay/return] verification rejected", {
         paymentIntentId: intent.id,
         reason: verified.reason,

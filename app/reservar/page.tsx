@@ -64,6 +64,8 @@ type Service = {
   payment_policy: "no_advance" | "deposit" | "full_payment";
   deposit_type: "fixed_amount" | "percentage" | null;
   deposit_value: number | null;
+  deposit_min_amount: number | null;
+  deposit_max_amount: number | null;
   deposit_tax_document_policy_status: "unconfigured" | "reviewed" | "enabled";
   provisional_expiry_minutes: number;
 };
@@ -1381,6 +1383,8 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       paymentPolicy: service.payment_policy,
       depositType: service.deposit_type,
       depositValue: service.deposit_value,
+      depositMinimum: service.deposit_min_amount,
+      depositMaximum: service.deposit_max_amount,
     });
     const requiredNow = safeClpNumber(snapshot.initialPaymentDue);
     return { total, requiredNow, remaining: total - requiredNow };

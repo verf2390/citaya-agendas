@@ -37,6 +37,16 @@ export async function POST(req: Request) {
     const currencyMatches = String(payment.currency_id ?? "").toUpperCase() === String(intent.currency).toUpperCase();
     const referenceMatches = String(payment.external_reference ?? "") === intent.id;
     const approved = String(payment.status ?? "").toLowerCase() === "approved";
+    if (!amountMatches && currencyMatches && referenceMatches && approved) {
+      await supabaseAdmin.rpc("billing_record_unapplied_provider_payment", {
+        p_intent_id: intent.id,
+        p_provider: "mercadopago",
+        p_provider_payment_id: paymentId,
+        p_received_amount: Number(payment.transaction_amount),
+        p_audit_metadata: safePaymentAuditMetadata("mercadopago", payment),
+      });
+      return reject(409);
+    }
     if (!amountMatches || !currencyMatches || !referenceMatches || !approved) {
       console.warn("[webhooks/mercadopago] verification rejected", { paymentIntentId: intent.id });
       return reject(409);

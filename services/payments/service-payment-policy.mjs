@@ -18,6 +18,7 @@ export function calculateServicePolicySnapshot(input) {
   let depositType = null;
   let depositValue = null;
   if (input.paymentPolicy === "full_payment") {
+    if (totalAmount === BigInt(0)) throw new Error("ZERO_PRICE_ADVANCE_UNSUPPORTED");
     initialPaymentDue = totalAmount;
   } else if (input.paymentPolicy === "deposit") {
     depositType = input.depositType ?? null;
@@ -29,12 +30,27 @@ export function calculateServicePolicySnapshot(input) {
       if (depositValue > totalAmount) throw new Error("DEPOSIT_EXCEEDS_TOTAL");
       initialPaymentDue = depositValue;
     } else {
-      if (depositValue > BigInt(10_000)) throw new Error("DEPOSIT_PERCENTAGE_OUT_OF_RANGE");
+      if (depositValue >= BigInt(10_000)) throw new Error("DEPOSIT_PERCENTAGE_OUT_OF_RANGE");
       initialPaymentDue = (totalAmount * depositValue + BigInt(5_000)) / BigInt(10_000);
     }
+    const depositMinimum = input.depositMinimum == null
+      ? null : integer(input.depositMinimum, "DEPOSIT_MINIMUM");
+    const depositMaximum = input.depositMaximum == null
+      ? null : integer(input.depositMaximum, "DEPOSIT_MAXIMUM");
+    if (depositMinimum != null) initialPaymentDue = initialPaymentDue > depositMinimum
+      ? initialPaymentDue : depositMinimum;
+    if (depositMaximum != null) initialPaymentDue = initialPaymentDue < depositMaximum
+      ? initialPaymentDue : depositMaximum;
+    if (depositMinimum != null && depositMaximum != null && depositMinimum > depositMaximum) {
+      throw new Error("DEPOSIT_LIMITS_INVALID");
+    }
+    if (initialPaymentDue > totalAmount) throw new Error("DEPOSIT_EXCEEDS_TOTAL");
   }
   return { serviceId: input.serviceId, totalAmount, paymentPolicy: input.paymentPolicy,
-    depositType, depositValue, initialPaymentDue, balanceDue: totalAmount };
+    depositType, depositValue, depositMinimum: input.depositMinimum == null ? null : integer(input.depositMinimum, "DEPOSIT_MINIMUM"),
+    depositMaximum: input.depositMaximum == null ? null : integer(input.depositMaximum, "DEPOSIT_MAXIMUM"),
+    initialPaymentDue, balanceDue: totalAmount - initialPaymentDue,
+    roundingPolicy: "HALF_UP_BASIS_POINTS" };
 }
 
 export function calculateMixedSalePolicy(lines) {

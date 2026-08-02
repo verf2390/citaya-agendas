@@ -174,7 +174,7 @@ export async function POST(req: Request) {
     const [{ data: service, error: serviceError }, { data: professional, error: professionalError }, { data: issuanceConfig }] =
       await Promise.all([
         supabaseAdmin.from("services")
-          .select("id,tenant_id,duration_min,price,currency,is_active,tax_treatment,payment_policy,deposit_type,deposit_value,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,tax_description,tax_description_review_status")
+          .select("id,tenant_id,duration_min,price,currency,is_active,tax_treatment,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,tax_description,tax_description_review_status")
           .eq("id", input.serviceId).eq("tenant_id", input.tenantId)
           .eq("is_active", true).maybeSingle(),
         supabaseAdmin.from("professionals")

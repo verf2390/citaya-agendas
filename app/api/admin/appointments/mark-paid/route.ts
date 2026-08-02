@@ -35,10 +35,15 @@ export async function POST(req: Request) {
       externalPaymentId: `manual:${appointmentId}`,
     });
 
+    const { data: appointment } = await supabaseAdmin.from("appointments")
+      .select("payment_status,payment_remaining_amount")
+      .eq("tenant_id", access.tenantId).eq("id", appointmentId).maybeSingle();
+
     return NextResponse.json({
       ok: true,
       appointmentId,
-      payment_status: "paid",
+      payment_status: appointment?.payment_status ?? "partially_paid",
+      payment_remaining_amount: appointment?.payment_remaining_amount ?? null,
       paymentIntentId,
     });
   } catch (error) {

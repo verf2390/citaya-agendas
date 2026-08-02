@@ -2,7 +2,7 @@
 
 import { adminFetch } from "@/lib/api/adminFetch";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
@@ -30,6 +30,8 @@ type ServiceRow = {
   payment_policy: "no_advance" | "deposit" | "full_payment";
   deposit_type: "fixed_amount" | "percentage" | null;
   deposit_value: number | null;
+  deposit_min_amount: number | null;
+  deposit_max_amount: number | null;
   deposit_tax_document_policy_status: "unconfigured" | "reviewed" | "enabled";
   provisional_expiry_minutes: number;
   payment_configuration_complete: boolean;
@@ -52,6 +54,8 @@ const EMPTY_SERVICE = {
   payment_policy: "no_advance" as "no_advance" | "deposit" | "full_payment",
   deposit_type: null as "fixed_amount" | "percentage" | null,
   deposit_value: 0,
+  deposit_min_amount: null as number | null,
+  deposit_max_amount: null as number | null,
   deposit_tax_document_policy_status: "unconfigured" as "unconfigured" | "reviewed" | "enabled",
   provisional_expiry_minutes: 30,
   duration_min: 60,
@@ -180,6 +184,8 @@ export default function ServiciosPage() {
       deposit_value: service.deposit_type === "percentage"
         ? Number(service.deposit_value ?? 0) / 100
         : Number(service.deposit_value ?? 0),
+      deposit_min_amount: service.deposit_min_amount == null ? null : Number(service.deposit_min_amount),
+      deposit_max_amount: service.deposit_max_amount == null ? null : Number(service.deposit_max_amount),
       deposit_tax_document_policy_status: service.deposit_tax_document_policy_status ?? "unconfigured",
       provisional_expiry_minutes: service.provisional_expiry_minutes ?? 30,
       duration_min: service.duration_min ?? 60,
@@ -216,6 +222,8 @@ export default function ServiciosPage() {
           ? Math.round(Number(form.deposit_value) * 100)
           : Math.round(Number(form.deposit_value))
         : null,
+      depositMinimum: form.payment_policy === "deposit" ? form.deposit_min_amount : null,
+      depositMaximum: form.payment_policy === "deposit" ? form.deposit_max_amount : null,
       provisionalExpiryMinutes: Math.round(Number(form.provisional_expiry_minutes)),
       duration: Number(form.duration_min) || 60,
       price: Number(form.price) || 0,
@@ -254,6 +262,17 @@ export default function ServiciosPage() {
     resetForm();
     await loadServices();
   };
+
+  const depositPreview = useMemo(() => {
+    if (form.payment_policy !== "deposit") return 0;
+    const total = Math.max(0, Math.round(Number(form.price) || 0));
+    const raw = form.deposit_type === "percentage"
+      ? Math.floor((total * Math.round(Number(form.deposit_value) * 100) + 5000) / 10000)
+      : Math.round(Number(form.deposit_value) || 0);
+    const withMinimum = form.deposit_min_amount == null ? raw : Math.max(raw, Math.round(form.deposit_min_amount));
+    const withMaximum = form.deposit_max_amount == null ? withMinimum : Math.min(withMinimum, Math.round(form.deposit_max_amount));
+    return Math.min(Math.max(withMaximum, 0), total);
+  }, [form.deposit_max_amount, form.deposit_min_amount, form.deposit_type, form.deposit_value, form.payment_policy, form.price]);
 
   const toggleServiceActive = async (service: ServiceRow) => {
     const currentActive = service.is_active ?? true;
@@ -361,7 +380,7 @@ export default function ServiciosPage() {
                 Confirmo que la descripción tributaria es veraz, mínima y no revela notas clínicas
               </label>
               <fieldset className="grid gap-3 rounded-xl border p-3">
-                <legend className="px-1 text-sm font-black">Condición para confirmar la reserva</legend>
+                <legend className="px-1 text-sm font-black">Condición de pago de la reserva</legend>
                 <label className="grid gap-1 text-sm font-semibold">
                   Modalidad
                   <select className="rounded-xl border px-3 py-2" value={form.payment_policy} onChange={(e) => setForm((p) => ({ ...p, payment_policy: e.target.value as typeof p.payment_policy, deposit_type: e.target.value === "deposit" ? p.deposit_type ?? "percentage" : null }))}>
@@ -378,14 +397,25 @@ export default function ServiciosPage() {
                     </select>
                     <input type="number" min={1} step={form.deposit_type === "percentage" ? 0.01 : 1} className="rounded-xl border px-3 py-2" value={form.deposit_value} onChange={(e) => setForm((p) => ({ ...p, deposit_value: Number(e.target.value) }))} />
                   </div>
-                  <p className="text-xs font-bold text-amber-800">El cobro de anticipos todavía requiere configurar su tratamiento tributario.</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-xs font-bold">Mínimo opcional CLP
+                      <input type="number" min={1} step={1} className="rounded-xl border px-3 py-2 text-sm" value={form.deposit_min_amount ?? ""} onChange={(e) => setForm((p) => ({ ...p, deposit_min_amount: e.target.value === "" ? null : Number(e.target.value) }))} />
+                    </label>
+                    <label className="grid gap-1 text-xs font-bold">Máximo opcional CLP
+                      <input type="number" min={1} step={1} className="rounded-xl border px-3 py-2 text-sm" value={form.deposit_max_amount ?? ""} onChange={(e) => setForm((p) => ({ ...p, deposit_max_amount: e.target.value === "" ? null : Number(e.target.value) }))} />
+                    </label>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
+                    <strong>Vista previa:</strong> {formatPrice(depositPreview, "CLP")} de anticipo. El anticipo forma parte del precio y el saldo permanecerá pendiente.
+                  </div>
+                  <p className="text-xs font-bold text-amber-800">Solo puede activarse cuando el tratamiento tributario de anticipos, la identidad, la descripción tributaria y el modelo boleta/voucher estén habilitados.</p>
                 </> : null}
                 <label className="grid gap-1 text-sm font-semibold">Expiración provisional (minutos)
                   <input type="number" min={5} max={10080} className="rounded-xl border px-3 py-2" value={form.provisional_expiry_minutes} onChange={(e) => setForm((p) => ({ ...p, provisional_expiry_minutes: Number(e.target.value) }))} />
                 </label>
               </fieldset>
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
-                <strong>Documento tributario:</strong> obligatorio para toda venta. Se emitirá boleta o factura según el caso; esta obligación no puede desactivarse.
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
+                <strong>Tratamiento tributario:</strong> todo pago debe quedar documentado. Anticipo y saldo se documentan por separado mediante boleta, factura o voucher según la configuración tributaria. Las garantías reembolsables no están soportadas. Los servicios exentos permanecen bloqueados hasta implementar documentos 34/41.
               </div>
               <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                 <label className="grid min-w-0 gap-1 text-sm font-semibold">

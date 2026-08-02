@@ -11,9 +11,9 @@ import { safePaymentAuditMetadata } from "../../lib/security/payment-verificatio
 test("service policies calculate no advance, integer deposit and full payment", () => {
   const cases = [
     ["no_advance", null, null, 0n, 10_001n],
-    ["deposit", "percentage", 3333n, 3_333n, 10_001n],
-    ["deposit", "fixed_amount", 2_500n, 2_500n, 10_001n],
-    ["full_payment", null, null, 10_001n, 10_001n],
+    ["deposit", "percentage", 3333n, 3_333n, 6_668n],
+    ["deposit", "fixed_amount", 2_500n, 2_500n, 7_501n],
+    ["full_payment", null, null, 10_001n, 0n],
   ];
   for (const [paymentPolicy, depositType, depositValue, initial, balance] of cases) {
     const snapshot = calculateServicePolicySnapshot({
@@ -23,6 +23,17 @@ test("service policies calculate no advance, integer deposit and full payment", 
     assert.equal(snapshot.initialPaymentDue, initial);
     assert.equal(snapshot.balanceDue, balance);
   }
+  const bounded = calculateServicePolicySnapshot({
+    serviceId: "bounded", totalAmount: 40_000n, paymentPolicy: "deposit",
+    depositType: "percentage", depositValue: 1000n,
+    depositMinimum: 6_000n, depositMaximum: 10_000n,
+  });
+  assert.equal(bounded.initialPaymentDue, 6_000n);
+  assert.equal(bounded.roundingPolicy, "HALF_UP_BASIS_POINTS");
+  assert.throws(() => calculateServicePolicySnapshot({
+    serviceId: "invalid", totalAmount: 40_000n, paymentPolicy: "deposit",
+    depositType: "percentage", depositValue: 10_000n,
+  }), /DEPOSIT_PERCENTAGE_OUT_OF_RANGE/);
 });
 
 test("mixed sale sums line requirements and snapshots do not depend on catalog mutation", () => {
@@ -35,7 +46,7 @@ test("mixed sale sums line requirements and snapshots do not depend on catalog m
   catalog[1].totalAmount = 99_999n;
   assert.equal(sale.totalAmount, 60_000n);
   assert.equal(sale.initialPaymentDue, 35_000n);
-  assert.equal(sale.balanceDue, 60_000n);
+  assert.equal(sale.balanceDue, 25_000n);
   assert.equal(sale.taxTreatmentStatus, "REVIEW_REQUIRED");
 });
 
@@ -100,7 +111,38 @@ test("deposit and contributor-model gates run before executable payment creation
   assert.ok(routeGate >= 0 && intentInsert > routeGate, "payment route gates deposits before touching intents");
   assert.match(appointmentRoute, /deposit_tax_document_policy_status !== "enabled"/);
   assert.match(customerBooking, /depositUnavailable/);
-  assert.match(adminServices, /El cobro de anticipos todavía requiere configurar su tratamiento tributario\./);
+  assert.match(adminServices, /El anticipo forma parte del precio y el saldo permanecerá pendiente/);
+});
+
+test("accounting migration allocates schedules by range and deduplicates documents per payment", () => {
+  const sql = readFileSync("migrations/202608020004_payment_policy_accounting.sql", "utf8");
+  assert.match(sql, /billing_payment_schedule_allocations/);
+  assert.match(sql, /billing_initialize_sale_from_appointments/);
+  assert.match(sql, /dte_invoice_drafts_one_per_verified_sale_payment/);
+  assert.match(sql, /sale-payment:/);
+  assert.match(sql, /final DTE tranche absorbs the net\/IVA rounding residue/);
+  assert.match(sql, /Anticipo /);
+  assert.match(sql, /DEPOSIT_PERCENTAGE_OUT_OF_RANGE/);
+  assert.match(sql, /EXEMPT_DOCUMENT_TYPE_UNSUPPORTED/);
+  assert.match(sql, /REFUND_TAX_DOCUMENT_REQUIRED/);
+  assert.match(sql, /tax_document_method_classification[\s\S]*voucher_as_boleta[\s\S]*requires_boleta/);
+  assert.match(sql, /tenant_payment_method_tax_policies/);
+  assert.doesNotMatch(sql, /insert into public\.dte_payment_document_intents|insert into public\.dte_production_folio_ledger/);
+});
+
+test("service UI and APIs preserve gross CLP semantics and validate invoice data before payment", () => {
+  const serviceApi = readFileSync("app/api/admin/services/route.ts", "utf8");
+  const serviceUi = readFileSync("app/admin/servicios/page.tsx", "utf8");
+  const paymentApi = readFileSync("app/api/payments/create/route.ts", "utf8");
+  assert.match(serviceApi, /depositValue >= 1 && depositValue < 10000/);
+  assert.match(serviceApi, /deposit_min_amount/);
+  assert.match(serviceApi, /deposit_max_amount/);
+  assert.match(serviceUi, /Condición de pago de la reserva/);
+  assert.match(serviceUi, /Vista previa/);
+  assert.match(serviceUi, /garantías reembolsables no están soportadas/i);
+  assert.match(paymentApi, /customer_tax_profiles/);
+  assert.match(paymentApi, /billing_payment_schedule_id: schedule\.id/);
+  assert.match(paymentApi, /tenant_payment_method_tax_policies/);
 });
 
 test("voucher policy is centralized, explicit, and contains no credentials or unsafe logs", () => {

@@ -6,8 +6,10 @@ import test from "node:test";
 
 const files = [
   "tests/sql/payment-policy-privacy-bootstrap.sql",
+  "migrations/202608020001_tenant_legal_privacy_gate.sql",
   "migrations/202608020002_service_payment_policy_sales_coverage.sql",
   "migrations/202608020003_tenant_lifecycle_offboarding.sql",
+  "migrations/202608020004_payment_policy_accounting.sql",
   "tests/sql/payment-policy-privacy-assertions.sql",
 ];
 

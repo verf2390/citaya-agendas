@@ -9,12 +9,15 @@ export type ServiceDepositType = "fixed_amount" | "percentage" | null;
 export type ServicePolicySnapshot = {
   serviceId: string; totalAmount: bigint; paymentPolicy: ServicePaymentPolicy;
   depositType: ServiceDepositType; depositValue: bigint | null;
-  initialPaymentDue: bigint; balanceDue: bigint;
+  depositMinimum: bigint | null; depositMaximum: bigint | null;
+  initialPaymentDue: bigint; balanceDue: bigint; roundingPolicy: "HALF_UP_BASIS_POINTS";
 };
 export type ServicePolicyInput = {
   serviceId: string; totalAmount: bigint | number | string;
   paymentPolicy: ServicePaymentPolicy; depositType?: ServiceDepositType;
   depositValue?: bigint | number | string | null;
+  depositMinimum?: bigint | number | string | null;
+  depositMaximum?: bigint | number | string | null;
 };
 export type MixedSalePolicy = {
   lines: ServicePolicySnapshot[]; totalAmount: bigint; initialPaymentDue: bigint;

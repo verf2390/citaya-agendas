@@ -65,6 +65,7 @@ export async function POST(req: Request) {
     if (!appointment.service_id || String(appointment.payment_status) === "paid") {
       return jsonError(409);
     }
+    let taxDocumentMethodClassification: "unconfigured" | "voucher_as_boleta" | "requires_boleta" = "unconfigured";
     if (appointment.payment_policy_snapshot === "deposit" || appointment.requested_document_type === 39) {
       const { data: taxPolicy, error: taxPolicyError } = await supabaseAdmin.from("dte_tenant_issuance_settings")
         .select("deposit_tax_document_policy_status,boleta_payment_document_model,boleta_model_verified_at,boleta_model_verified_by,boleta_model_evidence_reference")
@@ -82,6 +83,23 @@ export async function POST(req: Request) {
            !taxPolicy.boleta_model_verified_at || !taxPolicy.boleta_model_verified_by ||
            String(taxPolicy.boleta_model_evidence_reference ?? "").trim().length < 3)) {
         return jsonError(409, "El pago no está disponible por ahora.");
+      }
+      if (appointment.requested_document_type === 39 &&
+          taxPolicy?.boleta_payment_document_model === "always_issue_boleta") {
+        taxDocumentMethodClassification = "requires_boleta";
+      }
+      if (appointment.requested_document_type === 39 &&
+          taxPolicy?.boleta_payment_document_model === "electronic_payment_voucher_as_boleta") {
+        const { data: methodPolicy, error: methodPolicyError } = await supabaseAdmin
+          .from("tenant_payment_method_tax_policies")
+          .select("classification")
+          .eq("tenant_id", appointment.tenant_id).eq("provider", providerId).eq("active", true)
+          .maybeSingle();
+        if (methodPolicyError || !methodPolicy ||
+            !["voucher_as_boleta", "requires_boleta"].includes(methodPolicy.classification)) {
+          return jsonError(409, "El pago no está disponible por ahora.");
+        }
+        taxDocumentMethodClassification = methodPolicy.classification as "voucher_as_boleta" | "requires_boleta";
       }
     }
 
@@ -104,6 +122,20 @@ export async function POST(req: Request) {
     }
     if (appointment.requested_document_type === 33 && !validateRut(customerRut)) {
       return jsonError(409, "Completa el RUT válido del cliente antes de pagar");
+    }
+    if (appointment.requested_document_type === 33 && appointment.customer_id) {
+      const { data: taxProfile, error: taxProfileError } = await supabaseAdmin
+        .from("customer_tax_profiles")
+        .select("rut_normalized,legal_name,business_activity,tax_address,tax_commune,tax_city,tax_email")
+        .eq("tenant_id", appointment.tenant_id)
+        .eq("customer_id", appointment.customer_id)
+        .maybeSingle();
+      if (taxProfileError || !taxProfile || !validateRut(String(taxProfile.rut_normalized ?? "")) ||
+          [taxProfile.legal_name, taxProfile.business_activity, taxProfile.tax_address,
+            taxProfile.tax_commune, taxProfile.tax_city, taxProfile.tax_email]
+            .some((value) => String(value ?? "").trim().length < 2)) {
+        return jsonError(409, "Completa los datos tributarios de la factura antes de pagar");
+      }
     }
     const normalizedCustomerRut = appointment.requested_document_type === 33 ? normalizeRut(customerRut) : "";
     if (appointment.requested_document_type === 33 && appointment.customer_id) {
@@ -182,6 +214,7 @@ export async function POST(req: Request) {
       id: intentId,
       tenant_id: appointment.tenant_id,
       appointment_id: appointment.id,
+      billing_payment_schedule_id: schedule.id,
       provider: providerId,
       buy_order: providerId === "webpay" ? buyOrder : null,
       session_id: providerId === "webpay" ? sessionId : null,
@@ -189,6 +222,7 @@ export async function POST(req: Request) {
       currency,
       status: "created",
       idempotency_key: requestKey,
+      tax_document_method_classification: taxDocumentMethodClassification,
     });
     if (intentError) return jsonError(intentError.code === "23505" ? 409 : 500);
 

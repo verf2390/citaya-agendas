@@ -60,6 +60,10 @@ type IssuerProfileRow = {
   issuer_commune: string | null;
   issuer_city: string | null;
 };
+type MethodTaxPolicyRow = {
+  provider: "mercadopago" | "webpay" | "khipu" | "manual";
+  classification: "voucher_as_boleta" | "requires_boleta";
+};
 
 function text(value: unknown, max = 180) {
   return String(value ?? "").trim().slice(0, max);
@@ -70,6 +74,7 @@ async function loadState(tenantId: string, authMode: string) {
   const [
     billingResult,
     configResult,
+    methodTaxPoliciesResult,
     cafResult,
     folioResult,
     documentsResult,
@@ -83,6 +88,8 @@ async function loadState(tenantId: string, authMode: string) {
   ] = await Promise.all([
     supabaseAdmin.from("tenant_billing_settings").select(BILLING_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("dte_tenant_issuance_settings").select(CONFIG_COLUMNS).eq("tenant_id", tenantId).maybeSingle(),
+    supabaseAdmin.from("tenant_payment_method_tax_policies")
+      .select("provider,classification").eq("tenant_id", tenantId).eq("active", true),
     supabaseAdmin.from("dte_production_cafs").select("dte_type,active").eq("tenant_id", tenantId),
     supabaseAdmin.from("dte_production_folio_ledger").select("dte_type,state").eq("tenant_id", tenantId),
     loadAdminDocumentRows(tenantId),
@@ -121,6 +128,7 @@ async function loadState(tenantId: string, authMode: string) {
   const firstError = [
     billingResult.error,
     configResult.error,
+    methodTaxPoliciesResult.error,
     cafResult.error,
     folioResult.error,
     readinessEvidenceResult.error,
@@ -240,6 +248,10 @@ async function loadState(tenantId: string, authMode: string) {
       boletaModelVerifiedAt: config.boleta_model_verified_at ?? null,
       boletaModelVerifiedBy: config.boleta_model_verified_by ?? null,
       boletaModelEvidenceReference: config.boleta_model_evidence_reference ?? null,
+      paymentMethodTaxPolicies: Object.fromEntries(
+        ((methodTaxPoliciesResult.data ?? []) as MethodTaxPolicyRow[])
+          .map((row) => [row.provider, row.classification]),
+      ),
     },
     tax: {
       legalName: issuerProfile.issuer_legal_name ?? billing.legal_name ?? "",
@@ -331,6 +343,34 @@ export async function PATCH(req: Request) {
   };
   const configResult = await supabaseAdmin.from("dte_tenant_issuance_settings").upsert(configPayload, { onConflict: "tenant_id" });
   if (configResult.error) return NextResponse.json({ ok: false, error: "No se pudo guardar la política de emisión." }, { status: 500 });
+
+  const methodPolicies = boletaPaymentDocumentModel === "electronic_payment_voucher_as_boleta" &&
+    body.paymentMethodTaxPolicies && typeof body.paymentMethodTaxPolicies === "object"
+    ? body.paymentMethodTaxPolicies as Record<string, unknown>
+    : {};
+  const methodPolicyResults = await Promise.all(
+    (["mercadopago", "webpay", "khipu", "manual"] as const).map(async (provider) => {
+      const classification = methodPolicies[provider];
+      if (!["voucher_as_boleta", "requires_boleta"].includes(String(classification))) {
+        return supabaseAdmin.from("tenant_payment_method_tax_policies")
+          .update({ active: false, updated_at: new Date().toISOString() })
+          .eq("tenant_id", auth.tenantId).eq("provider", provider);
+      }
+      return supabaseAdmin.from("tenant_payment_method_tax_policies").upsert({
+        tenant_id: auth.tenantId,
+        provider,
+        classification,
+        verified_at: new Date().toISOString(),
+        verified_by: auth.userId,
+        evidence_reference: boletaModelEvidenceReference,
+        active: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "tenant_id,provider" });
+    }),
+  );
+  if (methodPolicyResults.some((result) => result.error)) {
+    return NextResponse.json({ ok: false, error: "No se pudo guardar la clasificación tributaria de los medios de pago." }, { status: 500 });
+  }
 
   if (body.tax && typeof body.tax === "object") {
     const tax = body.tax;

@@ -58,6 +58,15 @@ export async function POST(req: Request) {
 
     const verified = verifyKhipuPayment(intent, payment, credentials.receiverId);
     if (!verified.ok) {
+      if (verified.reason === "amount_mismatch") {
+        await supabaseAdmin.rpc("billing_record_unapplied_provider_payment", {
+          p_intent_id: intent.id,
+          p_provider: "khipu",
+          p_provider_payment_id: paymentId,
+          p_received_amount: Number(payment.amount),
+          p_audit_metadata: safePaymentAuditMetadata("khipu", payment),
+        });
+      }
       console.warn("[webhooks/khipu] verification rejected", {
         paymentIntentId: intent.id,
         reason: verified.reason,
