@@ -9,7 +9,6 @@ import {
   requestIp,
 } from "@/lib/security/request";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
-import { calculatePaymentBreakdown } from "@/services/payments/payment-mode";
 import {
   getPaymentProvider,
   isPaymentProviderId,
@@ -48,7 +47,7 @@ export async function POST(req: Request) {
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from("appointments")
       .select(
-        "id, tenant_id, service_id, service_name, customer_id, customer_rut_snapshot, customer_name, customer_email, status, payment_status, payment_url, payment_reference, service_price, currency, manage_token, manage_token_hash, manage_token_expires_at, manage_token_revoked_at, manage_token_legacy_expires_at",
+        "id,tenant_id,service_id,service_name,customer_id,customer_rut_snapshot,customer_name,customer_email,status,payment_status,payment_url,payment_reference,service_price,currency,requested_document_type,manage_token,manage_token_hash,manage_token_expires_at,manage_token_revoked_at,manage_token_legacy_expires_at",
       )
       .eq("id", appointmentId)
       .maybeSingle();
@@ -78,23 +77,23 @@ export async function POST(req: Request) {
     }
 
     let customerRut = String(appointment.customer_rut_snapshot ?? "");
-    if (!validateRut(customerRut) && appointment.customer_id) {
+    if (appointment.requested_document_type === 33 && !validateRut(customerRut) && appointment.customer_id) {
       const { data: customer } = await supabaseAdmin.from("customers")
         .select("rut_normalized").eq("tenant_id", appointment.tenant_id)
         .eq("id", appointment.customer_id).maybeSingle();
       customerRut = String(customer?.rut_normalized ?? body?.customerRut ?? "");
     }
-    if (!validateRut(customerRut)) {
+    if (appointment.requested_document_type === 33 && !validateRut(customerRut)) {
       return jsonError(409, "Completa el RUT válido del cliente antes de pagar");
     }
-    const normalizedCustomerRut = normalizeRut(customerRut);
-    if (appointment.customer_id) {
+    const normalizedCustomerRut = appointment.requested_document_type === 33 ? normalizeRut(customerRut) : "";
+    if (appointment.requested_document_type === 33 && appointment.customer_id) {
       const customerUpdate = await supabaseAdmin.from("customers")
         .update({ rut_normalized: normalizedCustomerRut })
         .eq("tenant_id", appointment.tenant_id).eq("id", appointment.customer_id);
       if (customerUpdate.error) return jsonError(409, "No se pudo validar el RUT del cliente");
     }
-    if (appointment.customer_rut_snapshot !== normalizedCustomerRut) {
+    if (appointment.requested_document_type === 33 && appointment.customer_rut_snapshot !== normalizedCustomerRut) {
       const appointmentUpdate = await supabaseAdmin.from("appointments")
         .update({ customer_rut_snapshot: normalizedCustomerRut })
         .eq("tenant_id", appointment.tenant_id).eq("id", appointment.id);
@@ -127,31 +126,30 @@ export async function POST(req: Request) {
       });
     }
 
-    const [{ data: service, error: serviceError }, paymentConfig] = await Promise.all([
+    const [{ data: service, error: serviceError }, paymentConfig, { data: saleLink }] = await Promise.all([
       supabaseAdmin
         .from("services")
-        .select("id, tenant_id, name, price, currency, is_active")
+        .select("id,tenant_id,name,currency,contains_potentially_sensitive_information")
         .eq("id", appointment.service_id)
         .eq("tenant_id", appointment.tenant_id)
-        .eq("is_active", true)
         .maybeSingle(),
       getTenantPaymentConfig(appointment.tenant_id),
+      supabaseAdmin.from("billing_sale_appointments").select("sale_id")
+        .eq("tenant_id", appointment.tenant_id).eq("appointment_id", appointment.id).maybeSingle(),
     ]);
-    if (serviceError || !service) return jsonError(404);
-    const bookedAmount = Number(appointment.service_price ?? service.price);
-    if (!Number.isFinite(bookedAmount) || bookedAmount < 0) return jsonError(409);
+    if (serviceError || !service || !saleLink?.sale_id) return jsonError(404);
+    const [{ data: sale }, { data: schedule }] = await Promise.all([
+      supabaseAdmin.from("billing_sales").select("id,balance_due,payment_state,tax_treatment_status")
+        .eq("tenant_id", appointment.tenant_id).eq("id", saleLink.sale_id).maybeSingle(),
+      supabaseAdmin.from("billing_payment_schedule").select("id,amount,paid_amount,installment_kind,status")
+        .eq("tenant_id", appointment.tenant_id).eq("sale_id", saleLink.sale_id)
+        .in("status", ["PENDING", "PARTIALLY_PAID"])
+        .order("created_at", { ascending: true }).limit(1).maybeSingle(),
+    ]);
+    const requiredAmount = Number(schedule ? Number(schedule.amount) - Number(schedule.paid_amount) : sale?.balance_due ?? 0);
+    if (!sale || !Number.isSafeInteger(requiredAmount) || requiredAmount <= 0 || sale.payment_state === "PAID") return jsonError(409);
     const config = providerConfig(providerId, paymentConfig);
-    if (!paymentConfig.enabled || paymentConfig.collectionMode === "none" || !config.enabled) {
-      return jsonError(409);
-    }
-
-    const breakdown = calculatePaymentBreakdown({
-      totalAmount: bookedAmount,
-      paymentMode: paymentConfig.collectionMode,
-      depositType: paymentConfig.depositType,
-      depositValue: paymentConfig.depositValue,
-    });
-    if (!Number.isFinite(breakdown.requiredOnlineAmount) || breakdown.requiredOnlineAmount <= 0) {
+    if (!paymentConfig.enabled || !config.enabled) {
       return jsonError(409);
     }
 
@@ -168,7 +166,7 @@ export async function POST(req: Request) {
       provider: providerId,
       buy_order: providerId === "webpay" ? buyOrder : null,
       session_id: providerId === "webpay" ? sessionId : null,
-      amount: breakdown.requiredOnlineAmount,
+      amount: requiredAmount,
       currency,
       status: "created",
       idempotency_key: requestKey,
@@ -201,8 +199,10 @@ export async function POST(req: Request) {
       tenantId: appointment.tenant_id,
       buyOrder,
       sessionId,
-      title: appointment.service_name || service.name || "Reserva",
-      amount: breakdown.requiredOnlineAmount,
+      title: service.contains_potentially_sensitive_information
+        ? "Reserva de servicio"
+        : appointment.service_name || service.name || "Reserva",
+      amount: requiredAmount,
       currency,
       customerName: appointment.customer_name ?? null,
       customerEmail: appointment.customer_email ?? null,
@@ -221,7 +221,7 @@ export async function POST(req: Request) {
         p_intent_id: intentId,
         p_provider_payment_id: payment.reference,
         p_payment_url: payment.paymentUrl,
-        p_remaining_amount: breakdown.remainingAmount,
+        p_remaining_amount: Math.max(Number(sale.balance_due) - requiredAmount, 0),
       },
     );
     if (activationError) throw new Error("payment_activation_failed");

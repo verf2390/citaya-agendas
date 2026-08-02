@@ -37,6 +37,7 @@ import { fetchWithClientTimeout } from "@/lib/client/async-timeout";
 import { resolveTenantBySlug } from "@/lib/client/tenant-resolution";
 import { getTenantSlugFromHostname, normalizeTenantSlug } from "@/lib/tenant";
 import { normalizeRut, validateRut } from "@/lib/dte/rut";
+import { calculateServicePolicySnapshot, safeClpNumber } from "@/services/payments/service-payment-policy";
 
 type Slot = { start_at: string; end_at: string };
 type WaitlistTarget =
@@ -59,13 +60,16 @@ type Service = {
   price: number | null;
   currency: string | null;
   is_active?: boolean | null;
+  public_description?: string | null;
+  payment_policy: "no_advance" | "deposit" | "full_payment";
+  deposit_type: "fixed_amount" | "percentage" | null;
+  deposit_value: number | null;
+  provisional_expiry_minutes: number;
 };
 
 type TenantPaymentMode = "none" | "optional" | "required";
 type PaymentChoice = "pay_now" | "pay_later";
 type PaymentProviderId = "mercadopago" | "webpay" | "khipu" | "manual";
-type PaymentCollectionMode = "none" | "full" | "deposit";
-type TenantDepositType = "fixed" | "percentage" | null;
 type PublicLegalDocument = {
   id: string; type: string; version: number; title: string; hash: string; href: string;
 };
@@ -444,7 +448,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [customerRut, setCustomerRut] = useState("");
   const [taxDocumentType, setTaxDocumentType] = useState<33 | 39 | null>(null);
   const [boletaSelectionEnabled, setBoletaSelectionEnabled] = useState(false);
   const invoiceRequested = taxDocumentType === 33;
@@ -461,13 +464,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   >(["mercadopago"]);
   const [selectedPaymentProvider, setSelectedPaymentProvider] =
     useState<PaymentProviderId>("mercadopago");
-  const [tenantPaymentCollectionMode, setTenantPaymentCollectionMode] =
-    useState<PaymentCollectionMode>("full");
-  const [tenantDepositType, setTenantDepositType] =
-    useState<TenantDepositType>(null);
-  const [tenantDepositValue, setTenantDepositValue] = useState<number | null>(
-    null,
-  );
   const [legalBundle, setLegalBundle] = useState<PublicLegalBundle | null>(null);
   const [legalLoading, setLegalLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -494,12 +490,12 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const isPhoneValid = useMemo(() => isValidCLMobile(phone), [phone]);
 
   useEffect(() => {
-    if (!invoiceRequested || !tenantId || !isValidEmail(email) || !validateRut(customerRut)) return;
+    if (!invoiceRequested || !tenantId || !isValidEmail(email) || !validateRut(invoiceRut)) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void fetch("/api/customers/tax-profile/lookup", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenantId, email: email.trim(), rut: customerRut }),
+        body: JSON.stringify({ tenantId, email: email.trim(), rut: invoiceRut }),
         signal: controller.signal,
       }).then(async (response) => response.ok ? response.json() : null).then((payload) => {
         const profile = payload?.profile;
@@ -511,7 +507,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       }).catch(() => undefined);
     }, 350);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [customerRut, email, invoiceRequested, tenantId]);
+  }, [email, invoiceRequested, invoiceRut, tenantId]);
 
   useEffect(() => {
     if (!tenantSlug) {
@@ -522,9 +518,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       setTenantPaymentMode("none");
       setPaymentMethodsEnabled(["mercadopago"]);
       setSelectedPaymentProvider("mercadopago");
-      setTenantPaymentCollectionMode("full");
-      setTenantDepositType(null);
-      setTenantDepositValue(null);
       setLoadError("Falta tenant en la URL (subdominio o ?tenant=).");
     }
   }, [tenantSlug]);
@@ -595,20 +588,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
           setSelectedPaymentProvider((prev) =>
             nextMethods.includes(prev) ? prev : nextMethods[0],
           );
-          setTenantPaymentCollectionMode(
-            (tenant.payment_collection_mode as
-              | PaymentCollectionMode
-              | undefined) ?? "full",
-          );
-          setTenantDepositType(
-            (tenant.deposit_type as TenantDepositType | undefined) ??
-              null,
-          );
-          setTenantDepositValue(
-            typeof tenant.deposit_value === "number"
-              ? tenant.deposit_value
-              : null,
-          );
 
           setMinLeadTimeMin(
             typeof tenant.min_lead_time_min === "number"
@@ -624,9 +603,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
           setTenantPaymentMode("none");
           setPaymentMethodsEnabled(["mercadopago"]);
           setSelectedPaymentProvider("mercadopago");
-          setTenantPaymentCollectionMode("full");
-          setTenantDepositType(null);
-          setTenantDepositValue(null);
           setLoadError(errorMessage(error, "No se pudo cargar tenant"));
         }
       } finally {
@@ -736,15 +712,12 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   }, [serviceId]);
 
   useEffect(() => {
-    if (tenantPaymentMode === "required") {
+    if (service?.payment_policy === "deposit" || service?.payment_policy === "full_payment") {
       setPaymentChoice("pay_now");
       return;
     }
-
-    if (tenantPaymentMode === "none") {
-      setPaymentChoice("pay_later");
-    }
-  }, [tenantPaymentMode]);
+    setPaymentChoice("pay_later");
+  }, [service?.payment_policy]);
 
   const range = useMemo(() => {
     const now = new Date();
@@ -905,7 +878,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     fullName.trim().length >= 2 &&
     isPhoneValid &&
     isValidEmail(email) &&
-    validateRut(customerRut) &&
+    (taxDocumentType === 33 || taxDocumentType === 39) &&
     legalBundle?.identity.complete === true &&
     !!legalBundle.documents.consumer_terms &&
     !!legalBundle.documents.privacy_notice &&
@@ -915,11 +888,12 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     privacyInformed &&
     (!legalBundle.handlesSensitiveData || sensitiveAccepted) &&
     (!invoiceRequested || (validateRut(invoiceRut) && invoiceLegalName.trim().length >= 2 && invoiceActivity.trim().length >= 2 && invoiceAddress.trim().length >= 2 && invoiceCommune.trim().length >= 2 && invoiceCity.trim().length >= 2 && isValidEmail(invoiceTaxEmail))) &&
-    (tenantPaymentMode !== "required" || paymentChoice === "pay_now") &&
+    (!(service.payment_policy === "deposit" || service.payment_policy === "full_payment") || paymentChoice === "pay_now") &&
+    (!(service.payment_policy === "deposit" || service.payment_policy === "full_payment") || tenantPaymentMode !== "none") &&
     !saving;
 
-  const showPaymentOptions = tenantPaymentMode !== "none";
-  const isPaymentRequired = tenantPaymentMode === "required";
+  const showPaymentOptions = service?.payment_policy !== "no_advance";
+  const isPaymentRequired = service?.payment_policy === "deposit" || service?.payment_policy === "full_payment";
   const isPayNowSelected = showPaymentOptions && paymentChoice === "pay_now";
   const currentPaymentStatus = showPaymentOptions
     ? isPayNowSelected
@@ -975,12 +949,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       return;
     }
 
-    if (!validateRut(customerRut)) {
-      alert("Ingresa un RUT chileno válido.");
-      scrollToRef(contactRef);
-      return;
-    }
-
     if (invoiceRequested && (
       !validateRut(invoiceRut) || !invoiceLegalName.trim() || !invoiceActivity.trim() ||
       !invoiceAddress.trim() || !invoiceCommune.trim() || !invoiceCity.trim() || !isValidEmail(invoiceTaxEmail)
@@ -1021,7 +989,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         customerName: fullName.trim(),
         customerPhone: normalizeToE164CLMobile(phoneNorm.trim()),
         customerEmail: email.trim().toLowerCase(),
-        customerRut: normalizeRut(customerRut),
+        customerRut: taxDocumentType === 33 ? normalizeRut(invoiceRut) : undefined,
 
         customerId: null,
         serviceId: serviceId || null,
@@ -1381,13 +1349,13 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         ? moneyCLP(service.price, service.currency)
         : null;
     const payment =
-      tenantPaymentMode === "none"
+      service?.payment_policy === "no_advance"
         ? "Sin pago online"
         : paymentChoice === "pay_now"
           ? "Pagar ahora"
           : "Pagar después";
     return { svc, time, price, payment };
-  }, [service, serviceId, selectedSlot, tenantPaymentMode, paymentChoice]);
+  }, [service, serviceId, selectedSlot, paymentChoice]);
 
   const paymentBreakdown = useMemo(() => {
     const total =
@@ -1395,34 +1363,19 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         ? Math.max(Math.round(service.price), 0)
         : 0;
 
-    if (tenantPaymentCollectionMode === "none" || total <= 0) {
+    if (!service || service.payment_policy === "no_advance" || total <= 0) {
       return { total, requiredNow: 0, remaining: total };
     }
-
-    if (tenantPaymentCollectionMode === "deposit") {
-      const value = Number(tenantDepositValue ?? 0);
-      const requiredNow =
-        tenantDepositType === "percentage"
-          ? Math.round(total * (value / 100))
-          : tenantDepositType === "fixed"
-            ? Math.round(value)
-            : total;
-      const boundedRequiredNow = Math.min(Math.max(requiredNow, 0), total);
-
-      return {
-        total,
-        requiredNow: boundedRequiredNow,
-        remaining: Math.max(total - boundedRequiredNow, 0),
-      };
-    }
-
-    return { total, requiredNow: total, remaining: 0 };
-  }, [
-    service?.price,
-    tenantDepositType,
-    tenantDepositValue,
-    tenantPaymentCollectionMode,
-  ]);
+    const snapshot = calculateServicePolicySnapshot({
+      serviceId: service.id,
+      totalAmount: total,
+      paymentPolicy: service.payment_policy,
+      depositType: service.deposit_type,
+      depositValue: service.deposit_value,
+    });
+    const requiredNow = safeClpNumber(snapshot.initialPaymentDue);
+    return { total, requiredNow, remaining: total - requiredNow };
+  }, [service]);
 
   const lockSlots = !serviceId || !tenantId || !professionalId;
   const lockContact = !selectedSlot || !tenantId;
@@ -2335,27 +2288,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                   </div>
                 </div>
 
-                <div className="min-w-0">
-                  <label className="mb-1.5 block text-[11px] font-semibold sm:text-sm">RUT</label>
-                  <input
-                    value={customerRut}
-                    disabled={saving || !tenantId}
-                    onChange={(event) => setCustomerRut(event.target.value)}
-                    onBlur={() => { if (validateRut(customerRut)) setCustomerRut(normalizeRut(customerRut)); }}
-                    placeholder="Ej: 12.345.678-5"
-                    autoComplete="off"
-                    className={cn(
-                      "h-11 w-full rounded-2xl border bg-white/90 px-3 text-[12px] outline-none focus:ring-2 sm:text-sm",
-                      customerRut.trim() && !validateRut(customerRut)
-                        ? "border-red-300 focus:ring-red-200"
-                        : "border-slate-200 focus:ring-foreground/20",
-                    )}
-                  />
-                  {customerRut.trim() && !validateRut(customerRut) ? (
-                    <p className="mt-1 text-xs font-bold text-red-700">RUT inválido.</p>
-                  ) : null}
-                </div>
-
                 <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                   <p className="text-[11px] font-extrabold sm:text-sm">
                     ¿Qué documento necesitas?
@@ -2661,8 +2593,8 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                 <div className="mt-1 text-sm text-muted-foreground">
                   Pago:{" "}
                   <span className="font-extrabold text-foreground">
-                    {tenantPaymentMode === "none"
-                      ? "Sin pago online"
+                    {service?.payment_policy === "no_advance"
+                      ? "Sin pago anticipado"
                       : paymentChoice === "pay_now"
                         ? "Pagar ahora"
                         : "Pagar después"}

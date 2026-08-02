@@ -43,6 +43,7 @@ export async function GET(req: Request) {
         .from("tenants")
         .select("id")
         .eq("slug", tenantSlug)
+        .eq("lifecycle_status", "active")
         .single();
 
       if (tenantErr || !tenant) {
@@ -51,6 +52,10 @@ export async function GET(req: Request) {
 
       tenantId = tenant.id;
     }
+
+    const activeTenant = await supabaseAdmin.from("tenants").select("id")
+      .eq("id", tenantId).eq("lifecycle_status", "active").maybeSingle();
+    if (!activeTenant.data) return NextResponse.json({ error: "tenant not found" }, { status: 404 });
 
     // 2) profesionales activos
     const { data: professionals, error: profErr } = await supabaseAdmin

@@ -26,7 +26,7 @@ export async function GET(req: Request) {
       .select("issuer_rut,issuer_legal_name,issuer_activity,issuer_address,issuer_commune,issuer_city")
       .eq("tenant_id", auth.tenantId).maybeSingle(),
     supabaseAdmin.from("services")
-      .select("id,name,description,price,currency,tax_treatment,is_active")
+      .select("id,name,tax_description,tax_description_review_status,price,currency,tax_treatment,is_active")
       .eq("tenant_id", auth.tenantId)
       .eq("is_active", true)
       .order("name").limit(500),

@@ -13,9 +13,9 @@ type TenantResolution = {
 };
 
 const SERVICE_SELECT =
-  "id, tenant_id, name, description, duration_min, price, currency, is_active, created_at";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
 const SERVICE_SELECT_NO_CREATED =
-  "id, tenant_id, name, description, duration_min, price, currency, is_active";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
 
 function getHostnameFromReq(req: Request) {
   const host =
@@ -30,7 +30,33 @@ function cleanText(value: unknown) {
 
 function parseNonNegativeNumber(value: unknown) {
   const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : null;
+  return Number.isSafeInteger(numberValue) && numberValue >= 0 ? numberValue : null;
+}
+
+function parsePolicy(body: Record<string, unknown>, price: number) {
+  const paymentPolicy = String(body?.paymentPolicy ?? body?.payment_policy ?? "no_advance");
+  const depositTypeRaw = body?.depositType ?? body?.deposit_type ?? null;
+  const depositType = depositTypeRaw === "" ? null : depositTypeRaw;
+  const depositValueRaw = body?.depositValue ?? body?.deposit_value ?? null;
+  const depositValue = depositValueRaw == null || depositValueRaw === ""
+    ? null
+    : parseNonNegativeNumber(depositValueRaw);
+  const expiry = parsePositiveInteger(body?.provisionalExpiryMinutes ?? body?.provisional_expiry_minutes ?? 30);
+  if (!new Set(["no_advance", "deposit", "full_payment"]).has(paymentPolicy)) return null;
+  if (!expiry || expiry > 10080) return null;
+  if (paymentPolicy !== "deposit") return {
+    payment_policy: paymentPolicy, deposit_type: null, deposit_value: null,
+    provisional_expiry_minutes: expiry, payment_configuration_complete: true,
+  };
+  if (depositType === "fixed_amount" && depositValue != null && depositValue > 0 && depositValue <= price) {
+    return { payment_policy: paymentPolicy, deposit_type: depositType, deposit_value: depositValue,
+      provisional_expiry_minutes: expiry, payment_configuration_complete: true };
+  }
+  if (depositType === "percentage" && depositValue != null && depositValue >= 1 && depositValue <= 10000) {
+    return { payment_policy: paymentPolicy, deposit_type: depositType, deposit_value: depositValue,
+      provisional_expiry_minutes: expiry, payment_configuration_complete: true };
+  }
+  return null;
 }
 
 function parsePositiveInteger(value: unknown) {
@@ -39,7 +65,7 @@ function parsePositiveInteger(value: unknown) {
   return Math.round(numberValue);
 }
 
-function normalizeService(row: Record<string, any>) {
+function normalizeService(row: Record<string, unknown>) {
   const duration =
     row.duration_min ?? row.duration_minutes ?? row.duration ?? null;
   const active =
@@ -52,6 +78,9 @@ function normalizeService(row: Record<string, any>) {
   return {
     ...row,
     description: row.description ?? null,
+    public_description: row.public_description ?? null,
+    internal_description: row.internal_description ?? null,
+    tax_description: row.tax_description ?? null,
     duration_min: typeof duration === "number" ? duration : null,
     price: typeof row.price === "number" ? row.price : row.price ?? null,
     currency: row.currency ?? "CLP",
@@ -65,7 +94,7 @@ function jsonError(error: string, status: number) {
 
 async function resolveTenantId(
   req: Request,
-  body?: any,
+  body?: Record<string, unknown> | null,
 ): Promise<TenantResolution> {
   const url = new URL(req.url);
   const slug =
@@ -156,15 +185,17 @@ export async function GET(req: Request) {
 
     const services = (result.data ?? []).map((row) => normalizeService(row));
     return NextResponse.json({ ok: true, services });
-  } catch (error: any) {
-    console.error("[api/admin/services] list unexpected:", error?.message || error);
-    return jsonError(error?.message ?? "Error listando servicios", 500);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Error listando servicios";
+    console.error("[api/admin/services] list unexpected:", message);
+    return jsonError(message, 500);
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) return jsonError("JSON inválido", 400);
     const tenant = await resolveTenantId(req, body);
     if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
     const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
@@ -172,6 +203,9 @@ export async function POST(req: Request) {
 
     const name = cleanText(body?.name);
     const description = cleanText(body?.description);
+    const publicDescription = cleanText(body?.publicDescription ?? body?.public_description);
+    const internalDescription = cleanText(body?.internalDescription ?? body?.internal_description);
+    const taxDescription = cleanText(body?.taxDescription ?? body?.tax_description);
     const price = parseNonNegativeNumber(body?.price);
     const durationMin = parsePositiveInteger(
       body?.duration_min ?? body?.duration_minutes ?? body?.duration,
@@ -191,11 +225,22 @@ export async function POST(req: Request) {
     if (durationMin === null) {
       return jsonError("duration debe ser un número mayor a 0", 400);
     }
+    const policy = parsePolicy(body, price);
+    if (!policy) return jsonError("Configuración de pago inválida", 400);
+    const taxReviewStatus = body?.taxDescriptionApproved === true ? "approved" : "pending";
+    if (taxReviewStatus === "approved" && !taxDescription) return jsonError("La descripción tributaria aprobada es obligatoria", 400);
+    if (isActive && taxReviewStatus !== "approved") return jsonError("Revisa y aprueba la descripción tributaria antes de publicar el servicio", 409);
 
     const payload = {
       tenant_id: tenant.tenantId,
       name,
       description: description || null,
+      public_description: publicDescription || null,
+      internal_description: internalDescription || null,
+      tax_description: taxDescription || null,
+      tax_description_review_status: taxReviewStatus,
+      contains_potentially_sensitive_information: body?.containsPotentiallySensitiveInformation === true,
+      ...policy,
       price,
       duration_min: durationMin,
       currency,
@@ -214,15 +259,17 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, service: normalizeService(data) });
-  } catch (error: any) {
-    console.error("[api/admin/services] create unexpected:", error?.message || error);
-    return jsonError(error?.message ?? "Error creando servicio", 500);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Error creando servicio";
+    console.error("[api/admin/services] create unexpected:", message);
+    return jsonError(message, 500);
   }
 }
 
 export async function PATCH(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) return jsonError("JSON inválido", 400);
     const tenant = await resolveTenantId(req, body);
     if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
     const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
@@ -253,12 +300,38 @@ export async function PATCH(req: Request) {
       const description = cleanText(body?.description);
       update.description = description || null;
     }
+    if ("publicDescription" in (body ?? {}) || "public_description" in (body ?? {})) {
+      update.public_description = cleanText(body?.publicDescription ?? body?.public_description) || null;
+    }
+    if ("internalDescription" in (body ?? {}) || "internal_description" in (body ?? {})) {
+      update.internal_description = cleanText(body?.internalDescription ?? body?.internal_description) || null;
+    }
+    if ("taxDescription" in (body ?? {}) || "tax_description" in (body ?? {})) {
+      update.tax_description = cleanText(body?.taxDescription ?? body?.tax_description) || null;
+      update.tax_description_review_status = "pending";
+    }
+    if ("containsPotentiallySensitiveInformation" in (body ?? {})) {
+      update.contains_potentially_sensitive_information = body.containsPotentiallySensitiveInformation === true;
+    }
     if ("price" in (body ?? {})) {
       const price = parseNonNegativeNumber(body?.price);
       if (price === null) {
         return jsonError("price debe ser un número mayor o igual a 0", 400);
       }
       update.price = price;
+    }
+    const changesPolicy = ["paymentPolicy","payment_policy","depositType","deposit_type","depositValue","deposit_value","provisionalExpiryMinutes","provisional_expiry_minutes"]
+      .some((key) => key in (body ?? {}));
+    if (changesPolicy) {
+      const nextPrice = Number(update.price ?? existing.data.price ?? 0);
+      const policy = parsePolicy({ ...existing.data, ...body }, nextPrice);
+      if (!policy) return jsonError("Configuración de pago inválida", 400);
+      Object.assign(update, policy);
+    }
+    if ("taxDescriptionApproved" in (body ?? {})) {
+      const taxDescription = String(update.tax_description ?? existing.data.tax_description ?? "").trim();
+      if (body.taxDescriptionApproved === true && !taxDescription) return jsonError("La descripción tributaria aprobada es obligatoria", 400);
+      update.tax_description_review_status = body.taxDescriptionApproved === true ? "approved" : "pending";
     }
     if (
       "duration" in (body ?? {}) ||
@@ -277,12 +350,18 @@ export async function PATCH(req: Request) {
       update.currency = cleanText(body?.currency) || "CLP";
     }
     if ("is_active" in (body ?? {}) || "active" in (body ?? {})) {
-      update.is_active =
+      const nextActive =
         typeof body?.is_active === "boolean"
           ? body.is_active
           : typeof body?.active === "boolean"
             ? body.active
             : true;
+      const review = String(update.tax_description_review_status ?? existing.data.tax_description_review_status ?? "pending");
+      const paymentComplete = Boolean(update.payment_configuration_complete ?? existing.data.payment_configuration_complete);
+      if (nextActive && (review !== "approved" || !paymentComplete)) {
+        return jsonError("El servicio requiere descripción tributaria aprobada y condición de pago completa", 409);
+      }
+      update.is_active = nextActive;
     }
 
     if (Object.keys(update).length === 0) {
@@ -309,16 +388,18 @@ export async function PATCH(req: Request) {
     if (!service) return jsonError("Servicio no encontrado para este tenant", 404);
 
     return NextResponse.json({ ok: true, service });
-  } catch (error: any) {
-    console.error("[api/admin/services] update unexpected:", error?.message || error);
-    return jsonError(error?.message ?? "Error actualizando servicio", 500);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Error actualizando servicio";
+    console.error("[api/admin/services] update unexpected:", message);
+    return jsonError(message, 500);
   }
 }
 
 export async function DELETE(req: Request) {
   try {
     const url = new URL(req.url);
-    const body = await req.json().catch(() => null);
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body) return jsonError("JSON inválido", 400);
     const tenant = await resolveTenantId(req, body);
     if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
     const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
@@ -348,11 +429,12 @@ export async function DELETE(req: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Error desactivando servicio";
     console.error(
       "[api/admin/services] deactivate unexpected:",
-      error?.message || error,
+      message,
     );
-    return jsonError(error?.message ?? "Error desactivando servicio", 500);
+    return jsonError(message, 500);
   }
 }

@@ -19,7 +19,7 @@ export const AppointmentCreateSchema = z.object({
   customerName: z.string().trim().min(1).max(120),
   customerPhone: z.string().trim().min(8).max(32),
   customerEmail: z.string().trim().email().max(254),
-  customerRut: z.string().trim().min(8).max(32),
+  customerRut: z.string().trim().max(32).optional(),
   customerId: z.string().uuid().nullable().optional(),
   status: optionalShortText(32),
   currency: optionalShortText(3),
@@ -36,7 +36,7 @@ export const AppointmentCreateSchema = z.object({
   invoiceReceiverCommune: optionalShortText(100),
   invoiceReceiverCity: optionalShortText(100),
   invoiceReceiverTaxEmail: z.string().trim().email().max(254).nullable().optional(),
-  legalConsent: z.record(z.unknown()).optional(),
+  legalConsent: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type AppointmentCreateInput = z.infer<typeof AppointmentCreateSchema>;

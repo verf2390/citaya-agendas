@@ -22,6 +22,16 @@ type ServiceRow = {
   tenant_id: string;
   name: string;
   description: string | null;
+  public_description: string | null;
+  internal_description: string | null;
+  tax_description: string | null;
+  tax_description_review_status: "pending" | "approved" | "rejected";
+  contains_potentially_sensitive_information: boolean;
+  payment_policy: "no_advance" | "deposit" | "full_payment";
+  deposit_type: "fixed_amount" | "percentage" | null;
+  deposit_value: number | null;
+  provisional_expiry_minutes: number;
+  payment_configuration_complete: boolean;
   duration_min: number | null;
   price: number | null;
   currency: string | null;
@@ -33,6 +43,15 @@ const EMPTY_SERVICE = {
   id: "",
   name: "",
   description: "",
+  public_description: "",
+  internal_description: "",
+  tax_description: "",
+  tax_description_approved: false,
+  contains_potentially_sensitive_information: false,
+  payment_policy: "no_advance" as "no_advance" | "deposit" | "full_payment",
+  deposit_type: null as "fixed_amount" | "percentage" | null,
+  deposit_value: 0,
+  provisional_expiry_minutes: 30,
   duration_min: 60,
   price: 0,
   currency: "CLP",
@@ -149,6 +168,17 @@ export default function ServiciosPage() {
       id: service.id,
       name: service.name ?? "",
       description: service.description ?? "",
+      public_description: service.public_description ?? "",
+      internal_description: service.internal_description ?? "",
+      tax_description: service.tax_description ?? "",
+      tax_description_approved: service.tax_description_review_status === "approved",
+      contains_potentially_sensitive_information: service.contains_potentially_sensitive_information,
+      payment_policy: service.payment_policy ?? "no_advance",
+      deposit_type: service.deposit_type,
+      deposit_value: service.deposit_type === "percentage"
+        ? Number(service.deposit_value ?? 0) / 100
+        : Number(service.deposit_value ?? 0),
+      provisional_expiry_minutes: service.provisional_expiry_minutes ?? 30,
       duration_min: service.duration_min ?? 60,
       price: service.price ?? 0,
       currency: service.currency ?? "CLP",
@@ -171,6 +201,19 @@ export default function ServiciosPage() {
       tenantId,
       name,
       description: form.description.trim() || null,
+      publicDescription: form.public_description.trim() || null,
+      internalDescription: form.internal_description.trim() || null,
+      taxDescription: form.tax_description.trim() || null,
+      taxDescriptionApproved: form.tax_description_approved,
+      containsPotentiallySensitiveInformation: form.contains_potentially_sensitive_information,
+      paymentPolicy: form.payment_policy,
+      depositType: form.payment_policy === "deposit" ? form.deposit_type : null,
+      depositValue: form.payment_policy === "deposit"
+        ? form.deposit_type === "percentage"
+          ? Math.round(Number(form.deposit_value) * 100)
+          : Math.round(Number(form.deposit_value))
+        : null,
+      provisionalExpiryMinutes: Math.round(Number(form.provisional_expiry_minutes)),
       duration: Number(form.duration_min) || 60,
       price: Number(form.price) || 0,
       currency: form.currency.trim() || "CLP",
@@ -295,9 +338,52 @@ export default function ServiciosPage() {
                 <input className="min-w-0 rounded-xl border px-3 py-2" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
               </label>
               <label className="grid gap-1 text-sm font-semibold">
-                Descripción
-                <textarea className="min-h-24 min-w-0 rounded-xl border px-3 py-2" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
+                Descripción pública
+                <textarea className="min-h-20 min-w-0 rounded-xl border px-3 py-2" value={form.public_description} onChange={(e) => setForm((p) => ({ ...p, public_description: e.target.value }))} />
               </label>
+              <label className="grid gap-1 text-sm font-semibold">
+                Descripción interna (nunca se envía al SII)
+                <textarea className="min-h-20 min-w-0 rounded-xl border px-3 py-2" value={form.internal_description} onChange={(e) => setForm((p) => ({ ...p, internal_description: e.target.value }))} />
+              </label>
+              <label className="grid gap-1 text-sm font-semibold">
+                Descripción tributaria mínima
+                <textarea className="min-h-20 min-w-0 rounded-xl border px-3 py-2" value={form.tax_description} onChange={(e) => setForm((p) => ({ ...p, tax_description: e.target.value, tax_description_approved: false }))} />
+              </label>
+              <label className="flex items-start gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={form.contains_potentially_sensitive_information} onChange={(e) => setForm((p) => ({ ...p, contains_potentially_sensitive_information: e.target.checked, tax_description_approved: false }))} />
+                El servicio puede involucrar información sensible
+              </label>
+              <label className="flex items-start gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={form.tax_description_approved} onChange={(e) => setForm((p) => ({ ...p, tax_description_approved: e.target.checked }))} />
+                Confirmo que la descripción tributaria es veraz, mínima y no revela notas clínicas
+              </label>
+              <fieldset className="grid gap-3 rounded-xl border p-3">
+                <legend className="px-1 text-sm font-black">Condición para confirmar la reserva</legend>
+                <label className="grid gap-1 text-sm font-semibold">
+                  Modalidad
+                  <select className="rounded-xl border px-3 py-2" value={form.payment_policy} onChange={(e) => setForm((p) => ({ ...p, payment_policy: e.target.value as typeof p.payment_policy, deposit_type: e.target.value === "deposit" ? p.deposit_type ?? "percentage" : null }))}>
+                    <option value="no_advance">Reservar sin pago anticipado</option>
+                    <option value="deposit">Solicitar un anticipo</option>
+                    <option value="full_payment">Solicitar el pago completo</option>
+                  </select>
+                </label>
+                {form.payment_policy === "deposit" ? <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <select className="rounded-xl border px-3 py-2" value={form.deposit_type ?? "percentage"} onChange={(e) => setForm((p) => ({ ...p, deposit_type: e.target.value as "fixed_amount" | "percentage" }))}>
+                      <option value="percentage">Porcentaje</option>
+                      <option value="fixed_amount">Monto fijo CLP</option>
+                    </select>
+                    <input type="number" min={1} step={form.deposit_type === "percentage" ? 0.01 : 1} className="rounded-xl border px-3 py-2" value={form.deposit_value} onChange={(e) => setForm((p) => ({ ...p, deposit_value: Number(e.target.value) }))} />
+                  </div>
+                  <p className="text-xs text-amber-800">El saldo queda pendiente. El tratamiento DTE del anticipo permanece en revisión tributaria y no genera folio automáticamente.</p>
+                </> : null}
+                <label className="grid gap-1 text-sm font-semibold">Expiración provisional (minutos)
+                  <input type="number" min={5} max={10080} className="rounded-xl border px-3 py-2" value={form.provisional_expiry_minutes} onChange={(e) => setForm((p) => ({ ...p, provisional_expiry_minutes: Number(e.target.value) }))} />
+                </label>
+              </fieldset>
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                <strong>Documento tributario:</strong> obligatorio para toda venta. Se emitirá boleta o factura según el caso; esta obligación no puede desactivarse.
+              </div>
               <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                 <label className="grid min-w-0 gap-1 text-sm font-semibold">
                   Precio
@@ -348,7 +434,7 @@ export default function ServiciosPage() {
                 <div key={service.id} className="grid min-w-0 gap-3 border-b p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                   <div className="min-w-0">
                     <div className="font-black text-slate-900">{service.name}</div>
-                    <div className="mt-1 text-sm text-slate-500">{service.description || "Sin descripción"}</div>
+                    <div className="mt-1 text-sm text-slate-500">{service.public_description || "Sin descripción pública"}</div>
                     <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
                       <span className="rounded-full border bg-slate-50 px-2 py-1">{formatDuration(service.duration_min)}</span>
                       <span className="rounded-full border bg-slate-50 px-2 py-1">{formatPrice(service.price, service.currency)}</span>

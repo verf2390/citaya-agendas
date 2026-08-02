@@ -16,13 +16,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
     }
 
-    const { data: dteIntentId, error } = await supabaseAdmin.rpc(
-      "mark_manual_payment_and_enqueue_dte",
+    const { data: paymentIntentId, error } = await supabaseAdmin.rpc(
+      "billing_record_manual_verified_payment",
       {
         p_tenant_id: access.tenantId,
         p_appointment_id: appointmentId,
         p_actor_id: access.userId,
-        p_provider: "manual",
       },
     );
     if (error) {
@@ -40,7 +39,7 @@ export async function POST(req: Request) {
       ok: true,
       appointmentId,
       payment_status: "paid",
-      dteIntentId,
+      paymentIntentId,
     });
   } catch (error) {
     console.error("[admin/appointments/mark-paid] unexpected error", {

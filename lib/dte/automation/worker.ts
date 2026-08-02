@@ -227,7 +227,6 @@ export async function runOneManualIssuanceWorker(options: {
     }
     const dteType = Number(intent.resolved_dte_type) as 33 | 56 | 61;
     await assertTenantReadyForIssuance(item, dteType);
-    const appointment = intent.appointment_snapshot ?? {};
     const receiver = intent.receiver_snapshot ?? {};
     const immutable = intent.immutable_snapshot ?? {};
     const frozenIssuer =
@@ -257,12 +256,8 @@ export async function runOneManualIssuanceWorker(options: {
     const treatment = snapshotExemptAmount === grossAmount ? "exempt" : "affected";
 
     const rawLines = Array.isArray(immutable.lines) ? immutable.lines : [];
-    const sourceLines = rawLines.length ? rawLines : [{
-      description: value(appointment, "serviceName") || "Servicio reservado",
-      quantity: 1,
-      unitGrossAmount: grossAmount,
-      grossAmount,
-    }];
+    if (!rawLines.length) throw new Error("DTE_TAX_DESCRIPTION_SNAPSHOT_REQUIRED");
+    const sourceLines = rawLines;
     const productionLines = sourceLines.map((candidate) => {
       if (!candidate || typeof candidate !== "object") throw new Error("DTE_LINES_INVALID");
       const line = candidate as Record<string, unknown>;

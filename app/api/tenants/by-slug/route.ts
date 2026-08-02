@@ -20,6 +20,7 @@ type TenantRow = {
   show_phone_home: boolean | null;
   show_address_after_booking: boolean | null;
   show_phone_after_booking: boolean | null;
+  lifecycle_status: "active" | "archived";
 };
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -63,9 +64,11 @@ export async function GET(req: Request) {
         "show_phone_home",
         "show_address_after_booking",
         "show_phone_after_booking",
+        "lifecycle_status",
       ].join(","),
     )
     .eq("slug", slug)
+    .eq("lifecycle_status", "active")
     .maybeSingle();
 
   if (error) {

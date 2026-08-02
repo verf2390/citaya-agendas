@@ -72,10 +72,12 @@ export async function POST(req: Request) {
     .select("id,full_name,email,rut_normalized")
     .eq("tenant_id", auth.tenantId).eq("id", customerId).maybeSingle();
   if (!customer) return responseError(404, "Recurso no encontrado");
-  try {
-    normalizeRequiredCustomerRut(customer.rut_normalized);
-  } catch {
-    return responseError(409, "Completa el RUT válido del cliente antes de solicitar un documento");
+  if (dteType === 33) {
+    try {
+      normalizeRequiredCustomerRut(customer.rut_normalized);
+    } catch {
+      return responseError(409, "Completa el RUT válido del receptor antes de solicitar factura");
+    }
   }
 
   let appointment: AppointmentRow | null = null;
@@ -120,6 +122,12 @@ export async function POST(req: Request) {
       return responseError(400, "Detalle o montos inválidos");
     }
   } else {
+    const { data: taxService } = await supabaseAdmin.from("services")
+      .select("tax_description,tax_description_review_status,tax_treatment")
+      .eq("tenant_id", auth.tenantId).eq("id", appointment?.service_id).maybeSingle();
+    if (!taxService?.tax_description || taxService.tax_description_review_status !== "approved") {
+      return responseError(409, "La descripción tributaria requiere aprobación administrativa");
+    }
     const grossAmountFromDatabase = Number(
       verifiedPayment?.amount ??
       appointment?.payment_paid_amount ??
@@ -130,7 +138,7 @@ export async function POST(req: Request) {
       return responseError(409, "El monto server-side no está disponible");
     }
     lines = [{
-      description: String(appointment?.service_name ?? "Servicio").slice(0, 180),
+      description: String(taxService.tax_description).slice(0, 180),
       quantity: 1,
       unitGrossAmount: grossAmountFromDatabase,
       grossAmount: grossAmountFromDatabase,
@@ -141,11 +149,9 @@ export async function POST(req: Request) {
     appointment?.tax_treatment_snapshot === "exempt",
   );
 
-  let receiver: Record<string, unknown> = {
-    rut: customer.rut_normalized,
-    legalName: customer.full_name,
-    email: customer.email,
-  };
+  let receiver: Record<string, unknown> = dteType === 39
+    ? { documentType: 39, consumerIdentityIncluded: false }
+    : {};
   if (dteType === 33) {
     const { data: storedProfile } = await supabaseAdmin.from("customer_tax_profiles")
       .select("rut_normalized,legal_name,business_activity,tax_address,tax_commune,tax_city,tax_email")

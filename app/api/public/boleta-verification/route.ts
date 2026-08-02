@@ -54,7 +54,6 @@ export async function POST(req: Request) {
     .eq("issuer_rut", issuerRut)
     .maybeSingle();
   if (issuer.error || !issuer.data) return notFound();
-
   const document = await supabaseAdmin
     .from("dte_production_documents")
     .select("id,dte_type,folio,issue_date,total_amount,status,sii_status")

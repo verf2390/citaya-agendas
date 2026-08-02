@@ -21,8 +21,9 @@ export async function GET(req: Request) {
     // tenant por slug
     const { data: t, error: terr } = await supabaseAdmin
       .from("tenants")
-      .select("id, name, slug")
+      .select("id, name, slug, lifecycle_status")
       .eq("slug", tenant)
+      .eq("lifecycle_status", "active")
       .maybeSingle();
 
     if (terr) throw terr;
@@ -33,9 +34,10 @@ export async function GET(req: Request) {
     // servicios activos
     const { data, error } = await supabaseAdmin
       .from("services")
-      .select("id, tenant_id, name, duration_min, price, currency, is_active")
+      .select("id,tenant_id,name,public_description,duration_min,price,currency,is_active,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete")
       .eq("tenant_id", t.id)
       .eq("is_active", true)
+      .eq("payment_configuration_complete", true)
       .order("created_at", { ascending: true });
 
     if (error) throw error;
@@ -47,10 +49,11 @@ export async function GET(req: Request) {
       },
       { status: 200 },
     );
-  } catch (e: any) {
-    console.error("services/by-tenant error:", e);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Error interno";
+    console.error("services/by-tenant error:", message);
     return NextResponse.json(
-      { error: e?.message ?? "Error interno" },
+      { error: message },
       { status: 500 },
     );
   }

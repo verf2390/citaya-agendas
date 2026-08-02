@@ -4,6 +4,7 @@ import { isUuid } from "@/lib/api/validators";
 import { fetchMercadoPagoPayment } from "@/services/payments/mercadopago";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
+import { safePaymentAuditMetadata } from "@/lib/security/payment-verification.mjs";
 
 function reject(status = 400) {
   return NextResponse.json({ ok: false, error: "Notificación inválida" }, { status });
@@ -47,11 +48,7 @@ export async function POST(req: Request) {
         p_intent_id: intent.id,
         p_provider: "mercadopago",
         p_provider_payment_id: intent.provider_payment_id,
-        p_audit_metadata: {
-          payment_id: paymentId,
-          status: "approved",
-          date_approved: payment.date_approved ?? null,
-        },
+        p_audit_metadata: safePaymentAuditMetadata("mercadopago", payment),
       },
     );
     if (finalizeError) return reject(500);

@@ -177,6 +177,9 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
+    const { data: activeTenant } = await supabaseServer.from("tenants").select("id")
+      .eq("id", effectiveTenantId).eq("lifecycle_status", "active").maybeSingle();
+    if (!activeTenant) return NextResponse.json({ error: "tenant no disponible" }, { status: 404 });
 
     const rangeStart = new Date(from);
     const rangeEnd = new Date(to);

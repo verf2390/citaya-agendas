@@ -81,13 +81,15 @@ export function validateBookingTaxInput(input: {
   taxDocumentType?: 33 | 39 | null;
   taxProfile?: Partial<CustomerTaxProfileInput> | null;
 }) {
-  const customerRut = normalizeRequiredCustomerRut(input.customerRut);
   const requestedDocumentType =
     input.taxDocumentType === 33 || input.taxDocumentType === 39
       ? input.taxDocumentType
       : input.invoiceRequested
         ? 33
         : null;
+  const customerRut = requestedDocumentType === 33
+    ? normalizeRequiredCustomerRut(input.customerRut)
+    : "";
   if (requestedDocumentType !== 33) {
     return {
       customerRut,

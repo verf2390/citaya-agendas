@@ -14,7 +14,6 @@ import {
   opaqueKey,
   requestIp,
 } from "@/lib/security/request";
-import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { normalizeRut } from "@/lib/dte/rut";
 import { validateBookingTaxInput } from "@/lib/dte/cutover";
 import { validatePublicLegalConsent } from "@/lib/legal/consent.mjs";
@@ -33,23 +32,23 @@ async function resolveCustomerId(input: {
   name: string;
   phone?: string | null;
   email?: string | null;
-  rut: string;
+  rut: string | null;
 }) {
-  const rut = normalizeRut(input.rut);
+  const rut = input.rut ? normalizeRut(input.rut) : null;
   if (input.customerId) {
     const { data } = await supabaseAdmin.from("customers").select("id,rut_normalized")
       .eq("id", input.customerId).eq("tenant_id", input.tenantId).maybeSingle();
     if (!data) throw new Error("invalid_customer");
-    if (data.rut_normalized && data.rut_normalized !== rut) throw new Error("customer_rut_mismatch");
-    const { error } = await supabaseAdmin.from("customers").update({ rut_normalized: rut })
+    if (rut && data.rut_normalized && data.rut_normalized !== rut) throw new Error("customer_rut_mismatch");
+    const { error } = await supabaseAdmin.from("customers").update(rut ? { rut_normalized: rut } : {})
       .eq("id", data.id).eq("tenant_id", input.tenantId);
     if (error) throw error;
     return data.id;
   }
   const phone = String(input.phone ?? "").replace(/[^+\d]/g, "").slice(0, 32) || null;
   const email = String(input.email ?? "").trim().toLowerCase().slice(0, 254) || null;
-  let existing = (await supabaseAdmin.from("customers").select("id,rut_normalized")
-    .eq("tenant_id", input.tenantId).eq("rut_normalized", rut).maybeSingle()).data;
+  let existing = rut ? (await supabaseAdmin.from("customers").select("id,rut_normalized")
+    .eq("tenant_id", input.tenantId).eq("rut_normalized", rut).maybeSingle()).data : null;
   if (!existing && phone) {
     existing = (await supabaseAdmin.from("customers").select("id,rut_normalized")
       .eq("tenant_id", input.tenantId).eq("phone", phone).maybeSingle()).data;
@@ -59,11 +58,11 @@ async function resolveCustomerId(input: {
       .eq("tenant_id", input.tenantId).eq("email", email).maybeSingle()).data;
   }
   if (existing?.id) {
-    if (existing.rut_normalized && existing.rut_normalized !== rut) {
+    if (rut && existing.rut_normalized && existing.rut_normalized !== rut) {
       throw new Error("customer_rut_mismatch");
     }
     const { error } = await supabaseAdmin.from("customers").update({
-      rut_normalized: rut,
+      ...(rut ? { rut_normalized: rut } : {}),
       full_name: input.name.slice(0, 120),
       phone,
       email,
@@ -77,7 +76,7 @@ async function resolveCustomerId(input: {
     full_name: input.name.slice(0, 120),
     phone,
     email,
-    rut_normalized: rut,
+    ...(rut ? { rut_normalized: rut } : {}),
   }).select("id").single();
   if (error) throw error;
   return data.id;
@@ -172,17 +171,16 @@ export async function POST(req: Request) {
       if (!allowed) return publicError(429, "Demasiadas solicitudes");
     }
 
-    const [{ data: service, error: serviceError }, { data: professional, error: professionalError }, paymentConfig, { data: issuanceConfig }] =
+    const [{ data: service, error: serviceError }, { data: professional, error: professionalError }, { data: issuanceConfig }] =
       await Promise.all([
         supabaseAdmin.from("services")
-          .select("id, tenant_id, duration_min, price, currency, is_active, tax_treatment")
+          .select("id,tenant_id,duration_min,price,currency,is_active,tax_treatment,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete,tax_description,tax_description_review_status")
           .eq("id", input.serviceId).eq("tenant_id", input.tenantId)
           .eq("is_active", true).maybeSingle(),
         supabaseAdmin.from("professionals")
           .select("id, tenant_id, active")
           .eq("id", input.professionalId).eq("tenant_id", input.tenantId)
           .eq("active", true).maybeSingle(),
-        getTenantPaymentConfig(input.tenantId),
         supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment").eq("tenant_id", input.tenantId).maybeSingle(),
       ]);
     const duration = Number(service?.duration_min);
@@ -190,7 +188,9 @@ export async function POST(req: Request) {
     if (
       serviceError || professionalError || !service || !professional ||
       !Number.isInteger(duration) || duration < 5 || duration > 480 ||
-      !Number.isFinite(price) || price < 0
+      !Number.isSafeInteger(price) || price < 0 ||
+      service.payment_configuration_complete !== true ||
+      service.tax_description_review_status !== "approved"
     ) {
       return publicError(409);
     }
@@ -201,7 +201,7 @@ export async function POST(req: Request) {
       name: input.customerName,
       phone: input.customerPhone,
       email: input.customerEmail,
-      rut: bookingTax.customerRut,
+      rut: bookingTax.customerRut || null,
     });
     if (bookingTax.taxProfile) {
       const profile = bookingTax.taxProfile;
@@ -213,9 +213,7 @@ export async function POST(req: Request) {
       }, { onConflict: "tenant_id,customer_id" });
       if (taxProfileError) return publicError(409, "Perfil tributario duplicado o inválido");
     }
-    const paymentRequired = isAdminRequest
-      ? input.paymentRequired === true
-      : paymentConfig.enabled && paymentConfig.collectionMode !== "none";
+    const paymentRequired = service.payment_policy !== "no_advance";
     const manageToken = deriveManageToken(input.tenantId, key, pepper);
     const rpcName = isAdminRequest
       ? "create_public_appointment"
@@ -269,6 +267,18 @@ export async function POST(req: Request) {
       .eq("id", row.appointment_id)
       .eq("tenant_id", input.tenantId);
     if (taxSnapshotError) return publicError(500);
+    const { error: saleError } = await supabaseAdmin.rpc(
+      "billing_initialize_appointment_sale",
+      {
+        p_tenant_id: input.tenantId,
+        p_appointment_id: row.appointment_id,
+        p_requested_document_type: bookingTax.requestedDocumentType,
+      },
+    );
+    if (saleError) {
+      console.warn("[appointments/create] sale initialization rejected", { code: saleError.code ?? null });
+      return publicError(409, "La configuración comercial del servicio está incompleta");
+    }
     return NextResponse.json({
       ok: true,
       appointmentId: row.appointment_id,

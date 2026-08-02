@@ -18,8 +18,8 @@ export async function getPublicLegalBundleByTenantId(
   const [{ data: tenant }, { data: profile }, { data: tax }, { data: docs }] =
     await Promise.all([
       supabaseAdmin.from("tenants")
-        .select("id,slug,name,address,city,contact_email,phone_display")
-        .eq("id", tenantId).maybeSingle(),
+        .select("id,slug,name,address,city,contact_email,phone_display,lifecycle_status")
+        .eq("id", tenantId).eq("lifecycle_status", "active").maybeSingle(),
       supabaseAdmin.from("tenant_legal_profiles").select("*")
         .eq("tenant_id", tenantId).maybeSingle(),
       supabaseAdmin.from("dte_production_tenant_settings")
@@ -75,8 +75,8 @@ export async function getPublicLegalBundleByTenantId(
 export async function resolveTenantForPublicRequest(req: Request, requestedSlug: string) {
   const slug = requestedSlug.trim().toLowerCase();
   if (!slug) return null;
-  const { data } = await supabaseAdmin.from("tenants").select("id,slug")
-    .eq("slug", slug).maybeSingle();
+  const { data } = await supabaseAdmin.from("tenants").select("id,slug,lifecycle_status")
+    .eq("slug", slug).eq("lifecycle_status", "active").maybeSingle();
   if (!data?.id) return null;
 
   const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")

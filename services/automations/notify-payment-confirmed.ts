@@ -66,10 +66,8 @@ async function postToN8n(payload: Record<string, unknown>) {
     });
 
     if (!res.ok) {
-      const detail = await res.text().catch(() => "");
       console.error("[automations/payment-confirmed] n8n returned error", {
         status: res.status,
-        detail,
       });
     }
   } finally {
@@ -156,8 +154,8 @@ export async function notifyPaymentConfirmed(
       customer_email: appointmentRow.customer_email ?? "",
       customer_phone: appointmentRow.customer_phone ?? "",
       service_id: appointmentRow.service_id ?? null,
-      service_name: appointmentRow.service_name ?? "",
-      description: appointmentRow.description ?? "",
+      service_name: "Servicio reservado",
+      description: "",
       professional_id: appointmentRow.professional_id ?? null,
       staff_id: appointmentRow.professional_id ?? null,
       staff_name: professionalRow?.name ?? null,
@@ -186,7 +184,7 @@ export async function notifyPaymentConfirmed(
     console.error("[automations/payment-confirmed] notification failed", {
       appointmentId: args.appointmentId,
       provider: args.provider,
-      error,
+      name: error instanceof Error ? error.name : "UnknownError",
     });
   }
 }

@@ -109,7 +109,7 @@ export async function requireTenantAdmin(
   const tenantSlug = getTenantSlugFromReq(input.req, input.tenantSlug);
   let tenantQuery = supabaseAdmin
     .from("tenants")
-    .select("id, slug")
+    .select("id, slug, lifecycle_status")
     .eq("id", tenantId);
   if (tenantSlug) tenantQuery = tenantQuery.eq("slug", tenantSlug);
   const { data: tenant, error: tenantError } = await tenantQuery.maybeSingle();
@@ -136,6 +136,10 @@ export async function requireTenantAdmin(
     checkPlatformAdmin(userId),
   ]);
 
+  if (tenant.lifecycle_status === "archived" && !platformAdmin.allowed) {
+    return { ok: false, error: "Tenant archivado", status: 403 };
+  }
+
   if (tenantMembership.failed || platformAdmin.failed) {
     return {
       ok: false,
@@ -144,7 +148,7 @@ export async function requireTenantAdmin(
     };
   }
 
-  if (tenantMembership.allowed) {
+  if (tenantMembership.allowed && tenant.lifecycle_status !== "archived") {
     return {
       ok: true,
       tenantId: tenant.id as string,
@@ -180,7 +184,7 @@ export async function requireHostTenantAdmin(req: Request): Promise<RequireTenan
   }
   const { data: tenant, error } = await supabaseAdmin
     .from("tenants")
-    .select("id, slug")
+    .select("id, slug, lifecycle_status")
     .eq("slug", tenantSlug)
     .maybeSingle();
   if (error) {

@@ -44,6 +44,15 @@ async function load(access: Extract<Awaited<ReturnType<typeof requireHostTenantA
 export async function GET(req: Request) {
   const access = await requireHostTenantAdmin(req);
   if (!access.ok) return error(access.error, access.status);
+  const audit = await supabaseAdmin.from("restricted_data_access_audit").insert({
+    tenant_id: access.tenantId,
+    actor_user_id: access.userId,
+    resource_type: "legal_acceptance",
+    resource_id: null,
+    action: "LIST",
+    safe_context: { limit: 50, technicalFieldsExposed: false },
+  });
+  if (audit.error) return error("No se pudo auditar el acceso a evidencias", 503);
   return NextResponse.json({ ok: true, ...(await load(access)) }, { headers: { "Cache-Control": "no-store" } });
 }
 

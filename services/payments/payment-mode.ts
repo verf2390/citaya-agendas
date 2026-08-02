@@ -1,3 +1,8 @@
+import {
+  calculateServicePolicySnapshot,
+  safeClpNumber,
+} from "@/services/payments/service-payment-policy";
+
 export type PaymentCollectionMode = "none" | "full" | "deposit";
 export type DepositType = "percentage" | "fixed" | null;
 
@@ -44,20 +49,16 @@ export function calculatePaymentBreakdown({
 
   if (normalizedMode === "deposit") {
     const value = Number(depositValue ?? 0);
-    let requiredOnlineAmount = normalizedTotal;
-
-    if (depositType === "percentage") {
-      requiredOnlineAmount = Math.round(normalizedTotal * (value / 100));
-    }
-
-    if (depositType === "fixed") {
-      requiredOnlineAmount = Math.round(value);
-    }
-
-    requiredOnlineAmount = Math.min(
-      Math.max(normalizeMoney(requiredOnlineAmount), 0),
-      normalizedTotal,
-    );
+    const snapshot = calculateServicePolicySnapshot({
+      serviceId: "legacy-tenant-payment-setting",
+      totalAmount: normalizedTotal,
+      paymentPolicy: "deposit",
+      depositType: depositType === "fixed" ? "fixed_amount" : depositType,
+      depositValue: depositType === "percentage"
+        ? Math.round(value * 100)
+        : Math.round(value),
+    });
+    const requiredOnlineAmount = safeClpNumber(snapshot.initialPaymentDue);
 
     return {
       totalAmount: normalizedTotal,
