@@ -17,6 +17,11 @@ import {
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { normalizeRut } from "@/lib/dte/rut";
 import { validateBookingTaxInput } from "@/lib/dte/cutover";
+import { validatePublicLegalConsent } from "@/lib/legal/consent.mjs";
+import {
+  getPublicLegalBundleByTenantId,
+  resolveTenantForPublicRequest,
+} from "@/lib/legal/server";
 
 function publicError(status = 400, error = "No se pudo crear la reserva") {
   return NextResponse.json({ ok: false, error }, { status });
@@ -83,6 +88,25 @@ export async function POST(req: Request) {
     const parsed = await parseJson(req, AppointmentCreateSchema);
     if (!parsed.ok) return parsed.res;
     const input = parsed.data;
+    const isAdminRequest = Boolean(req.headers.get("authorization"));
+    let legalConsent: Record<string, unknown> | null = null;
+    if (!isAdminRequest) {
+      const resolvedTenant = await resolveTenantForPublicRequest(
+        req,
+        String(input.tenantSlug ?? ""),
+      );
+      if (!resolvedTenant || resolvedTenant.id !== input.tenantId) return publicError(404);
+      const legalBundle = await getPublicLegalBundleByTenantId(input.tenantId, resolvedTenant.slug);
+      const validation = validatePublicLegalConsent({
+        tenantId: input.tenantId,
+        bundle: legalBundle ?? {},
+        consent: input.legalConsent,
+      });
+      if (!validation.ok) {
+        return publicError(409, "Debes revisar y aceptar las condiciones vigentes del prestador.");
+      }
+      legalConsent = validation.value;
+    }
     const requestedDocumentType =
       input.taxDocumentType ??
       (input.invoiceRequested === true ? 33 : null);
@@ -131,7 +155,6 @@ export async function POST(req: Request) {
     const pepper = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();
     if (!key || !pepper) return publicError(503);
 
-    const isAdminRequest = Boolean(req.headers.get("authorization"));
     if (isAdminRequest) {
       const admin = await requireTenantAdmin({ req, tenantId: input.tenantId });
       if (!admin.ok) return publicError(404);
@@ -194,7 +217,10 @@ export async function POST(req: Request) {
       ? input.paymentRequired === true
       : paymentConfig.enabled && paymentConfig.collectionMode !== "none";
     const manageToken = deriveManageToken(input.tenantId, key, pepper);
-    const { data, error } = await supabaseAdmin.rpc("create_public_appointment", {
+    const rpcName = isAdminRequest
+      ? "create_public_appointment"
+      : "create_public_appointment_with_legal_acceptance";
+    const rpcInput: Record<string, unknown> = {
       p_tenant_id: input.tenantId,
       p_professional_id: input.professionalId,
       p_service_id: input.serviceId,
@@ -209,7 +235,14 @@ export async function POST(req: Request) {
       p_manage_token_hash: hashManageToken(manageToken, pepper),
       p_manage_token_expires_at: manageTokenExpiresAt(),
       p_idempotency_key: key,
-    });
+    };
+    if (!isAdminRequest) {
+      const forwardedIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "";
+      rpcInput.p_legal = legalConsent;
+      rpcInput.p_source_ip = /^[0-9a-f:.]+$/i.test(forwardedIp) ? forwardedIp : null;
+      rpcInput.p_user_agent = req.headers.get("user-agent")?.slice(0, 500) ?? null;
+    }
+    const { data, error } = await supabaseAdmin.rpc(rpcName, rpcInput);
     if (error) {
       console.warn("[appointments/create] rejected", { code: error.code ?? null });
       return publicError(error.code === "23P01" ? 409 : 400);

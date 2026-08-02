@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
@@ -178,6 +179,10 @@ function normalized(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function errorMessage(value: unknown, fallback: string) {
+  return value instanceof Error ? value.message : fallback;
+}
+
 function getTenantSlug(req: Request, body: CampaignPayload) {
   const forwardedHost = req.headers.get("x-forwarded-host");
   const host = forwardedHost || req.headers.get("host");
@@ -308,6 +313,26 @@ async function fetchRecipients(tenantId: string, segmentKey: string) {
   const customerRows = (customers ?? []) as CustomerRow[];
   const customerIds = customerRows.map((c) => c.id);
 
+  const { data: consentRows, error: consentError } = customerIds.length > 0
+    ? await supabaseAdmin.from("marketing_consent_events")
+      .select("customer_id,event_type,destination_hash,occurred_at")
+      .eq("tenant_id", tenantId).eq("channel", "email")
+      .in("customer_id", customerIds).order("occurred_at", { ascending: false })
+    : { data: [], error: null };
+  if (consentError) throw new Error(consentError.message);
+  const hashes = [...new Set((consentRows ?? []).map((row) => String(row.destination_hash)))];
+  const { data: suppressionRows, error: suppressionError } = hashes.length > 0
+    ? await supabaseAdmin.from("marketing_suppressions").select("destination_hash")
+      .eq("tenant_id", tenantId).eq("channel", "email").in("destination_hash", hashes)
+    : { data: [], error: null };
+  if (suppressionError) throw new Error(suppressionError.message);
+  const suppressed = new Set((suppressionRows ?? []).map((row) => String(row.destination_hash)));
+  const latestConsent = new Map<string, { event_type: string; destination_hash: string }>();
+  for (const row of consentRows ?? []) {
+    const customerId = String(row.customer_id ?? "");
+    if (customerId && !latestConsent.has(customerId)) latestConsent.set(customerId, row);
+  }
+
   let appointments: AppointmentRow[] = [];
   if (customerIds.length > 0) {
     const { data: appointmentRows, error: appointmentsError } = await supabaseAdmin
@@ -327,6 +352,12 @@ async function fetchRecipients(tenantId: string, segmentKey: string) {
   const inactiveBefore = Date.now() - 1000 * 60 * 60 * 24 * 45;
 
   const recipients = customerRows
+    .filter((customer) => {
+      const consent = latestConsent.get(customer.id);
+      if (!consent || consent.event_type !== "granted") return false;
+      const currentHash = createHash("sha256").update(customer.email?.trim().toLowerCase() ?? "").digest("hex");
+      return consent.destination_hash === currentHash && !suppressed.has(currentHash);
+    })
     .map((customer) => {
       const stats = statsByCustomer.get(customer.id) ?? {
         totalAppointments: 0,
@@ -454,7 +485,6 @@ async function fetchPendingPaymentRecipients(tenantId: string) {
 function filterPaymentRecipients(
   recipients: Recipient[],
   ctaLabel: string,
-  ctaUrl: string,
 ) {
   const usable: Recipient[] = [];
   const skippedMissingPaymentLink: Recipient[] = [];
@@ -528,7 +558,7 @@ async function buildAudiencePreview(tenantId: string, paymentCampaign: boolean, 
     : await fetchRecipients(tenantId, segmentKey);
   const deduped = dedupeValidRecipients(allRecipients);
   const paymentFiltered = paymentCampaign
-    ? filterPaymentRecipients(deduped.recipients, "Pagar ahora", "")
+    ? filterPaymentRecipients(deduped.recipients, "Pagar ahora")
     : {
         recipients: deduped.recipients,
         skippedMissingPaymentLink: [] as Recipient[],
@@ -572,8 +602,8 @@ async function logMessage(
       },
       body: JSON.stringify(body),
     });
-  } catch (e: any) {
-    console.error("[api/admin/campaigns/send] log ignored:", e?.message || e);
+  } catch (cause: unknown) {
+    console.error("[api/admin/campaigns/send] log ignored:", errorMessage(cause, "Error de log"));
   }
 }
 
@@ -617,10 +647,11 @@ export async function GET(req: Request) {
       isPaymentCampaign: paymentCampaign,
       ...preview,
     });
-  } catch (e: any) {
-    console.error("[api/admin/campaigns/send] preview error:", e?.message || e);
+  } catch (cause: unknown) {
+    const message = errorMessage(cause, "Error preparando audiencia");
+    console.error("[api/admin/campaigns/send] preview error:", message);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error preparando audiencia" },
+      { ok: false, error: message },
       { status: 500 },
     );
   }
@@ -714,7 +745,7 @@ export async function POST(req: Request) {
       duplicateOrLimitedCount,
     } = dedupeValidRecipients(allRecipients);
     const paymentFiltered = paymentCampaign
-      ? filterPaymentRecipients(emailRecipients, ctaLabel, ctaUrl)
+      ? filterPaymentRecipients(emailRecipients, ctaLabel)
       : {
           recipients: enrichNormalRecipients(emailRecipients, ctaLabel, ctaUrl),
           skippedMissingPaymentLink: [],
@@ -872,8 +903,8 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(webhookPayload),
       });
-    } catch (e: any) {
-      console.error("[api/admin/campaigns/send] n8n fetch error:", e?.message || e);
+    } catch (cause: unknown) {
+      console.error("[api/admin/campaigns/send] n8n fetch error:", errorMessage(cause, "Error de conexión"));
       await Promise.all(
         recipients.map((recipient) =>
           logMessage(req, token, {
@@ -960,10 +991,11 @@ export async function POST(req: Request) {
       templateKey: payload.templateKey,
       message: "Campana enviada correctamente",
     });
-  } catch (e: any) {
-    console.error("[api/admin/campaigns/send] error:", e?.message || e);
+  } catch (cause: unknown) {
+    const message = errorMessage(cause, "Error enviando campana");
+    console.error("[api/admin/campaigns/send] error:", message);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error enviando campana" },
+      { ok: false, error: message },
       { status: 500 },
     );
   }

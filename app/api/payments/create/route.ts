@@ -67,6 +67,16 @@ export async function POST(req: Request) {
       return jsonError(409);
     }
 
+    if (actor.actor === "manage_token") {
+      const { data: legalReady, error: legalReadyError } = await supabaseAdmin.rpc(
+        "legal_appointment_payment_ready",
+        { p_tenant_id: appointment.tenant_id, p_appointment_id: appointment.id },
+      );
+      if (legalReadyError || legalReady !== true) {
+        return jsonError(409, "La aceptación legal de la reserva está incompleta");
+      }
+    }
+
     let customerRut = String(appointment.customer_rut_snapshot ?? "");
     if (!validateRut(customerRut) && appointment.customer_id) {
       const { data: customer } = await supabaseAdmin.from("customers")

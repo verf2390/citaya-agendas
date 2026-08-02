@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Megaphone,
   ReceiptText,
+  Scale,
   Settings,
   Sparkles,
   Users,
@@ -32,6 +33,7 @@ const ITEMS = [
   { href: "/admin/servicios", label: "Servicios", icon: Wrench },
   { href: "/admin/waitlist", label: "Lista de espera", icon: Sparkles },
   { href: "/admin/campanas", label: "Campañas", icon: Megaphone },
+  { href: "/admin/legal", label: "Legal y privacidad", icon: Scale },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ];
 

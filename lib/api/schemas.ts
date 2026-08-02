@@ -9,6 +9,7 @@ const optionalShortText = (max: number) =>
 
 export const AppointmentCreateSchema = z.object({
   tenantId: z.string().uuid("tenantId inválido"),
+  tenantSlug: z.string().trim().min(1).max(80).optional(),
   professionalId: z.string().uuid("professionalId inválido"),
   serviceId: z.string().uuid("serviceId inválido"),
   startAt: z.string().min(1).max(64)
@@ -35,6 +36,7 @@ export const AppointmentCreateSchema = z.object({
   invoiceReceiverCommune: optionalShortText(100),
   invoiceReceiverCity: optionalShortText(100),
   invoiceReceiverTaxEmail: z.string().trim().email().max(254).nullable().optional(),
+  legalConsent: z.record(z.unknown()).optional(),
 });
 
 export type AppointmentCreateInput = z.infer<typeof AppointmentCreateSchema>;
