@@ -174,14 +174,14 @@ export async function POST(req: Request) {
     const [{ data: service, error: serviceError }, { data: professional, error: professionalError }, { data: issuanceConfig }] =
       await Promise.all([
         supabaseAdmin.from("services")
-          .select("id,tenant_id,duration_min,price,currency,is_active,tax_treatment,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete,tax_description,tax_description_review_status")
+          .select("id,tenant_id,duration_min,price,currency,is_active,tax_treatment,payment_policy,deposit_type,deposit_value,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,tax_description,tax_description_review_status")
           .eq("id", input.serviceId).eq("tenant_id", input.tenantId)
           .eq("is_active", true).maybeSingle(),
         supabaseAdmin.from("professionals")
           .select("id, tenant_id, active")
           .eq("id", input.professionalId).eq("tenant_id", input.tenantId)
           .eq("active", true).maybeSingle(),
-        supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment").eq("tenant_id", input.tenantId).maybeSingle(),
+        supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment,deposit_tax_document_policy_status").eq("tenant_id", input.tenantId).maybeSingle(),
       ]);
     const duration = Number(service?.duration_min);
     const price = Number(service?.price);
@@ -193,6 +193,12 @@ export async function POST(req: Request) {
       service.tax_description_review_status !== "approved"
     ) {
       return publicError(409);
+    }
+    if (service.payment_policy === "deposit" && (
+      service.deposit_tax_document_policy_status !== "enabled" ||
+      issuanceConfig?.deposit_tax_document_policy_status !== "enabled"
+    )) {
+      return publicError(409, "El pago anticipado no está disponible por ahora.");
     }
 
     const customerId = await resolveCustomerId({

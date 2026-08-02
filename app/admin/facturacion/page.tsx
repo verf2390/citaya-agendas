@@ -66,6 +66,11 @@ type BillingState = {
     invoiceOnRequest: boolean;
     autoEmailDelivery: boolean;
     effectiveAutomatic: boolean;
+    depositTaxDocumentPolicyStatus: "unconfigured" | "reviewed" | "enabled";
+    boletaPaymentDocumentModel: "unconfigured" | "always_issue_boleta" | "electronic_payment_voucher_as_boleta";
+    boletaModelVerifiedAt: string | null;
+    boletaModelVerifiedBy: string | null;
+    boletaModelEvidenceReference: string | null;
   };
   tax: {
     legalName: string; taxId: string; businessActivity: string; address: string;
@@ -211,6 +216,9 @@ export default function AdminFacturacionPage() {
         consumerDocumentType: draft.policy.consumerDocumentType,
         invoiceOnRequest: draft.policy.invoiceOnRequest,
         autoEmailDelivery: draft.policy.autoEmailDelivery,
+        depositTaxDocumentPolicyStatus: draft.policy.depositTaxDocumentPolicyStatus,
+        boletaPaymentDocumentModel: draft.policy.boletaPaymentDocumentModel,
+        boletaModelEvidenceReference: draft.policy.boletaModelEvidenceReference,
         taxTreatment: draft.tax.taxTreatment,
         tax: draft.tax,
       }),
@@ -458,6 +466,28 @@ export default function AdminFacturacionPage() {
             <div className="flex items-end"><button type="button" onClick={() => void save()} disabled={saving} className="h-11 rounded-xl bg-slate-900 px-4 text-sm font-black text-white">Guardar datos</button></div>
           </div>
         )}
+      </AdminSectionCard>
+      <AdminSectionCard className="mt-5" title="Modelo declarado de boleta y voucher" description="Debe reflejar lo declarado realmente por el contribuyente ante el SII. No se infiere desde el proveedor de pago.">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="grid gap-1.5 text-sm font-bold">Modelo declarado
+            <select value={draft.policy.boletaPaymentDocumentModel} onChange={(event) => setDraft({ ...draft, policy: { ...draft.policy, boletaPaymentDocumentModel: event.target.value as BillingState["policy"]["boletaPaymentDocumentModel"] } })} className="h-11 rounded-xl border border-slate-200 bg-white px-3">
+              <option value="unconfigured">Sin configurar</option>
+              <option value="always_issue_boleta">Siempre emitir boleta (recomendado)</option>
+              <option value="electronic_payment_voucher_as_boleta">Voucher electrónico opera como boleta</option>
+            </select>
+          </label>
+          <Field label="Referencia administrativa de verificación" value={draft.policy.boletaModelEvidenceReference ?? ""} onChange={(value) => setDraft({ ...draft, policy: { ...draft.policy, boletaModelEvidenceReference: value } })} />
+        </div>
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900">
+          Citaya recomienda “Siempre emitir boleta”, pero no cambia automáticamente la declaración del contribuyente. Una configuración incorrecta puede duplicar el documento tributario.
+        </div>
+        <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+          <div><dt className="font-bold text-slate-500">Verificado</dt><dd>{state.policy.boletaModelVerifiedAt ? dateLabel(state.policy.boletaModelVerifiedAt) : "Pendiente"}</dd></div>
+          <div><dt className="font-bold text-slate-500">Administrador</dt><dd>{state.policy.boletaModelVerifiedBy ?? "Pendiente"}</dd></div>
+          <div><dt className="font-bold text-slate-500">Anticipos</dt><dd>{state.policy.depositTaxDocumentPolicyStatus}</dd></div>
+        </dl>
+        <p className="mt-3 text-sm font-black text-amber-900">El cobro de anticipos todavía requiere configurar su tratamiento tributario.</p>
+        <button type="button" onClick={() => void save()} disabled={saving} className="mt-4 inline-flex h-11 items-center rounded-xl bg-slate-900 px-4 text-sm font-black text-white disabled:opacity-50">Guardar modelo declarado</button>
       </AdminSectionCard>
       </div>
       ) : null}

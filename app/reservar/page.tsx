@@ -64,6 +64,7 @@ type Service = {
   payment_policy: "no_advance" | "deposit" | "full_payment";
   deposit_type: "fixed_amount" | "percentage" | null;
   deposit_value: number | null;
+  deposit_tax_document_policy_status: "unconfigured" | "reviewed" | "enabled";
   provisional_expiry_minutes: number;
 };
 
@@ -869,6 +870,8 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     };
   }, [buckets]);
 
+  const depositUnavailable = service?.payment_policy === "deposit" &&
+    service.deposit_tax_document_policy_status !== "enabled";
   const canSubmit =
     !!serviceId &&
     !!service &&
@@ -879,6 +882,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     isPhoneValid &&
     isValidEmail(email) &&
     (taxDocumentType === 33 || taxDocumentType === 39) &&
+    !depositUnavailable &&
     legalBundle?.identity.complete === true &&
     !!legalBundle.documents.consumer_terms &&
     !!legalBundle.documents.privacy_notice &&
@@ -925,6 +929,11 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     if (!professionalId) {
       alert("Selecciona un profesional.");
       scrollToRef(professionalRef);
+      return;
+    }
+    if (depositUnavailable) {
+      alert("El pago anticipado no está disponible por ahora.");
+      scrollToRef(paymentRef);
       return;
     }
 
@@ -2421,6 +2430,11 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                         : "Puedes decidir si prefieres pagar online ahora o pagar después."
                     }
                   />
+                  {depositUnavailable ? (
+                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+                      El pago anticipado no está disponible por ahora. Contacta al prestador para elegir otro servicio o modalidad.
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 grid w-full min-w-0 max-w-full gap-3">
                     <button

@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     // servicios activos
     const { data, error } = await supabaseAdmin
       .from("services")
-      .select("id,tenant_id,name,public_description,duration_min,price,currency,is_active,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete")
+      .select("id,tenant_id,name,public_description,duration_min,price,currency,is_active,payment_policy,deposit_type,deposit_value,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete")
       .eq("tenant_id", t.id)
       .eq("is_active", true)
       .eq("payment_configuration_complete", true)

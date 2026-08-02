@@ -30,6 +30,7 @@ type ServiceRow = {
   payment_policy: "no_advance" | "deposit" | "full_payment";
   deposit_type: "fixed_amount" | "percentage" | null;
   deposit_value: number | null;
+  deposit_tax_document_policy_status: "unconfigured" | "reviewed" | "enabled";
   provisional_expiry_minutes: number;
   payment_configuration_complete: boolean;
   duration_min: number | null;
@@ -51,6 +52,7 @@ const EMPTY_SERVICE = {
   payment_policy: "no_advance" as "no_advance" | "deposit" | "full_payment",
   deposit_type: null as "fixed_amount" | "percentage" | null,
   deposit_value: 0,
+  deposit_tax_document_policy_status: "unconfigured" as "unconfigured" | "reviewed" | "enabled",
   provisional_expiry_minutes: 30,
   duration_min: 60,
   price: 0,
@@ -178,6 +180,7 @@ export default function ServiciosPage() {
       deposit_value: service.deposit_type === "percentage"
         ? Number(service.deposit_value ?? 0) / 100
         : Number(service.deposit_value ?? 0),
+      deposit_tax_document_policy_status: service.deposit_tax_document_policy_status ?? "unconfigured",
       provisional_expiry_minutes: service.provisional_expiry_minutes ?? 30,
       duration_min: service.duration_min ?? 60,
       price: service.price ?? 0,
@@ -375,7 +378,7 @@ export default function ServiciosPage() {
                     </select>
                     <input type="number" min={1} step={form.deposit_type === "percentage" ? 0.01 : 1} className="rounded-xl border px-3 py-2" value={form.deposit_value} onChange={(e) => setForm((p) => ({ ...p, deposit_value: Number(e.target.value) }))} />
                   </div>
-                  <p className="text-xs text-amber-800">El saldo queda pendiente. El tratamiento DTE del anticipo permanece en revisión tributaria y no genera folio automáticamente.</p>
+                  <p className="text-xs font-bold text-amber-800">El cobro de anticipos todavía requiere configurar su tratamiento tributario.</p>
                 </> : null}
                 <label className="grid gap-1 text-sm font-semibold">Expiración provisional (minutos)
                   <input type="number" min={5} max={10080} className="rounded-xl border px-3 py-2" value={form.provisional_expiry_minutes} onChange={(e) => setForm((p) => ({ ...p, provisional_expiry_minutes: Number(e.target.value) }))} />

@@ -71,6 +71,50 @@ test("migration tables are PII-minimal and no automatic retention deletion exist
     assert.doesNotMatch(body, /customer_name|rut|email|phone|address|health|clinical|notes|payload/i);
   }
   assert.match(sql, /automation_enabled boolean not null default false check \(automation_enabled=false\)/);
-  assert.match(sql, /minimum_days >= 2190/);
+  assert.match(sql, /interval '6 years'/);
+  assert.match(sql, /legal_hold boolean not null default false/);
+  assert.match(sql, /artifact_bundle_required boolean not null default true/);
+  for (const retainedPart of ["dte_xml", "envio_xml", "pdf", "sii_response", "dte_production_submission_attempts", "dte_production_audit"]) {
+    assert.match(sql, new RegExp(retainedPart));
+  }
+  assert.match(sql, /Mínimo legal de seis años calendario sujeto a validación tributaria/);
+  assert.doesNotMatch(sql, /2190|minimum_days/);
   assert.doesNotMatch(sql, /delete from public\.(dte|billing|legal)/i);
+});
+
+test("deposit and contributor-model gates run before executable payment creation", () => {
+  const sql = readFileSync("migrations/202608020002_service_payment_policy_sales_coverage.sql", "utf8");
+  const paymentRoute = readFileSync("app/api/payments/create/route.ts", "utf8");
+  const appointmentRoute = readFileSync("app/api/appointments/create/route.ts", "utf8");
+  const customerBooking = readFileSync("app/reservar/page.tsx", "utf8");
+  const adminServices = readFileSync("app/admin/servicios/page.tsx", "utf8");
+
+  assert.match(sql, /create trigger deposit_payment_intent_gate before insert on public\.payment_intents/);
+  assert.match(sql, /DEPOSIT_TAX_DOCUMENT_POLICY_NOT_ENABLED/);
+  assert.match(sql, /BOLETA_PAYMENT_DOCUMENT_MODEL_UNCONFIGURED/);
+  assert.match(sql, /reconciliation_status[\s\S]*REVIEW_REQUIRED/);
+  assert.match(sql, /boleta_payment_document_model[\s\S]*always_issue_boleta[\s\S]*electronic_payment_voucher_as_boleta/);
+
+  const routeGate = paymentRoute.indexOf("deposit_tax_document_policy_status !== \"enabled\"");
+  const intentInsert = paymentRoute.indexOf('.from("payment_intents")');
+  assert.ok(routeGate >= 0 && intentInsert > routeGate, "payment route gates deposits before touching intents");
+  assert.match(appointmentRoute, /deposit_tax_document_policy_status !== "enabled"/);
+  assert.match(customerBooking, /depositUnavailable/);
+  assert.match(adminServices, /El cobro de anticipos todavía requiere configurar su tratamiento tributario\./);
+});
+
+test("voucher policy is centralized, explicit, and contains no credentials or unsafe logs", () => {
+  const sql = readFileSync("migrations/202608020002_service_payment_policy_sales_coverage.sql", "utf8");
+  const settingsRoute = readFileSync("app/api/admin/dte-settings/route.ts", "utf8");
+  const paymentRoute = readFileSync("app/api/payments/create/route.ts", "utf8");
+  const appointmentRoute = readFileSync("app/api/appointments/create/route.ts", "utf8");
+
+  assert.match(sql, /dte_payment_document_policy_decision/);
+  assert.match(sql, /p_qualifying_electronic_voucher boolean default false/);
+  assert.match(sql, /ISSUE_FACTURA_33/);
+  assert.match(sql, /COVERED_BY_ELECTRONIC_PAYMENT_VOUCHER/);
+  assert.match(sql, /VOUCHER_CLASSIFICATION_REVIEW_REQUIRED/);
+  assert.match(settingsRoute, /boletaModelEvidenceReference/);
+  assert.doesNotMatch(sql, /boleta_model_(?:password|credential|token|secret)/i);
+  assert.doesNotMatch(`${paymentRoute}\n${appointmentRoute}`, /console\.(?:error|warn)\([^\n]*(?:rut|email|token|payload)/i);
 });

@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     const { data: appointment, error: appointmentError } = await supabaseAdmin
       .from("appointments")
       .select(
-        "id,tenant_id,service_id,service_name,customer_id,customer_rut_snapshot,customer_name,customer_email,status,payment_status,payment_url,payment_reference,service_price,currency,requested_document_type,manage_token,manage_token_hash,manage_token_expires_at,manage_token_revoked_at,manage_token_legacy_expires_at",
+        "id,tenant_id,service_id,service_name,customer_id,customer_rut_snapshot,customer_name,customer_email,status,payment_status,payment_policy_snapshot,deposit_tax_document_policy_status_snapshot,payment_url,payment_reference,service_price,currency,requested_document_type,manage_token,manage_token_hash,manage_token_expires_at,manage_token_revoked_at,manage_token_legacy_expires_at",
       )
       .eq("id", appointmentId)
       .maybeSingle();
@@ -64,6 +64,25 @@ export async function POST(req: Request) {
     }
     if (!appointment.service_id || String(appointment.payment_status) === "paid") {
       return jsonError(409);
+    }
+    if (appointment.payment_policy_snapshot === "deposit" || appointment.requested_document_type === 39) {
+      const { data: taxPolicy, error: taxPolicyError } = await supabaseAdmin.from("dte_tenant_issuance_settings")
+        .select("deposit_tax_document_policy_status,boleta_payment_document_model,boleta_model_verified_at,boleta_model_verified_by,boleta_model_evidence_reference")
+        .eq("tenant_id", appointment.tenant_id).maybeSingle();
+      if (taxPolicyError) {
+        return jsonError(409, "El pago no está disponible por ahora.");
+      }
+      if (appointment.payment_policy_snapshot === "deposit" &&
+          (appointment.deposit_tax_document_policy_status_snapshot !== "enabled" ||
+           taxPolicy?.deposit_tax_document_policy_status !== "enabled")) {
+        return jsonError(409, "El pago anticipado no está disponible por ahora.");
+      }
+      if (appointment.requested_document_type === 39 &&
+          (!taxPolicy || taxPolicy.boleta_payment_document_model === "unconfigured" ||
+           !taxPolicy.boleta_model_verified_at || !taxPolicy.boleta_model_verified_by ||
+           String(taxPolicy.boleta_model_evidence_reference ?? "").trim().length < 3)) {
+        return jsonError(409, "El pago no está disponible por ahora.");
+      }
     }
 
     if (actor.actor === "manage_token") {

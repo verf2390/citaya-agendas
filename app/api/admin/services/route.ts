@@ -13,9 +13,9 @@ type TenantResolution = {
 };
 
 const SERVICE_SELECT =
-  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
 const SERVICE_SELECT_NO_CREATED =
-  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
 
 function getHostnameFromReq(req: Request) {
   const host =

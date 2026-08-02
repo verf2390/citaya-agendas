@@ -20,6 +20,8 @@ const CONFIG_COLUMNS = [
   "sii_authorization_status", "certificate_ready", "certificate_valid_to",
   "caf_ready", "folio_ready", "endpoints_ready", "storage_ready", "worker_ready",
   "readiness_tests_green", "last_readiness_check", "safe_blocking_reason",
+  "deposit_tax_document_policy_status", "boleta_payment_document_model",
+  "boleta_model_verified_at", "boleta_model_verified_by", "boleta_model_evidence_reference",
 ].join(",");
 
 type BillingRow = {
@@ -34,6 +36,11 @@ type ConfigRow = {
   caf_ready: boolean; folio_ready: boolean; endpoints_ready: boolean; storage_ready: boolean;
   worker_ready: boolean; readiness_tests_green: boolean; last_readiness_check: string | null;
   safe_blocking_reason: string | null;
+  deposit_tax_document_policy_status: "unconfigured" | "reviewed" | "enabled";
+  boleta_payment_document_model: "unconfigured" | "always_issue_boleta" | "electronic_payment_voucher_as_boleta";
+  boleta_model_verified_at: string | null;
+  boleta_model_verified_by: string | null;
+  boleta_model_evidence_reference: string | null;
 };
 type CafRow = { dte_type: number; active: boolean };
 type FolioRow = { dte_type: number; state: string };
@@ -228,6 +235,11 @@ async function loadState(tenantId: string, authMode: string) {
       invoiceOnRequest: config.invoice_on_request ?? true,
       autoEmailDelivery: config.auto_email_delivery ?? false,
       effectiveAutomatic: compliance.issuanceEnabled && config.issuance_mode === "automatic_on_verified_payment",
+      depositTaxDocumentPolicyStatus: config.deposit_tax_document_policy_status ?? "unconfigured",
+      boletaPaymentDocumentModel: config.boleta_payment_document_model ?? "unconfigured",
+      boletaModelVerifiedAt: config.boleta_model_verified_at ?? null,
+      boletaModelVerifiedBy: config.boleta_model_verified_by ?? null,
+      boletaModelEvidenceReference: config.boleta_model_evidence_reference ?? null,
     },
     tax: {
       legalName: issuerProfile.issuer_legal_name ?? billing.legal_name ?? "",
@@ -291,6 +303,18 @@ export async function PATCH(req: Request) {
   const issuanceMode = body.issuanceMode === "automatic_on_verified_payment" ? body.issuanceMode : "manual";
   const consumerDocumentType = ["39", "41", "unsupported"].includes(body.consumerDocumentType) ? body.consumerDocumentType : "unsupported";
   const taxTreatment = ["affected", "exempt", "mixed", "unconfigured"].includes(body.taxTreatment) ? body.taxTreatment : "unconfigured";
+  const depositTaxDocumentPolicyStatus = body.depositTaxDocumentPolicyStatus === "reviewed"
+    ? "reviewed"
+    : "unconfigured";
+  const boletaPaymentDocumentModel = [
+    "unconfigured", "always_issue_boleta", "electronic_payment_voucher_as_boleta",
+  ].includes(body.boletaPaymentDocumentModel)
+    ? body.boletaPaymentDocumentModel
+    : "unconfigured";
+  const boletaModelEvidenceReference = text(body.boletaModelEvidenceReference, 500);
+  if (boletaPaymentDocumentModel !== "unconfigured" && boletaModelEvidenceReference.length < 3) {
+    return NextResponse.json({ ok: false, error: "Registra una referencia administrativa de la verificación del modelo de boleta." }, { status: 400 });
+  }
   const configPayload = {
     tenant_id: auth.tenantId,
     issuance_mode: issuanceMode,
@@ -298,6 +322,11 @@ export async function PATCH(req: Request) {
     invoice_on_request: body.invoiceOnRequest !== false,
     auto_email_delivery: body.autoEmailDelivery === true,
     tax_treatment: taxTreatment,
+    deposit_tax_document_policy_status: depositTaxDocumentPolicyStatus,
+    boleta_payment_document_model: boletaPaymentDocumentModel,
+    boleta_model_verified_at: boletaPaymentDocumentModel === "unconfigured" ? null : new Date().toISOString(),
+    boleta_model_verified_by: boletaPaymentDocumentModel === "unconfigured" ? null : auth.userId,
+    boleta_model_evidence_reference: boletaPaymentDocumentModel === "unconfigured" ? null : boletaModelEvidenceReference,
     updated_at: new Date().toISOString(),
   };
   const configResult = await supabaseAdmin.from("dte_tenant_issuance_settings").upsert(configPayload, { onConflict: "tenant_id" });
