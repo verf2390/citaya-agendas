@@ -22,7 +22,7 @@ function sourceIp(req: Request) {
 async function load(access: Extract<Awaited<ReturnType<typeof requireHostTenantAdmin>>, { ok: true }>) {
   const tenantId = access.tenantId;
   const [tenant, tax, profile, documents, mandates, acceptances, gate] = await Promise.all([
-    supabaseAdmin.from("tenants").select("id,slug,name,address,city,contact_email,phone_display").eq("id", tenantId).single(),
+    supabaseAdmin.from("tenants").select("id,slug,name,address,city,contact_email,phone_display,lifecycle_status,operational_mode").eq("id", tenantId).single(),
     supabaseAdmin.from("dte_production_tenant_settings").select("issuer_legal_name,issuer_rut,issuer_address,issuer_commune,issuer_city").eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("tenant_legal_profiles").select("*").eq("tenant_id", tenantId).maybeSingle(),
     supabaseAdmin.from("legal_documents").select("id,document_type,version,title,content,content_sha256,status,effective_at,published_at,created_at").eq("owner_kind", "tenant").eq("tenant_id", tenantId).order("document_type").order("version", { ascending: false }),
@@ -68,12 +68,23 @@ export async function PATCH(req: Request) {
     if ((supportEmail && !supportEmail.includes("@")) || (privacyEmail && !privacyEmail.includes("@"))) {
       return error("Los correos de contacto no son válidos");
     }
-    const handlesSensitiveData = body.handlesSensitiveData === true;
+    const sensitiveReviewStatus = String(body.sensitiveDataReviewStatus ?? "pending");
+    if (!["pending", "confirmed_no", "confirmed_yes"].includes(sensitiveReviewStatus)) {
+      return error("Estado de revisión de datos sensibles inválido");
+    }
+    const handlesSensitiveData = sensitiveReviewStatus === "confirmed_yes"
+      ? true
+      : sensitiveReviewStatus === "confirmed_no"
+        ? false
+        : null;
     const sensitivePurpose = optionalText(body.sensitiveDataPurpose, 1000);
-    if (handlesSensitiveData && (!sensitivePurpose || sensitivePurpose.length < 10)) {
+    if (handlesSensitiveData === true && (!sensitivePurpose || sensitivePurpose.length < 10)) {
       return error("Describe una finalidad concreta para los datos sensibles");
     }
     const completeRequested = body.administrativeReviewStatus === "complete";
+    if (completeRequested && sensitiveReviewStatus === "pending") {
+      return error("Debes revisar si el servicio trata datos sensibles antes de completar el perfil");
+    }
     const row = {
       tenant_id: access.tenantId,
       trade_name: optionalText(body.tradeName, 180),
@@ -84,7 +95,8 @@ export async function PATCH(req: Request) {
       privacy_contact_email: privacyEmail,
       tenant_is_service_provider: body.tenantIsServiceProvider === true,
       handles_sensitive_data: handlesSensitiveData,
-      sensitive_data_purpose: handlesSensitiveData ? sensitivePurpose : null,
+      sensitive_data_review_status: sensitiveReviewStatus,
+      sensitive_data_purpose: handlesSensitiveData === true ? sensitivePurpose : null,
       administrative_review_status: completeRequested ? "complete" : "draft",
       updated_by: access.userId,
       updated_at: new Date().toISOString(),

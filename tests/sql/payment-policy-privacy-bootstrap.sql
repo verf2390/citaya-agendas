@@ -17,7 +17,15 @@ create table public.tenant_members(tenant_id uuid,user_id uuid,role text,is_acti
 create table public.platform_admins(user_id uuid primary key,role text,is_active boolean);
 create function public.is_platform_admin(p_user_id uuid default auth.uid()) returns boolean language sql stable security definer set search_path=public as $$select exists(select 1 from platform_admins where user_id=p_user_id and role='super_admin' and is_active)$$;
 create function public.is_tenant_member(p_tenant_id uuid,p_user_id uuid default auth.uid()) returns boolean language sql stable security definer set search_path=public as $$select exists(select 1 from tenant_members where tenant_id=p_tenant_id and user_id=p_user_id and role in ('owner','admin') and is_active)$$;
-create function public.dte_activation_gate_report(uuid,integer,boolean) returns jsonb language sql stable as $$select '{"issuer":true,"certificate":true}'::jsonb$$;
+create function public.dte_activation_gate_report(uuid,integer,boolean) returns jsonb language sql stable as $$select '{
+  "ready":false,"issuerDataExact":true,"issuerLegalNameMatch":true,
+  "typeAuthorized":true,"certificateCurrent":true,"certificateKeyMatch":true,
+  "certificateRutMatch":true,"officialTrustAnchor":true,"authenticTypeCaf":false,
+  "foliosAvailable":false,"tenantAwareLedger":true,"privateStorage":true,
+  "productionEndpoints":true,"officialXsd":true,"xmlDsig":true,
+  "workerConfigured":true,"migrationsApplied":true,"offlinePreflightComplete":true,
+  "documentEngineReady":false,"globalFeatureEnabled":true
+}'::jsonb$$;
 create function public.normalize_chilean_rut(text) returns text language sql immutable as $$select upper(regexp_replace(trim($1),'[^0-9Kk-]','','g'))$$;
 create function public.create_public_appointment(
   p_tenant_id uuid,p_professional_id uuid,p_service_id uuid,p_start_at timestamptz,
@@ -54,6 +62,7 @@ create table public.dte_issuance_outbox(
   unique(tenant_id,intent_id)
 );
 create table public.dte_production_documents(id uuid primary key default gen_random_uuid(),tenant_id uuid not null,dte_type integer,issue_date date not null default current_date,created_at timestamptz not null default now());
+create table public.dte_production_cafs(id uuid primary key default gen_random_uuid(),tenant_id uuid not null,dte_type integer,active boolean default true);
 create table public.dte_production_folio_ledger(tenant_id uuid,dte_type integer,folio integer,state text,document_id uuid,issued_at timestamptz,primary key(tenant_id,dte_type,folio));
 create table public.dte_production_artifacts(id uuid primary key default gen_random_uuid(),tenant_id uuid not null,document_id uuid not null,kind text,storage_key text,sha256 text,byte_length bigint,content_type text,created_at timestamptz default now());
 create table public.dte_production_submission_attempts(id uuid primary key default gen_random_uuid(),tenant_id uuid not null,document_id uuid not null);
@@ -63,4 +72,8 @@ create table public.dte_invoice_draft_lines(id uuid primary key default gen_rand
 create table public.tenant_payment_settings(tenant_id uuid primary key,active boolean,updated_at timestamptz);
 create table public.dte_tenant_issuance_settings(tenant_id uuid primary key,production_enabled boolean,issuance_mode text,updated_at timestamptz);
 create table public.dte_tenant_document_capabilities(tenant_id uuid,environment text,dte_type integer,customer_selection_enabled boolean,admin_draft_enabled boolean,issuance_enabled boolean,certification_status text,endpoint_profile text,schema_version text,updated_at timestamptz,primary key(tenant_id,environment,dte_type));
-create table public.dte_production_tenant_settings(tenant_id uuid primary key,issuer_legal_name text,issuer_rut text,issuer_address text,issuer_commune text,issuer_city text);
+create table public.dte_production_tenant_settings(
+  tenant_id uuid primary key,issuer_legal_name text,issuer_rut text,
+  issuer_activity text,issuer_activity_code text,issuer_address text,
+  issuer_commune text,issuer_city text
+);

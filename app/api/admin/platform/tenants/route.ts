@@ -16,7 +16,10 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: true });
   if (tenantError) return error(503, "No se pudo cargar la clasificación");
   const rows = await Promise.all((tenants ?? []).map(async (tenant) => {
-    const { data: readiness } = await supabaseAdmin.rpc("tenant_live_readiness_report", { p_tenant_id: tenant.id });
+    const [{ data: readiness }, { data: selfIssuerAuthority }] = await Promise.all([
+      supabaseAdmin.rpc("tenant_live_readiness_report", { p_tenant_id: tenant.id }),
+      supabaseAdmin.rpc("tenant_self_issuer_authority_report", { p_tenant_id: tenant.id }),
+    ]);
     return {
       ...tenant,
       capabilities: resolveTenantOperationalCapabilities({
@@ -24,6 +27,7 @@ export async function GET(req: Request) {
         operationalMode: tenant.operational_mode,
       }),
       liveReadiness: readiness ?? { ready: false },
+      selfIssuerAuthority: selfIssuerAuthority ?? { status: "none", valid: false },
     };
   }));
   const { data: audit } = await supabaseAdmin.from("tenant_operational_mode_audit")
@@ -40,6 +44,36 @@ export async function PATCH(req: Request) {
   const reason = String(body?.reason ?? "").trim();
   if (!/^[0-9a-f-]{36}$/i.test(tenantId) || reason.length < 10 || reason.length > 500) {
     return error(400, "Tenant o motivo inválido");
+  }
+  if (body?.action === "registerSelfIssuer" || body?.action === "revokeSelfIssuer") {
+    if (body?.confirmed !== true) return error(409, "La autoridad de emisor propio requiere confirmación explícita");
+    const administrativeReference = String(body?.administrativeReference ?? "").trim();
+    if (administrativeReference.length < 3 || administrativeReference.length > 300) {
+      return error(400, "Referencia administrativa inválida");
+    }
+    if (body.action === "registerSelfIssuer") {
+      const { data: tax, error: taxError } = await supabaseAdmin
+        .from("dte_production_tenant_settings").select("issuer_rut")
+        .eq("tenant_id", tenantId).maybeSingle();
+      if (taxError || !tax?.issuer_rut) return error(409, "Identidad tributaria incompleta");
+      const result = await supabaseAdmin.rpc("register_tenant_self_issuer_authority", {
+        p_tenant_id: tenantId,
+        p_actor_user_id: auth.userId,
+        p_issuer_rut_snapshot: tax.issuer_rut,
+        p_reason: reason,
+        p_administrative_reference: administrativeReference,
+      });
+      if (result.error) return error(409, "No se pudo registrar la autoridad de emisor propio");
+      return NextResponse.json({ ok: true, result: result.data });
+    }
+    const result = await supabaseAdmin.rpc("revoke_tenant_self_issuer_authority", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: auth.userId,
+      p_reason: reason,
+      p_administrative_reference: administrativeReference,
+    });
+    if (result.error) return error(409, "No se pudo revocar la autoridad de emisor propio");
+    return NextResponse.json({ ok: true, result: result.data });
   }
   if (body?.action === "archive") {
     if (body?.confirmed !== true) return error(409, "El archivado requiere confirmación explícita");

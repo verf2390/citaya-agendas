@@ -13,12 +13,17 @@ type TenantRow = {
   operational_mode_changed_at?: string | null; operational_mode_change_reason?: string | null;
   capabilities: Record<string, boolean | string>;
   liveReadiness: Record<string, boolean>;
+  selfIssuerAuthority: {
+    status: "none" | "active" | "revoked" | "invalidated";
+    valid: boolean; rutMatches?: boolean; identityMatches?: boolean;
+  };
 };
 
 export default function PlatformTenantModesPage() {
   const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [reason, setReason] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<Record<string, TenantRow["operational_mode"]>>({});
+  const [administrativeReference, setAdministrativeReference] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
 
   const refresh = useCallback(async () => {
@@ -51,6 +56,21 @@ export default function PlatformTenantModesPage() {
     if (response.ok) await refresh();
   };
 
+  const updateSelfIssuer = async (tenant: TenantRow, action: "registerSelfIssuer" | "revokeSelfIssuer") => {
+    const label = action === "registerSelfIssuer" ? "registrar" : "revocar";
+    if (!window.confirm(`Esta acción va a ${label} evidencia administrativa append-only. No habilita emisión. ¿Continuar?`)) return;
+    const response = await adminFetch("/api/admin/platform/tenants", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenantId: tenant.id, action, reason: reason[tenant.id] ?? "",
+        administrativeReference: administrativeReference[tenant.id] ?? "", confirmed: true,
+      }),
+    });
+    const json = await response.json().catch(() => null);
+    setMessage(response.ok && json?.ok ? "Autoridad de emisor propio actualizada y auditada" : json?.error ?? "No se pudo actualizar");
+    if (response.ok) await refresh();
+  };
+
   return (
     <AdminPageShell>
       <AdminNav />
@@ -74,6 +94,19 @@ export default function PlatformTenantModesPage() {
             <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
               <strong>Checklist live:</strong> {tenant.liveReadiness?.ready ? "completo" : "incompleto"}. Cambiar a live falla cerrado si falta cualquier gate.
             </div>
+            {tenant.operational_mode === "internal" && tenant.lifecycle_status === "active" ? <div className="mt-3 rounded-xl border border-slate-200 p-3">
+              <div className="text-sm font-black">Emisor propio</div>
+              <div className="mt-1 text-xs text-slate-600">
+                Estado: {tenant.selfIssuerAuthority.status}. RUT coincidente: {tenant.selfIssuerAuthority.rutMatches ? "sí" : "no"}. Esta evidencia no activa emisión, CAF ni folios.
+              </div>
+              <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
+                <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Referencia administrativa verificable"
+                  value={administrativeReference[tenant.id] ?? ""} onChange={(event) => setAdministrativeReference((current) => ({ ...current, [tenant.id]: event.target.value }))} />
+                {tenant.selfIssuerAuthority.valid
+                  ? <Button variant="destructive" onClick={() => void updateSelfIssuer(tenant, "revokeSelfIssuer")}>Revocar emisor propio</Button>
+                  : <Button onClick={() => void updateSelfIssuer(tenant, "registerSelfIssuer")}>Registrar emisor propio</Button>}
+              </div>
+            </div> : null}
           </AdminSectionCard>
         ))}
       </div>
