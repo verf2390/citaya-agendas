@@ -4,14 +4,14 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
-test("manual preview and persistence share one gross server-side contract", () => {
+test("manual editor and persistence share one server-side pricing contract", () => {
   const route = read("app/api/admin/dte-intents/manual/route.ts");
   const form = read("components/admin/dte/ManualIssuanceForm.tsx");
   const money = read("lib/dte/manual-money.ts");
 
-  assert.match(form, /Precio final IVA incluido/);
+  assert.match(form, /Precio final unitario \(IVA incluido\)/);
   assert.match(form, /unitGrossAmount/);
-  assert.match(form, /Confirmar y emitir factura real/);
+  assert.match(form, /Revisar y emitir/);
   assert.match(route, /previewOnly/);
   assert.match(route, /reviewFingerprint/);
   assert.match(route, /calculateManualMoney/);
@@ -63,7 +63,7 @@ test("UI exposes pending, processing, failed, sent and accepted states", () => {
   assert.match(labels, /Enviado al SII/);
 });
 
-test("billing polling updates documents incrementally without full reload", () => {
+test("billing refresh updates documents incrementally without full reload", () => {
   const form = read("components/admin/dte/ManualIssuanceForm.tsx");
   const page = read("app/admin/facturacion/page.tsx");
   const endpoint = read("app/api/admin/dte-settings/documents/route.ts");
@@ -74,7 +74,7 @@ test("billing polling updates documents incrementally without full reload", () =
   assert.match(page, /refreshDocuments/);
   assert.match(page, /\/api\/admin\/dte-settings\/documents/);
   assert.match(page, /setState\(\(current\)/);
-  assert.match(form, /if \(intent\.terminal\) return/);
+  assert.match(page, /onCreated=\{\(\) => void refreshDocuments\(\)\}/);
   assert.match(endpoint, /requireHostTenantAdmin/);
   assert.match(page, /Total IVA incluido/);
 

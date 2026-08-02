@@ -31,7 +31,7 @@ function integer(value: unknown, field: string, minimum = 0): number {
 }
 
 function roundDiv(numerator: bigint, denominator: bigint): number {
-  const rounded = Number((numerator + denominator / 2n) / denominator);
+  const rounded = Number((numerator + denominator / BigInt(2)) / denominator);
   if (!Number.isSafeInteger(rounded)) throw new Error("DTE_AMOUNT_OVERFLOW");
   return rounded;
 }
@@ -115,7 +115,7 @@ export function calculateBoletaGrossTotals(
   const netAmount =
     affectedGross === 0
       ? 0
-      : roundDiv(BigInt(affectedGross) * 100n, 119n);
+      : roundDiv(BigInt(affectedGross) * BigInt(100), BigInt(119));
   const taxAmount = affectedGross - netAmount;
   const totalAmount = affectedGross + exemptAmount;
   const netByIndex = allocateAffectedNet(affected, netAmount);

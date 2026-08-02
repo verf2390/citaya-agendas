@@ -21,7 +21,21 @@ memberships as (
 select
   (select tenant_id from memberships where ordinal=1) as tenant_id,
   (select user_id from memberships where ordinal=1) as owner_user_id,
-  (select user_id from memberships where ordinal=2) as other_user_id,
+  (
+    select foreign_member.user_id
+    from public.tenant_members foreign_member
+    where foreign_member.is_active is true
+      and lower(foreign_member.role) in ('owner','admin')
+      and foreign_member.tenant_id <>
+        (select tenant_id from memberships where ordinal=1)
+      and not public.is_tenant_member(
+        (select tenant_id from memberships where ordinal=1),
+        foreign_member.user_id
+      )
+      and not public.is_platform_admin(foreign_member.user_id)
+    order by foreign_member.tenant_id,foreign_member.user_id
+    limit 1
+  ) as other_user_id,
   gen_random_uuid() as customer_id,
   gen_random_uuid() as sale_id,
   gen_random_uuid() as draft_id,

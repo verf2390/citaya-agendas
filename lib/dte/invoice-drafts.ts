@@ -297,7 +297,7 @@ export function calculateBoletaDraftTotals(
     const base = line.quantity * unitGrossAmount;
     const discountAmount = roundDiv(
       BigInt(base) * BigInt(line.discountBasisPoints ?? 0),
-      10_000n,
+      BigInt(10_000),
     );
     const grossAmount = base - discountAmount;
     if (!Number.isSafeInteger(grossAmount) || grossAmount < 1) {

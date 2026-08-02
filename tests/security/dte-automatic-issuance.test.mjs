@@ -39,7 +39,7 @@ test("previous security migration contains valid delimiters and bounded normaliz
 test("billing executive UI is simple and technical mode is role gated", () => {
   const page = read("app/admin/facturacion/page.tsx");
   const api = read("app/api/admin/dte-settings/route.ts");
-  for (const label of ["Estado de activación", "Emisión automática", "Datos tributarios", "Documentos recientes", "Emitir manualmente", "Modo técnico avanzado"]) {
+  for (const label of ["Estado de activación", "Emisión automática", "Configuración tributaria", "Documentos", "Nueva factura", "Diagnóstico y detalles técnicos"]) {
     assert.match(page, new RegExp(label));
   }
   assert.match(page, /state\.technicalAccess/);
