@@ -9,6 +9,10 @@ import {
   webpayTransaction,
 } from "@/services/payments/provider-credentials";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
+import {
+  loadTenantOperationalContext,
+  recordTenantOperationalRejection,
+} from "@/lib/tenant/operational-server";
 
 function redirectResult(req: Request, status: "success" | "failure", appointmentId?: string) {
   const url = new URL("/reservar/resultado", new URL(req.url).origin);
@@ -45,6 +49,14 @@ async function handleWebpayReturn(req: Request) {
       .eq("provider_payment_id", token)
       .maybeSingle();
     if (intentError || !intent) return redirectResult(req, "failure");
+    const operational = await loadTenantOperationalContext(intent.tenant_id);
+    if (!operational.capabilities.acceptPaymentWebhook) {
+      await recordTenantOperationalRejection({
+        tenantId: intent.tenant_id, operation: "payment_webhook", source: "webpay_return",
+        safeReference: intent.id, reasonCode: "TENANT_MODE_WEBHOOK_BLOCKED",
+      });
+      return redirectResult(req, "failure");
+    }
     if (intent.status === "succeeded") return redirectResult(req, "success", intent.appointment_id);
     if (intent.status !== "pending") return redirectResult(req, "failure");
 

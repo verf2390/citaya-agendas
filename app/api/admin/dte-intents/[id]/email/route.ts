@@ -7,6 +7,7 @@ import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { canEmailDte } from "@/lib/dte/cutover";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { assertTenantCanSendExternalCommunication } from "@/lib/tenant/operational-server";
 
 export async function POST(
   req: Request,
@@ -14,6 +15,8 @@ export async function POST(
 ) {
   const auth = await requireHostTenantAdmin(req);
   if (!auth.ok) return NextResponse.json({ ok: false, error: "Recurso no encontrado" }, { status: 404 });
+  try { await assertTenantCanSendExternalCommunication(auth.tenantId); }
+  catch { return NextResponse.json({ ok: false, error: "Recurso no encontrado" }, { status: 404 }); }
   const { id } = await context.params;
   if (!isUuid(id)) return NextResponse.json({ ok: false, error: "Recurso no encontrado" }, { status: 404 });
   const { data: intent } = await supabaseAdmin.from("dte_payment_document_intents")

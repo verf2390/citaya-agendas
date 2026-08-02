@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
@@ -12,7 +13,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = 5000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), ms);
   try {
-    const resp = await fetch(url, { ...init, signal: controller.signal, cache: "no-store" as any });
+    const resp = await fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
     return resp;
   } finally {
     clearTimeout(t);
@@ -46,6 +47,8 @@ export async function POST(req: Request) {
     }
     const access = await requireTenantAdmin({ req, tenantId: tenant_id_from_body });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    try { await assertTenantCanCreateAppointment(tenant_id_from_body); }
+    catch { return NextResponse.json({ ok: false, error: "Operación no disponible para este entorno" }, { status: 409 }); }
 
     // ✅ Normalizar fechas y validar rango
     const new_start_at = new Date(new_start_at_raw).toISOString();
@@ -174,7 +177,7 @@ export async function POST(req: Request) {
       called: false,
       ok: false as boolean,
       status: 0 as number,
-      result: null as any,
+      result: null as unknown,
     };
 
     if (secret && webhookUrl) {
@@ -220,11 +223,11 @@ export async function POST(req: Request) {
         }
 
         n8n.ok = resp.ok;
-      } catch (e: any) {
+      } catch (e: unknown) {
         n8n.called = true;
         n8n.ok = false;
         n8n.status = 0;
-        n8n.result = `n8n error: ${String(e?.message ?? e)}`;
+        n8n.result = `n8n error: ${e instanceof Error ? e.message : "UnknownError"}`;
       }
     } else {
       n8n = {
@@ -240,9 +243,9 @@ export async function POST(req: Request) {
       old: { start_at: oldAppt.start_at, end_at: oldAppt.end_at },
       n8n,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { ok: false, error: "Unhandled error", details: String(e?.message ?? e) },
+      { ok: false, error: "Unhandled error", details: e instanceof Error ? e.message : "UnknownError" },
       { status: 500 },
     );
   }

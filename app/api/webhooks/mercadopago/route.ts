@@ -5,6 +5,10 @@ import { fetchMercadoPagoPayment } from "@/services/payments/mercadopago";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import { safePaymentAuditMetadata } from "@/lib/security/payment-verification.mjs";
+import {
+  loadTenantOperationalContext,
+  recordTenantOperationalRejection,
+} from "@/lib/tenant/operational-server";
 
 function reject(status = 400) {
   return NextResponse.json({ ok: false, error: "Notificación inválida" }, { status });
@@ -25,6 +29,14 @@ export async function POST(req: Request) {
       .eq("provider", "mercadopago")
       .maybeSingle();
     if (intentError || !intent) return reject(404);
+    const operational = await loadTenantOperationalContext(intent.tenant_id);
+    if (!operational.capabilities.acceptPaymentWebhook) {
+      await recordTenantOperationalRejection({
+        tenantId: intent.tenant_id, operation: "payment_webhook", source: "mercadopago",
+        safeReference: intent.id, reasonCode: "TENANT_MODE_WEBHOOK_BLOCKED",
+      });
+      return NextResponse.json({ ok: true, ignored: true }, { status: 202 });
+    }
     if (intent.status === "succeeded") return NextResponse.json({ ok: true, replay: true });
 
     const config = await getTenantPaymentConfig(intent.tenant_id);

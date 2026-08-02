@@ -16,6 +16,7 @@ import {
   Sparkles,
   Users,
   Wrench,
+  Shield,
 } from "lucide-react";
 
 import AdminLogoutButton from "@/components/admin/AdminLogoutButton";
@@ -35,6 +36,7 @@ const ITEMS = [
   { href: "/admin/campanas", label: "Campañas", icon: Megaphone },
   { href: "/admin/legal", label: "Legal y privacidad", icon: Scale },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
+  { href: "/admin/plataforma/tenants", label: "Plataforma", icon: Shield },
 ];
 
 type TenantHeader = {

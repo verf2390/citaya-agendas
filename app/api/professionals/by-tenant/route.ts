@@ -4,6 +4,7 @@ import {
   getTenantSlugFromHostname,
   getDemoTenantIdFromCookieHeader,
 } from "@/lib/tenant";
+import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 function getHostnameFromReq(req: Request) {
   const host =
@@ -41,7 +42,7 @@ export async function GET(req: Request) {
 
       const { data: tenant, error: tenantErr } = await supabaseAdmin
         .from("tenants")
-        .select("id")
+        .select("id, lifecycle_status, operational_mode")
         .eq("slug", tenantSlug)
         .eq("lifecycle_status", "active")
         .single();
@@ -53,9 +54,16 @@ export async function GET(req: Request) {
       tenantId = tenant.id;
     }
 
-    const activeTenant = await supabaseAdmin.from("tenants").select("id")
+    const activeTenant = await supabaseAdmin.from("tenants").select("id,lifecycle_status,operational_mode")
       .eq("id", tenantId).eq("lifecycle_status", "active").maybeSingle();
     if (!activeTenant.data) return NextResponse.json({ error: "tenant not found" }, { status: 404 });
+    const operational = resolveTenantOperationalCapabilities({
+      lifecycleStatus: activeTenant.data.lifecycle_status,
+      operationalMode: activeTenant.data.operational_mode,
+    });
+    if (!operational.createAppointment && !operational.demoSimulation) {
+      return NextResponse.json({ error: "tenant not found" }, { status: 404 });
+    }
 
     // 2) profesionales activos
     const { data: professionals, error: profErr } = await supabaseAdmin

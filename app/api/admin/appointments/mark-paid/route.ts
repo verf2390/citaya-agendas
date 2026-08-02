@@ -3,6 +3,10 @@ import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
+import {
+  assertTenantCanCreatePayment,
+  TenantOperationalError,
+} from "@/lib/tenant/operational-server";
 export async function POST(req: Request) {
   try {
     const input = await req.json().catch(() => null);
@@ -15,6 +19,7 @@ export async function POST(req: Request) {
     if (!access.ok) {
       return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
     }
+    await assertTenantCanCreatePayment(access.tenantId);
 
     const { data: paymentIntentId, error } = await supabaseAdmin.rpc(
       "billing_record_manual_verified_payment",
@@ -47,6 +52,9 @@ export async function POST(req: Request) {
       paymentIntentId,
     });
   } catch (error) {
+    if (error instanceof TenantOperationalError) {
+      return NextResponse.json({ ok: false, error: "La confirmación de pagos no está disponible para este entorno" }, { status: 409 });
+    }
     console.error("[admin/appointments/mark-paid] unexpected error", {
       name: error instanceof Error ? error.name : "UnknownError",
     });

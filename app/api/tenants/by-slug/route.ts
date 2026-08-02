@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
+import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 type TenantRow = {
   id: string;
@@ -21,6 +22,7 @@ type TenantRow = {
   show_address_after_booking: boolean | null;
   show_phone_after_booking: boolean | null;
   lifecycle_status: "active" | "archived";
+  operational_mode: "unclassified" | "demo" | "live" | "internal";
 };
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -65,6 +67,7 @@ export async function GET(req: Request) {
         "show_address_after_booking",
         "show_phone_after_booking",
         "lifecycle_status",
+        "operational_mode",
       ].join(","),
     )
     .eq("slug", slug)
@@ -94,6 +97,13 @@ export async function GET(req: Request) {
 
   const address_display =
     [data.address, data.city].filter(Boolean).join(" · ").trim() || null;
+  const operationalCapabilities = resolveTenantOperationalCapabilities({
+    lifecycleStatus: data.lifecycle_status,
+    operationalMode: data.operational_mode,
+  });
+  if (!operationalCapabilities.informationalPage) {
+    return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+  }
   const [paymentConfig, boletaCapability] = await Promise.all([
     getTenantPaymentConfig(data.id),
     supabaseAdmin
@@ -125,13 +135,19 @@ export async function GET(req: Request) {
     show_phone_after_booking: data.show_phone_after_booking,
 
     address_display,
+    operational_mode: operationalCapabilities.operationalMode,
+    operational_capabilities: operationalCapabilities,
+    demo_banner: operationalCapabilities.demoSimulation
+      ? "Entorno de demostración. No ingrese información personal, clínica o financiera real"
+      : null,
     payment_mode: paymentConfig.mode,
-    payment_enabled: paymentConfig.enabled,
+    payment_enabled: operationalCapabilities.createPayment && paymentConfig.enabled,
     payment_methods_enabled: paymentConfig.paymentMethodsEnabled,
     payment_collection_mode: paymentConfig.collectionMode,
     deposit_type: paymentConfig.depositType,
     deposit_value: paymentConfig.depositValue,
     boleta_document_selection_enabled:
+      operationalCapabilities.publicTaxDocument &&
       boletaCapability.data?.customer_selection_enabled === true &&
       boletaCapability.data?.issuance_enabled === true &&
       boletaCapability.data?.certification_status === "production_authorized",

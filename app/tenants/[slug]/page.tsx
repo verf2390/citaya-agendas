@@ -7,6 +7,7 @@ import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 import { supabaseServer } from "@/lib/supabaseServer";
 import LeaveReviewModal from "@/components/tenant/LeaveReviewModal";
 import DemoQuoteCard from "./DemoQuoteCard";
+import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 const RESERVED = new Set(["app", "admin", "www", "n8n", "localhost"]);
 
@@ -359,12 +360,17 @@ export default async function TenantHome({
   const { data: tenant, error: tenantErr } = await supabase
     .from("tenants")
     .select(
-      "id, slug, name, logo_url, address, city, phone_display, description, show_address, show_phone",
+      "id, slug, name, logo_url, address, city, phone_display, description, show_address, show_phone, lifecycle_status, operational_mode",
     )
     .eq("slug", slug)
     .single();
 
-  if (tenantErr || !tenant) {
+  const operational = tenant ? resolveTenantOperationalCapabilities({
+    lifecycleStatus: tenant.lifecycle_status,
+    operationalMode: tenant.operational_mode,
+  }) : null;
+
+  if (tenantErr || !tenant || !operational?.informationalPage) {
     return (
       <main className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="w-full max-w-lg rounded-2xl bg-white shadow-sm border border-slate-200 p-6">
@@ -382,12 +388,14 @@ export default async function TenantHome({
   const showAddress = tenant.show_address ?? true;
   const showPhone = tenant.show_phone ?? true;
 
-  const { data: services } = await supabase
-    .from("services")
-    .select("id, name, duration_min, price, currency, is_active")
-    .eq("tenant_id", tenant.id)
-    .eq("is_active", true)
-    .order("created_at", { ascending: true });
+  const { data: services } = operational.createAppointment || operational.demoSimulation
+    ? await supabase
+      .from("services")
+      .select("id, name, duration_min, price, currency, is_active")
+      .eq("tenant_id", tenant.id)
+      .eq("is_active", true)
+      .order("created_at", { ascending: true })
+    : { data: [] };
 
   const { data: professionals } = await supabase
     .from("professionals")
@@ -434,6 +442,11 @@ export default async function TenantHome({
 
   return (
     <DemoShell className="bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.1),transparent_34%),linear-gradient(180deg,#ecf2f8_0%,#f8fafc_28%,#eef3f8_100%)]">
+      {operational.demoSimulation ? (
+        <div className="sticky top-0 z-50 border-b border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm font-black text-amber-950">
+          Entorno de demostración. No ingrese información personal, clínica o financiera real
+        </div>
+      ) : null}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-slate-200/60 via-slate-100/30 to-slate-200/60 blur-3xl" />
         <div className="absolute -bottom-28 left-1/2 h-72 w-[44rem] -translate-x-1/2 rounded-full bg-gradient-to-r from-amber-100/35 via-slate-100/20 to-emerald-100/25 blur-3xl" />
@@ -499,6 +512,7 @@ export default async function TenantHome({
               )}
 
               <div className="mt-6">
+                {operational.createAppointment || operational.demoSimulation ? (
                 <Button
                   asChild
                   variant="hero"
@@ -506,9 +520,13 @@ export default async function TenantHome({
                 >
                   <Link href={ctaHref}>Reserva ahora</Link>
                 </Button>
+                ) : null}
                 <p className="mt-2 text-xs text-slate-500">
-                  Confirmación inmediata · enlace privado para
-                  modificar/cancelar
+                  {operational.demoSimulation
+                    ? "Simulación sin persistencia ni comunicaciones externas"
+                    : operational.createAppointment
+                      ? "Confirmación inmediata · enlace privado para modificar/cancelar"
+                      : "Página informativa; las operaciones están deshabilitadas"}
                 </p>
               </div>
             </div>

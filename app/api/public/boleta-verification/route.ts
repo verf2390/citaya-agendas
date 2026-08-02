@@ -11,6 +11,7 @@ import {
   requestIp,
 } from "@/lib/security/request";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadTenantOperationalContext } from "@/lib/tenant/operational-server";
 
 const Query = z.object({
   issuerRut: z.string().trim().min(8).max(16),
@@ -54,6 +55,10 @@ export async function POST(req: Request) {
     .eq("issuer_rut", issuerRut)
     .maybeSingle();
   if (issuer.error || !issuer.data) return notFound();
+  try {
+    const operational = await loadTenantOperationalContext(issuer.data.tenant_id);
+    if (!operational.capabilities.publicTaxDocument) return notFound();
+  } catch { return notFound(); }
   const document = await supabaseAdmin
     .from("dte_production_documents")
     .select("id,dte_type,folio,issue_date,total_amount,status,sii_status")

@@ -7,6 +7,10 @@ import {
 } from "@/lib/security/payment-verification.mjs";
 import { getKhipuCredentials } from "@/services/payments/provider-credentials";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
+import {
+  loadTenantOperationalContext,
+  recordTenantOperationalRejection,
+} from "@/lib/tenant/operational-server";
 
 function reject(status = 400) {
   return NextResponse.json({ ok: false, error: "Notificación inválida" }, { status });
@@ -27,6 +31,14 @@ export async function POST(req: Request) {
       .eq("provider_payment_id", paymentId)
       .maybeSingle();
     if (intentError || !intent) return reject(404);
+    const operational = await loadTenantOperationalContext(intent.tenant_id);
+    if (!operational.capabilities.acceptPaymentWebhook) {
+      await recordTenantOperationalRejection({
+        tenantId: intent.tenant_id, operation: "payment_webhook", source: "khipu",
+        safeReference: intent.id, reasonCode: "TENANT_MODE_WEBHOOK_BLOCKED",
+      });
+      return NextResponse.json({ ok: true, ignored: true }, { status: 202 });
+    }
 
     const credentials = getKhipuCredentials(intent.tenant_id);
     if (!credentials) return reject(503);

@@ -421,6 +421,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const [tenantId, setTenantId] = useState<string>("");
   const [loadingTenant, setLoadingTenant] = useState(true);
   const [tenantName, setTenantName] = useState<string>("");
+  const [tenantOperationalMode, setTenantOperationalMode] = useState<string>("unclassified");
   const [tenantPaymentMode, setTenantPaymentMode] =
     useState<TenantPaymentMode>("none");
 
@@ -526,7 +527,11 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   }, [tenantSlug]);
 
   useEffect(() => {
-    if (!tenantSlug || !tenantId) return;
+    if (!tenantSlug || !tenantId || tenantOperationalMode === "demo") {
+      setLegalBundle(null);
+      setLegalLoading(false);
+      return;
+    }
     let cancelled = false;
     setLegalLoading(true);
     setLegalBundle(null);
@@ -549,7 +554,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       if (!cancelled) setLegalLoading(false);
     });
     return () => { cancelled = true; };
-  }, [tenantId, tenantSlug]);
+  }, [tenantId, tenantSlug, tenantOperationalMode]);
 
   useEffect(() => {
     if (!tenantSlug) return;
@@ -568,6 +573,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         if (!cancelled) {
           setTenantId(tenant.id ?? "");
           setTenantName(tenant.name ?? "");
+          setTenantOperationalMode(String(tenant.operational_mode ?? "unclassified"));
           setBoletaSelectionEnabled(
             tenant.boleta_document_selection_enabled === true,
           );
@@ -602,6 +608,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         if (!cancelled) {
           setTenantId("");
           setTenantName("");
+          setTenantOperationalMode("unclassified");
           setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
           setTenantPaymentMode("none");
           setPaymentMethodsEnabled(["mercadopago"]);
@@ -975,8 +982,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       return;
     }
 
-    if (!legalBundle?.identity.complete || !termsAccepted || !privacyInformed ||
-      (legalBundle.handlesSensitiveData && !sensitiveAccepted)) {
+    if (tenantOperationalMode !== "demo" && (
+      !legalBundle?.identity.complete || !termsAccepted || !privacyInformed ||
+      (legalBundle.handlesSensitiveData && !sensitiveAccepted)
+    )) {
       alert("Debes revisar y aceptar las condiciones vigentes del prestador.");
       scrollToRef(contactRef);
       return;
@@ -989,6 +998,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
 
     try {
       const appointmentIdempotencyKey = crypto.randomUUID();
+      const acceptedLegalBundle = tenantOperationalMode === "demo" ? null : legalBundle;
       const payload = {
         tenantId,
         tenantSlug,
@@ -1020,35 +1030,35 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         invoiceReceiverCommune: invoiceRequested ? invoiceCommune : null,
         invoiceReceiverCity: invoiceRequested ? invoiceCity : null,
         invoiceReceiverTaxEmail: invoiceRequested ? invoiceTaxEmail.trim().toLowerCase() : null,
-        legalConsent: {
+        legalConsent: acceptedLegalBundle ? {
           consumer_terms: {
-            documentId: legalBundle.documents.consumer_terms.id,
-            version: legalBundle.documents.consumer_terms.version,
-            hash: legalBundle.documents.consumer_terms.hash,
+            documentId: acceptedLegalBundle.documents.consumer_terms.id,
+            version: acceptedLegalBundle.documents.consumer_terms.version,
+            hash: acceptedLegalBundle.documents.consumer_terms.hash,
             accepted: termsAccepted,
             declaration: "He leído y acepto los términos y la política de cancelación del prestador.",
           },
           privacy_notice: {
-            documentId: legalBundle.documents.privacy_notice.id,
-            version: legalBundle.documents.privacy_notice.version,
-            hash: legalBundle.documents.privacy_notice.hash,
+            documentId: acceptedLegalBundle.documents.privacy_notice.id,
+            version: acceptedLegalBundle.documents.privacy_notice.version,
+            hash: acceptedLegalBundle.documents.privacy_notice.hash,
             accepted: privacyInformed,
             declaration: "Declaro haber sido informado mediante el aviso de privacidad del prestador.",
           },
           cancellation_refund_policy: {
-            documentId: legalBundle.documents.cancellation_refund_policy.id,
-            version: legalBundle.documents.cancellation_refund_policy.version,
-            hash: legalBundle.documents.cancellation_refund_policy.hash,
+            documentId: acceptedLegalBundle.documents.cancellation_refund_policy.id,
+            version: acceptedLegalBundle.documents.cancellation_refund_policy.version,
+            hash: acceptedLegalBundle.documents.cancellation_refund_policy.hash,
             accepted: termsAccepted,
             declaration: "He leído y acepto los términos y la política de cancelación del prestador.",
           },
-          ...(legalBundle.handlesSensitiveData ? {
+          ...(acceptedLegalBundle.handlesSensitiveData ? {
             sensitive_data_authorization: {
-              documentId: legalBundle.documents.sensitive_data_authorization.id,
-              version: legalBundle.documents.sensitive_data_authorization.version,
-              hash: legalBundle.documents.sensitive_data_authorization.hash,
+              documentId: acceptedLegalBundle.documents.sensitive_data_authorization.id,
+              version: acceptedLegalBundle.documents.sensitive_data_authorization.version,
+              hash: acceptedLegalBundle.documents.sensitive_data_authorization.hash,
               accepted: sensitiveAccepted,
-              declaration: `Autorizo el tratamiento de datos sensibles para esta finalidad concreta: ${legalBundle.sensitivePurpose ?? "prestación del servicio solicitado"}.`,
+              declaration: `Autorizo el tratamiento de datos sensibles para esta finalidad concreta: ${acceptedLegalBundle.sensitivePurpose ?? "prestación del servicio solicitado"}.`,
             },
           } : {}),
           marketing: {
@@ -1056,7 +1066,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
             channel: "email",
             purpose: "Enviar promociones y novedades comerciales del prestador por correo electrónico.",
           },
-        },
+        } : undefined,
       };
 
       const res = await fetch("/api/appointments/create", {
@@ -1070,6 +1080,11 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
 
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "No se pudo crear la cita");
+
+      if (json?.demoSimulation === true && typeof json?.ephemeralId === "string") {
+        router.push(`/reservar/confirmacion?demo=1&id=${encodeURIComponent(json.ephemeralId)}&tenant=${encodeURIComponent(tenantSlug)}`);
+        return;
+      }
 
       const appointmentId = json?.appointmentId;
       const manageToken = json?.manageToken;
@@ -1423,6 +1438,11 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         size="booking"
         className="max-w-full overflow-x-clip font-[system-ui] text-[12px] leading-snug sm:text-[14px] sm:leading-normal"
       >
+        {tenantOperationalMode === "demo" ? (
+          <div className="sticky top-0 z-50 mb-3 rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm font-black text-amber-950 shadow-sm">
+            Entorno de demostración. No ingrese información personal, clínica o financiera real
+          </div>
+        ) : null}
         <div
           className={cn(
             "sticky top-0 z-40 -mx-2 px-2 pb-3 pt-3 sm:-mx-4 sm:px-4 lg:static lg:mx-0 lg:px-0 lg:pt-0",

@@ -175,6 +175,7 @@ function ConfirmacionFallback() {
 function ConfirmacionInner() {
   const sp = useSearchParams();
   const id = sp.get("id") ?? "";
+  const demoSimulation = sp.get("demo") === "1";
 
   const tenantFromQuery = sp.get("tenant") ?? "";
   const host =
@@ -201,6 +202,7 @@ function ConfirmacionInner() {
 
   // 1) Cargar cita por id (source of truth)
   useEffect(() => {
+    if (demoSimulation) return;
     let cancelled = false;
 
     (async () => {
@@ -238,7 +240,7 @@ function ConfirmacionInner() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [demoSimulation, id]);
 
   // 2) Resolver tenant
   useEffect(() => {
@@ -575,6 +577,24 @@ function ConfirmacionInner() {
         setTimeout(() => setCopied(false), 1400);
       } catch {}
     }
+  }
+
+  if (demoSimulation) {
+    return (
+      <DemoShell>
+        <DemoContainer className="max-w-2xl px-4 py-10">
+          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-7 text-center">
+            <BadgeCheck className="mx-auto h-12 w-12 text-emerald-600" />
+            <h1 className="mt-4 text-2xl font-black">Simulación completada</h1>
+            <p className="mt-3 text-slate-600">No se creó una reserva real, no se guardaron datos personales y no se contactó ningún servicio externo.</p>
+            <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-100 p-3 text-sm font-bold text-amber-950">
+              Entorno de demostración. No ingrese información personal, clínica o financiera real
+            </div>
+            <Button asChild className="mt-6"><Link href="/reservar">Volver a la demo</Link></Button>
+          </SurfaceCard>
+        </DemoContainer>
+      </DemoShell>
+    );
   }
 
   return (

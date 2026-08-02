@@ -8,6 +8,7 @@ import {
   opaqueKey,
   requestIp,
 } from "@/lib/security/request";
+import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
 
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, max) : "";
@@ -41,6 +42,8 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return fail();
     const tenantId = await tenantFromRequest(req, body);
+    try { await assertTenantCanCreateAppointment(tenantId); }
+    catch { return fail(409, "La lista de espera no está disponible para este entorno"); }
     const serviceId = text(body.serviceId, 40);
     const professionalId = text(body.professionalId, 40);
     const date = text(body.date, 10);

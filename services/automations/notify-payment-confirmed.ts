@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { PaymentProviderId } from "@/services/payments/providers/types";
+import { assertTenantCanSendExternalCommunication } from "@/lib/tenant/operational-server";
 
 type NotifyPaymentConfirmedArgs = {
   appointmentId: string;
@@ -121,6 +122,11 @@ export async function notifyPaymentConfirmed(
     }
 
     const appointmentRow = appointment as unknown as AppointmentRow;
+    try {
+      await assertTenantCanSendExternalCommunication(appointmentRow.tenant_id);
+    } catch {
+      return;
+    }
 
     const [{ data: tenant }, { data: professional }] = await Promise.all([
       supabaseAdmin

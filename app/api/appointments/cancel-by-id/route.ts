@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
@@ -11,7 +12,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = 5000) {
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), ms);
   try {
-    const resp = await fetch(url, { ...init, signal: controller.signal, cache: "no-store" as any });
+    const resp = await fetch(url, { ...init, signal: controller.signal, cache: "no-store" });
     return resp;
   } finally {
     clearTimeout(t);
@@ -41,6 +42,8 @@ export async function POST(req: Request) {
 
     const access = await requireTenantAdmin({ req, tenantId: tenant_id });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    try { await assertTenantCanCreateAppointment(tenant_id); }
+    catch { return NextResponse.json({ ok: false, error: "Operación no disponible para este entorno" }, { status: 409 }); }
 
     // 0) Verificar que la cita exista y pertenezca al tenant
     const { data: appt, error: apptErr } = await supabaseAdmin
@@ -116,7 +119,7 @@ export async function POST(req: Request) {
 
     // 2) Llamar a n8n (correo + log) SIN romper la cancelación
     let n8nOk = false;
-    let n8nResult: any = null;
+    let n8nResult: unknown = null;
 
     if (!secret) {
       console.warn("[cancel-by-id] Missing CITAYA_SECRET env var. Skipping n8n call.");
@@ -155,10 +158,11 @@ export async function POST(req: Request) {
         } catch {
           n8nResult = text || { ok: r.ok };
         }
-      } catch (err: any) {
-        console.error("[cancel-by-id] n8n call failed:", err?.message || err);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "n8n fetch failed";
+        console.error("[cancel-by-id] n8n call failed:", message);
         n8nOk = false;
-        n8nResult = { ok: false, error: err?.message || "n8n fetch failed" };
+        n8nResult = { ok: false, error: message };
       }
     }
 
@@ -167,7 +171,7 @@ export async function POST(req: Request) {
       appointment: updated,
       n8n: { called: !!secret, ok: n8nOk, result: n8nResult },
     });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Unexpected error" }, { status: 500 });
+  } catch (e: unknown) {
+    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error" }, { status: 500 });
   }
 }

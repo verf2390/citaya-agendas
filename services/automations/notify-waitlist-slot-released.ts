@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { assertTenantCanSendExternalCommunication } from "@/lib/tenant/operational-server";
 
 type NotifyWaitlistSlotReleasedArgs = {
   tenantId: string | null;
@@ -117,6 +118,11 @@ export async function notifyWaitlistSlotReleased(
 ): Promise<void> {
   try {
     if (!args.tenantId || !args.serviceId || !args.startAt) return;
+    try {
+      await assertTenantCanSendExternalCommunication(args.tenantId);
+    } catch {
+      return;
+    }
 
     const slot = getSlotParts(args.startAt);
     if (!slot) return;

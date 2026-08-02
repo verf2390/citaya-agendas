@@ -15,6 +15,10 @@ import {
 } from "@/services/payments/provider-factory";
 import type { PaymentProviderConfig } from "@/services/payments/providers/types";
 import { normalizeRut, validateRut } from "@/lib/dte/rut";
+import {
+  assertTenantCanCreatePayment,
+  TenantOperationalError,
+} from "@/lib/tenant/operational-server";
 
 function jsonError(status: number, error = "No se pudo iniciar el pago") {
   return NextResponse.json({ ok: false, error }, { status });
@@ -52,6 +56,7 @@ export async function POST(req: Request) {
       .eq("id", appointmentId)
       .maybeSingle();
     if (appointmentError || !appointment) return jsonError(404);
+    await assertTenantCanCreatePayment(appointment.tenant_id);
 
     const actor = await authorizeAppointmentActor({
       req,
@@ -296,6 +301,7 @@ export async function POST(req: Request) {
         .eq("id", createdIntentId)
         .eq("status", "created");
     }
+    if (error instanceof TenantOperationalError) return jsonError(409, "El pago no está disponible para este entorno");
     console.error("[payments/create] failed", {
       name: error instanceof Error ? error.name : "UnknownError",
     });

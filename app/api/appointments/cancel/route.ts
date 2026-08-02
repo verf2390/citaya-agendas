@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hashManageToken } from "@/lib/security/manage-tokens.mjs";
 import { authorizeAppointmentActor } from "@/lib/api/appointmentAccess";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
+import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
 
 function denied() {
   return NextResponse.json({ ok: false, error: "Cita no disponible" }, { status: 404 });
@@ -24,6 +25,7 @@ export async function POST(req: Request) {
     }
     if (result.error || !result.data) return denied();
     const appointment = result.data;
+    try { await assertTenantCanCreateAppointment(appointment.tenant_id); } catch { return denied(); }
     const access = await authorizeAppointmentActor({ req, appointment, manageToken: token });
     if (!access.ok || access.actor !== "manage_token") return denied();
     if (["canceled", "cancelled"].includes(String(appointment.status).toLowerCase())) {

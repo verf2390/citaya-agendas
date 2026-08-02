@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanSendCampaign } from "@/lib/tenant/operational-server";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 type CampaignPayload = {
@@ -717,6 +718,8 @@ export async function POST(req: Request) {
 
     const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    try { await assertTenantCanSendCampaign(tenant.id); }
+    catch { return NextResponse.json({ ok: false, error: "Campañas no disponibles para este entorno" }, { status: 409 }); }
 
     const ctaLabel = paymentCampaign ? "Pagar ahora" : payload.ctaLabel || "Reservar hora";
     const ctaUrl = paymentCampaign

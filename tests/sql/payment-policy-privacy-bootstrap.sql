@@ -42,6 +42,17 @@ grant select on public.billing_sales to authenticated;
 create policy billing_sales_tenant_read on public.billing_sales for select to authenticated
   using(public.is_tenant_member(tenant_id,auth.uid()) or public.is_platform_admin(auth.uid()));
 create table public.dte_payment_document_intents(id uuid primary key default gen_random_uuid(),tenant_id uuid not null,appointment_id uuid not null,payment_intent_id uuid,status text,immutable_snapshot jsonb default '{}');
+create table public.dte_issuance_outbox(
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references tenants(id),
+  intent_id uuid not null references dte_payment_document_intents(id),
+  status text not null default 'PENDING',
+  available_at timestamptz not null default now(),
+  last_safe_error text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(tenant_id,intent_id)
+);
 create table public.dte_production_documents(id uuid primary key default gen_random_uuid(),tenant_id uuid not null,dte_type integer,issue_date date not null default current_date,created_at timestamptz not null default now());
 create table public.dte_production_folio_ledger(tenant_id uuid,dte_type integer,folio integer,state text,document_id uuid,issued_at timestamptz,primary key(tenant_id,dte_type,folio));
 create table public.dte_production_artifacts(id uuid primary key default gen_random_uuid(),tenant_id uuid not null,document_id uuid not null,kind text,storage_key text,sha256 text,byte_length bigint,content_type text,created_at timestamptz default now());

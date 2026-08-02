@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanSendCampaign } from "@/lib/tenant/operational-server";
 
 type CampaignRecipient = {
   customer_id?: string;
@@ -92,6 +93,8 @@ export async function POST(req: Request) {
 
     const access = await requireTenantAdmin({ req, tenantId: payload.tenant_id, tenantSlug: payload.tenant_slug });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    try { await assertTenantCanSendCampaign(payload.tenant_id); }
+    catch { return NextResponse.json({ ok: false, error: "Mensajes externos no disponibles para este entorno" }, { status: 409 }); }
 
     const webhookUrl = process.env.N8N_CAMPAIGN_WEBHOOK_URL;
     if (!webhookUrl) {
@@ -108,8 +111,8 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-    } catch (e: any) {
-      console.error("[api/admin/messages/send] n8n fetch error:", e?.message || e);
+    } catch (e: unknown) {
+      console.error("[api/admin/messages/send] n8n fetch error:", e instanceof Error ? e.message : "UnknownError");
       return NextResponse.json(
         { ok: false, error: "No se pudo conectar con n8n" },
         { status: 502 },
@@ -137,10 +140,11 @@ export async function POST(req: Request) {
       recipients_count: payload.recipients.length,
       has_image: Boolean(payload.campaign_image_url),
     });
-  } catch (e: any) {
-    console.error("[api/admin/messages/send] error:", e?.message || e);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Error enviando campaña";
+    console.error("[api/admin/messages/send] error:", message);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error enviando campaña" },
+      { ok: false, error: message },
       { status: 500 },
     );
   }

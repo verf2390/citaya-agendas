@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanSendExternalCommunication } from "@/lib/tenant/operational-server";
 
 type PaymentResendPayload = {
   appointmentId?: string;
@@ -93,8 +94,8 @@ async function logMessage(
       },
       body: JSON.stringify(body),
     });
-  } catch (e: any) {
-    console.error("[api/admin/payments/resend] log ignored:", e?.message || e);
+  } catch (e: unknown) {
+    console.error("[api/admin/payments/resend] log ignored:", e instanceof Error ? e.message : "UnknownError");
   }
 }
 
@@ -139,6 +140,8 @@ export async function POST(req: Request) {
 
     const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug: payload.tenantSlug });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    try { await assertTenantCanSendExternalCommunication(tenant.id); }
+    catch { return NextResponse.json({ ok: false, error: "Comunicaciones externas no disponibles para este entorno" }, { status: 409 }); }
 
     const { data: appointment } = await supabaseAdmin
       .from("appointments")
@@ -179,15 +182,16 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(enrichedPayload),
       });
-    } catch (e: any) {
-      console.error("[api/admin/payments/resend] n8n fetch error:", e?.message || e);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "No se pudo conectar con n8n";
+      console.error("[api/admin/payments/resend] n8n fetch error:", message);
       await logMessage(req, token, {
         tenantSlug: payload.tenantSlug,
         type: "payment_resend",
         recipient: payload.customerEmail,
         subject: logSubject,
         status: "error",
-        errorMessage: e?.message || "No se pudo conectar con n8n",
+        errorMessage: message,
       });
       return NextResponse.json(
         { ok: false, error: "No se pudo conectar con n8n" },
@@ -227,10 +231,11 @@ export async function POST(req: Request) {
       ok: true,
       message: "Correo de pago reenviado correctamente",
     });
-  } catch (e: any) {
-    console.error("[api/admin/payments/resend] error:", e?.message || e);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Error reenviando pago";
+    console.error("[api/admin/payments/resend] error:", message);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Error reenviando pago" },
+      { ok: false, error: message },
       { status: 500 },
     );
   }

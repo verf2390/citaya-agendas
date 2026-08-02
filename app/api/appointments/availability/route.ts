@@ -1,5 +1,6 @@
 // app/api/appointments/availability/route.ts
 import { NextResponse } from "next/server";
+import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getDemoTenantIdFromCookieHeader } from "@/lib/tenant";
@@ -177,9 +178,16 @@ export async function GET(req: Request) {
         { status: 400 },
       );
     }
-    const { data: activeTenant } = await supabaseServer.from("tenants").select("id")
+    const { data: activeTenant } = await supabaseServer.from("tenants").select("id,lifecycle_status,operational_mode")
       .eq("id", effectiveTenantId).eq("lifecycle_status", "active").maybeSingle();
     if (!activeTenant) return NextResponse.json({ error: "tenant no disponible" }, { status: 404 });
+    const operational = resolveTenantOperationalCapabilities({
+      lifecycleStatus: activeTenant.lifecycle_status,
+      operationalMode: activeTenant.operational_mode,
+    });
+    if (!operational.createAppointment && !operational.demoSimulation) {
+      return NextResponse.json({ error: "tenant no disponible" }, { status: 404 });
+    }
 
     const rangeStart = new Date(from);
     const rangeEnd = new Date(to);

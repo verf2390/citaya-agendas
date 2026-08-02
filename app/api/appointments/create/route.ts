@@ -21,6 +21,12 @@ import {
   getPublicLegalBundleByTenantId,
   resolveTenantForPublicRequest,
 } from "@/lib/legal/server";
+import { createDemoSimulation } from "@/lib/tenant/operational-mode.mjs";
+import {
+  assertTenantCanCreateAppointment,
+  loadTenantOperationalContext,
+  TenantOperationalError,
+} from "@/lib/tenant/operational-server";
 
 function publicError(status = 400, error = "No se pudo crear la reserva") {
   return NextResponse.json({ ok: false, error }, { status });
@@ -95,6 +101,11 @@ export async function POST(req: Request) {
         String(input.tenantSlug ?? ""),
       );
       if (!resolvedTenant || resolvedTenant.id !== input.tenantId) return publicError(404);
+      const operational = await loadTenantOperationalContext(input.tenantId);
+      if (operational.capabilities.demoSimulation) {
+        return NextResponse.json(createDemoSimulation());
+      }
+      if (!operational.capabilities.createAppointment) return publicError(404);
       const legalBundle = await getPublicLegalBundleByTenantId(input.tenantId, resolvedTenant.slug);
       const validation = validatePublicLegalConsent({
         tenantId: input.tenantId,
@@ -157,6 +168,7 @@ export async function POST(req: Request) {
     if (isAdminRequest) {
       const admin = await requireTenantAdmin({ req, tenantId: input.tenantId });
       if (!admin.ok) return publicError(404);
+      await assertTenantCanCreateAppointment(input.tenantId);
     } else {
       const allowed = await consumeRateLimit({
         scope: "appointment_create",
@@ -292,6 +304,7 @@ export async function POST(req: Request) {
       duplicate: row.duplicate === true,
     });
   } catch (error) {
+    if (error instanceof TenantOperationalError) return publicError(409);
     console.error("[appointments/create] failed", {
       name: error instanceof Error ? error.name : "UnknownError",
     });

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 export type RequireTenantAdminInput = {
   req: Request;
@@ -16,6 +17,7 @@ export type RequireTenantAdminResult =
       tenantSlug: string;
       userId: string;
       authMode: TenantAdminAuthMode;
+      operationalMode: "unclassified" | "demo" | "live" | "internal";
     }
   | {
       ok: false;
@@ -109,7 +111,7 @@ export async function requireTenantAdmin(
   const tenantSlug = getTenantSlugFromReq(input.req, input.tenantSlug);
   let tenantQuery = supabaseAdmin
     .from("tenants")
-    .select("id, slug, lifecycle_status")
+    .select("id, slug, lifecycle_status, operational_mode")
     .eq("id", tenantId);
   if (tenantSlug) tenantQuery = tenantQuery.eq("slug", tenantSlug);
   const { data: tenant, error: tenantError } = await tenantQuery.maybeSingle();
@@ -135,6 +137,10 @@ export async function requireTenantAdmin(
     checkTenantMembership({ tenantId: tenant.id as string, userId }),
     checkPlatformAdmin(userId),
   ]);
+  const operational = resolveTenantOperationalCapabilities({
+    lifecycleStatus: tenant.lifecycle_status,
+    operationalMode: tenant.operational_mode,
+  });
 
   if (tenant.lifecycle_status === "archived" && !platformAdmin.allowed) {
     return { ok: false, error: "Tenant archivado", status: 403 };
@@ -149,22 +155,35 @@ export async function requireTenantAdmin(
   }
 
   if (tenantMembership.allowed && tenant.lifecycle_status !== "archived") {
+    if (!operational.ordinaryAdmin) {
+      return { ok: false, error: "Tenant no clasificado para administración ordinaria", status: 403 };
+    }
     return {
       ok: true,
       tenantId: tenant.id as string,
       tenantSlug: tenant.slug as string,
       userId,
       authMode: "tenant_members",
+      operationalMode: operational.operationalMode,
     };
   }
 
   if (platformAdmin.allowed) {
+    if (tenant.lifecycle_status === "archived") {
+      const audit = await supabaseAdmin.rpc("record_tenant_exceptional_access", {
+        p_tenant_id: tenant.id,
+        p_actor_user_id: userId,
+        p_access_context: "require_tenant_admin",
+      });
+      if (audit.error) return { ok: false, error: "No se pudo auditar el acceso excepcional", status: 500 };
+    }
     return {
       ok: true,
       tenantId: tenant.id as string,
       tenantSlug: tenant.slug as string,
       userId,
       authMode: "platform_admin",
+      operationalMode: operational.operationalMode,
     };
   }
 
@@ -173,6 +192,19 @@ export async function requireTenantAdmin(
     error: "Usuario sin permisos admin para este tenant",
     status: 403,
   };
+}
+
+export async function requirePlatformAdmin(req: Request): Promise<
+  { ok: true; userId: string } | { ok: false; error: string; status: number }
+> {
+  const token = getBearerToken(req);
+  if (!token) return { ok: false, error: "Unauthorized", status: 401 };
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user?.id) return { ok: false, error: "Unauthorized", status: 401 };
+  const platform = await checkPlatformAdmin(data.user.id);
+  if (platform.failed) return { ok: false, error: "No se pudo validar la autorización", status: 500 };
+  if (!platform.allowed) return { ok: false, error: "Platform admin requerido", status: 403 };
+  return { ok: true, userId: data.user.id };
 }
 
 
@@ -184,7 +216,7 @@ export async function requireHostTenantAdmin(req: Request): Promise<RequireTenan
   }
   const { data: tenant, error } = await supabaseAdmin
     .from("tenants")
-    .select("id, slug, lifecycle_status")
+    .select("id, slug, lifecycle_status, operational_mode")
     .eq("slug", tenantSlug)
     .maybeSingle();
   if (error) {

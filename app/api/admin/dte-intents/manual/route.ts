@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanEnqueueDte } from "@/lib/tenant/operational-server";
 import { isUuid } from "@/lib/api/validators";
 import {
   manualIssuanceIdempotencyMaterial,
@@ -50,6 +51,8 @@ function sha256(value: string) {
 export async function POST(req: Request) {
   const auth = await requireHostTenantAdmin(req);
   if (!auth.ok) return responseError(auth.status === 403 ? 404 : auth.status, auth.error);
+  try { await assertTenantCanEnqueueDte(auth.tenantId); }
+  catch { return responseError(409, "La creación de DTE no está disponible para este entorno"); }
   const body = await req.json().catch(() => null);
   const previewOnly = body?.previewOnly === true;
   const source = String(body?.source ?? "");

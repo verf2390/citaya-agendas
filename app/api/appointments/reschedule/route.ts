@@ -8,6 +8,7 @@ import {
 import { authorizeAppointmentActor } from "@/lib/api/appointmentAccess";
 import { consumeRateLimit, opaqueKey, requestIp } from "@/lib/security/request";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
+import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
 
 function denied(status = 404) {
   return NextResponse.json({ ok: false, error: "No se pudo reagendar" }, { status });
@@ -48,6 +49,7 @@ export async function POST(req: Request) {
     }
     if (result.error || !result.data) return denied();
     const appointment = result.data;
+    try { await assertTenantCanCreateAppointment(appointment.tenant_id); } catch { return denied(); }
     const access = await authorizeAppointmentActor({ req, appointment, manageToken: token });
     if (!access.ok || access.actor !== "manage_token") return denied();
     if (["canceled", "cancelled"].includes(String(appointment.status).toLowerCase())) return denied(409);

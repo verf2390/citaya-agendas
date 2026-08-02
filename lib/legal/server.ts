@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 export type PublicLegalDocument = {
   id: string;
@@ -18,7 +19,7 @@ export async function getPublicLegalBundleByTenantId(
   const [{ data: tenant }, { data: profile }, { data: tax }, { data: docs }] =
     await Promise.all([
       supabaseAdmin.from("tenants")
-        .select("id,slug,name,address,city,contact_email,phone_display,lifecycle_status")
+        .select("id,slug,name,address,city,contact_email,phone_display,lifecycle_status,operational_mode")
         .eq("id", tenantId).eq("lifecycle_status", "active").maybeSingle(),
       supabaseAdmin.from("tenant_legal_profiles").select("*")
         .eq("tenant_id", tenantId).maybeSingle(),
@@ -31,7 +32,10 @@ export async function getPublicLegalBundleByTenantId(
         .eq("status", "published").lte("effective_at", new Date().toISOString()),
     ]);
 
-  if (!tenant?.id || (tenantSlug && tenant.slug !== tenantSlug)) return null;
+  const operational = tenant ? resolveTenantOperationalCapabilities({
+    lifecycleStatus: tenant.lifecycle_status, operationalMode: tenant.operational_mode,
+  }) : null;
+  if (!tenant?.id || !operational?.informationalPage || (tenantSlug && tenant.slug !== tenantSlug)) return null;
   const documents = Object.fromEntries((docs ?? []).map((doc) => [
     doc.document_type,
     {
@@ -75,9 +79,12 @@ export async function getPublicLegalBundleByTenantId(
 export async function resolveTenantForPublicRequest(req: Request, requestedSlug: string) {
   const slug = requestedSlug.trim().toLowerCase();
   if (!slug) return null;
-  const { data } = await supabaseAdmin.from("tenants").select("id,slug,lifecycle_status")
+  const { data } = await supabaseAdmin.from("tenants").select("id,slug,lifecycle_status,operational_mode")
     .eq("slug", slug).eq("lifecycle_status", "active").maybeSingle();
   if (!data?.id) return null;
+  if (!resolveTenantOperationalCapabilities({
+    lifecycleStatus: data.lifecycle_status, operationalMode: data.operational_mode,
+  }).informationalPage) return null;
 
   const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
     .split(",")[0]?.trim().split(":")[0] ?? "";

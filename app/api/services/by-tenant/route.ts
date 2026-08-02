@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
     // tenant por slug
     const { data: t, error: terr } = await supabaseAdmin
       .from("tenants")
-      .select("id, name, slug, lifecycle_status")
+      .select("id, name, slug, lifecycle_status, operational_mode")
       .eq("slug", tenant)
       .eq("lifecycle_status", "active")
       .maybeSingle();
@@ -30,15 +31,21 @@ export async function GET(req: Request) {
     if (!t?.id) {
       return NextResponse.json({ error: "Tenant no existe" }, { status: 404 });
     }
+    const operational = resolveTenantOperationalCapabilities({
+      lifecycleStatus: t.lifecycle_status, operationalMode: t.operational_mode,
+    });
+    if (!operational.createAppointment && !operational.demoSimulation) {
+      return NextResponse.json({ error: "Tenant no existe" }, { status: 404 });
+    }
 
     // servicios activos
-    const { data, error } = await supabaseAdmin
+    let serviceQuery = supabaseAdmin
       .from("services")
       .select("id,tenant_id,name,public_description,duration_min,price,currency,is_active,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete")
       .eq("tenant_id", t.id)
-      .eq("is_active", true)
-      .eq("payment_configuration_complete", true)
-      .order("created_at", { ascending: true });
+      .eq("is_active", true);
+    if (!operational.demoSimulation) serviceQuery = serviceQuery.eq("payment_configuration_complete", true);
+    const { data, error } = await serviceQuery.order("created_at", { ascending: true });
 
     if (error) throw error;
 

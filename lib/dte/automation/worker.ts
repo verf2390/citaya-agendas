@@ -2,6 +2,7 @@ import { expectedProductionConfirmation } from "@/lib/dte/production/config";
 import { createServerProductionDteService } from "@/lib/dte/production/server";
 import { ProductionPreparationError } from "@/lib/dte/production/service";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { assertTenantCanRunDteWorker } from "@/lib/tenant/operational-server";
 
 const SYSTEM_ACTOR_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -218,6 +219,13 @@ export async function runOneManualIssuanceWorker(options: {
   if (claimed.error) throw new Error("DTE_OUTBOX_CLAIM_FAILED");
   const item = (Array.isArray(claimed.data) ? claimed.data[0] : null) as ClaimedOutbox | null;
   if (!item) return { processed: false, status: null, siiContacted: false, networkAttempts: 0 };
+
+  try {
+    await assertTenantCanRunDteWorker(item.tenant_id);
+  } catch {
+    await block(item, "TENANT_MODE_DTE_WORKER_BLOCKED");
+    return { processed: true, status: "BLOCKED", siiContacted: false, networkAttempts: 0 };
+  }
 
   let intent: IssuanceIntent | null = null;
   try {

@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanAdministerTax } from "@/lib/tenant/operational-server";
 import {
   deriveBillingCompliance,
   type BillingActivationGate,
@@ -299,6 +300,8 @@ async function loadState(tenantId: string, authMode: string) {
 export async function GET(req: Request) {
   const auth = await requireHostTenantAdmin(req);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+  try { await assertTenantCanAdministerTax(auth.tenantId); }
+  catch { return NextResponse.json({ ok: false, error: "Configuración no disponible para este entorno" }, { status: 409 }); }
   try {
     return NextResponse.json({ ok: true, state: await loadState(auth.tenantId, auth.authMode) });
   } catch {
@@ -309,6 +312,8 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   const auth = await requireHostTenantAdmin(req);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+  try { await assertTenantCanAdministerTax(auth.tenantId); }
+  catch { return NextResponse.json({ ok: false, error: "Configuración no disponible para este entorno" }, { status: 409 }); }
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return NextResponse.json({ ok: false, error: "Solicitud inválida" }, { status: 400 });
 
