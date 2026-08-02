@@ -8,18 +8,21 @@ alter table public.services
 
 alter table public.services drop constraint if exists services_payment_policy_deposit_shape;
 alter table public.services add constraint services_payment_policy_deposit_shape check (
-  price is not null and price=trunc(price) and price>=0 and
-  ((payment_policy='no_advance' and deposit_type is null and deposit_value is null
+  payment_configuration_complete is not true or (
+    price is not null and price=trunc(price) and price>=0 and
+    ((payment_policy='no_advance' and deposit_type is null and deposit_value is null
       and deposit_min_amount is null and deposit_max_amount is null) or
-   (payment_policy='full_payment' and price>0 and deposit_type is null and deposit_value is null
+     (payment_policy='full_payment' and price>0 and deposit_type is null and deposit_value is null
       and deposit_min_amount is null and deposit_max_amount is null) or
-   (payment_policy='deposit' and price>0 and (
-      (deposit_type='fixed_amount' and deposit_value>0 and deposit_value<=price::bigint) or
-      (deposit_type='percentage' and deposit_value between 1 and 9999)
-    ) and (deposit_min_amount is null or deposit_min_amount between 1 and price::bigint)
-      and (deposit_max_amount is null or deposit_max_amount between 1 and price::bigint)
-      and (deposit_min_amount is null or deposit_max_amount is null or deposit_min_amount<=deposit_max_amount))
-));
+     (payment_policy='deposit' and price>0 and (
+        (deposit_type='fixed_amount' and deposit_value>0 and deposit_value<=price::bigint) or
+        (deposit_type='percentage' and deposit_value between 1 and 9999)
+      ) and (deposit_min_amount is null or deposit_min_amount between 1 and price::bigint)
+        and (deposit_max_amount is null or deposit_max_amount between 1 and price::bigint)
+        and (deposit_min_amount is null or deposit_max_amount is null or deposit_min_amount<=deposit_max_amount))
+    )
+  )
+);
 
 create or replace function public.billing_calculate_initial_due(
   p_total bigint,p_policy text,p_deposit_type text,p_deposit_value bigint,
