@@ -1,5 +1,3 @@
-begin;
-
 -- Local-only commercial, payment and privacy controls. This migration creates
 -- no DTE intent/outbox row, reserves no folio and never enables issuance.
 create extension if not exists btree_gist;
@@ -885,5 +883,3 @@ comment on column public.services.internal_description is 'Operational only. It 
 comment on column public.services.tax_description is 'Minimal DTE description; emission requires explicit administrative approval.';
 comment on table public.data_retention_policies is 'Classification and extension point only; automatic deletion is prohibited by constraint.';
 comment on table public.dte_retention_controls is 'Calendar-year DTE retention and legal hold for the complete XML/signature/response/event/representation bundle; no automatic deletion job.';
-
-commit;

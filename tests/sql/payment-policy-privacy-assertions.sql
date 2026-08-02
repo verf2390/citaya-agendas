@@ -1,5 +1,5 @@
--- Fictional data only. The test runner verifies the complete transaction rolls back.
-begin;
+-- Fictional data only. The bootstrap owns the external transaction and this
+-- file rolls back the complete migration plus fixture transaction.
 
 insert into tenants(id,slug,name) values
 ('10000000-0000-4000-8000-000000000001','accounting-a','Tenant ficticio A'),

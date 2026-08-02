@@ -21,9 +21,9 @@ test("PostgreSQL 17 executes payment/privacy migrations, RLS and triggers with r
   try {
     const run = spawnSync("docker", ["exec", "-i", "citaya-dte-sqltest", "psql", "-U", "postgres", "-d", database, "-v", "ON_ERROR_STOP=1"], { input, encoding: "utf8" });
     assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
-    const verify = spawnSync("docker", ["exec", "citaya-dte-sqltest", "psql", "-U", "postgres", "-d", database, "-Atc", "select count(*) from public.tenants"], { encoding: "utf8" });
+    const verify = spawnSync("docker", ["exec", "citaya-dte-sqltest", "psql", "-U", "postgres", "-d", database, "-Atc", "select to_regclass('public.tenants') is null"], { encoding: "utf8" });
     assert.equal(verify.status, 0, verify.stderr);
-    assert.equal(verify.stdout.trim(), "0", "fictional fixtures did not roll back");
+    assert.equal(verify.stdout.trim(), "t", "external transaction did not roll back migrations and fictional fixtures");
   } finally {
     const drop = spawnSync("docker", ["exec", "citaya-dte-sqltest", "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `drop database if exists ${database}`], { encoding: "utf8" });
     assert.equal(drop.status, 0, drop.stderr);

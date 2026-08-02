@@ -1,5 +1,3 @@
-begin;
-
 -- Accounting completion for service payment policies. This migration creates
 -- review drafts only. It never creates productive intents/outbox work, enables
 -- issuance, allocates a folio, calls a payment provider or contacts the SII.
@@ -715,5 +713,3 @@ comment on table public.billing_payment_schedule_allocations
 is 'PII-free immutable monetary ranges assigning INITIAL/BALANCE schedules to frozen sale items.';
 comment on column public.payment_intents.tax_document_method_classification
 is 'Explicit per-intent tax classification. Defaults fail-closed; providers are never inferred automatically.';
-
-commit;

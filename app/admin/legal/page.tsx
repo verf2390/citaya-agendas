@@ -61,8 +61,8 @@ export default function LegalAdminPage() {
   const [profile, setProfile] = useState<LegalProfile>({});
   const [documentType, setDocumentType] = useState<LegalDocumentType>("consumer_terms");
   const [draftId, setDraftId] = useState("");
-  const [title, setTitle] = useState(LEGAL_DOCUMENT_LABELS.consumer_terms);
-  const [content, setContent] = useState(LEGAL_DRAFT_TEMPLATES.consumer_terms);
+  const [title, setTitle] = useState<string>(LEGAL_DOCUMENT_LABELS.consumer_terms);
+  const [content, setContent] = useState<string>(LEGAL_DRAFT_TEMPLATES.consumer_terms);
   const [signer, setSigner] = useState({ name: "", rut: "", capacity: "", authority: false, operations: false, custody: false });
 
   const refresh = async () => {

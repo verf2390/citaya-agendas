@@ -1,5 +1,3 @@
-begin;
-
 -- Local-only legal/privacy gate. Applying this migration is a separate,
 -- reviewed production operation. It never imports CAFs, reserves folios or
 -- enables issuance.
@@ -614,5 +612,3 @@ comment on table public.legal_acceptances is 'Append-only minimal electronic acc
 comment on table public.tenant_dte_mandates is 'Electronic contractual evidence, not an advanced electronic signature.';
 comment on table public.marketing_consent_events is 'Promotional consent is separate from transactional communications.';
 comment on function public.dte_type39_enablement_gate_report(uuid) is 'Composes tenant legal readiness with all existing type 39 tax and infrastructure facts without reserving a folio.';
-
-commit;

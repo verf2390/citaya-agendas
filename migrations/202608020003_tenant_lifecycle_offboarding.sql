@@ -1,5 +1,3 @@
-begin;
-
 -- Archiving is a reversible operational lock, never a deletion. No tenant is
 -- archived by this migration; invocation requires a separately authorised run.
 alter table public.tenants
@@ -67,5 +65,3 @@ grant execute on function public.archive_tenant_for_offboarding(uuid,uuid,text) 
 
 comment on column public.tenants.lifecycle_status is 'Archived tenants retain legal, accounting, tax and consent history but cannot create operations.';
 comment on function public.archive_tenant_for_offboarding(uuid,uuid,text) is 'Explicit offboarding step. External integration secrets must be revoked separately and audited.';
-
-commit;
