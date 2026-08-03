@@ -158,6 +158,10 @@ const SUBMIT_CONFIRMATION =
   "SUBMIT_BOLETA39:" +
   EXPECTED_ENVELOPE_SHA256;
 
+const SUBMIT_ATTEMPT_2_CONFIRMATION =
+  "SUBMIT_BOLETA39_ATTEMPT_2:" +
+  EXPECTED_ENVELOPE_SHA256;
+
 const SUBMIT_AUDIT_DIR =
   "/home/verf/secure/dte-lab/audit/" +
   "boleta39-submit";
@@ -1134,11 +1138,108 @@ function ensureSubmitRegistryDirectory(
 
 function submitAttemptPath(
   registryDir,
+  attemptNumber = 1,
 ) {
-  return join(
-    registryDir,
-    `${EXPECTED_ENVELOPE_SHA256}.json`,
+  if (attemptNumber === 1) {
+    return join(
+      registryDir,
+      `${EXPECTED_ENVELOPE_SHA256}.json`,
+    );
+  }
+
+  if (attemptNumber === 2) {
+    return join(
+      registryDir,
+      `${EXPECTED_ENVELOPE_SHA256}.attempt-${attemptNumber}.json`,
+    );
+  }
+
+  throw new Error(
+    `SUBMIT_ATTEMPT_NUMBER_INVALID:${attemptNumber}`,
   );
+}
+
+function validateFirstAttemptForRetry(
+  registryDir,
+) {
+  const firstAttemptPath =
+    submitAttemptPath(registryDir, 1);
+
+  if (!existsSync(firstAttemptPath)) {
+    throw new Error(
+      "FIRST_ATTEMPT_NOT_FOUND",
+    );
+  }
+
+  const firstAttemptContent =
+    readFileSync(firstAttemptPath, "utf8");
+
+  let firstAttempt;
+
+  try {
+    firstAttempt = JSON.parse(
+      firstAttemptContent,
+    );
+  } catch {
+    throw new Error(
+      "FIRST_ATTEMPT_JSON_INVALID",
+    );
+  }
+
+  if (
+    firstAttempt.envelopeSha256 !==
+    EXPECTED_ENVELOPE_SHA256
+  ) {
+    throw new Error(
+      "FIRST_ATTEMPT_SHA256_MISMATCH",
+    );
+  }
+
+  if (
+    firstAttempt.status !== "REJECTED"
+  ) {
+    throw new Error(
+      "FIRST_ATTEMPT_NOT_REJECTED",
+    );
+  }
+
+  if (
+    firstAttempt.errorCode !==
+    "BOLETA_REST_SUBMIT_HTTP_400"
+  ) {
+    throw new Error(
+      "FIRST_ATTEMPT_ERROR_NOT_HTTP_400",
+    );
+  }
+
+  if (
+    firstAttempt.automaticRetryAllowed !==
+    false
+  ) {
+    throw new Error(
+      "FIRST_ATTEMPT_ALLOWS_RETRY",
+    );
+  }
+
+  if (
+    firstAttempt.manualReviewRequired !==
+    true
+  ) {
+    throw new Error(
+      "FIRST_ATTEMPT_NO_MANUAL_REVIEW",
+    );
+  }
+
+  if (
+    firstAttempt.trackId !== undefined &&
+    firstAttempt.trackId !== null
+  ) {
+    throw new Error(
+      "FIRST_ATTEMPT_HAS_TRACK_ID",
+    );
+  }
+
+  return firstAttempt;
 }
 
 function createSubmitAttempt(
@@ -1307,14 +1408,38 @@ async function runSubmit(
     live,
   },
 ) {
+  const attemptNumberEnv =
+    process.env.DTE_BOLETA39_SUBMIT_ATTEMPT;
+
+  const attemptNumber =
+    attemptNumberEnv
+      ? Number(attemptNumberEnv)
+      : 1;
+
   if (live) {
-    if (
-      process.env
-        .DTE_BOLETA39_SUBMIT_CONFIRM !==
-      SUBMIT_CONFIRMATION
-    ) {
+    if (attemptNumber === 1) {
+      if (
+        process.env
+          .DTE_BOLETA39_SUBMIT_CONFIRM !==
+        SUBMIT_CONFIRMATION
+      ) {
+        throw new Error(
+          "LIVE_SUBMIT_CONFIRMATION_INVALID",
+        );
+      }
+    } else if (attemptNumber === 2) {
+      if (
+        process.env
+          .DTE_BOLETA39_SUBMIT_CONFIRM !==
+        SUBMIT_ATTEMPT_2_CONFIRMATION
+      ) {
+        throw new Error(
+          "LIVE_SUBMIT_ATTEMPT_2_CONFIRMATION_INVALID",
+        );
+      }
+    } else {
       throw new Error(
-        "LIVE_SUBMIT_CONFIRMATION_INVALID",
+        `SUBMIT_ATTEMPT_NUMBER_UNSUPPORTED:${attemptNumber}`,
       );
     }
 
@@ -1350,9 +1475,16 @@ async function runSubmit(
     registryDir,
   );
 
+  if (attemptNumber === 2) {
+    validateFirstAttemptForRetry(
+      registryDir,
+    );
+  }
+
   const attemptPath =
     submitAttemptPath(
       registryDir,
+      attemptNumber,
     );
 
   if (existsSync(attemptPath)) {
@@ -1374,6 +1506,7 @@ async function runSubmit(
     schemaVersion: 1,
     environment: "certification",
     documentType: 39,
+    attemptNumber,
     envelopeSha256:
       EXPECTED_ENVELOPE_SHA256,
     fileName:
@@ -1733,6 +1866,7 @@ async function runSubmitDryRun(
     );
 
   try {
+    // Test attempt 1 simulation
     const result =
       await runSubmit(
         preflight,
@@ -1769,11 +1903,173 @@ async function runSubmitDryRun(
       record.trackId !==
         "12288340532" ||
       record.envelopeSha256 !==
-        EXPECTED_ENVELOPE_SHA256
+        EXPECTED_ENVELOPE_SHA256 ||
+      record.attemptNumber !== 1
     ) {
       throw new Error(
         "DRY_RUN_REGISTRY_INVALID",
       );
+    }
+
+    // Now simulate first attempt rejection for attempt 2 test
+    // by modifying the in-memory copy in the temp registry
+    const firstAttemptPath =
+      submitAttemptPath(
+        registryDir,
+        1,
+      );
+
+    const rejectedRecord = {
+      ...record,
+      attemptNumber: 1,
+      status: "REJECTED",
+      trackId: undefined,
+      completedAt:
+        new Date().toISOString(),
+      errorCode:
+        "BOLETA_REST_SUBMIT_HTTP_400",
+      automaticRetryAllowed: false,
+      manualReviewRequired: true,
+      errorHttpStatus: 400,
+      errorResponseContentType:
+        "text/plain",
+      errorResponseBytes: 42,
+      errorResponseBodySanitized:
+        "Error: Invalid request",
+    };
+
+    writeFileSync(
+      firstAttemptPath,
+      JSON.stringify(
+        rejectedRecord,
+        null,
+        2,
+      ) + "\n",
+      {
+        encoding: "utf8",
+        mode: 0o600,
+      },
+    );
+
+    // Test attempt 2 simulation
+    counters.seed = 0;
+    counters.token = 0;
+    counters.submit = 0;
+
+    // Set env var for attempt 2
+    process.env
+      .DTE_BOLETA39_SUBMIT_ATTEMPT =
+      "2";
+
+    const result2 =
+      await runSubmit(
+        preflight,
+        {
+          fetchImpl:
+            mockFetch,
+
+          registryDir,
+
+          live: false,
+        },
+      );
+
+    // Reset env var
+    delete process.env
+      .DTE_BOLETA39_SUBMIT_ATTEMPT;
+
+    const attempt2Path =
+      submitAttemptPath(
+        registryDir,
+        2,
+      );
+
+    if (result2.attemptPath !== attempt2Path) {
+      throw new Error(
+        "DRY_RUN_ATTEMPT_2_PATH_INVALID",
+      );
+    }
+
+    if (!existsSync(attempt2Path)) {
+      throw new Error(
+        "DRY_RUN_ATTEMPT_2_NOT_CREATED",
+      );
+    }
+
+    const record2 =
+      JSON.parse(
+        readFileSync(
+          attempt2Path,
+          "utf8",
+        ),
+      );
+
+    if (
+      record2.attemptNumber !== 2
+    ) {
+      throw new Error(
+        "DRY_RUN_ATTEMPT_2_NUMBER_INVALID",
+      );
+    }
+
+    if (
+      record2.status !== "REC" ||
+      record2.trackId !==
+        "12288340532"
+    ) {
+      throw new Error(
+        "DRY_RUN_ATTEMPT_2_RESPONSE_INVALID",
+      );
+    }
+
+    // Verify first attempt is untouched
+    const firstAttemptContent =
+      readFileSync(
+        firstAttemptPath,
+        "utf8",
+      );
+
+    const firstAttemptAfter =
+      JSON.parse(firstAttemptContent);
+
+    if (
+      firstAttemptAfter.status !==
+      "REJECTED"
+    ) {
+      throw new Error(
+        "DRY_RUN_FIRST_ATTEMPT_MODIFIED",
+      );
+    }
+
+    // Test duplicate attempt 2 is blocked
+    try {
+      await runSubmit(
+        preflight,
+        {
+          fetchImpl:
+            mockFetch,
+
+          registryDir,
+
+          live: false,
+        },
+      );
+
+      throw new Error(
+        "DRY_RUN_DUPLICATE_ATTEMPT_2_NOT_BLOCKED",
+      );
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "message" in error &&
+        error.message ===
+          "SUBMIT_ATTEMPT_ALREADY_RECORDED"
+      ) {
+        // Expected
+      } else {
+        throw error;
+      }
     }
 
     return result;
