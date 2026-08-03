@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 const ALLOWED_PHASES = new Set([
   "preflight",
   "auth-dry-run",
+  "request-token",
 ]);
 
 const phase = String(process.argv[2] ?? "");
@@ -40,18 +41,30 @@ const phase = String(process.argv[2] ?? "");
 if (!ALLOWED_PHASES.has(phase)) {
   console.error("BOLETA39_CERTIFICATION_TRANSPORT_BLOCKED");
   console.error("cause=phase_not_enabled");
-  console.error("allowedPhases=preflight,auth-dry-run");
+  console.error(
+    "allowedPhases=preflight,auth-dry-run,request-token",
+  );
   process.exit(2);
 }
 
 /*
- * Protección adicional: estas dos fases son estrictamente
- * offline. Cualquier llamada accidental mediante fetch falla.
+ * Conservamos una referencia privada al fetch nativo y bloqueamos
+ * globalThis.fetch en todas las fases. La autenticación real solo
+ * puede usar nativeFetch después de validar la confirmación exacta.
  */
+if (typeof globalThis.fetch !== "function") {
+  throw new Error(
+    "BOLETA39_NATIVE_FETCH_UNAVAILABLE",
+  );
+}
+
+const nativeFetch =
+  globalThis.fetch.bind(globalThis);
+
 globalThis.fetch = () =>
   Promise.reject(
     new Error(
-      "BOLETA39_NETWORK_BLOCKED_IN_OFFLINE_PHASE",
+      "BOLETA39_NETWORK_BLOCKED_BY_DEFAULT",
     ),
   );
 
@@ -131,6 +144,10 @@ const FIXTURE_SEED =
 
 const FIXTURE_DIGEST =
   "l2s9BqLppHaWo+w1Al1J5SsYScs=";
+
+const REQUEST_TOKEN_CONFIRMATION =
+  "REQUEST_BOLETA39_TOKEN:" +
+  EXPECTED_ENVELOPE_SHA256;
 
 const SIGNATURE_FILES = [
   "CASO-1-BOLETA-39-CERTIFICATION.xml",
@@ -1063,6 +1080,125 @@ function runAuthDryRun(preflight) {
   return signed;
 }
 
+async function runRequestToken(
+  preflight,
+) {
+  if (
+    process.env
+      .DTE_BOLETA39_REQUEST_TOKEN_CONFIRM !==
+    REQUEST_TOKEN_CONFIRMATION
+  ) {
+    throw new Error(
+      "LIVE_AUTH_CONFIRMATION_INVALID",
+    );
+  }
+
+  if (
+    process.env.DTE_SII_LIVE_AUTH !==
+    "true"
+  ) {
+    throw new Error(
+      "LIVE_AUTH_FLAG_NOT_ENABLED",
+    );
+  }
+
+  if (
+    process.env.DTE_SII_ENABLE_SUBMIT ===
+      "true" ||
+    process.env.DTE_SII_ENABLE_STATUS ===
+      "true"
+  ) {
+    throw new Error(
+      "SUBMIT_OR_STATUS_FLAG_MUST_REMAIN_DISABLED",
+    );
+  }
+
+  const startedAt = Date.now();
+
+  const seedResult =
+    await preflight.api
+      .requestBoletaRestSeed({
+        fetchImpl: nativeFetch,
+        timeoutMs: 15_000,
+      });
+
+  if (
+    Date.now() - startedAt >
+    90_000
+  ) {
+    throw new Error(
+      "SEED_TOO_OLD_BEFORE_SIGNING",
+    );
+  }
+
+  const signed =
+    preflight.api.signBoletaRestSeed(
+      seedResult.data.seed,
+      preflight
+        .signingMaterial
+        .privateKeyPem,
+      preflight
+        .signingMaterial
+        .certificatePem,
+    );
+
+  if (
+    Date.now() - startedAt >
+    100_000
+  ) {
+    throw new Error(
+      "SEED_TOO_OLD_BEFORE_TOKEN_REQUEST",
+    );
+  }
+
+  const tokenResult =
+    await preflight.api
+      .requestBoletaRestToken(
+        signed.signedXml,
+        {
+          fetchImpl: nativeFetch,
+          timeoutMs: 15_000,
+        },
+      );
+
+  const token =
+    tokenResult.data.token;
+
+  if (
+    !token ||
+    token.length > 500
+  ) {
+    throw new Error(
+      "LIVE_TOKEN_INVALID",
+    );
+  }
+
+  return {
+    seedResponseBytes:
+      seedResult.responseBytes,
+
+    tokenResponseBytes:
+      tokenResult.responseBytes,
+
+    signedSeedSha256:
+      signed.signedXmlSha256,
+
+    tokenLength:
+      token.length,
+
+    tokenFingerprintSha256:
+      sha256Bytes(
+        Buffer.from(
+          token,
+          "utf8",
+        ),
+      ),
+
+    elapsedMs:
+      Date.now() - startedAt,
+  };
+}
+
 try {
   const preflight =
     runPreflight();
@@ -1103,7 +1239,21 @@ try {
     console.log(
       "BOLETA39_TRANSPORT_PREFLIGHT_OK",
     );
-  } else {
+
+    console.log(
+      "networkContacted=false",
+    );
+
+    console.log(
+      "seedRequested=false",
+    );
+
+    console.log(
+      "tokenRequested=false",
+    );
+  } else if (
+    phase === "auth-dry-run"
+  ) {
     const signed =
       runAuthDryRun(preflight);
 
@@ -1126,13 +1276,76 @@ try {
     console.log(
       "BOLETA39_TRANSPORT_AUTH_DRY_RUN_OK",
     );
+
+    console.log(
+      "networkContacted=false",
+    );
+
+    console.log(
+      "seedRequested=false",
+    );
+
+    console.log(
+      "tokenRequested=false",
+    );
+  } else {
+    const result =
+      await runRequestToken(
+        preflight,
+      );
+
+    console.log(
+      "networkContacted=true",
+    );
+
+    console.log(
+      "seedRequested=true",
+    );
+
+    console.log(
+      "tokenRequested=true",
+    );
+
+    console.log(
+      `seedResponseBytes=${result.seedResponseBytes}`,
+    );
+
+    console.log(
+      `tokenResponseBytes=${result.tokenResponseBytes}`,
+    );
+
+    console.log(
+      `signedSeedSha256=${result.signedSeedSha256}`,
+    );
+
+    console.log(
+      `tokenLength=${result.tokenLength}`,
+    );
+
+    console.log(
+      `tokenFingerprintSha256=${result.tokenFingerprintSha256}`,
+    );
+
+    console.log(
+      `authElapsedMs=${result.elapsedMs}`,
+    );
+
+    console.log(
+      "tokenPersisted=false",
+    );
+
+    console.log(
+      "BOLETA39_LIVE_TOKEN_REQUEST_OK",
+    );
   }
 
-  console.log("networkContacted=false");
-  console.log("seedRequested=false");
-  console.log("tokenRequested=false");
-  console.log("xmlUploaded=false");
-  console.log("rcofUploaded=false");
+  console.log(
+    "xmlUploaded=false",
+  );
+
+  console.log(
+    "rcofUploaded=false",
+  );
 } catch (error) {
   console.error(
     "BOLETA39_CERTIFICATION_TRANSPORT_BLOCKED",
