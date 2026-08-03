@@ -21,6 +21,8 @@ import {
   parseBoletaRestSubmitResponse,
   parseBoletaRestTokenResponse,
   parseBoletaRetryAfter,
+  requestBoletaRestSeed,
+  requestBoletaRestToken,
   signBoletaRestSeed,
 } from "../certification/boleta39-rest-api";
 
@@ -291,6 +293,286 @@ test(
         "030530912644",
       ).endsWith("\n"),
       false,
+    );
+  },
+);
+
+test(
+  "Boleta REST seed request uses only the certification endpoint",
+  async () => {
+    let calls = 0;
+
+    const fetchImpl: typeof fetch =
+      async (input, init) => {
+        calls += 1;
+
+        assert.equal(
+          String(input),
+          BOLETA_CERTIFICATION_SEED_URL,
+        );
+
+        assert.equal(
+          init?.method,
+          "GET",
+        );
+
+        assert.equal(
+          init?.redirect,
+          "manual",
+        );
+
+        assert.ok(
+          init?.signal instanceof AbortSignal,
+        );
+
+        const headers =
+          new Headers(init?.headers);
+
+        assert.equal(
+          headers.get("accept"),
+          "application/xml",
+        );
+
+        assert.equal(
+          headers.get("cache-control"),
+          "no-store",
+        );
+
+        assert.equal(
+          init?.body,
+          undefined,
+        );
+
+        return new Response(
+          [
+            '<SII:RESPUESTA xmlns:SII="http://www.sii.cl/XMLSchema">',
+            "<SII:RESP_HDR>",
+            "<SII:ESTADO>0</SII:ESTADO>",
+            "</SII:RESP_HDR>",
+            "<SII:RESP_BODY>",
+            "<SII:SEMILLA>030530912644</SII:SEMILLA>",
+            "</SII:RESP_BODY>",
+            "</SII:RESPUESTA>",
+          ].join(""),
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "application/xml; charset=UTF-8",
+            },
+          },
+        );
+      };
+
+    const result =
+      await requestBoletaRestSeed({
+        fetchImpl,
+        timeoutMs: 2_000,
+      });
+
+    assert.equal(calls, 1);
+
+    assert.deepEqual(
+      result.data,
+      {
+        estado: "0",
+        glosa: null,
+        seed: "030530912644",
+      },
+    );
+
+    assert.equal(
+      result.contentType,
+      "application/xml",
+    );
+
+    assert.ok(
+      result.responseBytes > 0,
+    );
+  },
+);
+
+test(
+  "Boleta REST token request posts the exact signed XML",
+  async () => {
+    const root = mkdtempSync(
+      join(
+        tmpdir(),
+        "citaya-boleta-token-http-",
+      ),
+    );
+
+    try {
+      const fixture =
+        createCertificateFixture(root);
+
+      const signed =
+        signBoletaRestSeed(
+          "030530912644",
+          fixture.keyPem,
+          fixture.certPem,
+        );
+
+      let calls = 0;
+
+      const fetchImpl: typeof fetch =
+        async (input, init) => {
+          calls += 1;
+
+          assert.equal(
+            String(input),
+            BOLETA_CERTIFICATION_TOKEN_URL,
+          );
+
+          assert.equal(
+            init?.method,
+            "POST",
+          );
+
+          assert.equal(
+            init?.redirect,
+            "manual",
+          );
+
+          assert.equal(
+            init?.body,
+            signed.signedXml,
+          );
+
+          const headers =
+            new Headers(init?.headers);
+
+          assert.equal(
+            headers.get("accept"),
+            "application/xml",
+          );
+
+          assert.equal(
+            headers.get("content-type"),
+            "application/xml; charset=UTF-8",
+          );
+
+          assert.equal(
+            headers.get("cookie"),
+            null,
+          );
+
+          return new Response(
+            [
+              '<SII:RESPUESTA xmlns:SII="http://www.sii.cl/XMLSchema">',
+              "<SII:RESP_HDR>",
+              "<SII:ESTADO>00</SII:ESTADO>",
+              "<SII:GLOSA>Token Creado</SII:GLOSA>",
+              "</SII:RESP_HDR>",
+              "<SII:RESP_BODY>",
+              "<SII:TOKEN>XAuSbYXiNh9Ik</SII:TOKEN>",
+              "</SII:RESP_BODY>",
+              "</SII:RESPUESTA>",
+            ].join(""),
+            {
+              status: 200,
+              headers: {
+                "Content-Type":
+                  "text/xml; charset=UTF-8",
+              },
+            },
+          );
+        };
+
+      const result =
+        await requestBoletaRestToken(
+          signed.signedXml,
+          {
+            fetchImpl,
+            timeoutMs: 2_000,
+          },
+        );
+
+      assert.equal(calls, 1);
+
+      assert.deepEqual(
+        result.data,
+        {
+          estado: "00",
+          glosa: "Token Creado",
+          token: "XAuSbYXiNh9Ik",
+        },
+      );
+
+      assert.equal(
+        result.contentType,
+        "text/xml",
+      );
+
+      assert.ok(
+        result.responseBytes > 0,
+      );
+    } finally {
+      rmSync(root, {
+        recursive: true,
+        force: true,
+      });
+    }
+  },
+);
+
+test(
+  "Boleta REST authentication rejects unsafe HTTP responses",
+  async () => {
+    const invalidContentType: typeof fetch =
+      async () =>
+        new Response(
+          "<html>unexpected</html>",
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "text/html",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSeed({
+          fetchImpl:
+            invalidContentType,
+          timeoutMs: 2_000,
+        }),
+      /BOLETA_REST_SEED_CONTENT_TYPE_INVALID/,
+    );
+
+    const unauthorized: typeof fetch =
+      async () =>
+        new Response(
+          "Unauthorized",
+          {
+            status: 401,
+            headers: {
+              "Content-Type": "text/plain",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSeed({
+          fetchImpl: unauthorized,
+          timeoutMs: 2_000,
+        }),
+      /BOLETA_REST_SEED_HTTP_401/,
+    );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestToken(
+          "<getToken/>",
+          {
+            fetchImpl:
+              invalidContentType,
+            timeoutMs: 2_000,
+          },
+        ),
+      /BOLETA_REST_SIGNED_TOKEN_XML_INVALID/,
     );
   },
 );

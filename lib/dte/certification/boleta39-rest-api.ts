@@ -500,3 +500,296 @@ export function buildBoletaRestStatusUrl(
     `${company.rut}-${company.dv}-${trackId}`
   );
 }
+
+export type BoletaRestHttpOptions = {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+};
+
+export type BoletaRestHttpResult<T> = {
+  data: T;
+  contentType: string;
+  responseBytes: number;
+};
+
+const BOLETA_REST_AUTH_DEFAULT_TIMEOUT_MS =
+  15_000;
+
+const BOLETA_REST_AUTH_MAX_RESPONSE_BYTES =
+  64 * 1024;
+
+function resolveBoletaRestTimeout(
+  value: number | undefined,
+): number {
+  const timeout =
+    value ??
+    BOLETA_REST_AUTH_DEFAULT_TIMEOUT_MS;
+
+  if (
+    !Number.isSafeInteger(timeout) ||
+    timeout < 1_000 ||
+    timeout > 60_000
+  ) {
+    throw new Error(
+      "BOLETA_REST_AUTH_TIMEOUT_INVALID",
+    );
+  }
+
+  return timeout;
+}
+
+function assertBoletaRestAuthUrl(
+  url: string,
+): void {
+  if (
+    url !== BOLETA_CERTIFICATION_SEED_URL &&
+    url !== BOLETA_CERTIFICATION_TOKEN_URL
+  ) {
+    throw new Error(
+      "BOLETA_REST_AUTH_URL_NOT_ALLOWED",
+    );
+  }
+}
+
+function assertSignedTokenRequestXml(
+  signedXml: string,
+): void {
+  if (
+    !signedXml.startsWith(
+      '<?xml version="1.0" encoding="UTF-8"?>\n',
+    ) ||
+    signedXml.endsWith("\n") ||
+    !signedXml.includes(
+      '<Reference URI="">',
+    ) ||
+    !signedXml.includes(
+      "<Signature ",
+    ) ||
+    !signedXml.endsWith(
+      "</Signature></getToken>",
+    )
+  ) {
+    throw new Error(
+      "BOLETA_REST_SIGNED_TOKEN_XML_INVALID",
+    );
+  }
+
+  parseXml(signedXml);
+}
+
+async function readBoletaRestXmlResponse(
+  response: Response,
+  operation: "seed" | "token",
+): Promise<{
+  xml: string;
+  contentType: string;
+  responseBytes: number;
+}> {
+  if (response.status !== 200) {
+    throw new Error(
+      `BOLETA_REST_${operation.toUpperCase()}_HTTP_${response.status}`,
+    );
+  }
+
+  const contentType =
+    response.headers
+      .get("content-type")
+      ?.split(";")[0]
+      ?.trim()
+      .toLowerCase() ?? "";
+
+  if (
+    contentType !== "application/xml" &&
+    contentType !== "text/xml"
+  ) {
+    throw new Error(
+      `BOLETA_REST_${operation.toUpperCase()}_CONTENT_TYPE_INVALID`,
+    );
+  }
+
+  const bytes = Buffer.from(
+    await response.arrayBuffer(),
+  );
+
+  if (
+    bytes.length === 0 ||
+    bytes.length >
+      BOLETA_REST_AUTH_MAX_RESPONSE_BYTES
+  ) {
+    throw new Error(
+      `BOLETA_REST_${operation.toUpperCase()}_RESPONSE_SIZE_INVALID`,
+    );
+  }
+
+  let xml: string;
+
+  try {
+    xml = new TextDecoder(
+      "utf-8",
+      {
+        fatal: true,
+      },
+    ).decode(bytes);
+  } catch {
+    throw new Error(
+      `BOLETA_REST_${operation.toUpperCase()}_UTF8_INVALID`,
+    );
+  }
+
+  return {
+    xml,
+    contentType,
+    responseBytes: bytes.length,
+  };
+}
+
+async function performBoletaRestXmlRequest(
+  options: {
+    operation: "seed" | "token";
+    url: string;
+    method: "GET" | "POST";
+    body?: string;
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+  },
+): Promise<{
+  xml: string;
+  contentType: string;
+  responseBytes: number;
+}> {
+  assertBoletaRestAuthUrl(
+    options.url,
+  );
+
+  const timeoutMs =
+    resolveBoletaRestTimeout(
+      options.timeoutMs,
+    );
+
+  const fetchImpl =
+    options.fetchImpl ??
+    globalThis.fetch;
+
+  if (typeof fetchImpl !== "function") {
+    throw new Error(
+      "BOLETA_REST_FETCH_UNAVAILABLE",
+    );
+  }
+
+  const controller =
+    new AbortController();
+
+  const timer = setTimeout(
+    () => controller.abort(),
+    timeoutMs,
+  );
+
+  try {
+    const headers: Record<string, string> = {
+      Accept: "application/xml",
+      "Cache-Control": "no-store",
+    };
+
+    if (
+      options.method === "POST"
+    ) {
+      headers["Content-Type"] =
+        "application/xml; charset=UTF-8";
+    }
+
+    const response = await fetchImpl(
+      options.url,
+      {
+        method: options.method,
+        headers,
+        body: options.body,
+        redirect: "manual",
+        signal: controller.signal,
+      },
+    );
+
+    return await readBoletaRestXmlResponse(
+      response,
+      options.operation,
+    );
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        `BOLETA_REST_${options.operation.toUpperCase()}_TIMEOUT`,
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message.startsWith(
+        "BOLETA_REST_",
+      )
+    ) {
+      throw error;
+    }
+
+    throw new Error(
+      `BOLETA_REST_${options.operation.toUpperCase()}_NETWORK_ERROR`,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function requestBoletaRestSeed(
+  options: BoletaRestHttpOptions = {},
+): Promise<
+  BoletaRestHttpResult<BoletaRestSeedResponse>
+> {
+  const response =
+    await performBoletaRestXmlRequest({
+      operation: "seed",
+      url: BOLETA_CERTIFICATION_SEED_URL,
+      method: "GET",
+      fetchImpl: options.fetchImpl,
+      timeoutMs: options.timeoutMs,
+    });
+
+  return {
+    data:
+      parseBoletaRestSeedResponse(
+        response.xml,
+      ),
+    contentType:
+      response.contentType,
+    responseBytes:
+      response.responseBytes,
+  };
+}
+
+export async function requestBoletaRestToken(
+  signedXml: string,
+  options: BoletaRestHttpOptions = {},
+): Promise<
+  BoletaRestHttpResult<BoletaRestTokenResponse>
+> {
+  assertSignedTokenRequestXml(
+    signedXml,
+  );
+
+  const response =
+    await performBoletaRestXmlRequest({
+      operation: "token",
+      url: BOLETA_CERTIFICATION_TOKEN_URL,
+      method: "POST",
+      body: signedXml,
+      fetchImpl: options.fetchImpl,
+      timeoutMs: options.timeoutMs,
+    });
+
+  return {
+    data:
+      parseBoletaRestTokenResponse(
+        response.xml,
+      ),
+    contentType:
+      response.contentType,
+    responseBytes:
+      response.responseBytes,
+  };
+}
