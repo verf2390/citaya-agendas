@@ -3,6 +3,7 @@ import {
   createPrivateKey,
   createPublicKey,
   createSign,
+  createVerify,
 } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
@@ -25,7 +26,7 @@ import {
   type BoletaTotals,
 } from "../boleta-money";
 import { signFrmtControlled } from "../caf/frmt-signature";
-import { buildTedControlled } from "../caf/ted-builder";
+import { buildOfficialFrmtDd, buildTedControlled } from "../caf/ted-builder";
 import { normalizeRut } from "../rut";
 import { signXmlInFinalContextControlled } from "../signing/sign-xml.real";
 import type { RealXmlSigningConfig } from "../types";
@@ -365,6 +366,7 @@ function unsignedBoletaDte(input: {
   issueDate: string;
   folio: number;
   tedXml: string;
+  timestamp?: string;
 }): { xml: string; documentId: string } {
   const documentId = `CitayaBoleta39-${input.folio}`;
   const totals = input.totals;
@@ -411,7 +413,7 @@ ${detailsXml(totals)}
       <RazonRef>${input.certificationCase.id}</RazonRef>
     </Referencia>
     ${input.tedXml}
-    <TmstFirma>${FIXTURE_TIMESTAMP}</TmstFirma>
+    <TmstFirma>${input.timestamp ?? FIXTURE_TIMESTAMP}</TmstFirma>
   </Documento>
 </DTE>`,
   };
@@ -420,6 +422,7 @@ ${detailsXml(totals)}
 function boletaEnvelopeUnsigned(input: {
   documents: PreparedBoleta[];
   issuer: BoletaPreCafIssuer;
+  timestamp?: string;
 }): { xml: string; setId: string } {
   const setId = `CitayaBoleta39Set-${input.documents[0].folio}-${input.documents.at(-1)!.folio}`;
   return {
@@ -433,7 +436,7 @@ function boletaEnvelopeUnsigned(input: {
       <RutReceptor>${SII_RECEIVER_RUT}</RutReceptor>
       <FchResol>${escapeXml(input.issuer.resolutionDate)}</FchResol>
       <NroResol>${escapeXml(input.issuer.resolutionNumber)}</NroResol>
-      <TmstFirmaEnv>${FIXTURE_TIMESTAMP}</TmstFirmaEnv>
+      <TmstFirmaEnv>${input.timestamp ?? FIXTURE_TIMESTAMP}</TmstFirmaEnv>
       <SubTotDTE><TpoDTE>39</TpoDTE><NroDTE>5</NroDTE></SubTotDTE>
     </Caratula>
 ${input.documents.map((document) => document.dteXml).join("\n")}
@@ -447,6 +450,7 @@ function rvdUnsigned(input: {
   issuer: BoletaPreCafIssuer;
   issueDate: string;
   totals: ReturnType<typeof sumBoletaRvdTotals>;
+  timestamp?: string;
 }): { xml: string; documentId: string } {
   const first = input.documents[0].folio;
   const last = input.documents.at(-1)!.folio;
@@ -464,7 +468,7 @@ function rvdUnsigned(input: {
       <FchInicio>${input.issueDate}</FchInicio>
       <FchFinal>${input.issueDate}</FchFinal>
       <SecEnvio>1</SecEnvio>
-      <TmstFirmaEnv>${FIXTURE_TIMESTAMP}</TmstFirmaEnv>
+      <TmstFirmaEnv>${input.timestamp ?? FIXTURE_TIMESTAMP}</TmstFirmaEnv>
     </Caratula>
     <Resumen>
       <TipoDocumento>39</TipoDocumento>
@@ -498,19 +502,23 @@ function validateXsd(
 ): void {
   const xmlPath = join(outputDir, `.${label}-xsd.xml`);
   writeFileSync(xmlPath, encodeIso88591(xml), { mode: 0o600 });
-  const result = spawnSync(
-    "xmllint",
-    ["--noout", "--schema", resolve(schemaPath), xmlPath],
-    { encoding: "utf8", maxBuffer: 1024 * 1024 },
-  );
-  if (result.status !== 0) {
-    const diagnostic = (result.stderr || result.stdout || "xmllint failed")
-      .trim()
-      .split(/\r?\n/)
-      .slice(0, 3)
-      .join(" | ")
-      .replace(/The value '[^']*'/g, "The value '[redacted]'");
-    fail(`PRE_CAF_XSD_${label}_INVALID: ${diagnostic}`);
+  try {
+    const result = spawnSync(
+      "xmllint",
+      ["--noout", "--schema", resolve(schemaPath), xmlPath],
+      { encoding: "utf8", maxBuffer: 1024 * 1024 },
+    );
+    if (result.status !== 0) {
+      const diagnostic = (result.stderr || result.stdout || "xmllint failed")
+        .trim()
+        .split(/\r?\n/)
+        .slice(0, 3)
+        .join(" | ")
+        .replace(/The value '[^']*'/g, "The value '[redacted]'");
+      fail(`PRE_CAF_XSD_${label}_INVALID: ${diagnostic}`);
+    }
+  } finally {
+    rmSync(xmlPath, { force: true });
   }
 }
 
@@ -823,4 +831,259 @@ export async function prepareBoletaPreCaf(
   } finally {
     rmSync(material.root, { recursive: true, force: true });
   }
+}
+
+export type RealBoleta39CertificationArtifact = {
+  kind: "boleta_xml" | "envelope_xml" | "rcof_xml";
+  caseId?: BoletaCertificationCaseId;
+  path: string;
+  sha256: string;
+  byteLength: number;
+};
+
+export type RealBoleta39CertificationResult = {
+  status: "CERTIFICATION_ARTIFACTS_VALIDATED";
+  environment: "certification";
+  fixtureMode: false;
+  siiContacted: false;
+  productionFoliosUsed: false;
+  documents: PreparedBoleta[];
+  envelopeXml: string;
+  rvdXml: string;
+  rvdTotals: ReturnType<typeof sumBoletaRvdTotals>;
+  artifacts: RealBoleta39CertificationArtifact[];
+  hashes: Record<string, string>;
+  xsd: { boletas: "5/5"; envelope: "valid"; rcof: "valid" };
+  signatures: { tedFrmt: "5/5"; boletas: "5/5"; envelope: "valid"; rcof: "valid" };
+  outputDir: string;
+};
+
+function assertRealCertificationEnvironment(env: NodeJS.ProcessEnv): void {
+  if (
+    env.DTE_MODE !== "certification" ||
+    env.DTE_SII_ENV !== "certification" ||
+    env.DTE_SII_ENABLE_SUBMIT === "true" ||
+    env.DTE_SII_ENABLE_STATUS === "true" ||
+    env.DTE_SII_LIVE_AUTH === "true" ||
+    env.DTE_PRODUCTION_ENABLED === "true" ||
+    env.DTE_AUTOMATIC_ISSUANCE_ENABLED === "true" ||
+    env.DTE_SII_TOKEN ||
+    env.DTE_TRACK_ID
+  )
+    fail("DTE_CERTIFICATION_OFFLINE_BOUNDARY_FAILED");
+}
+
+function verifyFrmt(ddXml: string, frmtXml: string, publicKeyPem: string): boolean {
+  const value = frmtXml.match(/<FRMT algoritmo="SHA1withRSA">([\s\S]*?)<\/FRMT>/)?.[1]
+    .replace(/\s+/g, "");
+  if (!value) return false;
+  const verifier = createVerify("RSA-SHA1");
+  verifier.update(Buffer.from(buildOfficialFrmtDd(ddXml), "latin1"));
+  return verifier.verify(publicKeyPem, value, "base64");
+}
+
+export async function prepareRealBoleta39Certification(input: {
+  tenantId: string;
+  issueDate: string;
+  firstFolio: 1;
+  outputDir: string;
+  issuer: BoletaPreCafIssuer;
+  cafXml: string;
+  cafPrivateKeyPem: string;
+  cafPublicKeyPem: string;
+  certificatePath: string;
+  privateKeyPath: string;
+  generationTimestamp: string;
+}): Promise<RealBoleta39CertificationResult> {
+  assertRealCertificationEnvironment(process.env);
+  if (!input.tenantId.trim() || input.firstFolio !== 1)
+    fail("DTE_CERTIFICATION_SCOPE_INVALID");
+  const issueDate = assertDate(input.issueDate);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(input.generationTimestamp))
+    fail("DTE_CERTIFICATION_TIMESTAMP_INVALID");
+  const outputDir = resolve(input.outputDir);
+  const repoRoot = resolve(process.cwd());
+  if (outputDir === repoRoot || outputDir.startsWith(`${repoRoot}/`))
+    fail("DTE_CERTIFICATION_OUTPUT_INSIDE_REPO");
+  mkdirSync(outputDir, { recursive: true, mode: 0o700 });
+  chmodSync(outputDir, 0o700);
+  const signing = (referenceId: string): RealXmlSigningConfig => ({
+    tenantId: input.tenantId,
+    mode: "certification",
+    signatureTarget: referenceId,
+    privateKeyPath: input.privateKeyPath,
+    certificatePath: input.certificatePath,
+    publicCertificatePath: input.certificatePath,
+  });
+  const documents: PreparedBoleta[] = [];
+  const frmtChecks: boolean[] = [];
+  for (const [index, certificationCase] of BOLETA_39_CERTIFICATION_CASES.entries()) {
+    const folio = input.firstFolio + index;
+    const totals = calculateBoletaGrossTotals(certificationCase.lines);
+    assertExpectedTotals(certificationCase, totals);
+    const pendingTed = buildTedControlled({
+      issuerRut: input.issuer.rut,
+      documentTypeCode: 39,
+      folio,
+      issueDate,
+      recipientRut: GENERIC_RECEIVER_RUT,
+      recipientLegalName: "Consumidor final",
+      totalAmount: totals.totalAmount,
+      firstItemName: totals.lines[0].description,
+      cafXml: input.cafXml,
+      timestamp: input.generationTimestamp,
+      compact: true,
+    });
+    const frmt = signFrmtControlled({
+      ddXml: pendingTed.ddXml,
+      privateKeyPem: input.cafPrivateKeyPem,
+      mode: "certification",
+    });
+    if (!frmt.ok) fail(`DTE_CERTIFICATION_FRMT_${certificationCase.id}_FAILED`);
+    frmtChecks.push(verifyFrmt(pendingTed.ddXml, frmt.frmtXml, input.cafPublicKeyPem));
+    const ted = buildTedControlled({
+      issuerRut: input.issuer.rut,
+      documentTypeCode: 39,
+      folio,
+      issueDate,
+      recipientRut: GENERIC_RECEIVER_RUT,
+      recipientLegalName: "Consumidor final",
+      totalAmount: totals.totalAmount,
+      firstItemName: totals.lines[0].description,
+      cafXml: input.cafXml,
+      timestamp: input.generationTimestamp,
+      compact: true,
+      frmtXml: frmt.frmtXml,
+      frmtStatus: "real_controlled",
+    });
+    const unsigned = unsignedBoletaDte({
+      certificationCase,
+      totals,
+      issuer: input.issuer,
+      issueDate,
+      folio,
+      tedXml: ted.tedXml,
+      timestamp: input.generationTimestamp,
+    });
+    const signed = signXmlInFinalContextControlled(
+      {
+        xml: unsigned.xml,
+        referenceId: unsigned.documentId,
+        insertAfterXPath: "//*[local-name()='Documento']",
+      },
+      signing(unsigned.documentId),
+    );
+    if (/<RSASK\b|<AUTORIZACION\b/.test(signed.signedXml))
+      fail("DTE_CERTIFICATION_PRIVATE_CAF_MATERIAL_LEAK");
+    documents.push({
+      caseId: certificationCase.id,
+      folio,
+      totals,
+      dteXml: signed.signedXml,
+      tedXml: ted.tedXml,
+      pdfBytes: Buffer.alloc(0),
+    });
+  }
+  if (frmtChecks.some((ok) => !ok)) fail("DTE_CERTIFICATION_FRMT_VERIFY_FAILED");
+  const envelope = boletaEnvelopeUnsigned({
+    documents,
+    issuer: input.issuer,
+    timestamp: input.generationTimestamp,
+  });
+  const signedEnvelope = signXmlInFinalContextControlled(
+    {
+      xml: envelope.xml,
+      referenceId: envelope.setId,
+      insertAfterXPath: "//*[local-name()='SetDTE']",
+    },
+    signing(envelope.setId),
+  ).signedXml;
+  const rvdTotals = sumBoletaRvdTotals(documents.map((item) => item.totals));
+  if (
+    rvdTotals.netAmount !== 43_831 ||
+    rvdTotals.taxAmount !== 8_329 ||
+    rvdTotals.exemptAmount !== 2_000 ||
+    rvdTotals.totalAmount !== 54_160
+  )
+    fail("DTE_CERTIFICATION_RCOF_TOTALS_INVALID");
+  const rvd = rvdUnsigned({
+    documents,
+    issuer: input.issuer,
+    issueDate,
+    totals: rvdTotals,
+    timestamp: input.generationTimestamp,
+  });
+  const signedRvd = signXmlInFinalContextControlled(
+    {
+      xml: rvd.xml,
+      referenceId: rvd.documentId,
+      insertAfterXPath: "//*[local-name()='DocumentoConsumoFolios']",
+    },
+    signing(rvd.documentId),
+  ).signedXml;
+  validateXsd(signedEnvelope, BOLETA_XSD_PATH, "envio-boleta-real", outputDir);
+  validateXsd(signedRvd, RVD_XSD_PATH, "rcof-real", outputDir);
+  const artifacts: RealBoleta39CertificationArtifact[] = [];
+  for (const document of documents) {
+    const path = join(outputDir, `${document.caseId}-BOLETA-39-CERTIFICATION.xml`);
+    const bytes = encodeIso88591(`${XML_DECLARATION}\n${document.dteXml}`);
+    writeFileSync(path, bytes, { mode: 0o600, flag: "wx" });
+    chmodSync(path, 0o600);
+    verifySignature(path, `CitayaBoleta39-${document.folio}`, input.certificatePath);
+    artifacts.push({
+      kind: "boleta_xml",
+      caseId: document.caseId,
+      path,
+      sha256: sha256(bytes),
+      byteLength: bytes.length,
+    });
+  }
+  const envelopePath = join(outputDir, "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml");
+  const rcofPath = join(outputDir, "RCOF-39-FOLIOS-1-5-CERTIFICATION.xml");
+  const envelopeBytes = encodeIso88591(signedEnvelope);
+  const rcofBytes = encodeIso88591(signedRvd);
+  writeFileSync(envelopePath, envelopeBytes, { mode: 0o600, flag: "wx" });
+  writeFileSync(rcofPath, rcofBytes, { mode: 0o600, flag: "wx" });
+  chmodSync(envelopePath, 0o600);
+  chmodSync(rcofPath, 0o600);
+  verifySignature(envelopePath, envelope.setId, input.certificatePath);
+  verifySignature(rcofPath, rvd.documentId, input.certificatePath);
+  artifacts.push(
+    {
+      kind: "envelope_xml",
+      path: envelopePath,
+      sha256: sha256(envelopeBytes),
+      byteLength: envelopeBytes.length,
+    },
+    {
+      kind: "rcof_xml",
+      path: rcofPath,
+      sha256: sha256(rcofBytes),
+      byteLength: rcofBytes.length,
+    },
+  );
+  const hashes = Object.fromEntries(
+    artifacts.map((artifact) => [artifact.caseId ?? artifact.kind, artifact.sha256]),
+  );
+  return {
+    status: "CERTIFICATION_ARTIFACTS_VALIDATED",
+    environment: "certification",
+    fixtureMode: false,
+    siiContacted: false,
+    productionFoliosUsed: false,
+    documents,
+    envelopeXml: signedEnvelope,
+    rvdXml: signedRvd,
+    rvdTotals,
+    artifacts,
+    hashes,
+    xsd: { boletas: "5/5", envelope: "valid", rcof: "valid" },
+    signatures: {
+      tedFrmt: "5/5",
+      boletas: "5/5",
+      envelope: "valid",
+      rcof: "valid",
+    },
+    outputDir,
+  };
 }
