@@ -793,3 +793,422 @@ export async function requestBoletaRestToken(
       response.responseBytes,
   };
 }
+
+export type BoletaRestSubmitInput = {
+  token: string;
+  senderRut: string;
+  companyRut: string;
+  fileName: string;
+  fileBytes: Uint8Array;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  userAgent?: string;
+};
+
+export type BoletaRestSubmitResult = {
+  data: BoletaRestSubmitResponse;
+  contentType: string;
+  responseBytes: number;
+  location: string | null;
+  retryAfterSeconds: number | null;
+};
+
+const BOLETA_REST_SUBMIT_DEFAULT_TIMEOUT_MS =
+  30_000;
+
+const BOLETA_REST_SUBMIT_MAX_RESPONSE_BYTES =
+  64 * 1024;
+
+const BOLETA_REST_SUBMIT_MAX_FILE_BYTES =
+  25 * 1024 * 1024;
+
+function canonicalBoletaRestRut(
+  value: string,
+): string {
+  const parts = splitRut(value);
+
+  return `${parts.rut}-${parts.dv}`;
+}
+
+function assertBoletaRestToken(
+  token: string,
+): void {
+  if (
+    !/^[A-Za-z0-9._~-]{1,500}$/.test(
+      token,
+    )
+  ) {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_TOKEN_INVALID",
+    );
+  }
+}
+
+function assertBoletaRestFile(
+  fileName: string,
+  fileBytes: Uint8Array,
+): void {
+  if (
+    !/^[A-Za-z0-9._-]{1,180}\.xml$/i.test(
+      fileName,
+    ) ||
+    fileName.includes("/") ||
+    fileName.includes("\\")
+  ) {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_FILENAME_INVALID",
+    );
+  }
+
+  if (
+    fileBytes.byteLength === 0 ||
+    fileBytes.byteLength >
+      BOLETA_REST_SUBMIT_MAX_FILE_BYTES
+  ) {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_FILE_SIZE_INVALID",
+    );
+  }
+}
+
+function resolveBoletaRestSubmitTimeout(
+  value: number | undefined,
+): number {
+  const timeout =
+    value ??
+    BOLETA_REST_SUBMIT_DEFAULT_TIMEOUT_MS;
+
+  if (
+    !Number.isSafeInteger(timeout) ||
+    timeout < 1_000 ||
+    timeout > 120_000
+  ) {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_TIMEOUT_INVALID",
+    );
+  }
+
+  return timeout;
+}
+
+function validateBoletaRestLocation(
+  location: string | null,
+  companyRut: string,
+  trackId: string,
+): string | null {
+  if (!location) {
+    return null;
+  }
+
+  const company =
+    splitRut(companyRut);
+
+  const route =
+    `/boleta.electronica.envio/` +
+    `${company.rut}-${company.dv}-${trackId}`;
+
+  const allowed = new Set([
+    route,
+    `/recursos/v1${route}`,
+    `${BOLETA_CERTIFICATION_API_BASE}${route}`,
+  ]);
+
+  const normalized =
+    location.trim();
+
+  if (!allowed.has(normalized)) {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_LOCATION_INVALID",
+    );
+  }
+
+  return normalized;
+}
+
+async function readBoletaRestSubmitResponse(
+  response: Response,
+): Promise<{
+  raw: string;
+  contentType: string;
+  responseBytes: number;
+}> {
+  if (response.status !== 200) {
+    throw new Error(
+      `BOLETA_REST_SUBMIT_HTTP_${response.status}`,
+    );
+  }
+
+  const contentType =
+    response.headers
+      .get("content-type")
+      ?.split(";")[0]
+      ?.trim()
+      .toLowerCase() ?? "";
+
+  if (contentType !== "application/json") {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_CONTENT_TYPE_INVALID",
+    );
+  }
+
+  const bytes = Buffer.from(
+    await response.arrayBuffer(),
+  );
+
+  if (
+    bytes.length === 0 ||
+    bytes.length >
+      BOLETA_REST_SUBMIT_MAX_RESPONSE_BYTES
+  ) {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_RESPONSE_SIZE_INVALID",
+    );
+  }
+
+  let raw: string;
+
+  try {
+    raw = new TextDecoder(
+      "utf-8",
+      {
+        fatal: true,
+      },
+    ).decode(bytes);
+  } catch {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_RESPONSE_UTF8_INVALID",
+    );
+  }
+
+  return {
+    raw,
+    contentType,
+    responseBytes: bytes.length,
+  };
+}
+
+export async function requestBoletaRestSubmit(
+  input: BoletaRestSubmitInput,
+): Promise<BoletaRestSubmitResult> {
+  assertBoletaRestToken(
+    input.token,
+  );
+
+  assertBoletaRestFile(
+    input.fileName,
+    input.fileBytes,
+  );
+
+  const sender =
+    splitRut(input.senderRut);
+
+  const company =
+    splitRut(input.companyRut);
+
+  const timeoutMs =
+    resolveBoletaRestSubmitTimeout(
+      input.timeoutMs,
+    );
+
+  const fetchImpl =
+    input.fetchImpl ??
+    globalThis.fetch;
+
+  if (typeof fetchImpl !== "function") {
+    throw new Error(
+      "BOLETA_REST_FETCH_UNAVAILABLE",
+    );
+  }
+
+  const userAgent =
+    input.userAgent ??
+    BOLETA_CERTIFICATION_USER_AGENT;
+
+  if (
+    !userAgent.trim() ||
+    /[\r\n]/.test(userAgent) ||
+    userAgent.length > 200
+  ) {
+    throw new Error(
+      "BOLETA_REST_USER_AGENT_INVALID",
+    );
+  }
+
+  const stableBytes =
+    Buffer.from(input.fileBytes);
+
+  const arrayBuffer =
+    stableBytes.buffer.slice(
+      stableBytes.byteOffset,
+      stableBytes.byteOffset +
+        stableBytes.byteLength,
+    ) as ArrayBuffer;
+
+  const form = new FormData();
+
+  form.append(
+    "rutSender",
+    sender.rut,
+  );
+
+  form.append(
+    "dvSender",
+    sender.dv,
+  );
+
+  form.append(
+    "rutCompany",
+    company.rut,
+  );
+
+  form.append(
+    "dvCompany",
+    company.dv,
+  );
+
+  form.append(
+    "archivo",
+    new Blob(
+      [arrayBuffer],
+      {
+        type: "application/xml",
+      },
+    ),
+    input.fileName,
+  );
+
+  const controller =
+    new AbortController();
+
+  const timer = setTimeout(
+    () => controller.abort(),
+    timeoutMs,
+  );
+
+  try {
+    const response =
+      await fetchImpl(
+        BOLETA_CERTIFICATION_SUBMIT_URL,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Cache-Control": "no-store",
+            Cookie:
+              `TOKEN=${input.token}`,
+            "User-Agent":
+              userAgent,
+          },
+          body: form,
+          redirect: "manual",
+          signal: controller.signal,
+        },
+      );
+
+    const parsedResponse =
+      await readBoletaRestSubmitResponse(
+        response,
+      );
+
+    const data =
+      parseBoletaRestSubmitResponse(
+        parsedResponse.raw,
+      );
+
+    if (
+      canonicalBoletaRestRut(
+        data.rutEmisor,
+      ) !==
+        canonicalBoletaRestRut(
+          input.companyRut,
+        ) ||
+      canonicalBoletaRestRut(
+        data.rutEnvia,
+      ) !==
+        canonicalBoletaRestRut(
+          input.senderRut,
+        )
+    ) {
+      throw new Error(
+        "BOLETA_REST_SUBMIT_RESPONSE_RUT_MISMATCH",
+      );
+    }
+
+    if (
+      data.fileName !==
+      input.fileName
+    ) {
+      throw new Error(
+        "BOLETA_REST_SUBMIT_RESPONSE_FILENAME_MISMATCH",
+      );
+    }
+
+    if (
+      !data.receptionDate ||
+      data.receptionDate.length > 100
+    ) {
+      throw new Error(
+        "BOLETA_REST_SUBMIT_RECEPTION_DATE_INVALID",
+      );
+    }
+
+    const location =
+      validateBoletaRestLocation(
+        response.headers.get(
+          "x-location",
+        ),
+        input.companyRut,
+        data.trackId,
+      );
+
+    const rawRetryAfter =
+      response.headers.get(
+        "x-retry-after",
+      );
+
+    const retryAfterSeconds =
+      parseBoletaRetryAfter(
+        rawRetryAfter,
+      );
+
+    if (
+      rawRetryAfter !== null &&
+      retryAfterSeconds === null
+    ) {
+      throw new Error(
+        "BOLETA_REST_SUBMIT_RETRY_AFTER_INVALID",
+      );
+    }
+
+    return {
+      data,
+      contentType:
+        parsedResponse.contentType,
+      responseBytes:
+        parsedResponse.responseBytes,
+      location,
+      retryAfterSeconds,
+    };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        "BOLETA_REST_SUBMIT_TIMEOUT",
+      );
+    }
+
+    if (
+      error instanceof Error &&
+      error.message.startsWith(
+        "BOLETA_REST_",
+      )
+    ) {
+      throw error;
+    }
+
+    throw new Error(
+      "BOLETA_REST_SUBMIT_NETWORK_ERROR",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}

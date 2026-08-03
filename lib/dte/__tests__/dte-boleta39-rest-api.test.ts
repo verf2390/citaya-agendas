@@ -15,6 +15,7 @@ import {
   BOLETA_CERTIFICATION_SEED_URL,
   BOLETA_CERTIFICATION_SUBMIT_URL,
   BOLETA_CERTIFICATION_TOKEN_URL,
+  BOLETA_CERTIFICATION_USER_AGENT,
   buildBoletaRestStatusUrl,
   buildBoletaRestUnsignedTokenXml,
   parseBoletaRestSeedResponse,
@@ -22,6 +23,7 @@ import {
   parseBoletaRestTokenResponse,
   parseBoletaRetryAfter,
   requestBoletaRestSeed,
+  requestBoletaRestSubmit,
   requestBoletaRestToken,
   signBoletaRestSeed,
 } from "../certification/boleta39-rest-api";
@@ -573,6 +575,338 @@ test(
           },
         ),
       /BOLETA_REST_SIGNED_TOKEN_XML_INVALID/,
+    );
+  },
+);
+
+test(
+  "Boleta REST submit builds the exact multipart request",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        [
+          '<?xml version="1.0" encoding="ISO-8859-1"?>',
+          "<EnvioBOLETA/>",
+        ].join(""),
+        "latin1",
+      );
+
+    let calls = 0;
+
+    const fetchImpl: typeof fetch =
+      async (input, init) => {
+        calls += 1;
+
+        assert.equal(
+          String(input),
+          BOLETA_CERTIFICATION_SUBMIT_URL,
+        );
+
+        assert.equal(
+          init?.method,
+          "POST",
+        );
+
+        assert.equal(
+          init?.redirect,
+          "manual",
+        );
+
+        assert.ok(
+          init?.signal instanceof AbortSignal,
+        );
+
+        const headers =
+          new Headers(init?.headers);
+
+        assert.equal(
+          headers.get("accept"),
+          "application/json",
+        );
+
+        assert.equal(
+          headers.get("cache-control"),
+          "no-store",
+        );
+
+        assert.equal(
+          headers.get("cookie"),
+          "TOKEN=TOKENFIXTURE123",
+        );
+
+        assert.equal(
+          headers.get("user-agent"),
+          BOLETA_CERTIFICATION_USER_AGENT,
+        );
+
+        /*
+         * No se debe definir Content-Type manualmente:
+         * fetch genera el boundary multipart.
+         */
+        assert.equal(
+          headers.get("content-type"),
+          null,
+        );
+
+        assert.ok(
+          init?.body instanceof FormData,
+        );
+
+        const form =
+          init.body;
+
+        assert.equal(
+          form.get("rutSender"),
+          "27164542",
+        );
+
+        assert.equal(
+          form.get("dvSender"),
+          "2",
+        );
+
+        assert.equal(
+          form.get("rutCompany"),
+          "78195645",
+        );
+
+        assert.equal(
+          form.get("dvCompany"),
+          "7",
+        );
+
+        const archivo =
+          form.get("archivo");
+
+        assert.ok(
+          archivo instanceof Blob,
+        );
+
+        assert.equal(
+          (
+            archivo as Blob & {
+              name?: string;
+            }
+          ).name,
+          fileName,
+        );
+
+        assert.equal(
+          archivo.type,
+          "application/xml",
+        );
+
+        assert.equal(
+          archivo.size,
+          fileBytes.length,
+        );
+
+        assert.deepEqual(
+          Buffer.from(
+            await archivo.arrayBuffer(),
+          ),
+          fileBytes,
+        );
+
+        return new Response(
+          JSON.stringify({
+            rut_emisor:
+              "78195645-7",
+            rut_envia:
+              "27164542-2",
+            trackid:
+              12288340531,
+            fecha_recepcion:
+              "2026-08-03 17:50:00",
+            estado:
+              "REC",
+            file:
+              fileName,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "application/json; charset=UTF-8",
+              "X-Location":
+                "/boleta.electronica.envio/78195645-7-12288340531",
+              "X-Retry-After":
+                "10",
+            },
+          },
+        );
+      };
+
+    const result =
+      await requestBoletaRestSubmit({
+        token:
+          "TOKENFIXTURE123",
+        senderRut:
+          "27164542-2",
+        companyRut:
+          "78195645-7",
+        fileName,
+        fileBytes,
+        fetchImpl,
+        timeoutMs:
+          2_000,
+      });
+
+    assert.equal(calls, 1);
+
+    assert.equal(
+      result.data.trackId,
+      "12288340531",
+    );
+
+    assert.equal(
+      result.data.status,
+      "REC",
+    );
+
+    assert.equal(
+      result.location,
+      "/boleta.electronica.envio/78195645-7-12288340531",
+    );
+
+    assert.equal(
+      result.retryAfterSeconds,
+      10,
+    );
+
+    assert.equal(
+      result.contentType,
+      "application/json",
+    );
+
+    assert.ok(
+      result.responseBytes > 0,
+    );
+  },
+);
+
+test(
+  "Boleta REST submit rejects inconsistent SII responses",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        "<EnvioBOLETA/>",
+        "latin1",
+      );
+
+    const wrongRut: typeof fetch =
+      async () =>
+        new Response(
+          JSON.stringify({
+            rut_emisor:
+              "11111111-1",
+            rut_envia:
+              "27164542-2",
+            trackid:
+              12288340531,
+            fecha_recepcion:
+              "2026-08-03 17:50:00",
+            estado:
+              "REC",
+            file:
+              fileName,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            wrongRut,
+          timeoutMs:
+            2_000,
+        }),
+      /BOLETA_REST_SUBMIT_RESPONSE_RUT_MISMATCH/,
+    );
+
+    const badContentType: typeof fetch =
+      async () =>
+        new Response(
+          "<html>unexpected</html>",
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "text/html",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            badContentType,
+          timeoutMs:
+            2_000,
+        }),
+      /BOLETA_REST_SUBMIT_CONTENT_TYPE_INVALID/,
+    );
+
+    const badRequest: typeof fetch =
+      async () =>
+        new Response(
+          "Peticion con error",
+          {
+            status: 400,
+            headers: {
+              "Content-Type":
+                "text/plain",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            badRequest,
+          timeoutMs:
+            2_000,
+        }),
+      /BOLETA_REST_SUBMIT_HTTP_400/,
     );
   },
 );
