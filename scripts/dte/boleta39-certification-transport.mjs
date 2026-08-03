@@ -9,11 +9,14 @@ import {
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -33,7 +36,9 @@ import { fileURLToPath } from "node:url";
 const ALLOWED_PHASES = new Set([
   "preflight",
   "auth-dry-run",
+  "submit-dry-run",
   "request-token",
+  "submit",
 ]);
 
 const phase = String(process.argv[2] ?? "");
@@ -42,7 +47,7 @@ if (!ALLOWED_PHASES.has(phase)) {
   console.error("BOLETA39_CERTIFICATION_TRANSPORT_BLOCKED");
   console.error("cause=phase_not_enabled");
   console.error(
-    "allowedPhases=preflight,auth-dry-run,request-token",
+    "allowedPhases=preflight,auth-dry-run,submit-dry-run,request-token,submit",
   );
   process.exit(2);
 }
@@ -148,6 +153,17 @@ const FIXTURE_DIGEST =
 const REQUEST_TOKEN_CONFIRMATION =
   "REQUEST_BOLETA39_TOKEN:" +
   EXPECTED_ENVELOPE_SHA256;
+
+const SUBMIT_CONFIRMATION =
+  "SUBMIT_BOLETA39:" +
+  EXPECTED_ENVELOPE_SHA256;
+
+const SUBMIT_AUDIT_DIR =
+  "/home/verf/secure/dte-lab/audit/" +
+  "boleta39-submit";
+
+const LIVE_SUBMIT_USER_AGENT =
+  "Mozilla/4.0 ( compatible; PROG 1.0; Windows NT)";
 
 const SIGNATURE_FILES = [
   "CASO-1-BOLETA-39-CERTIFICATION.xml",
@@ -1080,45 +1096,130 @@ function runAuthDryRun(preflight) {
   return signed;
 }
 
-async function runRequestToken(
-  preflight,
+function sanitizedErrorCode(error) {
+  const raw =
+    error instanceof Error
+      ? error.message
+      : "UNKNOWN_ERROR";
+
+  return raw
+    .replace(/[^A-Za-z0-9_:-]/g, "_")
+    .slice(0, 240);
+}
+
+function ensureSubmitRegistryDirectory(
+  registryDir,
 ) {
-  if (
-    process.env
-      .DTE_BOLETA39_REQUEST_TOKEN_CONFIRM !==
-    REQUEST_TOKEN_CONFIRMATION
-  ) {
-    throw new Error(
-      "LIVE_AUTH_CONFIRMATION_INVALID",
-    );
-  }
+  mkdirSync(
+    registryDir,
+    {
+      recursive: true,
+      mode: 0o700,
+    },
+  );
 
-  if (
-    process.env.DTE_SII_LIVE_AUTH !==
-    "true"
-  ) {
-    throw new Error(
-      "LIVE_AUTH_FLAG_NOT_ENABLED",
-    );
-  }
+  chmodSync(
+    registryDir,
+    0o700,
+  );
 
-  if (
-    process.env.DTE_SII_ENABLE_SUBMIT ===
-      "true" ||
-    process.env.DTE_SII_ENABLE_STATUS ===
-      "true"
-  ) {
-    throw new Error(
-      "SUBMIT_OR_STATUS_FLAG_MUST_REMAIN_DISABLED",
-    );
-  }
+  assertOwnedPrivateDirectory(
+    registryDir,
+  );
 
+  assertOutsideRepo(
+    registryDir,
+  );
+}
+
+function submitAttemptPath(
+  registryDir,
+) {
+  return join(
+    registryDir,
+    `${EXPECTED_ENVELOPE_SHA256}.json`,
+  );
+}
+
+function createSubmitAttempt(
+  attemptPath,
+  record,
+) {
+  try {
+    writeFileSync(
+      attemptPath,
+      `${JSON.stringify(record, null, 2)}\n`,
+      {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      },
+    );
+
+    chmodSync(
+      attemptPath,
+      0o600,
+    );
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "EEXIST"
+    ) {
+      throw new Error(
+        "SUBMIT_ATTEMPT_ALREADY_RECORDED",
+      );
+    }
+
+    throw error;
+  }
+}
+
+function updateSubmitAttempt(
+  attemptPath,
+  record,
+) {
+  const temporaryPath =
+    `${attemptPath}.${process.pid}.` +
+    `${Date.now()}.tmp`;
+
+  writeFileSync(
+    temporaryPath,
+    `${JSON.stringify(record, null, 2)}\n`,
+    {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    },
+  );
+
+  chmodSync(
+    temporaryPath,
+    0o600,
+  );
+
+  renameSync(
+    temporaryPath,
+    attemptPath,
+  );
+
+  chmodSync(
+    attemptPath,
+    0o600,
+  );
+}
+
+async function requestAuthenticationToken(
+  preflight,
+  fetchImpl,
+) {
   const startedAt = Date.now();
 
   const seedResult =
     await preflight.api
       .requestBoletaRestSeed({
-        fetchImpl: nativeFetch,
+        fetchImpl,
         timeoutMs: 15_000,
       });
 
@@ -1156,7 +1257,7 @@ async function runRequestToken(
       .requestBoletaRestToken(
         signed.signedXml,
         {
-          fetchImpl: nativeFetch,
+          fetchImpl,
           timeoutMs: 15_000,
         },
       );
@@ -1174,17 +1275,7 @@ async function runRequestToken(
   }
 
   return {
-    seedResponseBytes:
-      seedResult.responseBytes,
-
-    tokenResponseBytes:
-      tokenResult.responseBytes,
-
-    signedSeedSha256:
-      signed.signedXmlSha256,
-
-    tokenLength:
-      token.length,
+    token,
 
     tokenFingerprintSha256:
       sha256Bytes(
@@ -1194,8 +1285,544 @@ async function runRequestToken(
         ),
       ),
 
-    elapsedMs:
+    seedResponseBytes:
+      seedResult.responseBytes,
+
+    tokenResponseBytes:
+      tokenResult.responseBytes,
+
+    signedSeedSha256:
+      signed.signedXmlSha256,
+
+    authElapsedMs:
       Date.now() - startedAt,
+  };
+}
+
+async function runSubmit(
+  preflight,
+  {
+    fetchImpl,
+    registryDir,
+    live,
+  },
+) {
+  if (live) {
+    if (
+      process.env
+        .DTE_BOLETA39_SUBMIT_CONFIRM !==
+      SUBMIT_CONFIRMATION
+    ) {
+      throw new Error(
+        "LIVE_SUBMIT_CONFIRMATION_INVALID",
+      );
+    }
+
+    if (
+      process.env.DTE_SII_LIVE_AUTH !==
+      "true"
+    ) {
+      throw new Error(
+        "LIVE_AUTH_FLAG_NOT_ENABLED",
+      );
+    }
+
+    if (
+      process.env.DTE_SII_ENABLE_SUBMIT !==
+      "true"
+    ) {
+      throw new Error(
+        "LIVE_SUBMIT_FLAG_NOT_ENABLED",
+      );
+    }
+
+    if (
+      process.env.DTE_SII_ENABLE_STATUS ===
+      "true"
+    ) {
+      throw new Error(
+        "STATUS_FLAG_MUST_REMAIN_DISABLED",
+      );
+    }
+  }
+
+  ensureSubmitRegistryDirectory(
+    registryDir,
+  );
+
+  const attemptPath =
+    submitAttemptPath(
+      registryDir,
+    );
+
+  if (existsSync(attemptPath)) {
+    throw new Error(
+      "SUBMIT_ATTEMPT_ALREADY_RECORDED",
+    );
+  }
+
+  const authentication =
+    await requestAuthenticationToken(
+      preflight,
+      fetchImpl,
+    );
+
+  const startedAt =
+    new Date().toISOString();
+
+  const baseRecord = {
+    schemaVersion: 1,
+    environment: "certification",
+    documentType: 39,
+    envelopeSha256:
+      EXPECTED_ENVELOPE_SHA256,
+    fileName:
+      basename(
+        preflight.envelopePath,
+      ),
+    senderRut:
+      EXPECTED_SENDER_RUT,
+    companyRut:
+      EXPECTED_ISSUER_RUT,
+    endpoint:
+      preflight.api
+        .BOLETA_CERTIFICATION_SUBMIT_URL,
+    tokenFingerprintSha256:
+      authentication
+        .tokenFingerprintSha256,
+    tokenPersisted: false,
+    rcofUploaded: false,
+    startedAt,
+    status: "SUBMIT_STARTED",
+  };
+
+  createSubmitAttempt(
+    attemptPath,
+    baseRecord,
+  );
+
+  try {
+    const response =
+      await preflight.api
+        .requestBoletaRestSubmit({
+          token:
+            authentication.token,
+
+          senderRut:
+            EXPECTED_SENDER_RUT,
+
+          companyRut:
+            EXPECTED_ISSUER_RUT,
+
+          fileName:
+            basename(
+              preflight.envelopePath,
+            ),
+
+          fileBytes:
+            readFileSync(
+              preflight.envelopePath,
+            ),
+
+          fetchImpl,
+
+          timeoutMs:
+            30_000,
+
+          userAgent:
+            LIVE_SUBMIT_USER_AGENT,
+        });
+
+    const completedRecord = {
+      ...baseRecord,
+
+      status: "REC",
+
+      completedAt:
+        new Date().toISOString(),
+
+      trackId:
+        response.data.trackId,
+
+      receptionDate:
+        response.data.receptionDate,
+
+      responseFileName:
+        response.data.fileName,
+
+      location:
+        response.location,
+
+      retryAfterSeconds:
+        response.retryAfterSeconds,
+
+      responseBytes:
+        response.responseBytes,
+
+      authElapsedMs:
+        authentication.authElapsedMs,
+
+      signedSeedSha256:
+        authentication
+          .signedSeedSha256,
+    };
+
+    updateSubmitAttempt(
+      attemptPath,
+      completedRecord,
+    );
+
+    return {
+      attemptPath,
+
+      trackId:
+        response.data.trackId,
+
+      receptionStatus:
+        response.data.status,
+
+      receptionDate:
+        response.data.receptionDate,
+
+      responseFileName:
+        response.data.fileName,
+
+      location:
+        response.location,
+
+      retryAfterSeconds:
+        response.retryAfterSeconds,
+
+      responseBytes:
+        response.responseBytes,
+
+      seedResponseBytes:
+        authentication.seedResponseBytes,
+
+      tokenResponseBytes:
+        authentication.tokenResponseBytes,
+
+      tokenFingerprintSha256:
+        authentication
+          .tokenFingerprintSha256,
+
+      authElapsedMs:
+        authentication.authElapsedMs,
+    };
+  } catch (error) {
+    const errorCode =
+      sanitizedErrorCode(error);
+
+    const definitiveRejection =
+      /^BOLETA_REST_SUBMIT_HTTP_(400|401|405)$/.test(
+        errorCode,
+      );
+
+    updateSubmitAttempt(
+      attemptPath,
+      {
+        ...baseRecord,
+
+        status:
+          definitiveRejection
+            ? "REJECTED"
+            : "AMBIGUOUS",
+
+        completedAt:
+          new Date().toISOString(),
+
+        errorCode,
+
+        automaticRetryAllowed: false,
+
+        manualReviewRequired: true,
+      },
+    );
+
+    throw error;
+  }
+}
+
+async function runSubmitDryRun(
+  preflight,
+) {
+  const counters = {
+    seed: 0,
+    token: 0,
+    submit: 0,
+  };
+
+  const mockFetch =
+    async (input, init) => {
+      const url = String(input);
+
+      if (
+        url ===
+        preflight.api
+          .BOLETA_CERTIFICATION_SEED_URL
+      ) {
+        counters.seed += 1;
+
+        return new Response(
+          [
+            '<SII:RESPUESTA xmlns:SII="http://www.sii.cl/XMLSchema">',
+            "<SII:RESP_HDR>",
+            "<SII:ESTADO>0</SII:ESTADO>",
+            "</SII:RESP_HDR>",
+            "<SII:RESP_BODY>",
+            "<SII:SEMILLA>030530912644</SII:SEMILLA>",
+            "</SII:RESP_BODY>",
+            "</SII:RESPUESTA>",
+          ].join(""),
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "application/xml; charset=UTF-8",
+            },
+          },
+        );
+      }
+
+      if (
+        url ===
+        preflight.api
+          .BOLETA_CERTIFICATION_TOKEN_URL
+      ) {
+        counters.token += 1;
+
+        if (
+          typeof init?.body !==
+            "string" ||
+          !init.body.includes(
+            '<Reference URI="">',
+          )
+        ) {
+          throw new Error(
+            "DRY_RUN_SIGNED_SEED_INVALID",
+          );
+        }
+
+        return new Response(
+          [
+            '<SII:RESPUESTA xmlns:SII="http://www.sii.cl/XMLSchema">',
+            "<SII:RESP_HDR>",
+            "<SII:ESTADO>00</SII:ESTADO>",
+            "<SII:GLOSA>Token Creado</SII:GLOSA>",
+            "</SII:RESP_HDR>",
+            "<SII:RESP_BODY>",
+            "<SII:TOKEN>TOKENFIXTURE123</SII:TOKEN>",
+            "</SII:RESP_BODY>",
+            "</SII:RESPUESTA>",
+          ].join(""),
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "application/xml; charset=UTF-8",
+            },
+          },
+        );
+      }
+
+      if (
+        url ===
+        preflight.api
+          .BOLETA_CERTIFICATION_SUBMIT_URL
+      ) {
+        counters.submit += 1;
+
+        if (
+          !(init?.body instanceof FormData)
+        ) {
+          throw new Error(
+            "DRY_RUN_MULTIPART_MISSING",
+          );
+        }
+
+        const form =
+          init.body;
+
+        const archivo =
+          form.get("archivo");
+
+        if (!(archivo instanceof Blob)) {
+          throw new Error(
+            "DRY_RUN_XML_FILE_MISSING",
+          );
+        }
+
+        const uploadedBytes =
+          Buffer.from(
+            await archivo.arrayBuffer(),
+          );
+
+        if (
+          sha256Bytes(uploadedBytes) !==
+          EXPECTED_ENVELOPE_SHA256
+        ) {
+          throw new Error(
+            "DRY_RUN_ENVELOPE_HASH_INVALID",
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            rut_emisor:
+              EXPECTED_ISSUER_RUT,
+            rut_envia:
+              EXPECTED_SENDER_RUT,
+            trackid:
+              12288340532,
+            fecha_recepcion:
+              "2026-08-03 17:55:00",
+            estado:
+              "REC",
+            file:
+              ENVELOPE_NAME,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "application/json; charset=UTF-8",
+              "X-Location":
+                "/boleta.electronica.envio/" +
+                "78195645-7-12288340532",
+              "X-Retry-After":
+                "10",
+            },
+          },
+        );
+      }
+
+      throw new Error(
+        "DRY_RUN_URL_NOT_ALLOWED",
+      );
+    };
+
+  const registryDir =
+    mkdtempSync(
+      join(
+        tmpdir(),
+        "citaya-boleta39-submit-dry-run-",
+      ),
+    );
+
+  try {
+    const result =
+      await runSubmit(
+        preflight,
+        {
+          fetchImpl:
+            mockFetch,
+
+          registryDir,
+
+          live: false,
+        },
+      );
+
+    if (
+      counters.seed !== 1 ||
+      counters.token !== 1 ||
+      counters.submit !== 1
+    ) {
+      throw new Error(
+        "DRY_RUN_CALL_COUNT_INVALID",
+      );
+    }
+
+    const record =
+      JSON.parse(
+        readFileSync(
+          result.attemptPath,
+          "utf8",
+        ),
+      );
+
+    if (
+      record.status !== "REC" ||
+      record.trackId !==
+        "12288340532" ||
+      record.envelopeSha256 !==
+        EXPECTED_ENVELOPE_SHA256
+    ) {
+      throw new Error(
+        "DRY_RUN_REGISTRY_INVALID",
+      );
+    }
+
+    return result;
+  } finally {
+    rmSync(
+      registryDir,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
+}
+
+async function runRequestToken(
+  preflight,
+) {
+  if (
+    process.env
+      .DTE_BOLETA39_REQUEST_TOKEN_CONFIRM !==
+    REQUEST_TOKEN_CONFIRMATION
+  ) {
+    throw new Error(
+      "LIVE_AUTH_CONFIRMATION_INVALID",
+    );
+  }
+
+  if (
+    process.env.DTE_SII_LIVE_AUTH !==
+    "true"
+  ) {
+    throw new Error(
+      "LIVE_AUTH_FLAG_NOT_ENABLED",
+    );
+  }
+
+  if (
+    process.env.DTE_SII_ENABLE_SUBMIT ===
+      "true" ||
+    process.env.DTE_SII_ENABLE_STATUS ===
+      "true"
+  ) {
+    throw new Error(
+      "SUBMIT_OR_STATUS_FLAG_MUST_REMAIN_DISABLED",
+    );
+  }
+
+  const authentication =
+    await requestAuthenticationToken(
+      preflight,
+      nativeFetch,
+    );
+
+  return {
+    seedResponseBytes:
+      authentication.seedResponseBytes,
+
+    tokenResponseBytes:
+      authentication.tokenResponseBytes,
+
+    signedSeedSha256:
+      authentication.signedSeedSha256,
+
+    tokenLength:
+      authentication.token.length,
+
+    tokenFingerprintSha256:
+      authentication
+        .tokenFingerprintSha256,
+
+    elapsedMs:
+      authentication.authElapsedMs,
   };
 }
 
@@ -1251,6 +1878,10 @@ try {
     console.log(
       "tokenRequested=false",
     );
+
+    console.log(
+      "xmlUploaded=false",
+    );
   } else if (
     phase === "auth-dry-run"
   ) {
@@ -1288,7 +1919,60 @@ try {
     console.log(
       "tokenRequested=false",
     );
-  } else {
+
+    console.log(
+      "xmlUploaded=false",
+    );
+  } else if (
+    phase === "submit-dry-run"
+  ) {
+    const result =
+      await runSubmitDryRun(
+        preflight,
+      );
+
+    console.log(
+      "simulatedSeedRequest=true",
+    );
+
+    console.log(
+      "simulatedTokenRequest=true",
+    );
+
+    console.log(
+      "simulatedXmlUpload=true",
+    );
+
+    console.log(
+      `simulatedTrackId=${result.trackId}`,
+    );
+
+    console.log(
+      "duplicateRegistrySimulated=true",
+    );
+
+    console.log(
+      "BOLETA39_TRANSPORT_SUBMIT_DRY_RUN_OK",
+    );
+
+    console.log(
+      "networkContacted=false",
+    );
+
+    console.log(
+      "seedRequested=false",
+    );
+
+    console.log(
+      "tokenRequested=false",
+    );
+
+    console.log(
+      "xmlUploaded=false",
+    );
+  } else if (
+    phase === "request-token"
+  ) {
     const result =
       await runRequestToken(
         preflight,
@@ -1335,13 +2019,87 @@ try {
     );
 
     console.log(
+      "xmlUploaded=false",
+    );
+
+    console.log(
       "BOLETA39_LIVE_TOKEN_REQUEST_OK",
     );
-  }
+  } else {
+    const result =
+      await runSubmit(
+        preflight,
+        {
+          fetchImpl:
+            nativeFetch,
 
-  console.log(
-    "xmlUploaded=false",
-  );
+          registryDir:
+            SUBMIT_AUDIT_DIR,
+
+          live: true,
+        },
+      );
+
+    console.log(
+      "networkContacted=true",
+    );
+
+    console.log(
+      "seedRequested=true",
+    );
+
+    console.log(
+      "tokenRequested=true",
+    );
+
+    console.log(
+      "xmlUploaded=true",
+    );
+
+    console.log(
+      `receptionStatus=${result.receptionStatus}`,
+    );
+
+    console.log(
+      `trackId=${result.trackId}`,
+    );
+
+    console.log(
+      `receptionDate=${result.receptionDate}`,
+    );
+
+    console.log(
+      `responseFileName=${result.responseFileName}`,
+    );
+
+    console.log(
+      `retryAfterSeconds=${result.retryAfterSeconds ?? "not-provided"}`,
+    );
+
+    console.log(
+      `location=${result.location ?? "not-provided"}`,
+    );
+
+    console.log(
+      `submitRegistry=${result.attemptPath}`,
+    );
+
+    console.log(
+      "tokenPersisted=false",
+    );
+
+    console.log(
+      "automaticRetryAllowed=false",
+    );
+
+    console.log(
+      "statusQueryExecuted=false",
+    );
+
+    console.log(
+      "BOLETA39_LIVE_SUBMIT_RECEIVED",
+    );
+  }
 
   console.log(
     "rcofUploaded=false",
