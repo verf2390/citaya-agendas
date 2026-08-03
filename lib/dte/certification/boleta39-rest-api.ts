@@ -76,6 +76,36 @@ export type BoletaRestSubmitResponse = {
   fileName: string;
 };
 
+export class BoletaRestSubmitHttpError extends Error {
+  public readonly status: number;
+  public readonly responseText: string;
+  public readonly contentType: string;
+  public readonly responseBytes: number;
+
+  constructor(input: {
+    status: number;
+    responseText: string;
+    contentType: string;
+    responseBytes: number;
+  }) {
+    const message =
+      `BOLETA_REST_SUBMIT_HTTP_${input.status}`;
+
+    super(message);
+
+    this.name = "BoletaRestSubmitHttpError";
+    this.status = input.status;
+    this.responseText = input.responseText;
+    this.contentType = input.contentType;
+    this.responseBytes = input.responseBytes;
+
+    Object.setPrototypeOf(
+      this,
+      BoletaRestSubmitHttpError.prototype,
+    );
+  }
+}
+
 function sha1Base64(value: string): string {
   return createHash("sha1")
     .update(value, "utf8")
@@ -925,6 +955,90 @@ function validateBoletaRestLocation(
   return normalized;
 }
 
+function sanitizeBoletaRestResponseBody(
+  raw: string,
+  contentType: string,
+): string {
+  if (!raw || raw.length === 0) {
+    return "EMPTY_RESPONSE";
+  }
+
+  let sanitized = raw;
+
+  sanitized = sanitized.replace(
+    /TOKEN=[^\s&,;}\]"]*/gi,
+    "TOKEN=[REDACTED]",
+  );
+
+  sanitized = sanitized.replace(
+    /Cookie:\s*TOKEN=[^\r\n]*/gi,
+    "Cookie: [REDACTED]",
+  );
+
+  sanitized = sanitized.replace(
+    /Authorization:\s*[^\r\n]*/gi,
+    "Authorization: [REDACTED]",
+  );
+
+  sanitized = sanitized.replace(
+    /-----BEGIN\s+(PRIVATE\s+)?RSA\s+PRIVATE\s+KEY-----[\s\S]*?-----END\s+(PRIVATE\s+)?RSA\s+PRIVATE\s+KEY-----/gi,
+    "[REDACTED_PEM]",
+  );
+
+  sanitized = sanitized.replace(
+    /-----BEGIN\s+PRIVATE\s+KEY-----[\s\S]*?-----END\s+PRIVATE\s+KEY-----/gi,
+    "[REDACTED_PEM]",
+  );
+
+  sanitized = sanitized.replace(
+    /-----BEGIN\s+CERTIFICATE-----[\s\S]*?-----END\s+CERTIFICATE-----/gi,
+    "[REDACTED_PEM]",
+  );
+
+  if (contentType.includes("json")) {
+    try {
+      const parsed = JSON.parse(sanitized);
+
+      if (typeof parsed === "object" && parsed !== null) {
+        if ("token" in parsed) {
+          parsed.token = "[REDACTED]";
+        }
+
+        if ("access_token" in parsed) {
+          parsed.access_token = "[REDACTED]";
+        }
+
+        if ("authorization" in parsed) {
+          parsed.authorization = "[REDACTED]";
+        }
+      }
+
+      sanitized = JSON.stringify(parsed);
+    } catch {
+      // If parsing fails, continue with regex-only sanitization
+    }
+  }
+
+  sanitized = sanitized.replace(
+    /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,
+    "",
+  );
+
+  sanitized = sanitized
+    .replace(/[ \t]+/g, " ")
+    .replace(/(\r?\n)+/g, "\n")
+    .trim();
+
+  if (sanitized.length > 1000) {
+    sanitized =
+      sanitized.slice(0, 1000) + " [TRUNCATED]";
+  }
+
+  return sanitized.length > 0
+    ? sanitized
+    : "EMPTY_RESPONSE";
+}
+
 async function readBoletaRestSubmitResponse(
   response: Response,
 ): Promise<{
@@ -932,12 +1046,6 @@ async function readBoletaRestSubmitResponse(
   contentType: string;
   responseBytes: number;
 }> {
-  if (response.status !== 200) {
-    throw new Error(
-      `BOLETA_REST_SUBMIT_HTTP_${response.status}`,
-    );
-  }
-
   const contentType =
     response.headers
       .get("content-type")
@@ -945,18 +1053,11 @@ async function readBoletaRestSubmitResponse(
       ?.trim()
       .toLowerCase() ?? "";
 
-  if (contentType !== "application/json") {
-    throw new Error(
-      "BOLETA_REST_SUBMIT_CONTENT_TYPE_INVALID",
-    );
-  }
-
   const bytes = Buffer.from(
     await response.arrayBuffer(),
   );
 
   if (
-    bytes.length === 0 ||
     bytes.length >
       BOLETA_REST_SUBMIT_MAX_RESPONSE_BYTES
   ) {
@@ -965,18 +1066,51 @@ async function readBoletaRestSubmitResponse(
     );
   }
 
+  if (bytes.length === 0 && response.status === 200) {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_RESPONSE_SIZE_INVALID",
+    );
+  }
+
   let raw: string;
 
   try {
-    raw = new TextDecoder(
-      "utf-8",
-      {
-        fatal: true,
-      },
-    ).decode(bytes);
+    raw = new TextDecoder("utf-8", {
+      fatal: true,
+    }).decode(bytes);
   } catch {
+    if (response.status !== 200) {
+      throw new BoletaRestSubmitHttpError({
+        status: response.status,
+        responseText: "[INVALID_UTF8]",
+        contentType,
+        responseBytes: bytes.length,
+      });
+    }
+
     throw new Error(
       "BOLETA_REST_SUBMIT_RESPONSE_UTF8_INVALID",
+    );
+  }
+
+  if (response.status !== 200) {
+    const sanitizedBody =
+      sanitizeBoletaRestResponseBody(
+        raw,
+        contentType,
+      );
+
+    throw new BoletaRestSubmitHttpError({
+      status: response.status,
+      responseText: sanitizedBody,
+      contentType,
+      responseBytes: bytes.length,
+    });
+  }
+
+  if (contentType !== "application/json") {
+    throw new Error(
+      "BOLETA_REST_SUBMIT_CONTENT_TYPE_INVALID",
     );
   }
 

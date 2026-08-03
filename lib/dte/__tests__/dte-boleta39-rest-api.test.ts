@@ -16,6 +16,7 @@ import {
   BOLETA_CERTIFICATION_SUBMIT_URL,
   BOLETA_CERTIFICATION_TOKEN_URL,
   BOLETA_CERTIFICATION_USER_AGENT,
+  BoletaRestSubmitHttpError,
   buildBoletaRestStatusUrl,
   buildBoletaRestUnsignedTokenXml,
   parseBoletaRestSeedResponse,
@@ -907,6 +908,518 @@ test(
             2_000,
         }),
       /BOLETA_REST_SUBMIT_HTTP_400/,
+    );
+  },
+);
+
+test(
+  "Boleta REST submit captures HTTP 400 text/plain with sanitized body",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        "<EnvioBOLETA/>",
+        "latin1",
+      );
+
+    const http400WithToken: typeof fetch =
+      async () =>
+        new Response(
+          "Peticion con error: TOKEN=SECRET123XYZ",
+          {
+            status: 400,
+            headers: {
+              "Content-Type":
+                "text/plain; charset=UTF-8",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            http400WithToken,
+          timeoutMs:
+            2_000,
+        }),
+      (error) => {
+        assert(
+          error instanceof
+            BoletaRestSubmitHttpError,
+        );
+
+        assert.equal(
+          error.message,
+          "BOLETA_REST_SUBMIT_HTTP_400",
+        );
+
+        assert.equal(
+          error.status,
+          400,
+        );
+
+        assert.equal(
+          error.contentType,
+          "text/plain",
+        );
+
+        assert.ok(
+          error.responseText,
+        );
+
+        assert(
+          error.responseText.includes(
+            "TOKEN=[REDACTED]",
+          ),
+          "Should redact TOKEN value",
+        );
+
+        assert(
+          !error.responseText.includes(
+            "SECRET123XYZ",
+          ),
+          "Should not contain original token",
+        );
+
+        return true;
+      },
+    );
+  },
+);
+
+test(
+  "Boleta REST submit sanitizes HTTP 401 without exposing body",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        "<EnvioBOLETA/>",
+        "latin1",
+      );
+
+    const http401Response: typeof fetch =
+      async () =>
+        new Response(
+          "Unauthorized: invalid cookie TOKEN=value",
+          {
+            status: 401,
+            headers: {
+              "Content-Type":
+                "text/plain",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            http401Response,
+          timeoutMs:
+            2_000,
+        }),
+      (error) => {
+        assert(
+          error instanceof
+            BoletaRestSubmitHttpError,
+        );
+
+        assert.equal(
+          error.message,
+          "BOLETA_REST_SUBMIT_HTTP_401",
+        );
+
+        assert.equal(
+          error.status,
+          401,
+        );
+
+        assert(
+          !error.responseText.includes(
+            "value",
+          ),
+          "Token value should be redacted",
+        );
+
+        return true;
+      },
+    );
+  },
+);
+
+test(
+  "Boleta REST submit sanitizes Cookie and Authorization headers",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        "<EnvioBOLETA/>",
+        "latin1",
+      );
+
+    const withCookieAndAuth: typeof fetch =
+      async () =>
+        new Response(
+          [
+            "Error occurred",
+            "Cookie: TOKEN=SECRET456",
+            "Authorization: Bearer xyz789",
+          ].join("\n"),
+          {
+            status: 400,
+            headers: {
+              "Content-Type":
+                "text/plain",
+            },
+          },
+        );
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            withCookieAndAuth,
+          timeoutMs:
+            2_000,
+        }),
+      (error) => {
+        assert(
+          error instanceof
+            BoletaRestSubmitHttpError,
+        );
+
+        const body =
+          error.responseText;
+
+        assert(
+          !body.includes("SECRET456"),
+          "Cookie token should be redacted",
+        );
+
+        assert(
+          !body.includes("xyz789"),
+          "Authorization should be redacted",
+        );
+
+        assert(
+          body.includes(
+            "Cookie: [REDACTED]",
+          ),
+          "Cookie should show redaction marker",
+        );
+
+        assert(
+          body.includes(
+            "Authorization: [REDACTED]",
+          ),
+          "Authorization should show redaction marker",
+        );
+
+        return true;
+      },
+    );
+  },
+);
+
+test(
+  "Boleta REST submit sanitizes PEM blocks (PRIVATE KEY and CERTIFICATE)",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        "<EnvioBOLETA/>",
+        "latin1",
+      );
+
+    const withPemBlocks: typeof fetch =
+      async () => {
+        const body = [
+          "Error details:",
+          "-----BEGIN PRIVATE KEY-----",
+          "MIIEvQIBADANBgkqhkiG9w0BAQE",
+          "-----END PRIVATE KEY-----",
+          "-----BEGIN CERTIFICATE-----",
+          "MIIDXTCCAkWgAwIBAgIJAK",
+          "-----END CERTIFICATE-----",
+        ].join("\n");
+
+        return new Response(body, {
+          status: 400,
+          headers: {
+            "Content-Type":
+              "text/plain",
+          },
+        });
+      };
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            withPemBlocks,
+          timeoutMs:
+            2_000,
+        }),
+      (error) => {
+        assert(
+          error instanceof
+            BoletaRestSubmitHttpError,
+        );
+
+        const body =
+          error.responseText;
+
+        assert(
+          !body.includes(
+            "BEGIN PRIVATE KEY",
+          ),
+          "PRIVATE KEY block should be removed",
+        );
+
+        assert(
+          !body.includes(
+            "BEGIN CERTIFICATE",
+          ),
+          "CERTIFICATE block should be removed",
+        );
+
+        assert(
+          !body.includes(
+            "MIIEvQIBADANBgkqhkiG9w0BAQE",
+          ),
+          "Key material should be removed",
+        );
+
+        assert(
+          body.includes(
+            "[REDACTED_PEM]",
+          ),
+          "Should have redaction markers",
+        );
+
+        return true;
+      },
+    );
+  },
+);
+
+test(
+  "Boleta REST submit handles empty HTTP 400 response",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        "<EnvioBOLETA/>",
+        "latin1",
+      );
+
+    const emptyResponse: typeof fetch =
+      async () =>
+        new Response("", {
+          status: 400,
+          headers: {
+            "Content-Type":
+              "text/plain",
+          },
+        });
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            emptyResponse,
+          timeoutMs:
+            2_000,
+        }),
+      (error) => {
+        assert(
+          error instanceof
+            BoletaRestSubmitHttpError,
+        );
+
+        assert.equal(
+          error.responseText,
+          "EMPTY_RESPONSE",
+        );
+
+        return true;
+      },
+    );
+  },
+);
+
+test(
+  "Boleta REST submit handles oversized HTTP 400 response",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        "<EnvioBOLETA/>",
+        "latin1",
+      );
+
+    const oversizedResponse: typeof fetch =
+      async () => {
+        const body =
+          "Error ".repeat(12000);
+
+        return new Response(body, {
+          status: 400,
+          headers: {
+            "Content-Type":
+              "text/plain",
+          },
+        });
+      };
+
+    await assert.rejects(
+      () =>
+        requestBoletaRestSubmit({
+          token:
+            "TOKENFIXTURE123",
+          senderRut:
+            "27164542-2",
+          companyRut:
+            "78195645-7",
+          fileName,
+          fileBytes,
+          fetchImpl:
+            oversizedResponse,
+          timeoutMs:
+            2_000,
+        }),
+      /BOLETA_REST_SUBMIT_RESPONSE_SIZE_INVALID/,
+    );
+  },
+);
+
+test(
+  "Boleta REST submit continues to return Track ID on HTTP 200",
+  async () => {
+    const fileName =
+      "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml";
+
+    const fileBytes =
+      Buffer.from(
+        [
+          '<?xml version="1.0" encoding="ISO-8859-1"?>',
+          "<EnvioBOLETA/>",
+        ].join(""),
+        "latin1",
+      );
+
+    const successResponse: typeof fetch =
+      async (input) => {
+        assert.equal(
+          String(input),
+          BOLETA_CERTIFICATION_SUBMIT_URL,
+        );
+
+        return new Response(
+          JSON.stringify({
+            rut_emisor:
+              "78195645-7",
+            rut_envia:
+              "27164542-2",
+            trackid:
+              999888777,
+            fecha_recepcion:
+              "2026-08-03 18:00:00",
+            estado:
+              "REC",
+            file:
+              fileName,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type":
+                "application/json; charset=UTF-8",
+              "X-Location":
+                "/boleta.electronica.envio/78195645-7-999888777",
+              "X-Retry-After": "10",
+            },
+          },
+        );
+      };
+
+    const result =
+      await requestBoletaRestSubmit({
+        token:
+          "TOKENFIXTURE123",
+        senderRut:
+          "27164542-2",
+        companyRut:
+          "78195645-7",
+        fileName,
+        fileBytes,
+        fetchImpl:
+          successResponse,
+        timeoutMs:
+          2_000,
+      });
+
+    assert.equal(
+      result.data.trackId,
+      "999888777",
+    );
+
+    assert.equal(
+      result.data.status,
+      "REC",
     );
   },
 );

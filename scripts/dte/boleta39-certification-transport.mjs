@@ -1518,25 +1518,48 @@ async function runSubmit(
         errorCode,
       );
 
+    const record = {
+      ...baseRecord,
+
+      status:
+        definitiveRejection
+          ? "REJECTED"
+          : "AMBIGUOUS",
+
+      completedAt:
+        new Date().toISOString(),
+
+      errorCode,
+
+      automaticRetryAllowed: false,
+
+      manualReviewRequired: true,
+    };
+
+    if (
+      error &&
+      typeof error === "object" &&
+      "status" in error &&
+      "responseText" in error &&
+      "contentType" in error &&
+      "responseBytes" in error
+    ) {
+      record.errorHttpStatus =
+        error.status;
+
+      record.errorResponseContentType =
+        error.contentType;
+
+      record.errorResponseBytes =
+        error.responseBytes;
+
+      record.errorResponseBodySanitized =
+        error.responseText;
+    }
+
     updateSubmitAttempt(
       attemptPath,
-      {
-        ...baseRecord,
-
-        status:
-          definitiveRejection
-            ? "REJECTED"
-            : "AMBIGUOUS",
-
-        completedAt:
-          new Date().toISOString(),
-
-        errorCode,
-
-        automaticRetryAllowed: false,
-
-        manualReviewRequired: true,
-      },
+      record,
     );
 
     throw error;
