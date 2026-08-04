@@ -19,11 +19,13 @@ import {
   BoletaRestSubmitHttpError,
   buildBoletaRestStatusUrl,
   buildBoletaRestUnsignedTokenXml,
+  evaluateRcofResponse,
   parseBoletaRestSeedResponse,
   parseBoletaRestSubmitResponse,
   parseBoletaRestTokenResponse,
   parseBoletaRetryAfter,
   requestBoletaRestSeed,
+  requestBoletaRestStatus,
   requestBoletaRestSubmit,
   requestBoletaRestToken,
   signBoletaRestSeed,
@@ -1421,5 +1423,463 @@ test(
       result.data.status,
       "REC",
     );
+  },
+);
+
+test(
+  "Boleta REST submit handles identical filename and returns trackId",
+  async () => {
+    const fileName = "EnvioBOLETA-39-CASO-1-5-CERTIFICATION-SCHEMA-FIX.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const mockFetch: typeof fetch = async () => new Response(
+      JSON.stringify({
+        rut_emisor: "78195645-7",
+        rut_envia: "27164542-2",
+        trackid: 12288340532,
+        fecha_recepcion: "2026-08-04 00:16:00",
+        estado: "REC",
+        file: fileName,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+    const result = await requestBoletaRestSubmit({
+      token: "SECRETTOKEN123",
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.data.trackId, "12288340532");
+    assert.equal(result.warning, null);
+    assert.equal(result.httpStatus, 200);
+    assert.doesNotMatch(JSON.stringify(result.sanitizedJson), /SECRETTOKEN123/);
+  },
+);
+
+test(
+  "Boleta REST submit handles SII returning different basename without losing trackId",
+  async () => {
+    const fileName = "EnvioBOLETA-39-CASO-1-5-CERTIFICATION-SCHEMA-FIX.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const mockFetch: typeof fetch = async () => new Response(
+      JSON.stringify({
+        rut_emisor: "78195645-7",
+        rut_envia: "27164542-2",
+        trackid: 12288340532,
+        fecha_recepcion: "2026-08-04 00:16:00",
+        estado: "REC",
+        file: "EnvioBOLETA.xml",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+    const result = await requestBoletaRestSubmit({
+      token: "SECRETTOKEN123",
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.data.trackId, "12288340532");
+    assert.equal(result.data.status, "REC");
+    assert.equal(result.warning, "FILE_NAME_MISMATCH");
+    assert.doesNotMatch(JSON.stringify(result), /SECRETTOKEN123/);
+  },
+);
+
+test(
+  "Boleta REST submit handles SII returning abbreviated filename",
+  async () => {
+    const fileName = "EnvioBOLETA-39-CASO-1-5-CERTIFICATION-SCHEMA-FIX.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const mockFetch: typeof fetch = async () => new Response(
+      JSON.stringify({
+        rut_emisor: "78195645-7",
+        rut_envia: "27164542-2",
+        trackid: 12288340532,
+        fecha_recepcion: "2026-08-04 00:16:00",
+        estado: "REC",
+        file: "ENVIO39.XML",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+    const result = await requestBoletaRestSubmit({
+      token: "SECRETTOKEN123",
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.data.trackId, "12288340532");
+    assert.equal(result.warning, "FILE_NAME_MISMATCH");
+    assert.equal(result.data.fileName, "ENVIO39.XML");
+  },
+);
+
+test(
+  "REC response always retains trackId and contains no tokens in sanitized outputs",
+  async () => {
+    const fileName = "EnvioBOLETA-39-CASO-1-5-CERTIFICATION-SCHEMA-FIX.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const secretToken = "SECRETTOKEN123456789";
+    const mockFetch: typeof fetch = async () => new Response(
+      JSON.stringify({
+        rut_emisor: "78195645-7",
+        rut_envia: "27164542-2",
+        trackid: 5544332211,
+        fecha_recepcion: "2026-08-04 00:16:00",
+        estado: "REC",
+        file: "ANY_FILENAME.XML",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+    const result = await requestBoletaRestSubmit({
+      token: secretToken,
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.data.trackId, "5544332211");
+    assert.doesNotMatch(JSON.stringify(result), new RegExp(secretToken));
+  },
+);
+
+test(
+  "recover-by-folio phase CANNOT perform submit",
+  async () => {
+    const { runRecoverByFolio } = await import("../../../scripts/dte/boleta39-certification-transport.mjs");
+    const preflight = {
+      artifactDir: "/home/verf/secure/dte-lab/caf/artifacts/boleta39-schema-fix",
+      signingMaterial: {
+        fingerprint256: "EF:2A:0E:68:E9:2F:0D:63:99:08:D0:DB:6C:85:D5:05:DF:1C:D6:F4:BB:25:18:21:C9:6C:50:21:70:F5:25:6B",
+        validFrom: "May  6 00:10:28 2026 GMT",
+        validTo: "May 26 13:01:31 2028 GMT",
+      },
+    };
+
+    const oldSubmit = process.env.DTE_SII_ENABLE_SUBMIT;
+    process.env.DTE_SII_ENABLE_SUBMIT = "true";
+    try {
+      await assert.rejects(
+        () => runRecoverByFolio(preflight),
+        /RECOVER_PHASE_CANNOT_SUBMIT/,
+      );
+    } finally {
+      process.env.DTE_SII_ENABLE_SUBMIT = oldSubmit;
+    }
+  },
+);
+
+test(
+  "RCOF code 250 (RVD not mandatory since Aug 2022) evaluates as REPARO_INFORMATIONAL and non-blocking",
+  () => {
+    const result = evaluateRcofResponse({
+      trackId: 253620646,
+      estado: "REPARO",
+      errores: 0,
+      reparos: 1,
+      codigo: 250,
+      descripcion: "Envío de RVD no es obligatorio desde agosto 2022",
+      detalle: "RVD no es obligatorio desde 2022-08-01",
+    });
+
+    assert.equal(result.received, true);
+    assert.equal(result.trackId, "253620646");
+    assert.equal(result.status, "REPARO_INFORMATIONAL");
+    assert.equal(result.blocking, false);
+    assert.equal(result.errors, 0);
+    assert.equal(result.warningCode, 250);
+    assert.equal(result.rcofRequired, false);
+    assert.equal(result.description, "Envío de RVD no es obligatorio desde agosto 2022");
+    assert.equal(result.detail, "RVD no es obligatorio desde 2022-08-01");
+  },
+);
+
+test(
+  "Track ID is saved BEFORE filename mismatch check and retained in response",
+  async () => {
+    const fileName = "EnvioBOLETA-39-CASO-6-10-CERTIFICATION.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const mockFetch: typeof fetch = async () => new Response(
+      JSON.stringify({
+        rut_emisor: "78195645-7",
+        rut_envia: "27164542-2",
+        trackid: 9988776655,
+        fecha_recepcion: "2026-08-03 21:45:00",
+        estado: "REC",
+        file: "DIFFERENT_FILENAME.XML",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+    const result = await requestBoletaRestSubmit({
+      token: "TOKEN123",
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.data.trackId, "9988776655");
+    assert.equal(result.warning, "FILE_NAME_MISMATCH");
+    assert.equal(result.data.status, "REC");
+  },
+);
+
+test(
+  "Filename mismatch only generates warning and keeps status REC",
+  async () => {
+    const fileName = "EnvioBOLETA-39-CASO-6-10-CERTIFICATION.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const mockFetch: typeof fetch = async () => new Response(
+      JSON.stringify({
+        rut_emisor: "78195645-7",
+        rut_envia: "27164542-2",
+        trackid: 9988776655,
+        fecha_recepcion: "2026-08-03 21:45:00",
+        estado: "REC",
+        file: "EnvioBOLETA.xml",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+    const result = await requestBoletaRestSubmit({
+      token: "TOKEN123",
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.warning, "FILE_NAME_MISMATCH");
+    assert.equal(result.data.status, "REC");
+    assert.equal(result.data.trackId, "9988776655");
+  },
+);
+
+test(
+  "All three persistence backups contain the exact same Track ID",
+  async () => {
+    const { persistTrackIdBackups, verifyPersistenceBackups } = await import("../../../scripts/dte/boleta39-certification-transport.mjs");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempDir = mkdtempSync(join(tmpdir(), "citaya-test-backups-"));
+    try {
+      const envelopeSha256 = "82805da5ea3e2450965193c9a84eb562a411052efe2e0e2cf796aea921862573";
+      const trackId = "9988776655";
+      const startedAt = "2026-08-03T21-45-00";
+
+      const completedRecord = {
+        schemaVersion: 1,
+        environment: "certification",
+        documentType: 39,
+        attemptNumber: 1,
+        envelopeSha256,
+        trackId,
+        status: "REC",
+        httpStatus: 200,
+        warning: "FILE_NAME_MISMATCH",
+      };
+
+      const backups = persistTrackIdBackups({
+        envelopeSha256,
+        trackId,
+        status: "REC",
+        completedRecord,
+        startedAt,
+        live: true,
+        auditDir: tempDir,
+        liveSubmitDir: tempDir,
+      });
+
+      const verification = verifyPersistenceBackups({
+        jsonPath: backups.jsonPath,
+        txtPath: backups.txtPath,
+        logPath: backups.logPath,
+        expectedTrackId: trackId,
+        isDryRun: false,
+      });
+
+      assert.equal(verification.verified, true);
+      assert.equal(verification.trackId, trackId);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "No HTTP 200 response is lost even if secondary validation fails",
+  async () => {
+    const fileName = "EnvioBOLETA-39-CASO-6-10-CERTIFICATION.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const mockFetch: typeof fetch = async () => new Response(
+      JSON.stringify({
+        rut_emisor: "78195645-7",
+        rut_envia: "27164542-2",
+        trackid: 7766554433,
+        fecha_recepcion: "2026-08-03 21:45:00",
+        estado: "REC",
+        file: "ANY_NAME.XML",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+    const result = await requestBoletaRestSubmit({
+      token: "TOKEN123",
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.httpStatus, 200);
+    assert.equal(result.data.trackId, "7766554433");
+    assert.ok(result.sanitizedJson);
+  },
+);
+
+test(
+  "No automatic retry occurs when submit completes with REC",
+  async () => {
+    let callCount = 0;
+    const fileName = "EnvioBOLETA-39-CASO-6-10-CERTIFICATION.xml";
+    const fileBytes = Buffer.from("<EnvioBOLETA/>", "latin1");
+    const mockFetch: typeof fetch = async () => {
+      callCount++;
+      return new Response(
+        JSON.stringify({
+          rut_emisor: "78195645-7",
+          rut_envia: "27164542-2",
+          trackid: 1122334455,
+          fecha_recepcion: "2026-08-03 21:45:00",
+          estado: "REC",
+          file: fileName,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const result = await requestBoletaRestSubmit({
+      token: "TOKEN123",
+      senderRut: "27164542-2",
+      companyRut: "78195645-7",
+      fileName,
+      fileBytes,
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(callCount, 1);
+    assert.equal(result.data.trackId, "1122334455");
+  },
+);
+
+test(
+  "submit-dry-run does NOT create any files in boleta39-submit or boleta39-live-submit",
+  async () => {
+    const { persistTrackIdBackups } = await import("../../../scripts/dte/boleta39-certification-transport.mjs");
+    const { existsSync } = await import("node:fs");
+    const dummySha = "9999999999999999999999999999999999999999999999999999999999999999";
+    const dummyJsonPath = `/home/verf/secure/dte-lab/audit/boleta39-submit/${dummySha}.json`;
+    const dummyTxtPath = `/home/verf/secure/dte-lab/audit/boleta39-submit/${dummySha}.TRACK-ID.txt`;
+
+    const result = persistTrackIdBackups({
+      envelopeSha256: dummySha,
+      trackId: "12288340532",
+      status: "REC",
+      completedRecord: { status: "REC", trackId: "12288340532" },
+      startedAt: "2026-08-03T22:00:00",
+      live: false,
+    });
+
+    assert.equal(result.isDryRun, true);
+    assert.equal(existsSync(dummyJsonPath), false);
+    assert.equal(existsSync(dummyTxtPath), false);
+  },
+);
+
+test(
+  "simulated Track ID is never persisted to real audit directories during dry-run",
+  async () => {
+    const { existsSync } = await import("node:fs");
+    const dummySha = "9999999999999999999999999999999999999999999999999999999999999999";
+    const dummyTxtPath = `/home/verf/secure/dte-lab/audit/boleta39-submit/${dummySha}.TRACK-ID.txt`;
+    assert.equal(existsSync(dummyTxtPath), false);
+  },
+);
+
+test(
+  "requestBoletaRestStatus performs strictly GET requests and never POST submit",
+  async () => {
+    const requestedMethods: string[] = [];
+
+    const mockFetch: typeof fetch = async (input, init) => {
+      const method = init?.method ?? "GET";
+      requestedMethods.push(method);
+      if (method === "POST") {
+        throw new Error("POST_NOT_ALLOWED_IN_STATUS_BY_TRACK");
+      }
+      return new Response(
+        JSON.stringify({
+          rut_emisor: "78195645-7",
+          trackid: 30573329,
+          fecha_recepcion: "2026-08-03 22:08:43",
+          estado: "REC",
+          estadisticas: [
+            { tipo: 39, informados: 5, aceptados: 5, rechazados: 0, reparos: 0 },
+          ],
+          detalle_rep_rech: [],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    const result = await requestBoletaRestStatus({
+      token: "TOKEN123",
+      companyRut: "78195645-7",
+      trackId: "30573329",
+      fetchImpl: mockFetch,
+    });
+
+    assert.equal(result.httpStatus, 200);
+    assert.equal(result.data.trackId, "30573329");
+    assert.equal(result.data.status, "REC");
+    assert.deepEqual(requestedMethods, ["GET"]);
+  },
+);
+
+test(
+  "status-by-track phase CANNOT run if DTE_SII_ENABLE_SUBMIT is true",
+  async () => {
+    const { runStatusByTrack } = await import("../../../scripts/dte/boleta39-certification-transport.mjs");
+    process.env.DTE_SII_ENABLE_SUBMIT = "true";
+
+    try {
+      await assert.rejects(
+        async () => {
+          await runStatusByTrack({}, {});
+        },
+        /STATUS_PHASE_CANNOT_SUBMIT/,
+      );
+    } finally {
+      delete process.env.DTE_SII_ENABLE_SUBMIT;
+    }
   },
 );

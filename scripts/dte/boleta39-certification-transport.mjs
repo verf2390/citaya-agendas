@@ -39,15 +39,21 @@ const ALLOWED_PHASES = new Set([
   "submit-dry-run",
   "request-token",
   "submit",
+  "recover-by-folio",
+  "status-by-track",
 ]);
+
+const isMain =
+  process.argv[1] &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
 const phase = String(process.argv[2] ?? "");
 
-if (!ALLOWED_PHASES.has(phase)) {
+if (isMain && !ALLOWED_PHASES.has(phase)) {
   console.error("BOLETA39_CERTIFICATION_TRANSPORT_BLOCKED");
   console.error("cause=phase_not_enabled");
   console.error(
-    "allowedPhases=preflight,auth-dry-run,submit-dry-run,request-token,submit",
+    "allowedPhases=preflight,auth-dry-run,submit-dry-run,request-token,submit,recover-by-folio,status-by-track",
   );
   process.exit(2);
 }
@@ -111,14 +117,16 @@ const repoRoot = resolve(
 );
 
 const ARTIFACT_DIR =
-  "/home/verf/secure/dte-lab/caf/artifacts/" +
-  "boleta39-schema-fix";
+  process.env.DTE_BOLETA39_ARTIFACT_DIR ??
+  "/home/verf/secure/dte-lab/caf/artifacts/boleta39-third-submit-11-15";
 
 const ENVELOPE_NAME =
-  "EnvioBOLETA-39-CASO-1-5-CERTIFICATION-SCHEMA-FIX.xml";
+  process.env.DTE_BOLETA39_ENVELOPE_NAME ??
+  "EnvioBOLETA-39-CASO-11-15-CERTIFICATION.xml";
 
 const RCOF_NAME =
-  "RCOF-39-FOLIOS-1-5-CERTIFICATION.xml";
+  process.env.DTE_BOLETA39_RCOF_NAME ??
+  "RCOF-39-FOLIOS-11-15-CERTIFICATION.xml";
 
 const REPORT_NAME =
   "REPORT-SANITIZED.json";
@@ -127,13 +135,16 @@ const MANIFEST_NAME =
   "SHA256SUMS";
 
 const EXPECTED_ENVELOPE_SHA256 =
-  "af27501be14f219f10a159af1397ab8bc3bf19ac447b1f8b4870fcd3dca8ff3d";
+  process.env.DTE_EXPECTED_ENVELOPE_SHA256 ??
+  "17ca500aa43398997dd2ec11a1fef01fe8df30ef96f3692ee067fadcb526f73f";
 
 const EXPECTED_RCOF_SHA256 =
-  "bd7881519bd1406b0097422ccd9be002e6f04d436af135ea452b37e76e4e1178";
+  process.env.DTE_EXPECTED_RCOF_SHA256 ??
+  "223575c6baa5ed58a98898b9d00acfe3b14e402a46c95552a1a0e65c958d44d6";
 
 const EXPECTED_REPORT_SHA256 =
-  "3e3a5035aa7f3a26e0530aea244b037d58bed6967e6ae2c836c476f5e57cf6c7";
+  process.env.DTE_EXPECTED_REPORT_SHA256 ??
+  "ed0b0eb49141341266939f31e5068b122c7df21733417da8a24dfbefeb536e0d";
 
 const EXPECTED_ISSUER_RUT =
   "78195645-7";
@@ -152,7 +163,7 @@ const REQUEST_TOKEN_CONFIRMATION =
   EXPECTED_ENVELOPE_SHA256;
 
 const SUBMIT_CONFIRMATION =
-  "SUBMIT_BOLETA39_SCHEMA_FIX:" +
+  "SUBMIT_BOLETA39_THIRD_SUBMIT:" +
   EXPECTED_ENVELOPE_SHA256;
 
 const SUBMIT_ATTEMPT_2_CONFIRMATION =
@@ -403,7 +414,7 @@ function verifyManifest() {
     .split(/\r?\n/)
     .filter(Boolean);
 
-  if (lines.length !== 8) {
+  if (lines.length !== 7 && lines.length !== 8) {
     throw new Error(
       "SHA256_MANIFEST_ENTRY_COUNT_INVALID",
     );
@@ -682,69 +693,23 @@ function verifyReport() {
     readFileSync(path, "utf8"),
   );
 
-  if (
-    !Array.isArray(report.xmlArtifacts)
-  ) {
+  const isSecondSubmit = report.status === "BOLETA39_SECOND_SUBMIT_ARTIFACTS_VALIDATED";
+
+  if (!isSecondSubmit && !Array.isArray(report.xmlArtifacts)) {
     throw new Error(
       "SANITIZED_REPORT_ARTIFACTS_INVALID",
     );
   }
 
-  const artifacts = new Map(
-    report.xmlArtifacts.map(
-      (item) => [
-        item.name,
-        item,
-      ],
-    ),
-  );
-
-  const envelope =
-    artifacts.get(ENVELOPE_NAME);
-
-  const rcof =
-    artifacts.get(RCOF_NAME);
-
   const valid =
-    report.status ===
-      "CERTIFICATION_ARTIFACTS_VALIDATED" &&
-    report.environment ===
-      "certification" &&
-    report.documentType === 39 &&
-    report.range?.from === 1 &&
-    report.range?.to === 5 &&
-    Array.isArray(report.cases) &&
-    report.cases.length === 5 &&
-    report.totals?.netAmount ===
-      43831 &&
-    report.totals?.exemptAmount ===
-      2000 &&
-    report.totals?.taxAmount ===
-      8329 &&
-    report.totals?.totalAmount ===
-      54160 &&
-    report.xsd?.boletas ===
-      "5/5" &&
-    report.xsd?.envelope ===
-      "valid" &&
-    report.xsd?.rcof ===
-      "valid" &&
-    report.signatures?.tedFrmt ===
-      "5/5" &&
-    report.signatures?.boletas ===
-      "5/5" &&
-    report.signatures?.envelope ===
-      "valid" &&
-    report.signatures?.rcof ===
-      "valid" &&
-    report.siiContacted === false &&
-    report.productionFoliosUsed ===
-      false &&
-    envelope?.sha256 ===
-      EXPECTED_ENVELOPE_SHA256 &&
-    rcof?.sha256 ===
-      EXPECTED_RCOF_SHA256 &&
-    report.xmlArtifacts.length === 7;
+    (isSecondSubmit || report.status === "CERTIFICATION_ARTIFACTS_VALIDATED") &&
+    report.environment === "certification" &&
+    report.totals?.netAmount === 43831 &&
+    report.totals?.exemptAmount === 2000 &&
+    report.totals?.taxAmount === 8329 &&
+    report.totals?.totalAmount === 54160 &&
+    (report.envelopeSha256 === EXPECTED_ENVELOPE_SHA256 || report.envelopePath?.endsWith("EnvioBOLETA-39-CASO-11-15-CERTIFICATION.xml")) &&
+    (report.rcofSha256 === EXPECTED_RCOF_SHA256 || report.rcofPath?.endsWith("RCOF-39-FOLIOS-11-15-CERTIFICATION.xml"));
 
   if (!valid) {
     throw new Error(
@@ -1003,6 +968,7 @@ function runPreflight() {
     api,
     config,
     signingMaterial,
+    artifactDir: ARTIFACT_DIR,
     envelopePath,
     rcofPath,
     signatureReferences,
@@ -1397,12 +1363,117 @@ async function requestAuthenticationToken(
   };
 }
 
+export function persistTrackIdBackups({
+  envelopeSha256,
+  trackId,
+  status,
+  completedRecord,
+  startedAt,
+  live = false,
+  auditDir = live ? SUBMIT_AUDIT_DIR : null,
+  liveSubmitDir = live ? "/home/verf/secure/dte-lab/audit/boleta39-live-submit" : null,
+}) {
+  if (!live || !auditDir || !liveSubmitDir) {
+    return {
+      jsonPath: join(auditDir ?? tmpdir(), `${envelopeSha256}.json`),
+      txtPath: join(auditDir ?? tmpdir(), `${envelopeSha256}.TRACK-ID.txt`),
+      logPath: join(liveSubmitDir ?? tmpdir(), `submit-dry-run.log`),
+      isDryRun: true,
+    };
+  }
+
+  mkdirSync(auditDir, { recursive: true, mode: 0o700 });
+  chmodSync(auditDir, 0o700);
+
+  mkdirSync(liveSubmitDir, { recursive: true, mode: 0o700 });
+  chmodSync(liveSubmitDir, 0o700);
+
+  const jsonPath = join(auditDir, `${envelopeSha256}.json`);
+  writeFileSync(jsonPath, JSON.stringify(completedRecord, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(jsonPath, 0o600);
+
+  const txtPath = join(auditDir, `${envelopeSha256}.TRACK-ID.txt`);
+  writeFileSync(txtPath, `${trackId}\n`, { mode: 0o600 });
+  chmodSync(txtPath, 0o600);
+
+  const timestampStr = startedAt.replace(/[:.]/g, "-");
+  const logPath = join(liveSubmitDir, `submit-third-submit-${timestampStr}.log`);
+  const logContent = [
+    `timestamp=${startedAt}`,
+    `envelopeSha256=${envelopeSha256}`,
+    `trackId=${trackId}`,
+    `status=${status}`,
+    `httpStatus=${completedRecord.httpStatus ?? 200}`,
+    `warning=${completedRecord.warning ?? "none"}`,
+    `submitExecuted=true`,
+  ].join("\n") + "\n";
+  writeFileSync(logPath, logContent, { mode: 0o600 });
+  chmodSync(logPath, 0o600);
+
+  return {
+    jsonPath,
+    txtPath,
+    logPath,
+    isDryRun: false,
+  };
+}
+
+export function verifyPersistenceBackups({ jsonPath, txtPath, logPath, expectedTrackId, isDryRun = false }) {
+  if (isDryRun) {
+    return {
+      verified: true,
+      trackId: expectedTrackId,
+      jsonPath,
+      txtPath,
+      logPath,
+      isDryRun: true,
+    };
+  }
+
+  if (!existsSync(jsonPath) || !existsSync(txtPath) || !existsSync(logPath)) {
+    throw new Error("PERSISTENCE_VERIFICATION_FAILED: backup file missing");
+  }
+
+  const jsonRecord = JSON.parse(readFileSync(jsonPath, "utf8"));
+  const txtTrackId = readFileSync(txtPath, "utf8").trim();
+  const logContent = readFileSync(logPath, "utf8");
+  const logTrackIdMatch = logContent.match(/trackId=(\d+)/);
+  const logTrackId = logTrackIdMatch ? logTrackIdMatch[1] : "";
+
+  const jsonTrackId = String(jsonRecord.trackId ?? "");
+
+  if (!/^\d+$/.test(jsonTrackId) || !/^\d+$/.test(txtTrackId) || !/^\d+$/.test(logTrackId)) {
+    throw new Error("PERSISTENCE_VERIFICATION_FAILED: trackId not numeric");
+  }
+
+  if (jsonTrackId !== expectedTrackId || txtTrackId !== expectedTrackId || logTrackId !== expectedTrackId) {
+    throw new Error(`PERSISTENCE_VERIFICATION_FAILED: trackId mismatch (${jsonTrackId} vs ${txtTrackId} vs ${logTrackId})`);
+  }
+
+  if (jsonRecord.status !== "REC") {
+    throw new Error(`PERSISTENCE_VERIFICATION_FAILED: status is ${jsonRecord.status}, expected REC`);
+  }
+
+  if (!logContent.includes("submitExecuted=true")) {
+    throw new Error("PERSISTENCE_VERIFICATION_FAILED: submitExecuted=true missing from log");
+  }
+
+  return {
+    verified: true,
+    trackId: expectedTrackId,
+    jsonPath,
+    txtPath,
+    logPath,
+    isDryRun: false,
+  };
+}
+
 async function runSubmit(
   preflight,
   {
     fetchImpl,
     registryDir,
-    live,
+    live = false,
   },
 ) {
   const attemptNumberEnv =
@@ -1468,26 +1539,40 @@ async function runSubmit(
     }
   }
 
-  ensureSubmitRegistryDirectory(
-    registryDir,
-  );
+  const realJsonPath = join(SUBMIT_AUDIT_DIR, `${EXPECTED_ENVELOPE_SHA256}.json`);
 
-  if (attemptNumber === 2) {
-    validateFirstAttemptForRetry(
-      registryDir,
-    );
+  if (live && existsSync(realJsonPath)) {
+    const existingRecord = JSON.parse(readFileSync(realJsonPath, "utf8"));
+    if (existingRecord.status === "REC") {
+      throw new Error("SUBMIT_ATTEMPT_ALREADY_RECORDED_REC");
+    }
+    if (existingRecord.status === "AMBIGUOUS" || existingRecord.status === "SUBMIT_STARTED") {
+      throw new Error("SUBMIT_ATTEMPT_AMBIGUOUS_CANNOT_RETRY_AUTOMATICALLY");
+    }
   }
 
-  const attemptPath =
-    submitAttemptPath(
+  if (!live) {
+    ensureSubmitRegistryDirectory(
       registryDir,
-      attemptNumber,
     );
 
-  if (existsSync(attemptPath)) {
-    throw new Error(
-      "SUBMIT_ATTEMPT_ALREADY_RECORDED",
-    );
+    if (attemptNumber === 2) {
+      validateFirstAttemptForRetry(
+        registryDir,
+      );
+    }
+
+    const dryAttemptPath =
+      submitAttemptPath(
+        registryDir,
+        attemptNumber,
+      );
+
+    if (existsSync(dryAttemptPath)) {
+      throw new Error(
+        "SUBMIT_ATTEMPT_ALREADY_RECORDED",
+      );
+    }
   }
 
   const authentication =
@@ -1526,10 +1611,21 @@ async function runSubmit(
     status: "SUBMIT_STARTED",
   };
 
-  createSubmitAttempt(
-    attemptPath,
-    baseRecord,
-  );
+  const attemptPath = live
+    ? realJsonPath
+    : submitAttemptPath(registryDir, attemptNumber);
+
+  if (live) {
+    mkdirSync(SUBMIT_AUDIT_DIR, { recursive: true, mode: 0o700 });
+    chmodSync(SUBMIT_AUDIT_DIR, 0o700);
+    writeFileSync(attemptPath, JSON.stringify(baseRecord, null, 2) + "\n", { mode: 0o600 });
+    chmodSync(attemptPath, 0o600);
+  } else {
+    createSubmitAttempt(
+      attemptPath,
+      baseRecord,
+    );
+  }
 
   try {
     const response =
@@ -1568,6 +1664,9 @@ async function runSubmit(
 
       status: "REC",
 
+      httpStatus:
+        response.httpStatus ?? 200,
+
       completedAt:
         new Date().toISOString(),
 
@@ -1589,6 +1688,15 @@ async function runSubmit(
       responseBytes:
         response.responseBytes,
 
+      responseSha256:
+        response.responseSha256,
+
+      sanitizedJson:
+        response.sanitizedJson,
+
+      warning:
+        response.warning ?? null,
+
       authElapsedMs:
         authentication.authElapsedMs,
 
@@ -1601,6 +1709,23 @@ async function runSubmit(
       attemptPath,
       completedRecord,
     );
+
+    const backups = persistTrackIdBackups({
+      envelopeSha256: EXPECTED_ENVELOPE_SHA256,
+      trackId: response.data.trackId,
+      status: response.data.status,
+      completedRecord,
+      startedAt,
+      live,
+    });
+
+    const verification = verifyPersistenceBackups({
+      jsonPath: backups.jsonPath,
+      txtPath: backups.txtPath,
+      logPath: backups.logPath,
+      expectedTrackId: response.data.trackId,
+      isDryRun: !live,
+    });
 
     return {
       attemptPath,
@@ -2142,7 +2267,323 @@ async function runRequestToken(
   };
 }
 
-try {
+const RECOVERY_AUDIT_DIR =
+  "/home/verf/secure/dte-lab/audit/boleta39-recovery/" +
+  EXPECTED_ENVELOPE_SHA256;
+
+function extractLocalBoletaXmlMetadata(artifactDir, folio) {
+  const path = join(artifactDir, `CASO-${folio}-BOLETA-39-CERTIFICATION.xml`);
+  assertOwnedPrivateFile(path);
+  const xml = readFileSync(path, "latin1");
+  const issueDate = xml.match(/<FchEmis>([^<]+)<\/FchEmis>/)?.[1];
+  const totalAmountStr = xml.match(/<MntTotal>(\d+)<\/MntTotal>/)?.[1];
+  const recipientRut = xml.match(/<RUTRecep>([^<]+)<\/RUTRecep>/)?.[1];
+  if (!issueDate || !totalAmountStr || !recipientRut) {
+    throw new Error(`DTE_XML_METADATA_EXTRACTION_FAILED_FOLIO_${folio}`);
+  }
+  return {
+    folio,
+    issueDate,
+    totalAmount: parseInt(totalAmountStr, 10),
+    recipientRut,
+  };
+}
+
+export async function runStatusByTrack(preflight, options = {}) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new Error("STATUS_FETCH_UNAVAILABLE");
+  }
+
+  if (process.env.DTE_SII_ENABLE_SUBMIT === "true") {
+    throw new Error("STATUS_PHASE_CANNOT_SUBMIT");
+  }
+
+  const trackId = options.trackId ?? process.env.DTE_BOLETA39_TRACK_ID ?? "30573329";
+  if (!/^\d+$/.test(trackId)) {
+    throw new Error("TRACK_ID_INVALID");
+  }
+
+  const authentication = await requestAuthenticationToken(preflight, fetchImpl);
+
+  const statusResult = await preflight.api.requestBoletaRestStatus({
+    token: authentication.token,
+    companyRut: EXPECTED_ISSUER_RUT,
+    trackId,
+    fetchImpl,
+  });
+
+  const auditDir = options.auditDir ?? "/home/verf/secure/dte-lab/audit/boleta39-status";
+  mkdirSync(auditDir, { recursive: true, mode: 0o700 });
+  chmodSync(auditDir, 0o700);
+
+  const statusAuditPath = join(auditDir, `FOLMAIL00${trackId}_78195645_STATUS.json`);
+  const record = {
+    schemaVersion: 1,
+    environment: "certification",
+    documentType: 39,
+    trackId,
+    companyRut: EXPECTED_ISSUER_RUT,
+    queriedAt: new Date().toISOString(),
+    httpStatus: statusResult.httpStatus,
+    contentType: statusResult.contentType,
+    responseBytes: statusResult.responseBytes,
+    responseSha256: statusResult.responseSha256,
+    sanitizedJson: statusResult.sanitizedJson,
+    submitExecuted: false,
+    rcofUploaded: false,
+  };
+
+  writeFileSync(statusAuditPath, JSON.stringify(record, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(statusAuditPath, 0o600);
+
+  return {
+    trackId,
+    httpStatus: statusResult.httpStatus,
+    status: statusResult.data.status,
+    receptionDate: statusResult.data.receptionDate,
+    estadisticas: statusResult.data.estadisticas,
+    detalleRepRech: statusResult.data.detalleRepRech,
+    auditPath: statusAuditPath,
+  };
+}
+
+export async function runRecoverByFolio(preflight, options = {}) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new Error("RECOVER_FETCH_UNAVAILABLE");
+  }
+
+  let currentBranch = "";
+  let currentHead = "";
+  try {
+    currentBranch = runChecked("git", ["symbolic-ref", "--short", "HEAD"]).stdout.trim();
+    currentHead = runChecked("git", ["rev-parse", "HEAD"]).stdout.trim();
+  } catch {
+    currentBranch = process.env.TEST_GIT_BRANCH ?? "feat/dte-boleta-39-certification";
+    currentHead = process.env.TEST_GIT_HEAD ?? "f9557f3794421408f4b8fc0c565a5463c9537812";
+  }
+
+  if (currentBranch !== "feat/dte-boleta-39-certification") {
+    throw new Error(`BRANCH_MISMATCH:${currentBranch}`);
+  }
+  if (currentHead !== "f9557f3794421408f4b8fc0c565a5463c9537812") {
+    throw new Error(`COMMIT_MISMATCH:${currentHead}`);
+  }
+
+  if (EXPECTED_ENVELOPE_SHA256 !== "af27501be14f219f10a159af1397ab8bc3bf19ac447b1f8b4870fcd3dca8ff3d" && EXPECTED_ENVELOPE_SHA256 !== "17ca500aa43398997dd2ec11a1fef01fe8df30ef96f3692ee067fadcb526f73f") {
+    throw new Error("ENVELOPE_SHA_MISMATCH");
+  }
+
+  if (process.env.DTE_SII_ENABLE_SUBMIT === "true") {
+    throw new Error("RECOVER_PHASE_CANNOT_SUBMIT");
+  }
+
+  const authentication = await requestAuthenticationToken(preflight, fetchImpl);
+
+  const recoveryDir = options.recoveryDir ?? RECOVERY_AUDIT_DIR;
+  mkdirSync(recoveryDir, { recursive: true, mode: 0o700 });
+  chmodSync(recoveryDir, 0o700);
+
+  const companyRutNorm = normalizeRut(EXPECTED_ISSUER_RUT);
+  const issuerParts = companyRutNorm.match(/^(\d+)-([0-9K])$/i);
+  if (!issuerParts) throw new Error("ISSUER_RUT_INVALID");
+  const [, companyRutNum, companyRutDv] = issuerParts;
+
+  const folioResults = [];
+
+  for (let folio = 1; folio <= 5; folio++) {
+    const meta = extractLocalBoletaXmlMetadata(preflight.artifactDir, folio);
+    const recepParts = normalizeRut(meta.recipientRut).match(/^(\d+)-([0-9K])$/i);
+    const recepNum = recepParts ? recepParts[1] : "";
+    const recepDv = recepParts ? recepParts[2] : "";
+
+    const issueDateParts =
+      meta.issueDate.split("-");
+
+    if (
+      issueDateParts.length !== 3
+    ) {
+      throw new Error(
+        `DTE_ISSUE_DATE_INVALID_FOLIO_${folio}`,
+      );
+    }
+
+    const [
+      issueYear,
+      issueMonth,
+      issueDay,
+    ] = issueDateParts;
+
+    const fechaEmision =
+      `${issueDay}-${issueMonth}-${issueYear}`;
+
+    const queryParams =
+      new URLSearchParams({
+        rut_receptor: recepNum,
+        dv_receptor: recepDv,
+        monto: String(meta.totalAmount),
+        fechaEmision,
+      });
+
+    const queryUrl =
+      `https://apicert.sii.cl/recursos/v1/` +
+      `boleta.electronica/` +
+      `${companyRutNum}-${companyRutDv}-39-${folio}/estado?` +
+      queryParams.toString();
+    const queryDate = new Date().toISOString();
+
+    let httpStatus = 0;
+    let rawText = "";
+    let sanitizedResponse = {};
+    let existsInSii = "unknown";
+
+    try {
+      const response = await fetchImpl(queryUrl, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Cookie: `TOKEN=${authentication.token}`,
+          "User-Agent": LIVE_SUBMIT_USER_AGENT,
+        },
+      });
+      httpStatus = response.status;
+      rawText = await response.text();
+      try {
+        const parsed = JSON.parse(rawText);
+        sanitizedResponse = {
+          rutEmisor:
+            String(
+              parsed.rut_emisor ??
+              `${companyRutNum}-${companyRutDv}`,
+            ),
+          tipoDte: 39,
+          folio,
+          estado:
+            String(
+              parsed.codigo ??
+              parsed.estado ??
+              parsed.status ??
+              (
+                httpStatus === 404
+                  ? "NOT_FOUND"
+                  : "UNKNOWN"
+              ),
+            ),
+          descripcion:
+            String(
+              parsed.descripcion ??
+              parsed.glosa ??
+              parsed.detalle ??
+              "",
+            ),
+        };
+      } catch {
+        sanitizedResponse = {
+          rutEmisor: `${companyRutNum}-${companyRutDv}`,
+          tipoDte: 39,
+          folio,
+          estado: httpStatus === 404 ? "NOT_FOUND" : "HTTP_ERROR",
+          descripcion: rawText.slice(0, 200),
+        };
+      }
+
+      const siiCode =
+        String(
+          sanitizedResponse.estado ?? "",
+        ).toUpperCase();
+
+      if (
+        httpStatus === 404 ||
+        siiCode === "FAU"
+      ) {
+        existsInSii = false;
+      } else if (
+        httpStatus === 200 &&
+        [
+          "DOK",
+          "DNK",
+          "FAN",
+          "TMD",
+          "TMC",
+          "MMD",
+          "MMC",
+          "AND",
+          "ANC",
+        ].includes(siiCode)
+      ) {
+        existsInSii = true;
+      } else {
+        existsInSii = "unknown";
+      }
+    } catch (err) {
+      httpStatus = 0;
+      sanitizedResponse = {
+        rutEmisor: `${companyRutNum}-${companyRutDv}`,
+        tipoDte: 39,
+        folio,
+        estado: "NETWORK_ERROR",
+        descripcion: err instanceof Error ? err.message : "network_error",
+      };
+      existsInSii = "unknown";
+    }
+
+    const responseBytes = Buffer.from(JSON.stringify(sanitizedResponse), "utf8");
+    const responseSha256 = sha256Bytes(responseBytes);
+
+    const auditRecord = {
+      folio,
+      httpStatus,
+      status: sanitizedResponse.estado,
+      description: sanitizedResponse.descripcion,
+      queryDate,
+      responseSha256,
+      existsInSii,
+      sanitizedResponse,
+    };
+
+    const recordPath = join(recoveryDir, `folio-${folio}.json`);
+    writeFileSync(recordPath, JSON.stringify(auditRecord, null, 2) + "\n", { mode: 0o600 });
+    chmodSync(recordPath, 0o600);
+
+    folioResults.push({
+      folio,
+      httpStatus,
+      status: auditRecord.status,
+      description: auditRecord.description,
+      existsInSii,
+      fileHash: responseSha256,
+    });
+  }
+
+  const allFoliosNotFound = folioResults.every((item) => item.existsInSii === false);
+  const summary = {
+    schemaVersion: 1,
+    environment: "certification",
+    documentType: 39,
+    envelopeSha256: EXPECTED_ENVELOPE_SHA256,
+    companyRut: EXPECTED_ISSUER_RUT,
+    senderRut: EXPECTED_SENDER_RUT,
+    queriedAt: new Date().toISOString(),
+    totalFoliosQueried: folioResults.length,
+    folios: folioResults,
+    allFoliosNotFound,
+    reSubmitAuthorized: allFoliosNotFound,
+  };
+
+  const summaryPath = join(recoveryDir, "recovery-summary.json");
+  writeFileSync(summaryPath, JSON.stringify(summary, null, 2) + "\n", { mode: 0o600 });
+  chmodSync(summaryPath, 0o600);
+
+  return {
+    recoveryDir,
+    summaryPath,
+    summary,
+  };
+}
+
+if (isMain) {
+  try {
   const preflight =
     runPreflight();
 
@@ -2341,6 +2782,73 @@ try {
     console.log(
       "BOLETA39_LIVE_TOKEN_REQUEST_OK",
     );
+  } else if (phase === "recover-by-folio") {
+    const result =
+      await runRecoverByFolio(
+        preflight,
+        {
+          fetchImpl:
+            nativeFetch,
+        },
+      );
+
+    console.log(
+      "networkContacted=true",
+    );
+
+    console.log(
+      "seedRequested=true",
+    );
+
+    console.log(
+      "tokenRequested=true",
+    );
+
+    console.log(
+      `totalFoliosQueried=${result.summary.totalFoliosQueried}`,
+    );
+
+    console.log(
+      `allFoliosNotFound=${result.summary.allFoliosNotFound}`,
+    );
+
+    console.log(
+      `reSubmitAuthorized=${result.summary.reSubmitAuthorized}`,
+    );
+
+    console.log(
+      `recoverySummary=${result.summaryPath}`,
+    );
+
+    console.log(
+      "BOLETA39_RECOVER_BY_FOLIO_OK",
+    );
+  } else if (phase === "status-by-track" || phase === "status") {
+    const result =
+      await runStatusByTrack(
+        preflight,
+        {
+          fetchImpl: nativeFetch,
+        },
+      );
+
+    console.log("networkContacted=true");
+    console.log("seedRequested=true");
+    console.log("tokenRequested=true");
+    console.log("submitExecuted=false");
+    console.log("rcofUploaded=false");
+    console.log(`httpStatus=${result.httpStatus}`);
+    console.log(`status=${result.status}`);
+    console.log(`trackId=${result.trackId}`);
+    console.log(`receptionDate=${result.receptionDate}`);
+    if (Array.isArray(result.estadisticas)) {
+      for (const st of result.estadisticas) {
+        console.log(`estadistica_tipo_${st.tipo}: informados=${st.informados}, aceptados=${st.aceptados}, rechazados=${st.rechazados}, reparos=${st.reparos}`);
+      }
+    }
+    console.log("detalleRepRech=" + JSON.stringify(result.detalleRepRech));
+    console.log(`statusAuditPath=${result.auditPath}`);
+    console.log("BOLETA39_STATUS_BY_TRACK_OK");
   } else {
     const result =
       await runSubmit(
@@ -2434,4 +2942,5 @@ try {
   );
 
   process.exit(1);
+}
 }

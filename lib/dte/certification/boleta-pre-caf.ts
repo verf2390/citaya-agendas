@@ -885,7 +885,7 @@ function verifyFrmt(ddXml: string, frmtXml: string, publicKeyPem: string): boole
 export async function prepareRealBoleta39Certification(input: {
   tenantId: string;
   issueDate: string;
-  firstFolio: 1;
+  firstFolio: number;
   outputDir: string;
   issuer: BoletaPreCafIssuer;
   cafXml: string;
@@ -896,7 +896,7 @@ export async function prepareRealBoleta39Certification(input: {
   generationTimestamp: string;
 }): Promise<RealBoleta39CertificationResult> {
   assertRealCertificationEnvironment(process.env);
-  if (!input.tenantId.trim() || input.firstFolio !== 1)
+  if (!input.tenantId.trim() || !Number.isSafeInteger(input.firstFolio) || input.firstFolio < 1)
     fail("DTE_CERTIFICATION_SCOPE_INVALID");
   const issueDate = assertDate(input.issueDate);
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(input.generationTimestamp))
@@ -1038,8 +1038,11 @@ export async function prepareRealBoleta39Certification(input: {
       byteLength: bytes.length,
     });
   }
-  const envelopePath = join(outputDir, "EnvioBOLETA-39-CASO-1-5-CERTIFICATION.xml");
-  const rcofPath = join(outputDir, "RCOF-39-FOLIOS-1-5-CERTIFICATION.xml");
+  const lastFolio = input.firstFolio + documents.length - 1;
+  const envelopeFilename = `EnvioBOLETA-39-CASO-${input.firstFolio}-${lastFolio}-CERTIFICATION.xml`;
+  const rcofFilename = `RCOF-39-FOLIOS-${input.firstFolio}-${lastFolio}-CERTIFICATION.xml`;
+  const envelopePath = join(outputDir, envelopeFilename);
+  const rcofPath = join(outputDir, rcofFilename);
   const envelopeBytes = encodeIso88591(signedEnvelope);
   const rcofBytes = encodeIso88591(signedRvd);
   writeFileSync(envelopePath, envelopeBytes, { mode: 0o600, flag: "wx" });

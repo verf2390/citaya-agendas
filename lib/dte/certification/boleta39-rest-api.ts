@@ -512,6 +512,93 @@ export function parseBoletaRetryAfter(
   return seconds;
 }
 
+export type RcofResponseEvaluation = {
+  received: boolean;
+  trackId: string;
+  status: "ACCEPTED" | "REPARO_INFORMATIONAL" | "REJECTED";
+  blocking: boolean;
+  errors: number;
+  reparos: number;
+  warningCode: number | null;
+  rcofRequired: false;
+  description: string;
+  detail: string;
+};
+
+export function evaluateRcofResponse(input: {
+  trackId: string | number;
+  estado: string;
+  errores?: number;
+  reparos?: number;
+  codigo?: number | string;
+  descripcion?: string;
+  detalle?: string;
+}): RcofResponseEvaluation {
+  const trackId = String(input.trackId ?? "");
+  const rawStatus = String(input.estado ?? "").toUpperCase();
+  const errors = Number(input.errores ?? 0);
+  const reparos = Number(input.reparos ?? 0);
+  const warningCode =
+    input.codigo !== undefined && input.codigo !== null
+      ? Number(input.codigo)
+      : null;
+  const description = String(input.descripcion ?? "");
+  const detail = String(input.detalle ?? "");
+
+  if (
+    warningCode === 250 ||
+    /RVD no es obligatorio/i.test(description || detail) ||
+    (rawStatus === "REPARO" && errors === 0 && warningCode === 250)
+  ) {
+    return {
+      received: true,
+      trackId,
+      status: "REPARO_INFORMATIONAL",
+      blocking: false,
+      errors: 0,
+      reparos,
+      warningCode: 250,
+      rcofRequired: false,
+      description:
+        description || "Envío de RVD no es obligatorio desde agosto 2022",
+      detail: detail || "RVD no es obligatorio desde 2022-08-01",
+    };
+  }
+
+  if (
+    rawStatus === "REC" ||
+    rawStatus === "ACEPTADO" ||
+    rawStatus === "EOK" ||
+    (rawStatus === "REPARO" && errors === 0)
+  ) {
+    return {
+      received: true,
+      trackId,
+      status: rawStatus === "REPARO" ? "REPARO_INFORMATIONAL" : "ACCEPTED",
+      blocking: false,
+      errors,
+      reparos,
+      warningCode,
+      rcofRequired: false,
+      description,
+      detail,
+    };
+  }
+
+  return {
+    received: true,
+    trackId,
+    status: "REJECTED",
+    blocking: errors > 0,
+    errors,
+    reparos,
+    warningCode,
+    rcofRequired: false,
+    description,
+    detail,
+  };
+}
+
 export function buildBoletaRestStatusUrl(
   companyRut: string,
   trackId: string,
@@ -836,11 +923,15 @@ export type BoletaRestSubmitInput = {
 };
 
 export type BoletaRestSubmitResult = {
+  httpStatus: number;
   data: BoletaRestSubmitResponse;
   contentType: string;
   responseBytes: number;
+  responseSha256: string;
   location: string | null;
   retryAfterSeconds: number | null;
+  warning?: "FILE_NAME_MISMATCH" | null;
+  sanitizedJson: Record<string, unknown>;
 };
 
 const BOLETA_REST_SUBMIT_DEFAULT_TIMEOUT_MS =
@@ -1249,6 +1340,19 @@ export async function requestBoletaRestSubmit(
         parsedResponse.raw,
       );
 
+    const responseSha256 = createHash("sha256")
+      .update(Buffer.from(parsedResponse.raw, "utf8"))
+      .digest("hex");
+
+    const sanitizedJson: Record<string, unknown> = {
+      rut_emisor: data.rutEmisor,
+      rut_envia: data.rutEnvia,
+      trackid: data.trackId,
+      fecha_recepcion: data.receptionDate,
+      estado: data.status,
+      file: data.fileName,
+    };
+
     if (
       canonicalBoletaRestRut(
         data.rutEmisor,
@@ -1268,13 +1372,12 @@ export async function requestBoletaRestSubmit(
       );
     }
 
+    let warning: "FILE_NAME_MISMATCH" | null = null;
     if (
       data.fileName !==
       input.fileName
     ) {
-      throw new Error(
-        "BOLETA_REST_SUBMIT_RESPONSE_FILENAME_MISMATCH",
-      );
+      warning = "FILE_NAME_MISMATCH";
     }
 
     if (
@@ -1315,13 +1418,17 @@ export async function requestBoletaRestSubmit(
     }
 
     return {
+      httpStatus: response.status,
       data,
       contentType:
         parsedResponse.contentType,
       responseBytes:
         parsedResponse.responseBytes,
+      responseSha256,
       location,
       retryAfterSeconds,
+      warning,
+      sanitizedJson,
     };
   } catch (error) {
     if (controller.signal.aborted) {
@@ -1342,6 +1449,139 @@ export async function requestBoletaRestSubmit(
     throw new Error(
       "BOLETA_REST_SUBMIT_NETWORK_ERROR",
     );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type BoletaRestStatusInput = {
+  token: string;
+  companyRut: string;
+  trackId: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  userAgent?: string;
+};
+
+export type BoletaRestStatusResult = {
+  httpStatus: number;
+  contentType: string;
+  responseBytes: number;
+  responseSha256: string;
+  sanitizedJson: Record<string, unknown>;
+  data: {
+    rutEmisor: string;
+    trackId: string;
+    receptionDate: string;
+    status: string;
+    estadisticas: Array<{
+      tipo: number;
+      informados: number;
+      aceptados: number;
+      rechazados: number;
+      reparos: number;
+    }>;
+    detalleRepRech: Array<unknown>;
+  };
+};
+
+export async function requestBoletaRestStatus(
+  input: BoletaRestStatusInput,
+): Promise<BoletaRestStatusResult> {
+  assertBoletaRestToken(input.token);
+
+  const url = buildBoletaRestStatusUrl(input.companyRut, input.trackId);
+  const fetchImpl = input.fetchImpl ?? globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new Error("BOLETA_REST_FETCH_UNAVAILABLE");
+  }
+
+  const userAgent = input.userAgent ?? BOLETA_CERTIFICATION_USER_AGENT;
+  const timeoutMs = input.timeoutMs ?? 15_000;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-store",
+        Cookie: `TOKEN=${input.token}`,
+        "User-Agent": userAgent,
+      },
+      redirect: "manual",
+      signal: controller.signal,
+    });
+
+    const rawBody = await response.text();
+    const responseBytes = Buffer.byteLength(rawBody, "utf8");
+    const responseSha256 = createHash("sha256")
+      .update(Buffer.from(rawBody, "utf8"))
+      .digest("hex");
+
+    let rawJson: Record<string, unknown> = {};
+    try {
+      rawJson = JSON.parse(rawBody);
+    } catch {
+      rawJson = { rawText: rawBody };
+    }
+
+    const sanitizedString = sanitizeBoletaRestResponseBody(
+      rawBody,
+      response.headers.get("content-type") ?? "application/json",
+    );
+    let sanitizedJson: Record<string, unknown> = {};
+    try {
+      sanitizedJson = JSON.parse(sanitizedString);
+    } catch {
+      sanitizedJson = { rawText: sanitizedString };
+    }
+
+    const statsRaw = Array.isArray(rawJson.estadisticas)
+      ? rawJson.estadisticas
+      : Array.isArray(rawJson.estadistica)
+      ? rawJson.estadistica
+      : [];
+
+    const estadisticas = statsRaw.map((st: any) => ({
+      tipo: Number(st.tipo ?? st.tipo_doc ?? 39),
+      informados: Number(st.informados ?? st.cantidad_informados ?? 0),
+      aceptados: Number(st.aceptados ?? st.cantidad_aceptados ?? 0),
+      rechazados: Number(st.rechazados ?? st.cantidad_rechazados ?? 0),
+      reparos: Number(st.reparos ?? st.cantidad_reparos ?? 0),
+    }));
+
+    const detalleRepRech = Array.isArray(rawJson.detalle_rep_rech)
+      ? rawJson.detalle_rep_rech
+      : Array.isArray(rawJson.detalleRepRech)
+      ? rawJson.detalleRepRech
+      : [];
+
+    return {
+      httpStatus: response.status,
+      contentType: response.headers.get("content-type") ?? "application/json",
+      responseBytes,
+      responseSha256,
+      sanitizedJson,
+      data: {
+        rutEmisor: String(rawJson.rut_emisor ?? rawJson.rutEmisor ?? input.companyRut),
+        trackId: String(rawJson.trackid ?? rawJson.trackId ?? input.trackId),
+        receptionDate: String(rawJson.fecha_recepcion ?? rawJson.receptionDate ?? ""),
+        status: String(rawJson.estado ?? rawJson.status ?? ""),
+        estadisticas,
+        detalleRepRech,
+      },
+    };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("BOLETA_REST_STATUS_TIMEOUT");
+    }
+    if (error instanceof Error && error.message.startsWith("BOLETA_REST_")) {
+      throw error;
+    }
+    throw new Error("BOLETA_REST_STATUS_NETWORK_ERROR");
   } finally {
     clearTimeout(timer);
   }
