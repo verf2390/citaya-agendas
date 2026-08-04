@@ -3,10 +3,14 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import {
+  assertManualBoleta39IssuanceReady,
+  Boleta39GateError,
+} from "@/lib/dte/boleta39-manual-gate";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-function responseError(status: number, error: string) {
-  return NextResponse.json({ ok: false, error }, { status });
+function responseError(status: number, error: string, code?: string) {
+  return NextResponse.json({ ok: false, error, code }, { status });
 }
 
 export async function POST(
@@ -26,18 +30,30 @@ export async function POST(
   }
   const typeResult = await supabaseAdmin
     .from("dte_invoice_drafts")
-    .select("dte_type")
+    .select("dte_type,status,intent_id")
     .eq("tenant_id", auth.tenantId)
     .eq("id", id)
     .maybeSingle();
+
   if (typeResult.error || !typeResult.data) {
     return responseError(404, "Borrador no encontrado.");
   }
-  if (Number(typeResult.data.dte_type) === 39) {
-    return responseError(
-      409,
-      "La boleta está preparada en modo PRE-CAF, pero su emisión aún no está autorizada.",
-    );
+
+  const dteType = Number(typeResult.data.dte_type);
+
+  if (dteType === 39) {
+    try {
+      await assertManualBoleta39IssuanceReady({
+        tenantId: auth.tenantId,
+        dteType: 39,
+        issuanceOrigin: "manual_admin",
+      });
+    } catch (err) {
+      if (err instanceof Boleta39GateError) {
+        return responseError(409, `Emisión boleta 39 bloqueada: ${err.code}`, err.code);
+      }
+      return responseError(409, "Emisión boleta 39 no disponible.");
+    }
   }
 
   const result = await supabaseAdmin.rpc("finalize_dte_invoice_draft", {
@@ -50,23 +66,23 @@ export async function POST(
   });
   const finalized = Array.isArray(result.data) ? result.data[0] : result.data;
   if (result.error || !finalized) {
-    const code = String(result.error?.message ?? "");
-    if (code.includes("DTE_PAYMENT_AMOUNT_MISMATCH")) {
+    const message = String(result.error?.message ?? "");
+    if (message.includes("DTE_PAYMENT_AMOUNT_MISMATCH")) {
       return responseError(
         409,
         "El pago confirmado no coincide exactamente con el total IVA incluido.",
       );
     }
     if (
-      code.includes("DTE_TAX_DATA_INCOMPLETE") ||
-      code.includes("DTE_TAX_SNAPSHOT_INVALID")
+      message.includes("DTE_TAX_DATA_INCOMPLETE") ||
+      message.includes("DTE_TAX_SNAPSHOT_INVALID")
     ) {
       return responseError(
         409,
         "Completa los datos tributarios vigentes y vuelve a revisar el borrador.",
       );
     }
-    if (code.includes("DTE_INVOICE_DRAFT_VERSION_CONFLICT")) {
+    if (message.includes("DTE_INVOICE_DRAFT_VERSION_CONFLICT")) {
       return responseError(
         409,
         "El borrador cambió; vuelve a abrirlo antes de emitir.",
@@ -74,13 +90,24 @@ export async function POST(
     }
     return responseError(
       409,
-      "No se pudo encolar la factura; vuelve a revisar el borrador.",
+      "No se pudo encolar el documento; vuelve a revisar el borrador.",
     );
   }
+
+  // Stamp issuance_origin in outbox item for Type 39
+  if (dteType === 39 && finalized.intent_id) {
+    await supabaseAdmin
+      .from("dte_issuance_outbox")
+      .update({ issuance_origin: "manual_admin" })
+      .eq("tenant_id", auth.tenantId)
+      .eq("intent_id", finalized.intent_id);
+  }
+
   return NextResponse.json({
     ok: true,
     intentId: finalized.intent_id,
     status: finalized.intent_status,
     duplicate: finalized.duplicate === true,
+    issuanceOrigin: "manual_admin",
   });
 }

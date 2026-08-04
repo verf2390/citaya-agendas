@@ -177,7 +177,7 @@ test("executive UI has terminal loaders, retry and the requested simple sections
   const manual = readFileSync("components/admin/dte/ManualIssuanceForm.tsx", "utf8");
   const activation = readFileSync("components/admin/dte/LegalActivationControl.tsx", "utf8");
   for (const label of [
-    "Documentos recientes", "Emitir manualmente", "Emisión automática",
+    "Documentos", "Emitir manualmente", "Emisión automática",
     "Datos tributarios", "Modo técnico avanzado", "Autorización SII",
   ]) assert.match(page, new RegExp(label));
   assert.match(page, /Reintentar/);

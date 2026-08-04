@@ -17,6 +17,7 @@ const draft: TaxDocumentDraft = {
     rut: "12.345.678-5",
     legalName: "Citaya Tenant Lab SpA",
     businessActivity: "Servicios de agenda",
+    activityCode: "930990",
     address: "Av. Prueba 123",
     commune: "Santiago",
     city: "Santiago",
@@ -146,4 +147,19 @@ test("returns clear error when details are empty", () => {
   if (result.ok) return;
 
   assert.equal(result.error, "At least one document detail is required");
+});
+
+test("returns typed error DTE_ISSUER_ACTIVITY_CODE_REQUIRED when issuer activity code is missing", () => {
+  const result = buildBoletaXmlLab({
+    ...draft,
+    issuer: {
+      ...draft.issuer,
+      activityCode: "",
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+
+  assert.equal(result.error, "DTE_ISSUER_ACTIVITY_CODE_REQUIRED");
 });

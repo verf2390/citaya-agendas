@@ -11,6 +11,8 @@ const baseTestEnv = {
   DTE_SII_ENABLE_SUBMIT: "false",
   DTE_SII_ENABLE_STATUS: "false",
   NODE_ENV: "test",
+  NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+  SUPABASE_SERVICE_ROLE_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy_test_key_long_enough_for_validation_pass",
 };
 
 for (const name of Object.keys(process.env)) {
@@ -20,6 +22,15 @@ for (const name of Object.keys(process.env)) {
 Object.assign(process.env, baseTestEnv);
 
 const require = createRequire(import.meta.url);
+const Module = require("module");
+const originalResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function (request, parent, isMain, options) {
+  if (typeof request === "string" && request.startsWith("@/")) {
+    request = resolve(repoRoot, request.slice(2));
+  }
+  return originalResolveFilename.call(this, request, parent, isMain, options);
+};
+
 const ts = require("typescript");
 
 require.extensions[".ts"] = (module, filename) => {

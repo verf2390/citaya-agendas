@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { checkManualBoleta39IssuanceReadiness } from "@/lib/dte/boleta39-manual-gate";
 import {
   calculateDocumentDraftTotals,
   validateInvoiceDraftLines,
@@ -170,22 +171,31 @@ export async function PATCH(
       "Las líneas no pudieron guardarse; vuelve a abrir el borrador.",
     );
   }
+  const dteTypeNumber = Number(current.dte_type);
+  const gateCheck = dteTypeNumber === 39
+    ? await checkManualBoleta39IssuanceReadiness({
+        tenantId: auth.tenantId,
+        dteType: 39,
+        issuanceOrigin: "manual_admin",
+      })
+    : null;
+
+  const reviewReason = dteTypeNumber === 39
+    ? gateCheck?.ready
+      ? null
+      : (gateCheck?.blockingCodes[0] ?? "BOLETA39_GATE_BLOCKED")
+    : paymentMismatch
+      ? "El total de la factura no coincide exactamente con el pago confirmado."
+      : null;
+
   const updateResult = await supabaseAdmin
     .from("dte_invoice_drafts")
     .update({
-      status:
-        Number(current.dte_type) === 39 || paymentMismatch
-          ? "REVIEW_REQUIRED"
-          : "DRAFT",
+      status: reviewReason ? "REVIEW_REQUIRED" : "DRAFT",
       net_amount: totals.netAmount,
       tax_amount: totals.taxAmount,
       total_amount: totals.totalAmount,
-      review_reason:
-        Number(current.dte_type) === 39
-          ? "Boleta tipo 39 preparada en modo PRE-CAF. La emisión permanece deshabilitada."
-          : paymentMismatch
-            ? "El total de la factura no coincide exactamente con el pago confirmado."
-            : null,
+      review_reason: reviewReason,
       version: expectedVersion + 1,
       updated_by: auth.userId,
       updated_at: new Date().toISOString(),

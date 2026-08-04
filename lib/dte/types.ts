@@ -24,6 +24,7 @@ export type TenantTaxProfile = {
   legalName: string;
   businessActivity: string;
   businessActivityCode?: string | null;
+  activityCode?: string | null;
   address: string;
   commune: string;
   city: string;

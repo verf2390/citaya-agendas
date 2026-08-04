@@ -314,7 +314,7 @@ export default function AdminFacturacionPage() {
               onClick={openInvoiceEditor}
               className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white hover:bg-blue-700"
             >
-              Nueva factura
+              Nuevo documento tributario
             </button>
           ) : null
         }
@@ -330,7 +330,7 @@ export default function AdminFacturacionPage() {
       <nav className="mt-5 flex flex-wrap gap-2" aria-label="Secciones de facturación">
         {[
           ["summary", "Resumen"],
-          ["new", "Nueva factura"],
+          ["new", "Nuevo documento"],
           ["documents", "Documentos"],
           ["settings", "Configuración tributaria"],
           ["diagnostics", "Diagnóstico"],
@@ -359,8 +359,8 @@ export default function AdminFacturacionPage() {
         <div id="nueva-factura">
         <AdminSectionCard
           className="mt-5"
-          title="Nueva factura"
-          description="Documento tipo 33 con uno o varios servicios. Los precios se ingresan netos y el IVA se muestra por separado."
+          title="Nuevo documento tributario"
+          description="Factura electrónica tipo 33 o Boleta electrónica tipo 39. Selecciona el tipo de documento y completa las líneas."
           actions={
             manualOpen ? (
               <button

@@ -551,8 +551,12 @@ export default function CustomersPage() {
   if (tenantError) {
     return (
       <main style={{ padding: 20, fontFamily: "system-ui" }}>
-        <h2 style={{ marginTop: 0 }}>⚠️ Acceso inválido</h2>
-        <p style={{ opacity: 0.8 }}>{tenantError}</p>
+        <h2 style={{ marginTop: 0 }}>⚠️ Módulo comercial no configurado</h2>
+        <p style={{ opacity: 0.8 }}>
+          {tenantError.includes("negocio")
+            ? "Este tenant todavía no tiene habilitado el módulo comercial."
+            : tenantError}
+        </p>
         <button
           type="button"
           onClick={() => window.location.reload()}

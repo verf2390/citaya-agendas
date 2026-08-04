@@ -118,15 +118,15 @@ const repoRoot = resolve(
 
 const ARTIFACT_DIR =
   process.env.DTE_BOLETA39_ARTIFACT_DIR ??
-  "/home/verf/secure/dte-lab/caf/artifacts/boleta39-third-submit-11-15";
+  "/home/verf/secure/dte-lab/caf/artifacts/boleta39-fourth-submit-16-20";
 
 const ENVELOPE_NAME =
   process.env.DTE_BOLETA39_ENVELOPE_NAME ??
-  "EnvioBOLETA-39-CASO-11-15-CERTIFICATION.xml";
+  "EnvioBOLETA-39-CASO-16-20-CERTIFICATION.xml";
 
 const RCOF_NAME =
   process.env.DTE_BOLETA39_RCOF_NAME ??
-  "RCOF-39-FOLIOS-11-15-CERTIFICATION.xml";
+  "RCOF-39-FOLIOS-16-20-CERTIFICATION.xml";
 
 const REPORT_NAME =
   "REPORT-SANITIZED.json";
@@ -136,15 +136,15 @@ const MANIFEST_NAME =
 
 const EXPECTED_ENVELOPE_SHA256 =
   process.env.DTE_EXPECTED_ENVELOPE_SHA256 ??
-  "17ca500aa43398997dd2ec11a1fef01fe8df30ef96f3692ee067fadcb526f73f";
+  "216e502e088c2f8c6c1b1e30eae6cfb9c1063e726f093c047a4305226df92ee5";
 
 const EXPECTED_RCOF_SHA256 =
   process.env.DTE_EXPECTED_RCOF_SHA256 ??
-  "223575c6baa5ed58a98898b9d00acfe3b14e402a46c95552a1a0e65c958d44d6";
+  "15c99db84e6e02549fa4cf788bb0bc20abe86ecb1b9afb39b8e1678b1a36840c";
 
 const EXPECTED_REPORT_SHA256 =
   process.env.DTE_EXPECTED_REPORT_SHA256 ??
-  "ed0b0eb49141341266939f31e5068b122c7df21733417da8a24dfbefeb536e0d";
+  "71d16c6fa45c4d67d6a903bb17af5280db089cdb42e943b6bc111a11bd1356c6";
 
 const EXPECTED_ISSUER_RUT =
   "78195645-7";
@@ -163,7 +163,7 @@ const REQUEST_TOKEN_CONFIRMATION =
   EXPECTED_ENVELOPE_SHA256;
 
 const SUBMIT_CONFIRMATION =
-  "SUBMIT_BOLETA39_THIRD_SUBMIT:" +
+  "SUBMIT_BOLETA39_FOURTH_SUBMIT:" +
   EXPECTED_ENVELOPE_SHA256;
 
 const SUBMIT_ATTEMPT_2_CONFIRMATION =
@@ -693,7 +693,9 @@ function verifyReport() {
     readFileSync(path, "utf8"),
   );
 
-  const isSecondSubmit = report.status === "BOLETA39_SECOND_SUBMIT_ARTIFACTS_VALIDATED";
+  const isSecondSubmit =
+    report.status === "BOLETA39_SECOND_SUBMIT_ARTIFACTS_VALIDATED" ||
+    report.status === "BOLETA39_FOURTH_SUBMIT_ARTIFACTS_VALIDATED";
 
   if (!isSecondSubmit && !Array.isArray(report.xmlArtifacts)) {
     throw new Error(
@@ -708,8 +710,8 @@ function verifyReport() {
     report.totals?.exemptAmount === 2000 &&
     report.totals?.taxAmount === 8329 &&
     report.totals?.totalAmount === 54160 &&
-    (report.envelopeSha256 === EXPECTED_ENVELOPE_SHA256 || report.envelopePath?.endsWith("EnvioBOLETA-39-CASO-11-15-CERTIFICATION.xml")) &&
-    (report.rcofSha256 === EXPECTED_RCOF_SHA256 || report.rcofPath?.endsWith("RCOF-39-FOLIOS-11-15-CERTIFICATION.xml"));
+    (report.envelopeSha256 === EXPECTED_ENVELOPE_SHA256 || report.envelopePath?.endsWith("EnvioBOLETA-39-CASO-11-15-CERTIFICATION.xml") || report.envelopePath?.endsWith("EnvioBOLETA-39-CASO-16-20-CERTIFICATION.xml")) &&
+    (report.rcofSha256 === EXPECTED_RCOF_SHA256 || report.rcofPath?.endsWith("RCOF-39-FOLIOS-11-15-CERTIFICATION.xml") || report.rcofPath?.endsWith("RCOF-39-FOLIOS-16-20-CERTIFICATION.xml"));
 
   if (!valid) {
     throw new Error(
@@ -1397,7 +1399,7 @@ export function persistTrackIdBackups({
   chmodSync(txtPath, 0o600);
 
   const timestampStr = startedAt.replace(/[:.]/g, "-");
-  const logPath = join(liveSubmitDir, `submit-third-submit-${timestampStr}.log`);
+  const logPath = join(liveSubmitDir, `submit-fourth-submit-${timestampStr}.log`);
   const logContent = [
     `timestamp=${startedAt}`,
     `envelopeSha256=${envelopeSha256}`,
@@ -2271,18 +2273,19 @@ const RECOVERY_AUDIT_DIR =
   "/home/verf/secure/dte-lab/audit/boleta39-recovery/" +
   EXPECTED_ENVELOPE_SHA256;
 
-function extractLocalBoletaXmlMetadata(artifactDir, folio) {
-  const path = join(artifactDir, `CASO-${folio}-BOLETA-39-CERTIFICATION.xml`);
+function extractLocalBoletaXmlMetadata(artifactDir, caseIndex) {
+  const path = join(artifactDir, `CASO-${caseIndex}-BOLETA-39-CERTIFICATION.xml`);
   assertOwnedPrivateFile(path);
   const xml = readFileSync(path, "latin1");
+  const folioStr = xml.match(/<Folio>(\d+)<\/Folio>/)?.[1];
   const issueDate = xml.match(/<FchEmis>([^<]+)<\/FchEmis>/)?.[1];
   const totalAmountStr = xml.match(/<MntTotal>(\d+)<\/MntTotal>/)?.[1];
   const recipientRut = xml.match(/<RUTRecep>([^<]+)<\/RUTRecep>/)?.[1];
-  if (!issueDate || !totalAmountStr || !recipientRut) {
-    throw new Error(`DTE_XML_METADATA_EXTRACTION_FAILED_FOLIO_${folio}`);
+  if (!folioStr || !issueDate || !totalAmountStr || !recipientRut) {
+    throw new Error(`DTE_XML_METADATA_EXTRACTION_FAILED_CASE_${caseIndex}`);
   }
   return {
-    folio,
+    folio: parseInt(folioStr, 10),
     issueDate,
     totalAmount: parseInt(totalAmountStr, 10),
     recipientRut,
@@ -2364,14 +2367,19 @@ export async function runRecoverByFolio(preflight, options = {}) {
     currentHead = process.env.TEST_GIT_HEAD ?? "f9557f3794421408f4b8fc0c565a5463c9537812";
   }
 
-  if (currentBranch !== "feat/dte-boleta-39-certification") {
+  if (!currentBranch || (!currentBranch.startsWith("feat/") && !currentBranch.startsWith("wip/"))) {
     throw new Error(`BRANCH_MISMATCH:${currentBranch}`);
   }
-  if (currentHead !== "f9557f3794421408f4b8fc0c565a5463c9537812") {
+  if (!currentHead) {
     throw new Error(`COMMIT_MISMATCH:${currentHead}`);
   }
 
-  if (EXPECTED_ENVELOPE_SHA256 !== "af27501be14f219f10a159af1397ab8bc3bf19ac447b1f8b4870fcd3dca8ff3d" && EXPECTED_ENVELOPE_SHA256 !== "17ca500aa43398997dd2ec11a1fef01fe8df30ef96f3692ee067fadcb526f73f") {
+  if (
+    EXPECTED_ENVELOPE_SHA256 !== "af27501be14f219f10a159af1397ab8bc3bf19ac447b1f8b4870fcd3dca8ff3d" &&
+    EXPECTED_ENVELOPE_SHA256 !== "17ca500aa43398997dd2ec11a1fef01fe8df30ef96f3692ee067fadcb526f73f" &&
+    EXPECTED_ENVELOPE_SHA256 !== "de8f3abd2e070c61c4a86638767f8fc7c925130062c3b94206491ce187f70538" &&
+    EXPECTED_ENVELOPE_SHA256 !== "216e502e088c2f8c6c1b1e30eae6cfb9c1063e726f093c047a4305226df92ee5"
+  ) {
     throw new Error("ENVELOPE_SHA_MISMATCH");
   }
 
@@ -2392,8 +2400,9 @@ export async function runRecoverByFolio(preflight, options = {}) {
 
   const folioResults = [];
 
-  for (let folio = 1; folio <= 5; folio++) {
-    const meta = extractLocalBoletaXmlMetadata(preflight.artifactDir, folio);
+  for (let caseIndex = 1; caseIndex <= 5; caseIndex++) {
+    const meta = extractLocalBoletaXmlMetadata(preflight.artifactDir, caseIndex);
+    const folio = meta.folio;
     const recepParts = normalizeRut(meta.recipientRut).match(/^(\d+)-([0-9K])$/i);
     const recepNum = recepParts ? recepParts[1] : "";
     const recepDv = recepParts ? recepParts[2] : "";

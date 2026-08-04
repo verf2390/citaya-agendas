@@ -20,7 +20,7 @@ export function assertValidProductionIssuerActivityCode(
 export function hasValidProductionIssuerResolution(
   issuer: Pick<
     ProductionIssuer,
-    "resolutionDate" | "resolutionNumber"
+    "resolutionDate" | "resolutionNumber" | "siiOffice"
   >,
   today = new Date().toISOString().slice(0, 10),
 ): boolean {
@@ -42,7 +42,7 @@ export function hasValidProductionIssuerResolution(
 export function assertValidProductionIssuerResolution(
   issuer: Pick<
     ProductionIssuer,
-    "resolutionDate" | "resolutionNumber"
+    "resolutionDate" | "resolutionNumber" | "siiOffice"
   >,
 ): void {
   if (!hasValidProductionIssuerResolution(issuer))

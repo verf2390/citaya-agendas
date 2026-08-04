@@ -1148,7 +1148,7 @@ export type ControlledCertificationSetOptions = {
   envelopeFileName: string;
   manifestFileName: string;
   generationTimestamp: string;
-  manifestMetadata: Record<string, unknown>;
+  manifestMetadata?: Record<string, unknown>;
   onStage?: (stage: FacturaSetDryRunStage) => void;
 };
 

@@ -39,7 +39,7 @@ test("previous security migration contains valid delimiters and bounded normaliz
 test("billing executive UI is simple and technical mode is role gated", () => {
   const page = read("app/admin/facturacion/page.tsx");
   const api = read("app/api/admin/dte-settings/route.ts");
-  for (const label of ["Estado de activación", "Emisión automática", "Configuración tributaria", "Documentos", "Nueva factura", "Diagnóstico y detalles técnicos"]) {
+  for (const label of ["Estado de activación", "Emisión automática", "Configuración tributaria", "Documentos", "Nuevo documento", "Diagnóstico y detalles técnicos"]) {
     assert.match(page, new RegExp(label));
   }
   assert.match(page, /state\.technicalAccess/);
@@ -56,10 +56,10 @@ test("production routes derive tenant from hostname and never trust body tenant 
   assert.match(hostAuth, /\.eq\("slug", tenantSlug\)/);
 });
 
-test("consumer boleta remains explicitly unsupported in production", () => {
+test("consumer boleta automatic issuance remains explicitly disabled in production", () => {
   const types = read("lib/dte/production/types.ts");
   const policy = read("lib/dte/automation/issuance-policy.mjs");
   assert.match(types, /PRODUCTION_DTE_TYPES = \[33, 56, 61\]/);
-  assert.match(policy, /DOCUMENT_TYPE_UNSUPPORTED/);
-  assert.doesNotMatch(policy, /IMPLEMENTED_PRODUCTION_TYPES = Object\.freeze\(\[[^\]]*(39|41)/);
+  assert.match(policy, /BOLETA39_AUTOMATIC_ISSUANCE_DISABLED/);
+  assert.match(policy, /IMPLEMENTED_PRODUCTION_TYPES = Object\.freeze\(\[33, 39\]\)/);
 });

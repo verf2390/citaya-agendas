@@ -233,6 +233,7 @@ test("SII KeyInfo builder rejects invalid or non-DER certificate material", () =
 
 test("SII auth config falls back to issuer and representative RUT env vars", () => {
   const config = getSiiCertificationConfigFromEnv({
+    NODE_ENV: "test",
     DTE_SII_ENV: "certification",
     DTE_ISSUER_RUT: "78195645-7",
     DTE_CERT_REPRESENTATIVE_RUT: "27164542-2",
@@ -264,7 +265,7 @@ test("SII auth smoke is blocked without explicit live confirmation", () => {
 
 test("blocks production DTE mode until real approval", () => {
   assert.throws(
-    () => getSiiCertificationConfigFromEnv({ DTE_MODE: "production" }),
+    () => getSiiCertificationConfigFromEnv({ NODE_ENV: "test", DTE_MODE: "production" }),
     (error) =>
       error instanceof SiiCertificationError &&
       error.code === SII_ERROR_CODES.PRODUCTION_DISABLED,
@@ -273,7 +274,7 @@ test("blocks production DTE mode until real approval", () => {
 
 test("blocks production SII environment until real approval", () => {
   assert.throws(
-    () => getSiiCertificationConfigFromEnv({ DTE_SII_ENV: "production" }),
+    () => getSiiCertificationConfigFromEnv({ NODE_ENV: "test", DTE_SII_ENV: "production" }),
     (error) =>
       error instanceof SiiCertificationError &&
       error.code === SII_ERROR_CODES.PRODUCTION_DISABLED,
@@ -285,6 +286,7 @@ test("validates SII certification config without exposing secrets", () => {
     mode: "certification",
     repoRoot: process.cwd(),
     env: {
+      NODE_ENV: "test",
       DTE_MODE: "certification",
       DTE_SII_ENV: "certification",
       DTE_CAF_PATH: "/tmp/caf.xml",

@@ -27,7 +27,7 @@ const matrix = [
   },
   {
     mode: "internal",
-    allowed: ["taxAdministration", "dteCertification", "ordinaryAdmin"],
+    allowed: ["informationalPage", "taxAdministration", "dteCertification", "ordinaryAdmin"],
   },
 ];
 

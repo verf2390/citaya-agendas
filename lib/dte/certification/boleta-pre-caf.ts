@@ -157,6 +157,8 @@ export type BoletaPreCafOptions = {
   outputDir: string;
   issuer?: Partial<BoletaPreCafIssuer>;
   publicVerificationUrl?: string;
+  softwareProviderMode?: "include_rut_rzn" | "omit_for_certification_upload";
+  customBoletaXsdPath?: string;
 };
 
 export type PreparedBoleta = {
@@ -367,6 +369,7 @@ function unsignedBoletaDte(input: {
   folio: number;
   tedXml: string;
   timestamp?: string;
+  softwareProviderMode?: "include_rut_rzn" | "omit_for_certification_upload";
 }): { xml: string; documentId: string } {
   const documentId = `CitayaBoleta39-${input.folio}`;
   const totals = input.totals;
@@ -380,6 +383,14 @@ function unsignedBoletaDte(input: {
   ]
     .filter(Boolean)
     .join("");
+
+  const providerBlock =
+    input.softwareProviderMode === "omit_for_certification_upload"
+      ? ""
+      : `
+      <RUTProvSW>${escapeXml(input.issuer.rut)}</RUTProvSW>
+      <RznSocProvSW>${escapeXml(input.issuer.legalName)}</RznSocProvSW>`;
+
   return {
     documentId,
     xml: `<DTE xmlns="${SII_NAMESPACE}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.0">
@@ -402,8 +413,7 @@ function unsignedBoletaDte(input: {
       <Receptor>
         <RUTRecep>${GENERIC_RECEIVER_RUT}</RUTRecep>
         <RznSocRecep>Consumidor final</RznSocRecep>
-      </Receptor>
-      <RutProvSW>${escapeXml(input.issuer.rut)}</RutProvSW>
+      </Receptor>${providerBlock}
       <Totales>${totalTags}</Totales>
     </Encabezado>
 ${detailsXml(totals)}
@@ -494,7 +504,7 @@ function encodeIso88591(xml: string): Buffer {
   return Buffer.from(xml, "latin1");
 }
 
-function validateXsd(
+export function validateXsd(
   xml: string,
   schemaPath: string,
   label: string,
@@ -548,14 +558,8 @@ function verifySignature(
   if (result.status !== 0) fail(`PRE_CAF_SIGNATURE_${referenceId}_INVALID`);
 }
 
-async function renderBoletaPdf(input: {
-  certificationCase: BoletaCertificationCase;
-  totals: BoletaTotals;
-  issuer: BoletaPreCafIssuer;
-  issueDate: string;
-  folio: number;
+export async function renderTedBarcodePng(input: {
   tedXml: string;
-  verificationUrl: string;
 }): Promise<Buffer> {
   const { writeBarcode } = await import("zxing-wasm/writer");
   const barcode = await writeBarcode(input.tedXml, {
@@ -566,7 +570,19 @@ async function renderBoletaPdf(input: {
   if (barcode.error || !barcode.image) {
     fail(`PRE_CAF_PDF417_FAILED:${String(barcode.error || "image_missing")}`);
   }
-  const png = Buffer.from(await barcode.image.arrayBuffer());
+  return Buffer.from(await barcode.image.arrayBuffer());
+}
+
+async function renderBoletaPdf(input: {
+  certificationCase: BoletaCertificationCase;
+  totals: BoletaTotals;
+  issuer: BoletaPreCafIssuer;
+  issueDate: string;
+  folio: number;
+  tedXml: string;
+  verificationUrl: string;
+}): Promise<Buffer> {
+  const png = await renderTedBarcodePng({ tedXml: input.tedXml });
   const pdf = new jsPDF({ unit: "pt", format: "letter", compress: false });
   pdf.setProperties({
     title: `Boleta Electrónica ${input.folio}`,
@@ -682,6 +698,7 @@ export async function prepareBoletaPreCaf(
         issueDate,
         folio,
         tedXml: ted.tedXml,
+        softwareProviderMode: options?.softwareProviderMode,
       });
       const signed = signXmlInFinalContextControlled(
         {
@@ -744,7 +761,8 @@ export async function prepareBoletaPreCaf(
       signingConfig(material, rvd.documentId),
     ).signedXml;
 
-    validateXsd(signedEnvelope, BOLETA_XSD_PATH, "envio-boleta", outputDir);
+    const boletaXsdPath = options?.customBoletaXsdPath ?? BOLETA_XSD_PATH;
+    validateXsd(signedEnvelope, boletaXsdPath, "envio-boleta", outputDir);
     validateXsd(signedRvd, RVD_XSD_PATH, "rvd", outputDir);
 
     const envelopePath = join(outputDir, "EnvioBOLETA-PRE-CAF-FIXTURE.xml");
@@ -853,7 +871,7 @@ export type RealBoleta39CertificationResult = {
   rvdTotals: ReturnType<typeof sumBoletaRvdTotals>;
   artifacts: RealBoleta39CertificationArtifact[];
   hashes: Record<string, string>;
-  xsd: { boletas: "5/5"; envelope: "valid"; rcof: "valid" };
+  xsd: { boletas: "5/5"; envelope: "valid"; rcof: "valid" | "skipped" };
   signatures: { tedFrmt: "5/5"; boletas: "5/5"; envelope: "valid"; rcof: "valid" };
   outputDir: string;
 };
@@ -894,6 +912,9 @@ export async function prepareRealBoleta39Certification(input: {
   certificatePath: string;
   privateKeyPath: string;
   generationTimestamp: string;
+  softwareProviderMode?: "include_rut_rzn" | "omit_for_certification_upload";
+  customBoletaXsdPath?: string;
+  skipRvd?: boolean;
 }): Promise<RealBoleta39CertificationResult> {
   assertRealCertificationEnvironment(process.env);
   if (!input.tenantId.trim() || !Number.isSafeInteger(input.firstFolio) || input.firstFolio < 1)
@@ -964,6 +985,7 @@ export async function prepareRealBoleta39Certification(input: {
       folio,
       tedXml: ted.tedXml,
       timestamp: input.generationTimestamp,
+      softwareProviderMode: input.softwareProviderMode,
     });
     const signed = signXmlInFinalContextControlled(
       {
@@ -998,31 +1020,41 @@ export async function prepareRealBoleta39Certification(input: {
     },
     signing(envelope.setId),
   ).signedXml;
-  const rvdTotals = sumBoletaRvdTotals(documents.map((item) => item.totals));
-  if (
-    rvdTotals.netAmount !== 43_831 ||
-    rvdTotals.taxAmount !== 8_329 ||
-    rvdTotals.exemptAmount !== 2_000 ||
-    rvdTotals.totalAmount !== 54_160
-  )
-    fail("DTE_CERTIFICATION_RCOF_TOTALS_INVALID");
-  const rvd = rvdUnsigned({
-    documents,
-    issuer: input.issuer,
-    issueDate,
-    totals: rvdTotals,
-    timestamp: input.generationTimestamp,
-  });
-  const signedRvd = signXmlInFinalContextControlled(
-    {
-      xml: rvd.xml,
-      referenceId: rvd.documentId,
-      insertAfterXPath: "//*[local-name()='DocumentoConsumoFolios']",
-    },
-    signing(rvd.documentId),
-  ).signedXml;
-  validateXsd(signedEnvelope, BOLETA_XSD_PATH, "envio-boleta-real", outputDir);
-  validateXsd(signedRvd, RVD_XSD_PATH, "rcof-real", outputDir);
+  const boletaXsdPath = input.customBoletaXsdPath ?? BOLETA_XSD_PATH;
+  validateXsd(signedEnvelope, boletaXsdPath, "envio-boleta-real", outputDir);
+
+  let signedRvd = "";
+  let rvdDocumentId = "";
+  let rvdTotals: BoletaTotals = { netAmount: 0, exemptAmount: 0, taxAmount: 0, totalAmount: 0, lines: [] };
+
+  if (!input.skipRvd) {
+    rvdTotals = { ...sumBoletaRvdTotals(documents.map((item) => item.totals)), lines: [] };
+    if (
+      rvdTotals.netAmount !== 43_831 ||
+      rvdTotals.taxAmount !== 8_329 ||
+      rvdTotals.exemptAmount !== 2_000 ||
+      rvdTotals.totalAmount !== 54_160
+    )
+      fail("DTE_CERTIFICATION_RCOF_TOTALS_INVALID");
+    const rvd = rvdUnsigned({
+      documents,
+      issuer: input.issuer,
+      issueDate,
+      totals: rvdTotals,
+      timestamp: input.generationTimestamp,
+    });
+    rvdDocumentId = rvd.documentId;
+    signedRvd = signXmlInFinalContextControlled(
+      {
+        xml: rvd.xml,
+        referenceId: rvd.documentId,
+        insertAfterXPath: "//*[local-name()='DocumentoConsumoFolios']",
+      },
+      signing(rvd.documentId),
+    ).signedXml;
+    validateXsd(signedRvd, RVD_XSD_PATH, "rcof-real", outputDir);
+  }
+
   const artifacts: RealBoleta39CertificationArtifact[] = [];
   for (const document of documents) {
     const path = join(outputDir, `${document.caseId}-BOLETA-39-CERTIFICATION.xml`);
@@ -1040,31 +1072,33 @@ export async function prepareRealBoleta39Certification(input: {
   }
   const lastFolio = input.firstFolio + documents.length - 1;
   const envelopeFilename = `EnvioBOLETA-39-CASO-${input.firstFolio}-${lastFolio}-CERTIFICATION.xml`;
-  const rcofFilename = `RCOF-39-FOLIOS-${input.firstFolio}-${lastFolio}-CERTIFICATION.xml`;
   const envelopePath = join(outputDir, envelopeFilename);
-  const rcofPath = join(outputDir, rcofFilename);
   const envelopeBytes = encodeIso88591(signedEnvelope);
-  const rcofBytes = encodeIso88591(signedRvd);
   writeFileSync(envelopePath, envelopeBytes, { mode: 0o600, flag: "wx" });
-  writeFileSync(rcofPath, rcofBytes, { mode: 0o600, flag: "wx" });
   chmodSync(envelopePath, 0o600);
-  chmodSync(rcofPath, 0o600);
   verifySignature(envelopePath, envelope.setId, input.certificatePath);
-  verifySignature(rcofPath, rvd.documentId, input.certificatePath);
-  artifacts.push(
-    {
-      kind: "envelope_xml",
-      path: envelopePath,
-      sha256: sha256(envelopeBytes),
-      byteLength: envelopeBytes.length,
-    },
-    {
+
+  artifacts.push({
+    kind: "envelope_xml",
+    path: envelopePath,
+    sha256: sha256(envelopeBytes),
+    byteLength: envelopeBytes.length,
+  });
+
+  if (!input.skipRvd && signedRvd) {
+    const rcofFilename = `RCOF-39-FOLIOS-${input.firstFolio}-${lastFolio}-CERTIFICATION.xml`;
+    const rcofPath = join(outputDir, rcofFilename);
+    const rcofBytes = encodeIso88591(signedRvd);
+    writeFileSync(rcofPath, rcofBytes, { mode: 0o600, flag: "wx" });
+    chmodSync(rcofPath, 0o600);
+    verifySignature(rcofPath, rvdDocumentId, input.certificatePath);
+    artifacts.push({
       kind: "rcof_xml",
       path: rcofPath,
       sha256: sha256(rcofBytes),
       byteLength: rcofBytes.length,
-    },
-  );
+    });
+  }
   const hashes = Object.fromEntries(
     artifacts.map((artifact) => [artifact.caseId ?? artifact.kind, artifact.sha256]),
   );
@@ -1080,7 +1114,7 @@ export async function prepareRealBoleta39Certification(input: {
     rvdTotals,
     artifacts,
     hashes,
-    xsd: { boletas: "5/5", envelope: "valid", rcof: "valid" },
+    xsd: { boletas: "5/5", envelope: "valid", rcof: input.skipRvd ? "skipped" : "valid" },
     signatures: {
       tedFrmt: "5/5",
       boletas: "5/5",

@@ -116,36 +116,66 @@ test("EnvioBOLETA y RCOF incluyen xmlns:xsi y xsi:schemaLocation exactos para el
   }
 });
 
-test("Boleta 39 incluye RutProvSW exactamente en Encabezado, firmado y validado por XSD", async () => {
+test("Boleta 39 incluye RUTProvSW y RznSocProvSW exactamente en Encabezado, firmado y validado por XSD", async () => {
   const outputDir = mkdtempSync(join(tmpdir(), "citaya-boleta39-rutprov-test-"));
   try {
     const result = await prepareBoletaPreCaf({
       issueDate: "2026-08-03",
       firstFolio: 390_001,
       outputDir,
-      issuer: { rut: "78195645-7" },
+      issuer: { rut: "78195645-7", legalName: "R&G SpA" },
     });
     const xml = result.envelopeXml;
 
-    // 1. Los 5 DTE contienen exactamente <RutProvSW>78195645-7</RutProvSW>
-    const rutProvMatches = xml.match(/<RutProvSW>78195645-7<\/RutProvSW>/g) ?? [];
+    // 1. Los 5 DTE contienen exactamente <RUTProvSW>78195645-7</RUTProvSW>
+    const rutProvMatches = xml.match(/<RUTProvSW>78195645-7<\/RUTProvSW>/g) ?? [];
     assert.equal(rutProvMatches.length, 5);
 
-    // 2. NO existe <RUTProvSW> con mayúsculas erróneas
-    assert.doesNotMatch(xml, /<RUTProvSW>/);
+    // 2. Los 5 DTE contienen exactamente <RznSocProvSW>R&amp;G SpA</RznSocProvSW>
+    const rznSocProvMatches = xml.match(/<RznSocProvSW>R&amp;G SpA<\/RznSocProvSW>/g) ?? [];
+    assert.equal(rznSocProvMatches.length, 5);
 
-    // 3. NO existe <RznSocProvSW> en desarrollo propio
-    assert.doesNotMatch(xml, /<RznSocProvSW>/);
+    // 3. NO existe <RutProvSW> con minúscula
+    assert.doesNotMatch(xml, /<RutProvSW>/);
 
-    // 4 y 5. Está dentro de Encabezado, después de Receptor y antes de Totales
-    const encabezadoRegex = /<Encabezado>[\s\S]*?<Receptor>[\s\S]*?<\/Receptor>\s*<RutProvSW>78195645-7<\/RutProvSW>\s*<Totales>[\s\S]*?<\/Encabezado>/g;
+    // 4 y 5. Están dentro de Encabezado, después de Receptor y antes de Totales
+    const encabezadoRegex = /<Encabezado>[\s\S]*?<Receptor>[\s\S]*?<\/Receptor>\s*<RUTProvSW>78195645-7<\/RUTProvSW>\s*<RznSocProvSW>R&amp;G SpA<\/RznSocProvSW>\s*<Totales>[\s\S]*?<\/Encabezado>/g;
     const encabezadoMatches = xml.match(encabezadoRegex) ?? [];
     assert.equal(encabezadoMatches.length, 5);
 
-    // 6. La firma de cada Documento cubre su nodo Encabezado / RutProvSW (URI reference #...)
+    // 6. La firma de cada Documento cubre su nodo Encabezado / RUTProvSW (URI reference #...)
     for (let f = 390_001; f <= 390_005; f++) {
       assert.match(xml, new RegExp(`URI="#CitayaBoleta39-${f}"`));
     }
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("Boleta 39 en perfil manual-upload omite totalmente nodos de proveedor y valida con XSD de referencia del portal", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "citaya-boleta39-manual-upload-test-"));
+  const referenceXsdPath = "/home/verf/secure/dte-lab/reference/sii-upload-schema-20260804/EnvioBOLETA_v11.xsd";
+
+  try {
+    const result = await prepareBoletaPreCaf({
+      issueDate: "2026-08-03",
+      firstFolio: 390_001,
+      outputDir,
+      issuer: { rut: "78195645-7", legalName: "R&G SpA" },
+      softwareProviderMode: "omit_for_certification_upload",
+      customBoletaXsdPath: referenceXsdPath,
+    });
+    const xml = result.envelopeXml;
+
+    // 1. Cero nodos RUTProvSW, RutProvSW o RznSocProvSW
+    assert.equal((xml.match(/<RUTProvSW>/g) ?? []).length, 0);
+    assert.equal((xml.match(/<RutProvSW>/g) ?? []).length, 0);
+    assert.equal((xml.match(/<RznSocProvSW>/g) ?? []).length, 0);
+
+    // 2. Secuencia exacta: Receptor seguido inmediatamente por Totales (5/5)
+    const receptorTotalesRegex = /<Receptor>[\s\S]*?<\/Receptor>\s*<Totales>/g;
+    const receptorTotalesMatches = xml.match(receptorTotalesRegex) ?? [];
+    assert.equal(receptorTotalesMatches.length, 5);
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }

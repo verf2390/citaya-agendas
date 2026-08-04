@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
+import { checkManualBoleta39IssuanceReadiness } from "@/lib/dte/boleta39-manual-gate";
 import {
   calculateDocumentDraftTotals,
   validateInvoiceDraftLines,
@@ -245,8 +246,18 @@ export async function POST(req: Request) {
   } catch {
     return errorResponse(503, "No se pudieron cargar los datos tributarios actuales.");
   }
+  const gateCheck = dteType === 39
+    ? await checkManualBoleta39IssuanceReadiness({
+        tenantId: auth.tenantId,
+        dteType: 39,
+        issuanceOrigin: "manual_admin",
+      })
+    : null;
+
   const reviewReason = dteType === 39
-    ? "Boleta tipo 39 preparada en modo PRE-CAF. La emisión permanece deshabilitada."
+    ? gateCheck?.ready
+      ? null
+      : (gateCheck?.blockingCodes[0] ?? "BOLETA39_GATE_BLOCKED")
     : !tax.complete
     ? "Completa los datos tributarios del emisor o receptor."
     : paymentAmount !== null && paymentAmount !== totals.totalAmount
