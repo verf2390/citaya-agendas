@@ -403,7 +403,7 @@ function unsignedBoletaDte(input: {
         <RUTRecep>${GENERIC_RECEIVER_RUT}</RUTRecep>
         <RznSocRecep>Consumidor final</RznSocRecep>
       </Receptor>
-      <RUTProvSW>${escapeXml(input.issuer.rut)}</RUTProvSW>
+      <RutProvSW>${escapeXml(input.issuer.rut)}</RutProvSW>
       <Totales>${totalTags}</Totales>
     </Encabezado>
 ${detailsXml(totals)}

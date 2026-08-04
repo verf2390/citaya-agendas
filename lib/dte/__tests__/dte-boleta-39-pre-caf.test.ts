@@ -115,3 +115,38 @@ test("EnvioBOLETA y RCOF incluyen xmlns:xsi y xsi:schemaLocation exactos para el
     rmSync(outputDir, { recursive: true, force: true });
   }
 });
+
+test("Boleta 39 incluye RutProvSW exactamente en Encabezado, firmado y validado por XSD", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "citaya-boleta39-rutprov-test-"));
+  try {
+    const result = await prepareBoletaPreCaf({
+      issueDate: "2026-08-03",
+      firstFolio: 390_001,
+      outputDir,
+      issuer: { rut: "78195645-7" },
+    });
+    const xml = result.envelopeXml;
+
+    // 1. Los 5 DTE contienen exactamente <RutProvSW>78195645-7</RutProvSW>
+    const rutProvMatches = xml.match(/<RutProvSW>78195645-7<\/RutProvSW>/g) ?? [];
+    assert.equal(rutProvMatches.length, 5);
+
+    // 2. NO existe <RUTProvSW> con mayúsculas erróneas
+    assert.doesNotMatch(xml, /<RUTProvSW>/);
+
+    // 3. NO existe <RznSocProvSW> en desarrollo propio
+    assert.doesNotMatch(xml, /<RznSocProvSW>/);
+
+    // 4 y 5. Está dentro de Encabezado, después de Receptor y antes de Totales
+    const encabezadoRegex = /<Encabezado>[\s\S]*?<Receptor>[\s\S]*?<\/Receptor>\s*<RutProvSW>78195645-7<\/RutProvSW>\s*<Totales>[\s\S]*?<\/Encabezado>/g;
+    const encabezadoMatches = xml.match(encabezadoRegex) ?? [];
+    assert.equal(encabezadoMatches.length, 5);
+
+    // 6. La firma de cada Documento cubre su nodo Encabezado / RutProvSW (URI reference #...)
+    for (let f = 390_001; f <= 390_005; f++) {
+      assert.match(xml, new RegExp(`URI="#CitayaBoleta39-${f}"`));
+    }
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
