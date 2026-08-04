@@ -382,7 +382,7 @@ function unsignedBoletaDte(input: {
     .join("");
   return {
     documentId,
-    xml: `<DTE xmlns="${SII_NAMESPACE}" version="1.0">
+    xml: `<DTE xmlns="${SII_NAMESPACE}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.0">
   <Documento ID="${documentId}">
     <Encabezado>
       <IdDoc>
@@ -428,7 +428,7 @@ function boletaEnvelopeUnsigned(input: {
   return {
     setId,
     xml: `${XML_DECLARATION}
-<EnvioBOLETA xmlns="${SII_NAMESPACE}" version="1.0">
+<EnvioBOLETA xmlns="${SII_NAMESPACE}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioBOLETA_v11.xsd" version="1.0">
   <SetDTE ID="${setId}">
     <Caratula version="1.0">
       <RutEmisor>${escapeXml(input.issuer.rut)}</RutEmisor>
@@ -458,7 +458,7 @@ function rvdUnsigned(input: {
   return {
     documentId,
     xml: `${XML_DECLARATION}
-<ConsumoFolios xmlns="${SII_NAMESPACE}" version="1.0">
+<ConsumoFolios xmlns="${SII_NAMESPACE}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte ConsumoFolio_v10.xsd" version="1.0">
   <DocumentoConsumoFolios ID="${documentId}">
     <Caratula version="1.0">
       <RutEmisor>${escapeXml(input.issuer.rut)}</RutEmisor>

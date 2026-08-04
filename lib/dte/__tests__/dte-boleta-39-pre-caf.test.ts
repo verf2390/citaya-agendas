@@ -91,3 +91,27 @@ test("FOCAL tipo 39 genera cinco casos, un sobre y RVD documental sin contacto S
     rmSync(outputDir, { recursive: true, force: true });
   }
 });
+
+test("EnvioBOLETA y RCOF incluyen xmlns:xsi y xsi:schemaLocation exactos para el SII", async () => {
+  const outputDir = mkdtempSync(join(tmpdir(), "citaya-boleta39-schema-test-"));
+  try {
+    const result = await prepareBoletaPreCaf({
+      issueDate: "2026-08-03",
+      firstFolio: 390_001,
+      outputDir,
+    });
+    // Verificación de cabecera EnvioBOLETA
+    assert.match(
+      result.envelopeXml,
+      /<EnvioBOLETA\s+xmlns="http:\/\/www\.sii\.cl\/SiiDte"\s+xmlns:xsi="http:\/\/www\.w3\.org\/2001\/XMLSchema-instance"\s+xsi:schemaLocation="http:\/\/www\.sii\.cl\/SiiDte EnvioBOLETA_v11\.xsd"\s+version="1\.0">/,
+    );
+
+    // Verificación de cabecera ConsumoFolios (RVD)
+    assert.match(
+      result.rvdXml,
+      /<ConsumoFolios\s+xmlns="http:\/\/www\.sii\.cl\/SiiDte"\s+xmlns:xsi="http:\/\/www\.w3\.org\/2001\/XMLSchema-instance"\s+xsi:schemaLocation="http:\/\/www\.sii\.cl\/SiiDte ConsumoFolio_v10\.xsd"\s+version="1\.0">/,
+    );
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+});
