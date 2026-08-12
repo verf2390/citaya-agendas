@@ -69,6 +69,11 @@ export interface ProductionDteRepository {
     tenantId: string,
     documentId: string,
   ): Promise<ProductionArtifact[]>;
+  getCurrentArtifact(
+    tenantId: string,
+    documentId: string,
+    kind: ProductionArtifactKind,
+  ): Promise<ProductionArtifact | null>;
   createSubmissionAttempt(
     input: Omit<ProductionSubmissionAttempt, "id" | "createdAt">,
   ): Promise<ProductionSubmissionAttempt>;
@@ -117,6 +122,7 @@ export class InMemoryProductionDteRepository implements ProductionDteRepository 
   private folios: FolioRow[] = [];
   private documents: ProductionDocument[] = [];
   private artifacts: ProductionArtifact[] = [];
+  private artifactHeads = new Map<string, string>();
   private attempts: ProductionSubmissionAttempt[] = [];
   private outbox: RecipientOutboxRecord[] = [];
   private audit: SafeProductionAudit[] = [];
@@ -342,7 +348,8 @@ export class InMemoryProductionDteRepository implements ProductionDteRepository 
       (artifact) =>
         artifact.tenantId === input.tenantId &&
         artifact.documentId === input.documentId &&
-        artifact.kind === input.kind,
+        artifact.kind === input.kind &&
+        (artifact.version ?? 1) === (input.version ?? 1),
     );
     if (duplicate) {
       if (duplicate.sha256 !== input.sha256)
@@ -351,11 +358,16 @@ export class InMemoryProductionDteRepository implements ProductionDteRepository 
     }
     const record: ProductionArtifact = {
       ...clone(input),
+      version: input.version ?? 1,
       id: randomUUID(),
       immutable: true,
       createdAt: new Date().toISOString(),
     };
     this.artifacts.push(record);
+    const headKey = `${record.tenantId}:${record.documentId}:${record.kind}`;
+    if (!this.artifactHeads.has(headKey)) {
+      this.artifactHeads.set(headKey, record.id);
+    }
     return clone(record);
   }
 
@@ -370,6 +382,24 @@ export class InMemoryProductionDteRepository implements ProductionDteRepository 
           artifact.documentId === documentId,
       ),
     );
+  }
+
+  async getCurrentArtifact(
+    tenantId: string,
+    documentId: string,
+    kind: ProductionArtifactKind,
+  ): Promise<ProductionArtifact | null> {
+    const id = this.artifactHeads.get(`${tenantId}:${documentId}:${kind}`);
+    const artifact = id
+      ? this.artifacts.find(
+          (candidate) =>
+            candidate.id === id &&
+            candidate.tenantId === tenantId &&
+            candidate.documentId === documentId &&
+            candidate.kind === kind,
+        )
+      : null;
+    return artifact ? clone(artifact) : null;
   }
 
   async createSubmissionAttempt(
@@ -488,6 +518,15 @@ export function requiredArtifact(
   kind: ProductionArtifactKind,
 ): ProductionArtifact {
   const matches = artifacts.filter((artifact) => artifact.kind === kind);
-  if (matches.length !== 1) throw new Error(`DTE_ARTIFACT_${kind.toUpperCase()}_NOT_UNIQUE`);
-  return matches[0];
+  if (matches.length === 0)
+    throw new Error(`DTE_ARTIFACT_${kind.toUpperCase()}_MISSING`);
+  const latestVersion = Math.max(
+    ...matches.map((artifact) => artifact.version ?? 1),
+  );
+  const latest = matches.filter(
+    (artifact) => (artifact.version ?? 1) === latestVersion,
+  );
+  if (latest.length !== 1)
+    throw new Error(`DTE_ARTIFACT_${kind.toUpperCase()}_VERSION_NOT_UNIQUE`);
+  return latest[0];
 }

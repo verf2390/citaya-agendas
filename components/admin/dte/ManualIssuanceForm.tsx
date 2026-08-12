@@ -20,6 +20,8 @@ type Customer = {
   id: string;
   full_name: string;
   rut_normalized: string | null;
+  email: string | null;
+  phone: string | null;
   tax_profile: TaxProfile | null;
 };
 type Service = {
@@ -98,6 +100,13 @@ function clp(value: number) {
   }).format(value || 0);
 }
 
+function customerRut(value: string | null | undefined) {
+  const normalized = String(value ?? "").replace(/[^0-9kK]/g, "").toUpperCase();
+  if (normalized.length < 2) return "No informado";
+  const body = normalized.slice(0, -1).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${body}-${normalized.slice(-1)}`;
+}
+
 function roundDiv(numerator: bigint, denominator: bigint) {
   return Number(
     (numerator + denominator / BigInt(2)) / denominator,
@@ -157,9 +166,11 @@ function newLine(): EditorLine {
 export default function ManualIssuanceForm({
   onCreated,
   onClose,
+  initialDraftId,
 }: {
   onCreated: () => void;
   onClose: () => void;
+  initialDraftId?: string;
 }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -182,6 +193,28 @@ export default function ManualIssuanceForm({
   const [issuing, setIssuing] = useState(false);
   const [showBoletaModal, setShowBoletaModal] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [previewData, setPreviewData] = useState<{
+    estimatedNextFolio: number | null;
+    cafRangeLabel: string | null;
+    estimatedFolioLabel: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!savedDraft?.id || dteType !== 39) return;
+    let active = true;
+    void adminFetch(`/api/admin/invoice-drafts/${savedDraft.id}/issue-preview`, { cache: "no-store" })
+      .then(async (res) => {
+        const payload = await res.json().catch(() => null);
+        if (active && res.ok && payload?.ok && payload?.preview) {
+          setPreviewData({
+            estimatedNextFolio: payload.preview.estimatedNextFolio ?? null,
+            cafRangeLabel: payload.preview.cafRangeLabel ?? null,
+            estimatedFolioLabel: payload.preview.estimatedFolioLabel ?? null,
+          });
+        }
+      });
+    return () => { active = false; };
+  }, [savedDraft?.id, dteType]);
 
   useEffect(() => {
     let active = true;
@@ -204,11 +237,56 @@ export default function ManualIssuanceForm({
         });
         const draftsPayload = await draftsResponse.json().catch(() => null);
         if (draftsResponse.ok && draftsPayload?.ok && active) {
-          setAvailableDrafts(
-            (draftsPayload.drafts as DraftRecord[]).filter((draft) =>
-              ["DRAFT", "REVIEW_REQUIRED", "VALIDATED"].includes(draft.status),
-            ),
+          const loadedDrafts = (draftsPayload.drafts as DraftRecord[]).filter((draft) =>
+            ["DRAFT", "REVIEW_REQUIRED", "VALIDATED"].includes(draft.status),
           );
+          setAvailableDrafts(loadedDrafts);
+          if (initialDraftId) {
+            const target = loadedDrafts.find((item) => item.id === initialDraftId);
+            if (target) {
+              setSavedDraft({
+                id: target.id,
+                status: target.status,
+                version: Number(target.version),
+                review_reason: target.review_reason,
+                dte_type: target.dte_type,
+              });
+              setDteType(Number(target.dte_type) === 39 ? 39 : 33);
+              setCustomerId(target.customer_id);
+              setSource(target.source === "automatic_payment" ? "payment" : target.source);
+              setAppointmentId(target.appointment_id ?? "");
+              setPaymentIntentId(target.payment_intent_id ?? "");
+              setOperationalReason(target.operational_reason ?? "");
+              setLines(
+                target.lines.map((line) => ({
+                  key: line.id,
+                  serviceId: line.service_id,
+                  appointmentId: line.appointment_id,
+                  description: line.description,
+                  quantity: Number(line.quantity),
+                  unitNetAmount:
+                    Number(target.dte_type) === 39
+                      ? Number(
+                          line.catalog_snapshot?.unitGrossAmount ??
+                            line.catalog_unit_gross_amount ??
+                            line.total_amount / Math.max(1, Number(line.quantity)),
+                        )
+                      : Number(line.unit_net_amount),
+                  discountPercent: Number(line.discount_basis_points) / 100,
+                  pricingMode: line.pricing_mode ?? "manual_net",
+                  catalogUnitGrossAmount:
+                    line.catalog_unit_gross_amount === null ||
+                    line.catalog_unit_gross_amount === undefined
+                      ? null
+                      : Number(line.catalog_unit_gross_amount),
+                  taxTreatment:
+                    line.catalog_snapshot?.taxTreatment === "exempt"
+                      ? "exempt"
+                      : "affected",
+                })),
+              );
+            }
+          }
         }
         const params = new URLSearchParams(window.location.search);
         const requestedCustomerId = params.get("customerId") ?? "";
@@ -225,7 +303,7 @@ export default function ManualIssuanceForm({
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialDraftId]);
 
   const currentTotals = useMemo(() => totals(lines, dteType), [lines, dteType]);
   const selectedCustomer = customers.find((item) => item.id === customerId);
@@ -458,7 +536,7 @@ export default function ManualIssuanceForm({
       if (!confirmed) return;
     }
     setIssuing(true);
-    setFeedback("");
+    setFeedback("Preparando y encolando documento…");
     const response = await adminFetch(
       `/api/admin/invoice-drafts/${savedDraft.id}/issue`,
       {
@@ -473,11 +551,19 @@ export default function ManualIssuanceForm({
     const payload = await response.json().catch(() => null);
     setIssuing(false);
     if (!response.ok || !payload?.ok) {
-      setFeedback(payload?.error ?? "No se pudo encolar el documento.");
+      const code = payload?.code ? ` [Código: ${payload.code}]` : "";
+      setFeedback((payload?.error ?? "No se pudo encolar el documento.") + code);
       return;
     }
     setSavedDraft({ ...savedDraft, status: "QUEUED" });
-    setFeedback("Documento validado y encolado. Las líneas y datos tributarios quedaron bloqueados.");
+    const workerStatus = String(payload.worker?.status ?? "").toUpperCase();
+    setFeedback(
+      workerStatus === "SUBMITTED"
+        ? `Recibido por el SII (Intent ID: ${payload.intentId ?? "generado"}).`
+        : workerStatus === "BLOCKED"
+          ? `Error de envío (Intent ID: ${payload.intentId ?? "generado"}). No hubo reintento automático.`
+          : `Documento confirmado y preparando emisión (Intent ID: ${payload.intentId ?? "generado"}). Las líneas y datos quedaron congelados.`,
+    );
     onCreated();
   };
 
@@ -603,9 +689,9 @@ export default function ManualIssuanceForm({
             }}
             className="h-11 rounded-xl border border-slate-200 bg-white px-3"
           >
-            <option value="manual">Venta manual</option>
-            <option value="appointment">Reserva pagada</option>
-            <option value="payment">Pago confirmado</option>
+            <option value="manual">Venta manual (Sin reserva ni pago)</option>
+            <option value="appointment">Reserva pagada (Reserva existente)</option>
+            <option value="payment">Pago confirmado (Pago verificado)</option>
           </select>
         </label>
         <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
@@ -654,11 +740,25 @@ export default function ManualIssuanceForm({
           </dl>
         </div>
       ) : selectedCustomer ? (
-        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm">
-          <p className="font-black text-blue-950">Consumidor final</p>
-          <p className="mt-1 text-xs text-blue-900">
-            La boleta no requiere datos tributarios de empresa. El correo del
-            cliente puede usarse para entregar su representación.
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+          <p className="text-xs font-black uppercase tracking-wide text-blue-700">
+            Cliente asociado
+          </p>
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Nombre", selectedCustomer.full_name],
+              ["RUT", customerRut(selectedCustomer.rut_normalized)],
+              ["Correo", selectedCustomer.email || "No informado"],
+              ["Teléfono", selectedCustomer.phone || "No informado"],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl bg-white/90 p-3">
+                <dt className="text-xs font-bold uppercase text-slate-500">{label}</dt>
+                <dd className="mt-1 break-words font-black text-slate-900">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-3 text-xs font-medium text-blue-900">
+            Tributariamente la Boleta 39 será emitida como Consumidor Final.
           </p>
         </div>
       ) : null}
@@ -888,14 +988,14 @@ export default function ManualIssuanceForm({
         <div>
           <p className="text-sm font-black">
             {dteType === 39
-              ? "Boleta electrónica · modo PRE-CAF"
+              ? "Boleta electrónica · Tipo 39 (Boleta manual disponible)"
               : "Factura electrónica tipo 33"}
           </p>
           <p className="mt-1 text-xs text-slate-300">
             {savedDraft
               ? `Estado: ${savedDraft.status}.`
               : dteType === 39
-                ? "Se puede guardar y revisar, pero no emitir ni reservar folio."
+                ? "Al guardar seguirá siendo borrador. El folio estimado se asignará al confirmar la emisión."
                 : "Al guardar seguirá siendo borrador y no consumirá folio."}
           </p>
         </div>
@@ -926,6 +1026,9 @@ export default function ManualIssuanceForm({
       ) : null}
 
       <div className="sticky bottom-3 z-20 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:flex-wrap sm:items-center">
+        <p className="w-full text-xs font-bold text-slate-600">
+          Guardar borrador → Revisar borrador → Confirmar emisión → Reserva atómica de un folio → Envío y conciliación SII
+        </p>
         <button
           type="button"
           onClick={() => void saveDraft()}
@@ -943,7 +1046,11 @@ export default function ManualIssuanceForm({
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40 sm:w-auto"
           >
             <FileCheck2 className="h-4 w-4" />
-            {issuing ? "Encolando…" : "Revisar y emitir"}
+            {issuing
+              ? "Encolando…"
+              : dteType === 39
+                ? "Confirmar y emitir boleta"
+                : "Revisar y emitir factura"}
           </button>
         ) : null}
         <button
@@ -959,6 +1066,7 @@ export default function ManualIssuanceForm({
       {showBoletaModal && savedDraft ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            {/* Revisión final explícita */}
             <h3 className="text-lg font-black text-slate-950">
               CONFIRMAR EMISIÓN REAL DE BOLETA ELECTRÓNICA
             </h3>
@@ -976,9 +1084,10 @@ export default function ManualIssuanceForm({
                 <dd className="text-xs text-slate-600">{issuer?.issuer_rut}</dd>
               </div>
               <div className="rounded-xl bg-slate-50 p-2.5">
-                <dt className="text-xs text-slate-500 uppercase font-bold">Receptor</dt>
+                <dt className="text-xs text-slate-500 uppercase font-bold">Cliente asociado</dt>
                 <dd className="font-black text-slate-900">{selectedCustomer?.full_name || "Consumidor Final"}</dd>
-                <dd className="text-xs text-slate-600">{selectedCustomer?.rut_normalized || "Sin RUT"}</dd>
+                <dd className="text-xs text-slate-600">{customerRut(selectedCustomer?.rut_normalized)}</dd>
+                <dd className="mt-1 text-xs text-slate-500">Receptor tributario XML: Consumidor Final · 66.666.666-6</dd>
               </div>
               <div className="rounded-xl bg-slate-50 p-2.5">
                 <dt className="text-xs text-slate-500 uppercase font-bold">Total IVA Incluido</dt>
@@ -986,10 +1095,16 @@ export default function ManualIssuanceForm({
                 <dd className="text-xs text-slate-600">Neto {clp(currentTotals.netAmount)} + IVA {clp(currentTotals.taxAmount)}</dd>
               </div>
               <div className="sm:col-span-2 rounded-xl bg-blue-50 p-2.5 text-xs text-blue-900">
-                <dt className="font-black uppercase">Folio Estimado</dt>
-                <dd className="font-bold">Folio estimado: sujeto a asignación atómica al confirmar.</dd>
+                <dt className="font-black uppercase">Rango CAF & Folio Estimado</dt>
+                <dd className="font-bold">
+                  {previewData?.cafRangeLabel ? `${previewData.cafRangeLabel} · ` : "Rango CAF disponible · "}
+                  {previewData?.estimatedFolioLabel ?? "Folio estimado: pendiente de consulta; se asignará atómicamente al confirmar"}
+                </dd>
               </div>
             </dl>
+            <p className="mt-4 rounded-xl bg-slate-100 p-3 text-sm font-bold text-slate-900">
+              Se emitirá una Boleta Electrónica Tipo 39 por {clp(currentTotals.totalAmount)}. Esta acción reservará un folio tributario.
+            </p>
             <div className="mt-6 flex flex-wrap justify-end gap-3">
               <button
                 type="button"
@@ -1004,7 +1119,7 @@ export default function ManualIssuanceForm({
                 disabled={issuing}
                 className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
               >
-                {issuing ? "Emitiendo…" : "Sí, emitir boleta real"}
+                {issuing ? "Emitiendo…" : "Confirmar y emitir boleta"}
               </button>
             </div>
           </div>

@@ -15,6 +15,7 @@ const realIssuer = {
   rut: "78195645-7",
   legalName: "R&G SpA",
   businessActivity: "Servicios digitales",
+  businessActivityCode: "620200",
   address: "Regimiento Arica Nro 301 depto/local 215",
   commune: "Coquimbo",
   city: "Coquimbo",

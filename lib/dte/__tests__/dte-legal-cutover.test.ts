@@ -134,7 +134,7 @@ test("all activation gates are fail closed", () => {
 
 test("boleta authorization and delivery statuses are explicit and safe", () => {
   assert.equal(friendlyDteStatus("BLOCKED", "DOCUMENT_TYPE_NOT_AUTHORIZED"), "Boleta no autorizada");
-  assert.equal(friendlyDteStatus("AMBIGUOUS"), "Emisión fallida: resultado ambiguo");
+  assert.equal(friendlyDteStatus("AMBIGUOUS"), "Error de envío");
   assert.equal(canEmailDte("SUBMITTED"), false);
   assert.equal(canEmailDte("AMBIGUOUS"), false);
   assert.equal(canEmailDte("ACCEPTED"), true);
@@ -178,7 +178,7 @@ test("executive UI has terminal loaders, retry and the requested simple sections
   const activation = readFileSync("components/admin/dte/LegalActivationControl.tsx", "utf8");
   for (const label of [
     "Documentos", "Emitir manualmente", "Emisión automática",
-    "Datos tributarios", "Modo técnico avanzado", "Autorización SII",
+    "Configuración tributaria", "Modo técnico avanzado", "Autorización SII",
   ]) assert.match(page, new RegExp(label));
   assert.match(page, /Reintentar/);
   assert.match(manual, /Reserva existente/);
@@ -187,4 +187,10 @@ test("executive UI has terminal loaders, retry and the requested simple sections
   assert.match(manual, /Revisión final explícita/);
   assert.match(activation, /Activar emisión legal/);
   assert.match(activation, /Pausar emisión/);
+});
+
+test("draft document labels match exact dte_type without inference", () => {
+  const page = readFileSync("app/admin/facturacion/page.tsx", "utf8");
+  assert.match(page, /if\s*\(type === 33\)\s*return "Factura electrónica";/);
+  assert.match(page, /if\s*\(type === 39\)\s*return "Boleta electrónica";/);
 });

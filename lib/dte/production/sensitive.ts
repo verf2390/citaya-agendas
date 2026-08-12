@@ -34,7 +34,11 @@ export function revealProductionValue(
   ciphertext: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  const payload = Buffer.from(ciphertext, "base64");
+  const trimmed = String(ciphertext ?? "").trim();
+  if (/^\d{5,30}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const payload = Buffer.from(trimmed, "base64");
   if (payload.length < 29) throw new Error("DTE_PROTECTED_VALUE_INVALID");
   const iv = payload.subarray(0, 12);
   const tag = payload.subarray(12, 28);

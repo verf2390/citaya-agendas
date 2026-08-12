@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "../supabaseAdmin";
 import { loadTenantOperationalContext } from "../tenant/operational-server";
+import { normalizeRut } from "./rut";
 
 export type Boleta39GateInput = {
   tenantId: string;
@@ -82,6 +83,9 @@ export async function checkManualBoleta39IssuanceReadiness(
     if (!["live", "internal"].includes(operational.operationalMode)) {
       blockingCodes.push("BOLETA39_TENANT_NOT_AUTHORIZED");
     }
+    if (!operational.capabilities.enqueueDte && !operational.capabilities.manualDteEnqueue) {
+      blockingCodes.push("BOLETA39_MANUAL_ENQUEUE_BLOCKED");
+    }
   } catch {
     blockingCodes.push("BOLETA39_TENANT_NOT_AUTHORIZED");
     return { ready: false, blockingCodes, details };
@@ -161,7 +165,9 @@ export async function checkManualBoleta39IssuanceReadiness(
     .eq("status", "active");
 
   const validCaf = (cafs ?? []).find(
-    (caf) => caf.issuer_rut === settings.issuer_rut && caf.environment === "production",
+    (caf) =>
+      normalizeRut(caf.issuer_rut) === normalizeRut(settings.issuer_rut) &&
+      caf.environment === "production",
   );
 
   details.productionCafReady = Boolean(validCaf);
@@ -171,11 +177,11 @@ export async function checkManualBoleta39IssuanceReadiness(
     // Count available folios in ledger
     const { count } = await supabaseAdmin
       .from("dte_production_folio_ledger")
-      .select("id", { count: "exact", head: true })
+      .select("folio", { count: "exact" })
       .eq("tenant_id", input.tenantId)
       .eq("dte_type", 39)
       .eq("caf_id", validCaf.id)
-      .eq("state", "AVAILABLE");
+      .in("state", ["available", "AVAILABLE"]);
 
     details.availableFoliosCount = count ?? 0;
     if (details.availableFoliosCount < 1) {

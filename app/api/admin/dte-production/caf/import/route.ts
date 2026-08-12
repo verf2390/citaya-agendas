@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as {
       tenantId?: string;
       tenantSlug?: string;
-      dteType?: 33 | 56 | 61;
+      dteType?: 33 | 34 | 39 | 41 | 52 | 56 | 61;
       expectedSha256?: string;
       expectedRange?: { from: number; to: number };
     };
@@ -28,13 +28,13 @@ export async function POST(req: Request) {
         { status: auth.status },
       );
     if (
-      ![33, 56, 61].includes(Number(body.dteType)) ||
+      ![33, 34, 39, 41, 52, 56, 61].includes(Number(body.dteType)) ||
       !/^[a-f0-9]{64}$/.test(String(body.expectedSha256 ?? ""))
     )
       throw new Error("DTE_CAF_IMPORT_INPUT_INVALID");
     const caf = await importServerProductionCaf({
       tenantId: auth.tenantId,
-      dteType: Number(body.dteType) as 33 | 56 | 61,
+      dteType: Number(body.dteType) as 33 | 34 | 39 | 41 | 52 | 56 | 61,
       expectedSha256: String(body.expectedSha256),
       actorId: auth.userId,
       expectedRange: body.expectedRange,

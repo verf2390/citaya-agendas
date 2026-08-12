@@ -13,16 +13,13 @@ import type {
   ProductionDteGenerator,
   ProductionGeneratedArtifacts,
 } from "./generator";
-import {
-  requiredArtifact,
-  type ProductionDteRepository,
-} from "./repository";
+import type { ProductionDteRepository } from "./repository";
 import {
   assertValidProductionIssuerActivityCode,
   assertValidProductionIssuerResolution,
 } from "./issuer-settings";
 import {
-  ProductionSiiClient,
+  type IProductionSiiClient,
   type ProductionSiiMilestone,
   type ProductionStatusResult,
 } from "./sii-client";
@@ -30,6 +27,7 @@ import type {
   ProductionDocument,
   ProductionDraftInput,
   ProductionDteType,
+  ProductionIssuer,
   ProductionTenantSettings,
 } from "./types";
 
@@ -41,7 +39,8 @@ export type ProductionCafLoader = (input: {
 
 export type ProductionSiiClientFactory = (
   config: ProductionRuntimeConfig,
-) => ProductionSiiClient;
+  dteType?: ProductionDteType,
+) => IProductionSiiClient;
 
 export type ManualStatusTokenProvider = (input: {
   settings: ProductionTenantSettings;
@@ -132,7 +131,7 @@ function validateReferences(input: ProductionDraftInput): void {
 }
 
 function assertSupportedType(type: number): asserts type is ProductionDteType {
-  if (![33, 56, 61].includes(type))
+  if (![33, 39, 56, 61].includes(type))
     throw new Error("DTE_PRODUCTION_TYPE_UNSUPPORTED");
 }
 
@@ -152,6 +151,29 @@ function safeDocument(document: ProductionDocument) {
       ? sha256(document.trackId).slice(0, 12)
       : null,
     updatedAt: document.updatedAt,
+  };
+}
+
+function mergeIssuerSnapshot(
+  inputIssuer: ProductionIssuer | null | undefined,
+  settingsIssuer: ProductionIssuer,
+): ProductionIssuer {
+  const input = inputIssuer ?? ({} as Partial<ProductionIssuer>);
+  return {
+    rut: String(input.rut ?? "").trim() || settingsIssuer.rut,
+    legalName: String(input.legalName ?? "").trim() || settingsIssuer.legalName,
+    businessActivity:
+      String(input.businessActivity ?? "").trim() || settingsIssuer.businessActivity,
+    businessActivityCode:
+      String(input.businessActivityCode ?? "").trim() || settingsIssuer.businessActivityCode || null,
+    address: String(input.address ?? "").trim() || settingsIssuer.address,
+    commune: String(input.commune ?? "").trim() || settingsIssuer.commune,
+    city: String(input.city ?? "").trim() || settingsIssuer.city,
+    resolutionDate:
+      String(input.resolutionDate ?? "").trim() || settingsIssuer.resolutionDate,
+    resolutionNumber:
+      String(input.resolutionNumber ?? "").trim() || settingsIssuer.resolutionNumber,
+    siiOffice: String(input.siiOffice ?? "").trim() || settingsIssuer.siiOffice || null,
   };
 }
 
@@ -190,7 +212,7 @@ export class ProductionDteService {
     const draft = await this.repository.createDraft({
       ...input,
       tenantId: settings.tenantId,
-      issuerSnapshot: input.issuerSnapshot ?? settings.issuer,
+      issuerSnapshot: mergeIssuerSnapshot(input.issuerSnapshot, settings.issuer),
       taxSnapshotAt: input.taxSnapshotAt ?? new Date().toISOString(),
       businessOperationId: safeBusinessOperationId(input.businessOperationId),
       createdBy: actorId,
@@ -228,17 +250,19 @@ export class ProductionDteService {
         throw new Error("DTE_PREPARE_STATE_INVALID");
       if (!current.issuerSnapshot || !current.taxSnapshotAt)
         throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
-      failureStage = "issuer_resolution";
-      assertValidProductionIssuerResolution(current.issuerSnapshot);
-      failureStage = "issuer_activity_code";
-      assertValidProductionIssuerActivityCode(current.issuerSnapshot);
-      validateRecipient(current.recipient);
       failureStage = "tenant_settings";
       const settings = await this.requireOperationalSettings(
         tenantId,
         current.issuerSnapshot,
         true,
       );
+      const effectiveIssuer = mergeIssuerSnapshot(current.issuerSnapshot, settings.issuer);
+      current.issuerSnapshot = effectiveIssuer;
+      failureStage = "issuer_resolution";
+      assertValidProductionIssuerResolution(effectiveIssuer);
+      failureStage = "issuer_activity_code";
+      assertValidProductionIssuerActivityCode(effectiveIssuer);
+      validateRecipient(current.recipient);
 
       // Read-only material checks deliberately precede the first folio lock.
       failureStage = "material_preflight";
@@ -263,6 +287,9 @@ export class ProductionDteService {
               cafId: String(current.cafId),
               reused: true,
             };
+      if (!reservation || !reservation.folio || reservation.folio <= 0) {
+        throw new Error("DTE_FOLIO_NOT_AVAILABLE");
+      }
       failureStage = "document_transition";
       const prepared =
         current.status === "prepared"
@@ -373,18 +400,22 @@ export class ProductionDteService {
       throw new Error("DTE_AMBIGUOUS_RETRY_BLOCKED");
     if (document.status !== "ready")
       throw new Error("DTE_EMIT_STATE_INVALID");
-    if (
-      await this.repository.getSubmissionAttempt(
-        input.tenantId,
-        input.documentId,
-      )
-    )
-      throw new Error("DTE_UPLOAD_ALREADY_ATTEMPTED");
-    const artifacts = await this.repository.listArtifacts(
+    const existingAttempt = await this.repository.getSubmissionAttempt(
       input.tenantId,
       input.documentId,
     );
-    const envelopeArtifact = requiredArtifact(artifacts, "envio_xml");
+    if (
+      existingAttempt &&
+      (existingAttempt.status === "submitted" || Boolean(document.trackId))
+    ) {
+      throw new Error("DTE_UPLOAD_ALREADY_ATTEMPTED");
+    }
+    const envelopeArtifact = await this.repository.getCurrentArtifact(
+      input.tenantId,
+      input.documentId,
+      "envio_xml",
+    );
+    if (!envelopeArtifact) throw new Error("DTE_ARTIFACT_ENVIO_XML_CURRENT_MISSING");
     const envelope = await this.artifactStore.getPrivate(
       input.tenantId,
       envelopeArtifact.storageKey,
@@ -433,9 +464,12 @@ export class ProductionDteService {
     };
     let result;
     try {
-      result = await this.siiClientFactory(config).uploadExactlyOnce({
+      const uploadFileName = [39, 41].includes(Number(document.dteType))
+        ? "EnvioBoleta.xml"
+        : "EnvioDTE.xml";
+      result = await this.siiClientFactory(config, document.dteType).uploadExactlyOnce({
         envelope: envelope.bytes,
-        fileName: `${document.dteType}-${document.folio}.xml`,
+        fileName: uploadFileName,
         issuerRut: document.issuerSnapshot.rut,
         senderRut: settings.senderRut,
         certificatePath: settings.certificatePath,
@@ -527,10 +561,20 @@ export class ProductionDteService {
       });
     };
     const token = await this.manualStatusTokenProvider({ settings, milestone });
-    const result = await this.siiClientFactory(config).queryStatusManually({
+    const result = await this.siiClientFactory(config, document.dteType).queryStatusManually({
       trackId,
       token,
       milestone,
+      companyRut: document.issuerSnapshot.rut,
+      document: document.dteType === 39 && document.folio !== null
+        ? {
+            dteType: 39,
+            folio: document.folio,
+            recipientRut: "66666666-6",
+            amount: document.totalAmount,
+            issueDate: document.issueDate,
+          }
+        : undefined,
     });
     const reconciled = await this.repository.transitionDocument({
       tenantId: input.tenantId,
@@ -549,12 +593,19 @@ export class ProductionDteService {
       },
     });
     if (["accepted", "accepted_with_observations"].includes(result.siiStatus) && settings.autoEmailDelivery) {
-      const artifacts = await this.repository.listArtifacts(
-        input.tenantId,
-        input.documentId,
-      );
-      const xml = requiredArtifact(artifacts, "dte_xml");
-      const pdf = requiredArtifact(artifacts, "pdf");
+      const [xml, pdf] = await Promise.all([
+        this.repository.getCurrentArtifact(
+          input.tenantId,
+          input.documentId,
+          "dte_xml",
+        ),
+        this.repository.getCurrentArtifact(
+          input.tenantId,
+          input.documentId,
+          "pdf",
+        ),
+      ]);
+      if (!xml || !pdf) throw new Error("DTE_DELIVERY_CURRENT_ARTIFACT_MISSING");
       await this.repository.enqueueRecipientDelivery({
         tenantId: input.tenantId,
         documentId: input.documentId,
@@ -576,6 +627,7 @@ export class ProductionDteService {
       artifacts: artifacts.map((artifact) => ({
         id: artifact.id,
         kind: artifact.kind,
+        version: artifact.version ?? 1,
         sha256: artifact.sha256,
         byteLength: artifact.byteLength,
       })),
@@ -593,10 +645,12 @@ export class ProductionDteService {
     kind: "dte_xml" | "pdf",
   ): Promise<{ bytes: Buffer; contentType: string; fileName: string }> {
     const document = await this.requireDocument(tenantId, documentId);
-    const artifact = requiredArtifact(
-      await this.repository.listArtifacts(tenantId, documentId),
+    const artifact = await this.repository.getCurrentArtifact(
+      tenantId,
+      documentId,
       kind,
     );
+    if (!artifact) throw new Error(`DTE_ARTIFACT_${kind.toUpperCase()}_CURRENT_MISSING`);
     const value = await this.artifactStore.getPrivate(
       tenantId,
       artifact.storageKey,

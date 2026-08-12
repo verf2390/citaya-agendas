@@ -21,6 +21,7 @@ import LegalActivationControl from "@/components/admin/dte/LegalActivationContro
 import AuthorizationEvidencePanel from "@/components/admin/dte/AuthorizationEvidencePanel";
 import DteNoteActions from "@/components/admin/dte/DteNoteActions";
 import DteDocumentActions from "@/components/admin/dte/DteDocumentActions";
+import ManualPendingBoletaAction from "@/components/admin/dte/ManualPendingBoletaAction";
 import DeclarationReadinessCard, {
   type DeclarationReadinessState,
 } from "@/components/admin/dte/DeclarationReadinessCard";
@@ -52,6 +53,7 @@ type DocumentRow = {
   canQuery: boolean;
   canCreateNote: boolean;
   canEmail: boolean;
+  canProcessManual: boolean;
 };
 type BillingView = "summary" | "new" | "documents" | "settings" | "diagnostics";
 type DocumentFilter = "current" | "canceled" | "all";
@@ -101,7 +103,7 @@ function dateLabel(value: string) {
 
 function documentLabel(type: number | null) {
   if (type === 33) return "Factura electrónica";
-  if (type === 39) return "Boleta afecta";
+  if (type === 39) return "Boleta electrónica";
   if (type === 41) return "Boleta exenta";
   return "Documento pendiente";
 }
@@ -145,6 +147,8 @@ export default function AdminFacturacionPage() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activeView, setActiveView] = useState<BillingView>("summary");
   const [documentFilter, setDocumentFilter] = useState<DocumentFilter>("current");
+
+  const [editingDraftId, setEditingDraftId] = useState<string | undefined>(undefined);
 
   const load = async () => {
     setLoading(true);
@@ -270,6 +274,7 @@ export default function AdminFacturacionPage() {
     return documents;
   }, [documentFilter, state?.documents]);
   const openInvoiceEditor = () => {
+    setEditingDraftId(undefined);
     setManualOpen(true);
     setActiveView("new");
   };
@@ -330,10 +335,10 @@ export default function AdminFacturacionPage() {
       <nav className="mt-5 flex flex-wrap gap-2" aria-label="Secciones de facturación">
         {[
           ["summary", "Resumen"],
-          ["new", "Nuevo documento"],
+          ["new", "Emitir manualmente"],
           ["documents", "Documentos"],
           ["settings", "Configuración tributaria"],
-          ["diagnostics", "Diagnóstico"],
+          ["diagnostics", "Diagnóstico / Modo técnico avanzado"],
         ].filter(([view]) => view !== "diagnostics" || state.technicalAccess)
           .map(([view, label]) => (
           <button
@@ -379,9 +384,11 @@ export default function AdminFacturacionPage() {
         >
           {manualOpen ? (
             <ManualIssuanceForm
+              initialDraftId={editingDraftId}
               onCreated={() => void refreshDocuments()}
               onClose={() => {
                 setManualOpen(false);
+                setEditingDraftId(undefined);
                 setActiveView("summary");
               }}
             />
@@ -592,7 +599,21 @@ export default function AdminFacturacionPage() {
                   ) : null}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {document.productionDocumentId ? (
-                      <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} />
+                      <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} canQuery={document.canQuery} onUpdated={() => void refreshDocuments()} />
+                    ) : document.canProcessManual && [33, 39].includes(Number(document.type)) ? (
+                      <ManualPendingBoletaAction intentId={document.id} dteType={Number(document.type) as 33 | 39} onProcessed={() => void refreshDocuments()} />
+                    ) : document.folio === null && !["CANCELED", "QUEUED", "PENDING", "PREPARING", "SUBMITTING", "SUBMITTED", "ACCEPTED", "REJECTED"].includes(document.rawStatus) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingDraftId(document.id);
+                          setManualOpen(true);
+                          setActiveView("new");
+                        }}
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-black text-slate-900 hover:bg-slate-50"
+                      >
+                        Editar borrador
+                      </button>
                     ) : <span className="text-xs text-slate-400">Sin artefactos</span>}
                     {document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void refreshDocuments()} /> : null}
                   </div>
@@ -615,7 +636,23 @@ export default function AdminFacturacionPage() {
                     <td className="px-3 py-3">{dateLabel(document.date)}</td>
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap gap-2">
-                        {document.productionDocumentId ? <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} /> : <span className="text-xs text-slate-400">Sin artefactos</span>}
+                        {document.productionDocumentId ? (
+                          <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} canQuery={document.canQuery} onUpdated={() => void refreshDocuments()} />
+                        ) : document.canProcessManual && [33, 39].includes(Number(document.type)) ? (
+                          <ManualPendingBoletaAction intentId={document.id} dteType={Number(document.type) as 33 | 39} onProcessed={() => void refreshDocuments()} />
+                        ) : document.folio === null && !["CANCELED", "QUEUED", "PENDING", "PREPARING", "SUBMITTING", "SUBMITTED", "ACCEPTED", "REJECTED"].includes(document.rawStatus) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDraftId(document.id);
+                              setManualOpen(true);
+                              setActiveView("new");
+                            }}
+                            className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-black text-slate-900 hover:bg-slate-50"
+                          >
+                            Editar borrador
+                          </button>
+                        ) : <span className="text-xs text-slate-400">Sin artefactos</span>}
                         {document.canCreateNote ? <DteNoteActions intentId={document.id} originalAmount={document.amount} onCreated={() => void refreshDocuments()} /> : null}
                       </div>
                     </td>

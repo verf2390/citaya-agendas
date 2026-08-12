@@ -1,6 +1,6 @@
 import type { TaxDocumentDraft } from "../types";
 
-export const PRODUCTION_DTE_TYPES = [33, 56, 61] as const;
+export const PRODUCTION_DTE_TYPES = [33, 34, 39, 41, 52, 56, 61] as const;
 export type ProductionDteType = (typeof PRODUCTION_DTE_TYPES)[number];
 export type ProductionDocumentStatus =
   | "draft"
@@ -76,6 +76,8 @@ export type ProductionDraftInput = {
     description?: string | null;
     quantity: number;
     unitPrice: number;
+    unitGrossAmount?: number | null;
+    lineGrossAmount?: number | null;
     exempt?: boolean;
     discountPercent?: number | null;
   }>;
@@ -114,6 +116,7 @@ export type ProductionArtifact = {
   tenantId: string;
   documentId: string;
   kind: ProductionArtifactKind;
+  version?: number;
   storageKey: string;
   sha256: string;
   byteLength: number;

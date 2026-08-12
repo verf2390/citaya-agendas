@@ -47,7 +47,7 @@ test("unsupported and unauthorized types cannot become visually active", () => {
     activationGates: { 33: { ready: true }, 56: { ready: true }, 61: { ready: true } },
   });
 
-  assert.deepEqual(state.activeDocumentTypes, [33, 56, 61]);
+  assert.deepEqual(state.activeDocumentTypes, [33, 34, 39, 41, 52, 56, 61]);
   assert.equal(state.readyForFirstInvoiceFromUi, false);
   assert.equal(billingComplianceLabels(state).issuance, "Emisión bloqueada");
 });

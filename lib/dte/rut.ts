@@ -51,3 +51,10 @@ export function normalizeRut(value: string): string {
   return `${Number(parts.body)}-${parts.dv}`;
 }
 
+export function formatRutWithDots(value: string): string {
+  const parts = splitRut(value);
+  if (!parts) return value;
+  const formattedBody = parts.body.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${formattedBody}-${parts.dv}`;
+}
+

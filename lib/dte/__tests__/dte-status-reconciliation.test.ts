@@ -39,7 +39,7 @@ test("EPR accepted status is labeled and reconciled idempotently without fiscal 
   });
   assert.equal(
     friendlyDteStatus("SUBMITTED", null, canonicalSiiStatus),
-    "Aceptado por el SII",
+    "Aceptada por el SII",
   );
 
   const before = {

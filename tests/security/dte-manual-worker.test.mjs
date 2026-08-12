@@ -58,9 +58,8 @@ test("UI exposes pending, processing, failed, sent and accepted states", () => {
     assert.match(`${statusRoute}\n${form}`, new RegExp(`"${state}"`));
   }
   assert.match(page, /Total IVA incluido/);
-  assert.match(labels, /Pendiente de procesamiento/);
-  assert.match(labels, /Procesando emisión/);
-  assert.match(labels, /Enviado al SII/);
+  assert.match(labels, /Preparando emisión/);
+  assert.match(labels, /Recibido por el SII/);
 });
 
 test("billing refresh updates documents incrementally without full reload", () => {

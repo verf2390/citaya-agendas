@@ -3,7 +3,7 @@ import Database from "better-sqlite3";
 import type { ImportedCaf } from "./caf-secure-import";
 
 export type FolioState = "available" | "reserved" | "issued" | "void";
-export type AllocationRequest = { caseId: string; typeCode: 33 | 56 | 61 };
+export type AllocationRequest = { caseId: string; typeCode: number };
 export type FolioMap = Record<string, number>;
 
 export class FolioSqliteLedger {

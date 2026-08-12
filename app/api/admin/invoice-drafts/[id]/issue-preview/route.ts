@@ -58,6 +58,35 @@ export async function GET(
   const lines = linesResult.data ?? [];
   const issuer = (draft.issuer_preview as Record<string, string>) ?? {};
 
+  let estimatedNextFolio: number | null = null;
+  let cafRangeLabel: string | null = null;
+  if (dteType === 39) {
+    const { data: caf } = await supabaseAdmin
+      .from("dte_production_cafs")
+      .select("range_from, range_to")
+      .eq("tenant_id", auth.tenantId)
+      .eq("dte_type", 39)
+      .eq("environment", "production")
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (caf) {
+      cafRangeLabel = `Rango CAF: ${caf.range_from} - ${caf.range_to}`;
+    }
+
+    const { data: nextFolioRow } = await supabaseAdmin
+      .from("dte_production_folio_ledger")
+      .select("folio")
+      .eq("tenant_id", auth.tenantId)
+      .eq("dte_type", 39)
+      .in("state", ["available", "AVAILABLE"])
+      .order("folio", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    estimatedNextFolio = nextFolioRow?.folio ?? null;
+  }
+
   return NextResponse.json({
     ok: true,
     preview: {
@@ -81,9 +110,14 @@ export async function GET(
       netAmount: Number(draft.net_amount),
       taxAmount: Number(draft.tax_amount),
       totalAmount: Number(draft.total_amount),
-      estimatedFolioLabel: "Folio estimado: sujeto a asignación atómica al confirmar.",
+      estimatedNextFolio,
+      cafRangeLabel,
+      estimatedFolioLabel: estimatedNextFolio
+        ? `Folio estimado: ${estimatedNextFolio} (sujeto a asignación atómica al confirmar)`
+        : "Folio estimado: sujeto a asignación atómica al confirmar.",
       certificateReady: Boolean(gateResult.details.productionCertificateReady),
       siiAuthorizationStatus: String(gateResult.details.siiAuthorizationStatus),
+      availableFoliosCount: gateResult.details.availableFoliosCount ?? 0,
       version: Number(draft.version),
     },
   });

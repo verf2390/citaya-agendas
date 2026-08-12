@@ -14,8 +14,55 @@ import {
   verifySignedSeedXml,
 } from "../sii/sii-auth";
 
+export type BoletaApiEnvironment =
+  | "certification"
+  | "production";
+
+export type BoletaApiEnvironmentConfig = {
+  authBaseUrl: string;
+  uploadBaseUrl: string;
+  queryBaseUrl: string;
+};
+
+export const BOLETA_API_ENVIRONMENT_CONFIG = {
+  certification: {
+    authBaseUrl: "https://apicert.sii.cl/recursos/v1",
+    uploadBaseUrl: "https://pangal.sii.cl/recursos/v1",
+    queryBaseUrl: "https://apicert.sii.cl/recursos/v1",
+  },
+  production: {
+    authBaseUrl: "https://api.sii.cl/recursos/v1",
+    uploadBaseUrl: "https://rahue.sii.cl/recursos/v1",
+    queryBaseUrl: "https://api.sii.cl/recursos/v1",
+  },
+} as const satisfies Record<
+  BoletaApiEnvironment,
+  BoletaApiEnvironmentConfig
+>;
+
+export function assertBoletaApiEnvironmentHosts(
+  environment: BoletaApiEnvironment,
+  config: BoletaApiEnvironmentConfig =
+    BOLETA_API_ENVIRONMENT_CONFIG[environment],
+): BoletaApiEnvironmentConfig {
+  const expected =
+    BOLETA_API_ENVIRONMENT_CONFIG[environment];
+
+  if (
+    config.authBaseUrl !== expected.authBaseUrl ||
+    config.uploadBaseUrl !== expected.uploadBaseUrl ||
+    config.queryBaseUrl !== expected.queryBaseUrl
+  ) {
+    throw new Error(
+      "DTE_BOLETA_API_ENVIRONMENT_HOST_MISMATCH",
+    );
+  }
+
+  return config;
+}
+
 export const BOLETA_CERTIFICATION_API_BASE =
-  "https://apicert.sii.cl/recursos/v1";
+  BOLETA_API_ENVIRONMENT_CONFIG.certification.authBaseUrl;
 
 export const BOLETA_CERTIFICATION_SEED_URL =
   `${BOLETA_CERTIFICATION_API_BASE}/boleta.electronica.semilla`;
@@ -24,7 +71,28 @@ export const BOLETA_CERTIFICATION_TOKEN_URL =
   `${BOLETA_CERTIFICATION_API_BASE}/boleta.electronica.token`;
 
 export const BOLETA_CERTIFICATION_SUBMIT_URL =
-  "https://pangal.sii.cl/recursos/v1/boleta.electronica.envio";
+  `${BOLETA_API_ENVIRONMENT_CONFIG.certification.uploadBaseUrl}/boleta.electronica.envio`;
+
+export const BOLETA_PRODUCTION_API_BASE =
+  BOLETA_API_ENVIRONMENT_CONFIG.production.queryBaseUrl;
+
+export const BOLETA_PRODUCTION_AUTH_BASE =
+  BOLETA_API_ENVIRONMENT_CONFIG.production.authBaseUrl;
+
+export const BOLETA_PRODUCTION_UPLOAD_BASE =
+  BOLETA_API_ENVIRONMENT_CONFIG.production.uploadBaseUrl;
+
+export const BOLETA_PRODUCTION_QUERY_BASE =
+  BOLETA_API_ENVIRONMENT_CONFIG.production.queryBaseUrl;
+
+export const BOLETA_PRODUCTION_SEED_URL =
+  `${BOLETA_PRODUCTION_AUTH_BASE}/boleta.electronica.semilla`;
+
+export const BOLETA_PRODUCTION_TOKEN_URL =
+  `${BOLETA_PRODUCTION_AUTH_BASE}/boleta.electronica.token`;
+
+export const BOLETA_PRODUCTION_SUBMIT_URL =
+  `${BOLETA_PRODUCTION_UPLOAD_BASE}/boleta.electronica.envio`;
 
 export const BOLETA_CERTIFICATION_USER_AGENT =
   "Mozilla/4.0 ( compatible; Citaya 1.0; Linux )";
@@ -81,12 +149,24 @@ export class BoletaRestSubmitHttpError extends Error {
   public readonly responseText: string;
   public readonly contentType: string;
   public readonly responseBytes: number;
+  public readonly responseHeaderNames: string[];
+  public readonly wwwAuthenticate: string | null;
+  public readonly host: string;
+  public readonly timestamp: string;
+  public readonly requestId: string | null;
+  public readonly correlationId: string | null;
 
   constructor(input: {
     status: number;
     responseText: string;
     contentType: string;
     responseBytes: number;
+    responseHeaderNames: string[];
+    wwwAuthenticate: string | null;
+    host: string;
+    timestamp: string;
+    requestId: string | null;
+    correlationId: string | null;
   }) {
     const message =
       `BOLETA_REST_SUBMIT_HTTP_${input.status}`;
@@ -98,12 +178,40 @@ export class BoletaRestSubmitHttpError extends Error {
     this.responseText = input.responseText;
     this.contentType = input.contentType;
     this.responseBytes = input.responseBytes;
+    this.responseHeaderNames = [...input.responseHeaderNames];
+    this.wwwAuthenticate = input.wwwAuthenticate;
+    this.host = input.host;
+    this.timestamp = input.timestamp;
+    this.requestId = input.requestId;
+    this.correlationId = input.correlationId;
 
     Object.setPrototypeOf(
       this,
       BoletaRestSubmitHttpError.prototype,
     );
   }
+}
+
+export type BoletaRestSubmitFailureCategory =
+  | "AUTH_FAILURE"
+  | "HTTP_FAILURE"
+  | "NETWORK_OR_TIMEOUT";
+
+export function classifyBoletaRestSubmitFailure(
+  error: unknown,
+): BoletaRestSubmitFailureCategory {
+  if (
+    error instanceof BoletaRestSubmitHttpError &&
+    error.status === 401
+  ) {
+    return "AUTH_FAILURE";
+  }
+
+  if (error instanceof BoletaRestSubmitHttpError) {
+    return "HTTP_FAILURE";
+  }
+
+  return "NETWORK_OR_TIMEOUT";
 }
 
 function sha1Base64(value: string): string {
@@ -200,7 +308,7 @@ function statusIsOk(value: string | null): boolean {
   return value === "0" || value === "00";
 }
 
-function splitRut(value: string): {
+export function splitRut(value: string): {
   rut: string;
   dv: string;
 } {
@@ -602,6 +710,7 @@ export function evaluateRcofResponse(input: {
 export function buildBoletaRestStatusUrl(
   companyRut: string,
   trackId: string,
+  apiBaseUrl: string = BOLETA_CERTIFICATION_API_BASE,
 ): string {
   const company = splitRut(companyRut);
 
@@ -612,13 +721,57 @@ export function buildBoletaRestStatusUrl(
   }
 
   return (
-    `${BOLETA_CERTIFICATION_API_BASE}` +
+    `${apiBaseUrl}` +
     "/boleta.electronica.envio/" +
     `${company.rut}-${company.dv}-${trackId}`
   );
 }
 
+export function buildBoletaDocumentStatusUrl(input: {
+  environment: BoletaApiEnvironment;
+  companyRut: string;
+  dteType: 39 | 41;
+  folio: number;
+  recipientRut: string;
+  amount: number;
+  issueDate: string;
+  queryBaseUrl?: string;
+}): string {
+  const environmentConfig =
+    assertBoletaApiEnvironmentHosts(input.environment);
+  const queryBaseUrl =
+    input.queryBaseUrl ?? environmentConfig.queryBaseUrl;
+  if (queryBaseUrl !== environmentConfig.queryBaseUrl) {
+    throw new Error("DTE_BOLETA_API_ENVIRONMENT_HOST_MISMATCH");
+  }
+
+  const company = splitRut(input.companyRut);
+  const recipient = splitRut(input.recipientRut);
+  if (!Number.isSafeInteger(input.folio) || input.folio < 1) {
+    throw new Error("BOLETA_API_FOLIO_INVALID");
+  }
+  if (!Number.isSafeInteger(input.amount) || input.amount < 0) {
+    throw new Error("BOLETA_API_AMOUNT_INVALID");
+  }
+  if (!/^\d{2}-\d{2}-\d{4}$/.test(input.issueDate)) {
+    throw new Error("BOLETA_API_ISSUE_DATE_INVALID");
+  }
+
+  const query = new URLSearchParams({
+    rut_receptor: recipient.rut,
+    dv_receptor: recipient.dv,
+    monto: String(input.amount),
+    fechaEmision: input.issueDate,
+  });
+
+  return (
+    `${queryBaseUrl}/boleta.electronica/` +
+    `${company.rut}-${company.dv}-${input.dteType}-${input.folio}/estado?${query}`
+  );
+}
+
 export type BoletaRestHttpOptions = {
+  environment?: BoletaApiEnvironment;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 };
@@ -658,10 +811,14 @@ function resolveBoletaRestTimeout(
 function assertBoletaRestAuthUrl(
   url: string,
 ): void {
-  if (
-    url !== BOLETA_CERTIFICATION_SEED_URL &&
-    url !== BOLETA_CERTIFICATION_TOKEN_URL
-  ) {
+  const allowed = new Set([
+    BOLETA_CERTIFICATION_SEED_URL,
+    BOLETA_CERTIFICATION_TOKEN_URL,
+    BOLETA_PRODUCTION_SEED_URL,
+    BOLETA_PRODUCTION_TOKEN_URL,
+  ]);
+
+  if (!allowed.has(url)) {
     throw new Error(
       "BOLETA_REST_AUTH_URL_NOT_ALLOWED",
     );
@@ -854,14 +1011,25 @@ async function performBoletaRestXmlRequest(
 }
 
 export async function requestBoletaRestSeed(
-  options: BoletaRestHttpOptions = {},
+  options: BoletaRestHttpOptions & { seedUrl?: string } = {},
 ): Promise<
   BoletaRestHttpResult<BoletaRestSeedResponse>
 > {
+  const environment = options.environment ?? "certification";
+  const environmentConfig = assertBoletaApiEnvironmentHosts(environment);
+  const seedUrl =
+    options.seedUrl ??
+    `${environmentConfig.authBaseUrl}/boleta.electronica.semilla`;
+  if (
+    seedUrl !==
+    `${environmentConfig.authBaseUrl}/boleta.electronica.semilla`
+  ) {
+    throw new Error("DTE_BOLETA_API_ENVIRONMENT_HOST_MISMATCH");
+  }
   const response =
     await performBoletaRestXmlRequest({
       operation: "seed",
-      url: BOLETA_CERTIFICATION_SEED_URL,
+      url: seedUrl,
       method: "GET",
       fetchImpl: options.fetchImpl,
       timeoutMs: options.timeoutMs,
@@ -881,7 +1049,7 @@ export async function requestBoletaRestSeed(
 
 export async function requestBoletaRestToken(
   signedXml: string,
-  options: BoletaRestHttpOptions = {},
+  options: BoletaRestHttpOptions & { tokenUrl?: string } = {},
 ): Promise<
   BoletaRestHttpResult<BoletaRestTokenResponse>
 > {
@@ -889,10 +1057,22 @@ export async function requestBoletaRestToken(
     signedXml,
   );
 
+  const environment = options.environment ?? "certification";
+  const environmentConfig = assertBoletaApiEnvironmentHosts(environment);
+  const tokenUrl =
+    options.tokenUrl ??
+    `${environmentConfig.authBaseUrl}/boleta.electronica.token`;
+  if (
+    tokenUrl !==
+    `${environmentConfig.authBaseUrl}/boleta.electronica.token`
+  ) {
+    throw new Error("DTE_BOLETA_API_ENVIRONMENT_HOST_MISMATCH");
+  }
+
   const response =
     await performBoletaRestXmlRequest({
       operation: "token",
-      url: BOLETA_CERTIFICATION_TOKEN_URL,
+      url: tokenUrl,
       method: "POST",
       body: signedXml,
       fetchImpl: options.fetchImpl,
@@ -912,11 +1092,13 @@ export async function requestBoletaRestToken(
 }
 
 export type BoletaRestSubmitInput = {
+  environment?: BoletaApiEnvironment;
   token: string;
   senderRut: string;
   companyRut: string;
   fileName: string;
   fileBytes: Uint8Array;
+  submitUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   userAgent?: string;
@@ -932,6 +1114,7 @@ export type BoletaRestSubmitResult = {
   retryAfterSeconds: number | null;
   warning?: "FILE_NAME_MISMATCH" | null;
   sanitizedJson: Record<string, unknown>;
+  responseBody: string;
 };
 
 const BOLETA_REST_SUBMIT_DEFAULT_TIMEOUT_MS =
@@ -1032,6 +1215,9 @@ function validateBoletaRestLocation(
     route,
     `/recursos/v1${route}`,
     `${BOLETA_CERTIFICATION_API_BASE}${route}`,
+    `${BOLETA_API_ENVIRONMENT_CONFIG.certification.uploadBaseUrl}${route}`,
+    `${BOLETA_PRODUCTION_API_BASE}${route}`,
+    `${BOLETA_PRODUCTION_UPLOAD_BASE}${route}`,
   ]);
 
   const normalized =
@@ -1132,6 +1318,7 @@ function sanitizeBoletaRestResponseBody(
 
 async function readBoletaRestSubmitResponse(
   response: Response,
+  requestUrl: string,
 ): Promise<{
   raw: string;
   contentType: string;
@@ -1147,6 +1334,40 @@ async function readBoletaRestSubmitResponse(
   const bytes = Buffer.from(
     await response.arrayBuffer(),
   );
+
+  const responseHeaderNames = [
+    ...new Set(
+      [...response.headers.keys()].map((name) =>
+        name.toLowerCase(),
+      ),
+    ),
+  ].sort();
+
+  const safeHeaderValue = (
+    name: string,
+  ): string | null => {
+    const value = response.headers.get(name);
+    if (value === null) return null;
+    return sanitizeBoletaRestResponseBody(
+      value,
+      "text/plain",
+    );
+  };
+
+  const failureDiagnostics = {
+    responseHeaderNames,
+    wwwAuthenticate: safeHeaderValue(
+      "www-authenticate",
+    ),
+    host: new URL(requestUrl).hostname,
+    timestamp: new Date().toISOString(),
+    requestId:
+      safeHeaderValue("x-request-id") ??
+      safeHeaderValue("request-id"),
+    correlationId:
+      safeHeaderValue("x-correlation-id") ??
+      safeHeaderValue("correlation-id"),
+  };
 
   if (
     bytes.length >
@@ -1176,6 +1397,7 @@ async function readBoletaRestSubmitResponse(
         responseText: "[INVALID_UTF8]",
         contentType,
         responseBytes: bytes.length,
+        ...failureDiagnostics,
       });
     }
 
@@ -1196,6 +1418,7 @@ async function readBoletaRestSubmitResponse(
       responseText: sanitizedBody,
       contentType,
       responseBytes: bytes.length,
+      ...failureDiagnostics,
     });
   }
 
@@ -1310,10 +1533,26 @@ export async function requestBoletaRestSubmit(
     timeoutMs,
   );
 
+  const environment = input.environment ?? "certification";
+  const environmentConfig =
+    assertBoletaApiEnvironmentHosts(environment);
+  const submitUrl =
+    input.submitUrl ??
+    `${environmentConfig.uploadBaseUrl}/boleta.electronica.envio`;
+
+  if (
+    submitUrl !==
+    `${environmentConfig.uploadBaseUrl}/boleta.electronica.envio`
+  ) {
+    throw new Error(
+      "DTE_BOLETA_API_ENVIRONMENT_HOST_MISMATCH",
+    );
+  }
+
   try {
     const response =
       await fetchImpl(
-        BOLETA_CERTIFICATION_SUBMIT_URL,
+        submitUrl,
         {
           method: "POST",
           headers: {
@@ -1333,6 +1572,7 @@ export async function requestBoletaRestSubmit(
     const parsedResponse =
       await readBoletaRestSubmitResponse(
         response,
+        submitUrl,
       );
 
     const data =
@@ -1429,6 +1669,7 @@ export async function requestBoletaRestSubmit(
       retryAfterSeconds,
       warning,
       sanitizedJson,
+      responseBody: parsedResponse.raw,
     };
   } catch (error) {
     if (controller.signal.aborted) {
@@ -1455,9 +1696,11 @@ export async function requestBoletaRestSubmit(
 }
 
 export type BoletaRestStatusInput = {
+  environment?: BoletaApiEnvironment;
   token: string;
   companyRut: string;
   trackId: string;
+  apiBaseUrl?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   userAgent?: string;
@@ -1485,12 +1728,112 @@ export type BoletaRestStatusResult = {
   };
 };
 
+export type BoletaRestDocumentStatusInput = {
+  environment: BoletaApiEnvironment;
+  token: string;
+  companyRut: string;
+  dteType: 39 | 41;
+  folio: number;
+  recipientRut: string;
+  amount: number;
+  issueDate: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  userAgent?: string;
+};
+
+export type BoletaRestDocumentStatusResult = {
+  httpStatus: number;
+  contentType: string;
+  responseBytes: number;
+  responseSha256: string;
+  sanitizedJson: Record<string, unknown>;
+  data: { code: string };
+};
+
+function siiIssueDate(value: string): string {
+  if (/^\d{2}-\d{2}-\d{4}$/.test(value)) return value;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) throw new Error("BOLETA_API_ISSUE_DATE_INVALID");
+  return `${match[3]}-${match[2]}-${match[1]}`;
+}
+
+export async function requestBoletaRestDocumentStatus(
+  input: BoletaRestDocumentStatusInput,
+): Promise<BoletaRestDocumentStatusResult> {
+  assertBoletaRestToken(input.token);
+  const url = buildBoletaDocumentStatusUrl({
+    environment: input.environment,
+    companyRut: input.companyRut,
+    dteType: input.dteType,
+    folio: input.folio,
+    recipientRut: input.recipientRut,
+    amount: input.amount,
+    issueDate: siiIssueDate(input.issueDate),
+  });
+  const fetchImpl = input.fetchImpl ?? globalThis.fetch;
+  if (typeof fetchImpl !== "function") throw new Error("BOLETA_REST_FETCH_UNAVAILABLE");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 15_000);
+  try {
+    const response = await fetchImpl(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-store",
+        Cookie: `TOKEN=${input.token}`,
+        "User-Agent": input.userAgent ?? BOLETA_CERTIFICATION_USER_AGENT,
+      },
+      redirect: "manual",
+      signal: controller.signal,
+    });
+    const contentType = response.headers.get("content-type") ?? "";
+    const raw = await response.text();
+    if (response.status !== 200 || !contentType.toLowerCase().includes("application/json")) {
+      throw new Error("BOLETA_REST_DOCUMENT_STATUS_HTTP_INVALID");
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      throw new Error("BOLETA_REST_DOCUMENT_STATUS_RESPONSE_INVALID");
+    }
+    const sanitized = sanitizeBoletaRestResponseBody(raw, contentType);
+    let sanitizedJson: Record<string, unknown>;
+    try {
+      sanitizedJson = JSON.parse(sanitized) as Record<string, unknown>;
+    } catch {
+      sanitizedJson = { code: String(parsed.codigo ?? parsed.code ?? parsed.estado ?? "") };
+    }
+    return {
+      httpStatus: response.status,
+      contentType,
+      responseBytes: Buffer.byteLength(raw, "utf8"),
+      responseSha256: createHash("sha256").update(Buffer.from(raw, "utf8")).digest("hex"),
+      sanitizedJson,
+      data: { code: String(parsed.codigo ?? parsed.code ?? parsed.estado ?? "").toUpperCase() },
+    };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("BOLETA_REST_DOCUMENT_STATUS_TIMEOUT");
+    if (error instanceof Error && error.message.startsWith("BOLETA_REST_")) throw error;
+    throw new Error("BOLETA_REST_DOCUMENT_STATUS_NETWORK_ERROR");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function requestBoletaRestStatus(
   input: BoletaRestStatusInput,
 ): Promise<BoletaRestStatusResult> {
   assertBoletaRestToken(input.token);
 
-  const url = buildBoletaRestStatusUrl(input.companyRut, input.trackId);
+  const environment = input.environment ?? "certification";
+  const environmentConfig = assertBoletaApiEnvironmentHosts(environment);
+  const apiBaseUrl = input.apiBaseUrl ?? environmentConfig.queryBaseUrl;
+  if (apiBaseUrl !== environmentConfig.queryBaseUrl) {
+    throw new Error("DTE_BOLETA_API_ENVIRONMENT_HOST_MISMATCH");
+  }
+  const url = buildBoletaRestStatusUrl(input.companyRut, input.trackId, apiBaseUrl);
   const fetchImpl = input.fetchImpl ?? globalThis.fetch;
   if (typeof fetchImpl !== "function") {
     throw new Error("BOLETA_REST_FETCH_UNAVAILABLE");
@@ -1545,13 +1888,19 @@ export async function requestBoletaRestStatus(
       ? rawJson.estadistica
       : [];
 
-    const estadisticas = statsRaw.map((st: any) => ({
-      tipo: Number(st.tipo ?? st.tipo_doc ?? 39),
-      informados: Number(st.informados ?? st.cantidad_informados ?? 0),
-      aceptados: Number(st.aceptados ?? st.cantidad_aceptados ?? 0),
-      rechazados: Number(st.rechazados ?? st.cantidad_rechazados ?? 0),
-      reparos: Number(st.reparos ?? st.cantidad_reparos ?? 0),
-    }));
+    const estadisticas = statsRaw.map((candidate) => {
+      const st =
+        candidate && typeof candidate === "object"
+          ? candidate as Record<string, unknown>
+          : {};
+      return {
+        tipo: Number(st.tipo ?? st.tipo_doc ?? 39),
+        informados: Number(st.informados ?? st.cantidad_informados ?? 0),
+        aceptados: Number(st.aceptados ?? st.cantidad_aceptados ?? 0),
+        rechazados: Number(st.rechazados ?? st.cantidad_rechazados ?? 0),
+        reparos: Number(st.reparos ?? st.cantidad_reparos ?? 0),
+      };
+    });
 
     const detalleRepRech = Array.isArray(rawJson.detalle_rep_rech)
       ? rawJson.detalle_rep_rech

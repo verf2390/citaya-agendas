@@ -11,6 +11,7 @@ import { assertProductionConfig } from "./config";
 import { CertifiedProductionDteGenerator } from "./generator";
 import { loadValidatedProductionSigningMaterial } from "./signing-material";
 import { ProductionDteService } from "./service";
+import { SiiBoletaApiTransport } from "./boleta-api-transport";
 import { ProductionSiiClient } from "./sii-client";
 import { requestProductionStatusToken } from "./status-auth";
 import { SupabaseProductionDteRepository } from "./supabase-repository";
@@ -96,7 +97,10 @@ export function createServerProductionDteService(): ProductionDteService {
         expectedOwnerUid: process.getuid?.(),
       });
     },
-    (config) => new ProductionSiiClient(config),
+    (config, dteType) =>
+      dteType && [39, 41].includes(Number(dteType))
+        ? new SiiBoletaApiTransport(config)
+        : new ProductionSiiClient(config),
     async ({ settings, milestone }) =>
       requestProductionStatusToken({
         config: assertProductionConfig(process.env, process.cwd()),

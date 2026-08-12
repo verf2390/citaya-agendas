@@ -1,4 +1,4 @@
-export const BILLING_PRODUCTION_DTE_TYPES = [33, 56, 61] as const;
+export const BILLING_PRODUCTION_DTE_TYPES = [33, 34, 39, 41, 52, 56, 61] as const;
 
 export type BillingActivationGate = {
   ready?: boolean;

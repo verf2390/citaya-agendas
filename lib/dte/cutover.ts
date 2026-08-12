@@ -41,7 +41,10 @@ export type ActivationGates = {
 };
 
 function clean(value: unknown, max: number): string {
-  return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max);
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, max);
 }
 
 export function normalizeRequiredCustomerRut(value: unknown): string {
@@ -124,7 +127,11 @@ export function manualIssuanceIdempotencyMaterial(input: {
 }
 
 export function validateStandaloneLines(
-  lines: Array<{ description?: unknown; quantity?: unknown; unitPrice?: unknown }>,
+  lines: Array<{
+    description?: unknown;
+    quantity?: unknown;
+    unitPrice?: unknown;
+  }>,
 ) {
   if (!Array.isArray(lines) || lines.length < 1 || lines.length > 100) {
     throw new Error("DTE_LINES_INVALID");
@@ -148,9 +155,9 @@ export function validateStandaloneLines(
 }
 
 export function activationGateResult(gates: ActivationGates) {
-  const missing = (Object.entries(gates) as Array<
-    [keyof ActivationGates, boolean]
-  >)
+  const missing = (
+    Object.entries(gates) as Array<[keyof ActivationGates, boolean]>
+  )
     .filter(([, ready]) => ready !== true)
     .map(([key]) => key);
   return { ready: missing.length === 0, missing };
@@ -163,11 +170,15 @@ export function canEmailDte(status: string): boolean {
 export function canonicalIntentStatusForSiiStatus(
   siiStatus: string | null | undefined,
 ): "SUBMITTED" | "ACCEPTED" | "ACCEPTED_WITH_OBJECTIONS" | "REJECTED" {
-  const normalized = String(siiStatus ?? "").trim().toLowerCase();
-  if (["accepted", "epr", "aceptado"].includes(normalized)) return "ACCEPTED";
+  const normalized = String(siiStatus ?? "")
+    .trim()
+    .toLowerCase();
+  if (["accepted", "epr", "aceptado", "dok"].includes(normalized))
+    return "ACCEPTED";
   if (
-    ["accepted_with_observations", "accepted_with_objections", "eok"]
-      .includes(normalized)
+    ["accepted_with_observations", "accepted_with_objections", "eok"].includes(
+      normalized,
+    )
   ) {
     return "ACCEPTED_WITH_OBJECTIONS";
   }
@@ -179,13 +190,25 @@ export function planSiiStatusReconciliation(
   currentIntentStatus: string | null | undefined,
   siiStatus: string | null | undefined,
 ) {
-  const normalizedSiiStatus = String(siiStatus ?? "").trim().toLowerCase();
+  const normalizedSiiStatus = String(siiStatus ?? "")
+    .trim()
+    .toLowerCase();
   const currentStatus = String(currentIntentStatus ?? "").toUpperCase();
   const reconcilable = [
-    "accepted", "epr", "aceptado",
-    "accepted_with_observations", "accepted_with_objections", "eok",
-    "rejected", "rch", "rechazado",
-    "sent", "rec", "processing", "pdr",
+    "accepted",
+    "epr",
+    "aceptado",
+    "dok",
+    "accepted_with_observations",
+    "accepted_with_objections",
+    "eok",
+    "rejected",
+    "rch",
+    "rechazado",
+    "sent",
+    "rec",
+    "processing",
+    "pdr",
   ].includes(normalizedSiiStatus);
   const targetStatus = canonicalIntentStatusForSiiStatus(siiStatus);
   return {
@@ -194,7 +217,9 @@ export function planSiiStatusReconciliation(
   };
 }
 
-export function friendlyDteReason(reason: string | null | undefined): string | null {
+export function friendlyDteReason(
+  reason: string | null | undefined,
+): string | null {
   if (!reason) return null;
   if (reason === "operator_amount_error_before_issuance") {
     return "El monto no coincidía con la operación y la emisión fue cancelada antes de utilizar un folio.";
@@ -208,27 +233,42 @@ export function friendlyDteStatus(
   siiStatus?: string | null,
 ): string {
   const normalized = String(status ?? "").toUpperCase();
+  const normalizedSiiStatus = String(siiStatus ?? "")
+    .trim()
+    .toLowerCase();
   const canonicalSiiStatus = canonicalIntentStatusForSiiStatus(siiStatus);
-  if (canonicalSiiStatus === "ACCEPTED") return "Aceptado por el SII";
+  if (["sent", "rec", "processing", "pdr"].includes(normalizedSiiStatus)) {
+    return "Recibido por el SII";
+  }
+  if (canonicalSiiStatus === "ACCEPTED") return "Aceptada por el SII";
   if (canonicalSiiStatus === "ACCEPTED_WITH_OBJECTIONS") {
     return "Aceptado por el SII con reparos";
   }
-  if (canonicalSiiStatus === "REJECTED") return "Rechazado por el SII";
+  if (canonicalSiiStatus === "REJECTED") return "Rechazada por el SII";
   if (normalized === "DRAFT") return "Borrador";
   if (normalized === "REVIEW_REQUIRED") return "Requiere revisión";
   if (normalized === "VALIDATED") return "Validado";
-  if (normalized === "QUEUED") return "En cola";
-  if (normalized === "BLOCKED" && ["BLOCKED_NOT_AUTHORIZED", "DOCUMENT_TYPE_NOT_AUTHORIZED"].includes(String(reason))) {
+  if (
+    normalized === "BLOCKED" &&
+    ["BLOCKED_NOT_AUTHORIZED", "DOCUMENT_TYPE_NOT_AUTHORIZED"].includes(
+      String(reason),
+    )
+  ) {
     return "Boleta no autorizada";
   }
-  if (normalized === "PENDING") return "Pendiente de procesamiento";
-  if (["PREPARING", "READY", "SUBMITTING"].includes(normalized)) return "Procesando emisión";
-  if (normalized === "SUBMITTED") return "Enviado al SII";
-  if (normalized === "ACCEPTED") return "Aceptado por el SII";
-  if (normalized === "ACCEPTED_WITH_OBJECTIONS") return "Aceptado por el SII con reparos";
-  if (normalized === "REJECTED") return "Emisión fallida: rechazo SII";
-  if (normalized === "AMBIGUOUS") return "Emisión fallida: resultado ambiguo";
-  if (normalized === "BLOCKED") return `Emisión fallida: ${reason ?? "control pendiente"}`;
+  if (
+    ["PENDING", "QUEUED", "PREPARING", "READY", "SUBMITTING"].includes(
+      normalized,
+    )
+  ) {
+    return "Preparando emisión";
+  }
+  if (normalized === "SUBMITTED") return "Recibido por el SII";
+  if (normalized === "ACCEPTED") return "Aceptada por el SII";
+  if (normalized === "ACCEPTED_WITH_OBJECTIONS")
+    return "Aceptado por el SII con reparos";
+  if (normalized === "REJECTED") return "Rechazada por el SII";
+  if (["AMBIGUOUS", "BLOCKED"].includes(normalized)) return "Error de envío";
   if (normalized === "CANCELED") return "Emisión cancelada";
   if (normalized === "PAUSED") return "Emisión pausada";
   return "Estado no disponible";

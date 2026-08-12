@@ -72,12 +72,16 @@ if (typeof globalThis.fetch !== "function") {
 const nativeFetch =
   globalThis.fetch.bind(globalThis);
 
-globalThis.fetch = () =>
+const blockedFetch = () =>
   Promise.reject(
     new Error(
       "BOLETA39_NETWORK_BLOCKED_BY_DEFAULT",
     ),
   );
+
+if (isMain) {
+  globalThis.fetch = blockedFetch;
+}
 
 const require = createRequire(import.meta.url);
 const ts = require("typescript");
@@ -1721,7 +1725,7 @@ async function runSubmit(
       live,
     });
 
-    const verification = verifyPersistenceBackups({
+    verifyPersistenceBackups({
       jsonPath: backups.jsonPath,
       txtPath: backups.txtPath,
       logPath: backups.logPath,
@@ -2293,7 +2297,7 @@ function extractLocalBoletaXmlMetadata(artifactDir, caseIndex) {
 }
 
 export async function runStatusByTrack(preflight, options = {}) {
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const fetchImpl = options.fetchImpl ?? blockedFetch;
   if (typeof fetchImpl !== "function") {
     throw new Error("STATUS_FETCH_UNAVAILABLE");
   }
@@ -2352,7 +2356,7 @@ export async function runStatusByTrack(preflight, options = {}) {
 }
 
 export async function runRecoverByFolio(preflight, options = {}) {
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const fetchImpl = options.fetchImpl ?? blockedFetch;
   if (typeof fetchImpl !== "function") {
     throw new Error("RECOVER_FETCH_UNAVAILABLE");
   }

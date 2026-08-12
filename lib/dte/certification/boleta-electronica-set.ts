@@ -202,7 +202,7 @@ function defaultIssuer(input: BoletaCertificationSetBuildInput): TenantTaxProfil
     rut: input.issuer?.rut ?? "00000000-0",
     legalName: input.issuer?.legalName ?? "EMISOR_NO_CONFIGURADO",
     businessActivity: input.issuer?.businessActivity ?? "EMISOR_NO_CONFIGURADO",
-    businessActivityCode: input.issuer?.businessActivityCode ?? null,
+    businessActivityCode: input.issuer?.businessActivityCode ?? "620200",
     address: input.issuer?.address ?? "EMISOR_NO_CONFIGURADO",
     commune: input.issuer?.commune ?? "EMISOR_NO_CONFIGURADO",
     city: input.issuer?.city ?? "EMISOR_NO_CONFIGURADO",

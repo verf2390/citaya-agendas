@@ -699,7 +699,7 @@ export function prepareFacturaCertificationSetReissue(
           overrides: {
             folioByCase: plan.folioByCase,
             importedCafs: audited.cafs.map((caf) => ({
-              typeCode: caf.typeCode,
+              typeCode: caf.typeCode as 33 | 56 | 61,
               rangeFrom: caf.rangeFrom,
               rangeTo: caf.rangeTo,
               cafXml: caf.cafXml,

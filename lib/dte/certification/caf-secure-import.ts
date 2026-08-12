@@ -39,7 +39,7 @@ export type ImportedCaf = {
   daBytes: Buffer;
   issuerRut: string;
   issuerName: string;
-  typeCode: 33 | 56 | 61;
+  typeCode: 33 | 34 | 39 | 41 | 52 | 56 | 61;
   rangeFrom: number;
   rangeTo: number;
   authorizationDate: string;
@@ -57,7 +57,7 @@ export type ImportedCaf = {
 export type LoadCafOptions = {
   repoRoot: string;
   expectedIssuerRut: string;
-  expectedType: 33 | 56 | 61;
+  expectedType: 33 | 34 | 39 | 41 | 52 | 56 | 61;
   minimumAvailable: number;
   trustStore: CafTrustStore;
   fixtureMode: boolean;
@@ -224,7 +224,7 @@ function loadCafAuthorizationInternal(
   const issuerRut = assertRut(value(daXml, "RE"));
   if (issuerRut !== normalizeRut(options.expectedIssuerRut)) reject("RE");
   const typeCode = positive(value(daXml, "TD"), "TD");
-  if (![33, 56, 61].includes(typeCode) || typeCode !== options.expectedType)
+  if (![33, 34, 39, 41, 52, 56, 61].includes(typeCode) || typeCode !== options.expectedType)
     reject("TD");
   const rangeFrom = positive(value(daXml, "D"), "RNG.D");
   const rangeTo = positive(value(daXml, "H"), "RNG.H");
@@ -384,7 +384,7 @@ function loadCafAuthorizationInternal(
     daBytes: flattenCafDaForFrma(daXml),
     issuerRut,
     issuerName: value(daXml, "RS"),
-    typeCode: typeCode as 33 | 56 | 61,
+    typeCode: typeCode as 33 | 34 | 39 | 41 | 52 | 56 | 61,
     rangeFrom,
     rangeTo,
     authorizationDate,

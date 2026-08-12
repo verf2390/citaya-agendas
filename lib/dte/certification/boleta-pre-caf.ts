@@ -14,6 +14,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -429,9 +430,9 @@ ${detailsXml(totals)}
   };
 }
 
-function boletaEnvelopeUnsigned(input: {
-  documents: PreparedBoleta[];
-  issuer: BoletaPreCafIssuer;
+export function boletaEnvelopeUnsigned(input: {
+  documents: { folio: number; dteXml: string }[];
+  issuer: { rut: string; senderRut?: string; resolutionDate: string; resolutionNumber: string };
   timestamp?: string;
 }): { xml: string; setId: string } {
   const setId = `CitayaBoleta39Set-${input.documents[0].folio}-${input.documents.at(-1)!.folio}`;
@@ -441,15 +442,15 @@ function boletaEnvelopeUnsigned(input: {
 <EnvioBOLETA xmlns="${SII_NAMESPACE}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioBOLETA_v11.xsd" version="1.0">
   <SetDTE ID="${setId}">
     <Caratula version="1.0">
-      <RutEmisor>${escapeXml(input.issuer.rut)}</RutEmisor>
-      <RutEnvia>${escapeXml(input.issuer.senderRut)}</RutEnvia>
+      <RutEmisor>${escapeXml(normalizeRut(input.issuer.rut))}</RutEmisor>
+      <RutEnvia>${escapeXml(normalizeRut(input.issuer.senderRut ?? input.issuer.rut))}</RutEnvia>
       <RutReceptor>${SII_RECEIVER_RUT}</RutReceptor>
       <FchResol>${escapeXml(input.issuer.resolutionDate)}</FchResol>
       <NroResol>${escapeXml(input.issuer.resolutionNumber)}</NroResol>
       <TmstFirmaEnv>${input.timestamp ?? FIXTURE_TIMESTAMP}</TmstFirmaEnv>
-      <SubTotDTE><TpoDTE>39</TpoDTE><NroDTE>5</NroDTE></SubTotDTE>
+      <SubTotDTE><TpoDTE>39</TpoDTE><NroDTE>${input.documents.length}</NroDTE></SubTotDTE>
     </Caratula>
-${input.documents.map((document) => document.dteXml).join("\n")}
+${input.documents.map((document) => document.dteXml.replace(/<\?xml[\s\S]*?\?>\s*/, "")).join("\n")}
   </SetDTE>
 </EnvioBOLETA>`,
   };
@@ -561,7 +562,23 @@ function verifySignature(
 export async function renderTedBarcodePng(input: {
   tedXml: string;
 }): Promise<Buffer> {
-  const { writeBarcode } = await import("zxing-wasm/writer");
+  const { prepareZXingModule, writeBarcode } = await import(
+    "zxing-wasm/writer"
+  );
+  const requireFromWorkspace = createRequire(
+    resolve(process.cwd(), "package.json"),
+  );
+  const wasm = readFileSync(
+    requireFromWorkspace.resolve("zxing-wasm/writer/zxing_writer.wasm"),
+  );
+  const wasmBinary = wasm.buffer.slice(
+    wasm.byteOffset,
+    wasm.byteOffset + wasm.byteLength,
+  );
+  await prepareZXingModule({
+    overrides: { wasmBinary },
+    fireImmediately: true,
+  });
   const barcode = await writeBarcode(input.tedXml, {
     format: "PDF417",
     scale: 3,

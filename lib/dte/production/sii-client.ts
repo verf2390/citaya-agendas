@@ -97,7 +97,46 @@ function assertOkAuth(
   return value;
 }
 
-export class ProductionSiiClient {
+export interface IProductionSiiClient {
+  uploadExactlyOnce(input: {
+    envelope: Buffer;
+    fileName: string;
+    issuerRut: string;
+    senderRut: string;
+    certificatePath: string;
+    privateKeyPath: string;
+    milestone: (event: ProductionSiiMilestone) => Promise<void>;
+  }): Promise<ProductionUploadResult>;
+
+  queryStatusManually(input: {
+    trackId: string;
+    token: string;
+    milestone: (event: ProductionSiiMilestone) => Promise<void>;
+    companyRut?: string;
+    document?: {
+      dteType: 39 | 41;
+      folio: number;
+      recipientRut: string;
+      amount: number;
+      issueDate: string;
+    };
+  }): Promise<ProductionStatusResult>;
+}
+
+import { SiiBoletaApiTransport } from "./boleta-api-transport";
+
+export function createProductionSiiClient(
+  config: ProductionRuntimeConfig,
+  dteType?: number,
+  fetchImpl?: typeof fetch,
+): IProductionSiiClient {
+  if (dteType && [39, 41].includes(Number(dteType))) {
+    return new SiiBoletaApiTransport(config);
+  }
+  return new ProductionSiiClient(config, fetchImpl);
+}
+
+export class ProductionSiiClient implements IProductionSiiClient {
   private readonly fetchImpl: typeof fetch;
 
   constructor(

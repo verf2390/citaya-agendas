@@ -72,8 +72,18 @@ export async function assertTenantCanCreatePayment(tenantId: string) {
   return requireCapability(await loadTenantOperationalContext(tenantId), "createPayment", "TENANT_MODE_PAYMENT_BLOCKED");
 }
 
-export async function assertTenantCanEnqueueDte(tenantId: string) {
-  return requireCapability(await loadTenantOperationalContext(tenantId), "enqueueDte", "TENANT_MODE_DTE_BLOCKED");
+export async function assertTenantCanEnqueueDte(
+  tenantId: string,
+  options?: { dteType?: number; issuanceOrigin?: string },
+) {
+  const context = await loadTenantOperationalContext(tenantId);
+  if (
+    options?.issuanceOrigin === "manual_admin" &&
+    (context.capabilities.enqueueDte === true || context.capabilities.manualDteEnqueue === true)
+  ) {
+    return context;
+  }
+  return requireCapability(context, "enqueueDte", "TENANT_MODE_DTE_BLOCKED");
 }
 
 export async function assertTenantCanSendExternalCommunication(tenantId: string) {
@@ -84,8 +94,18 @@ export async function assertTenantCanSendCampaign(tenantId: string) {
   return requireCapability(await loadTenantOperationalContext(tenantId), "sendCampaign", "TENANT_MODE_CAMPAIGN_BLOCKED");
 }
 
-export async function assertTenantCanRunDteWorker(tenantId: string) {
-  return requireCapability(await loadTenantOperationalContext(tenantId), "runDteWorker", "TENANT_MODE_DTE_WORKER_BLOCKED");
+export async function assertTenantCanRunDteWorker(
+  tenantId: string,
+  options?: { issuanceOrigin?: string },
+) {
+  const context = await loadTenantOperationalContext(tenantId);
+  if (
+    options?.issuanceOrigin === "manual_admin" &&
+    (context.capabilities.runDteWorker === true || context.capabilities.manualDteEnqueue === true)
+  ) {
+    return context;
+  }
+  return requireCapability(context, "runDteWorker", "TENANT_MODE_DTE_WORKER_BLOCKED");
 }
 
 export async function assertTenantCanAdministerTax(tenantId: string) {

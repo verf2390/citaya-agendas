@@ -11,6 +11,7 @@ type ClaimedOutbox = {
   tenant_id: string;
   intent_id: string;
   deterministic_attempts: number;
+  issuance_origin?: string;
 };
 
 type IssuanceIntent = {
@@ -27,6 +28,14 @@ type IssuanceIntent = {
   operational_reason: string | null;
   production_document_id: string | null;
   created_by: string | null;
+};
+
+type CommercialCustomerSnapshot = {
+  customer_id: string;
+  customer_name: string;
+  customer_rut: string | null;
+  customer_email: string | null;
+  customer_phone: string | null;
 };
 
 type SafeFailureDetails = {
@@ -169,6 +178,33 @@ async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED"
   if (result.error) throw new Error("DTE_OUTBOX_PERSISTENCE_FAILED");
 }
 
+async function markAmbiguousNoRetry(item: ClaimedOutbox, reason: string) {
+  await updateIntent(item, {
+    status: "AMBIGUOUS",
+    safe_blocking_reason: reason,
+    network_attempt_count: 1,
+  });
+  const outboxResult = await supabaseAdmin
+    .from("dte_issuance_outbox")
+    .update({
+      status: "BLOCKED",
+      network_attempts: 1,
+      last_safe_error: "AMBIGUOUS_REQUIRES_RECONCILIATION",
+      locked_at: null,
+      locked_by: null,
+      lease_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", item.id)
+    .eq("tenant_id", item.tenant_id)
+    .in("status", ["PENDING", "PROCESSING", "BLOCKED"]);
+  if (outboxResult.error) throw new Error("DTE_AMBIGUOUS_OUTBOX_PERSISTENCE_FAILED");
+  await appendEvent(item, "SUBMISSION_AMBIGUOUS", {
+    automaticRetry: false,
+    reason,
+  });
+}
+
 export async function runOneManualIssuanceWorker(options: {
   targetOutboxId?: string;
   controlledResume?: {
@@ -221,7 +257,7 @@ export async function runOneManualIssuanceWorker(options: {
   if (!item) return { processed: false, status: null, siiContacted: false, networkAttempts: 0 };
 
   try {
-    await assertTenantCanRunDteWorker(item.tenant_id);
+    await assertTenantCanRunDteWorker(item.tenant_id, { issuanceOrigin: item.issuance_origin });
   } catch {
     await block(item, "TENANT_MODE_DTE_WORKER_BLOCKED");
     return { processed: true, status: "BLOCKED", siiContacted: false, networkAttempts: 0 };
@@ -230,12 +266,25 @@ export async function runOneManualIssuanceWorker(options: {
   let intent: IssuanceIntent | null = null;
   try {
     intent = await loadIntent(item);
-    if (intent.status !== "PENDING" || ![33, 56, 61].includes(Number(intent.resolved_dte_type))) {
+    if (intent.status !== "PENDING" || ![33, 39, 56, 61].includes(Number(intent.resolved_dte_type))) {
       throw new Error("DTE_INTENT_STATE_INVALID");
     }
-    const dteType = Number(intent.resolved_dte_type) as 33 | 56 | 61;
+    const dteType = Number(intent.resolved_dte_type) as 33 | 39 | 56 | 61;
     await assertTenantReadyForIssuance(item, dteType);
     const receiver = intent.receiver_snapshot ?? {};
+    let commercialCustomer: CommercialCustomerSnapshot | null = null;
+    if (dteType === 39) {
+      const commercialResult = await supabaseAdmin
+        .from("dte_boleta39_commercial_customer_snapshots")
+        .select("customer_id,customer_name,customer_rut,customer_email,customer_phone")
+        .eq("tenant_id", item.tenant_id)
+        .eq("intent_id", intent.id)
+        .maybeSingle();
+      if (commercialResult.error || !commercialResult.data) {
+        throw new Error("DTE_BOLETA39_CUSTOMER_SNAPSHOT_REQUIRED");
+      }
+      commercialCustomer = commercialResult.data as CommercialCustomerSnapshot;
+    }
     const immutable = intent.immutable_snapshot ?? {};
     const frozenIssuer =
       immutable.issuer && typeof immutable.issuer === "object"
@@ -290,6 +339,9 @@ export async function runOneManualIssuanceWorker(options: {
       ) {
         throw new Error("DTE_LINES_INVALID");
       }
+      const unitGross = Number(
+        line.unitGrossAmount ?? (hasNetContract ? Math.round(sourceUnitAmount * 1.19) : sourceUnitAmount),
+      );
       return {
         name, quantity,
         unitPrice: hasNetContract
@@ -297,6 +349,7 @@ export async function runOneManualIssuanceWorker(options: {
           : treatment === "exempt"
             ? sourceUnitAmount
             : affectedNetFromGross(sourceUnitAmount),
+        unitGrossAmount: unitGross,
         exempt: treatment === "exempt",
         discountPercent: discountBasisPoints / 100,
       };
@@ -345,13 +398,13 @@ export async function runOneManualIssuanceWorker(options: {
           },
           taxSnapshotAt: value(immutable, "capturedAt"),
           recipient: {
-            rut: value(receiver, "rut"),
-            legalName: value(receiver, "legalName"),
+            rut: commercialCustomer?.customer_rut || value(receiver, "rut") || "66666666-6",
+            legalName: commercialCustomer?.customer_name || value(receiver, "legalName") || "Consumidor Final",
             businessActivity: value(receiver, "activity") || value(receiver, "businessActivity"),
             address: value(receiver, "address"),
             commune: value(receiver, "commune"),
             city: value(receiver, "city"),
-            email: value(receiver, "taxEmail") || value(receiver, "email"),
+            email: commercialCustomer?.customer_email || value(receiver, "taxEmail") || value(receiver, "email"),
           },
           lines: productionLines,
           references,
@@ -382,11 +435,7 @@ export async function runOneManualIssuanceWorker(options: {
     });
     const finalStatus = emitted.status.toUpperCase();
     if (finalStatus === "AMBIGUOUS") {
-      await supabaseAdmin.rpc("dte_mark_ambiguous_no_retry", {
-        p_tenant_id: item.tenant_id,
-        p_intent_id: item.intent_id,
-        p_safe_reason: "AMBIGUOUS_REQUIRES_RECONCILIATION",
-      });
+      await markAmbiguousNoRetry(item, "AMBIGUOUS_REQUIRES_RECONCILIATION");
       return { processed: true, status: "AMBIGUOUS", siiContacted: true, networkAttempts: 1 };
     }
     const status = finalStatus === "SUBMITTED" ? "SUBMITTED" : "REJECTED";
@@ -405,11 +454,7 @@ export async function runOneManualIssuanceWorker(options: {
         .eq("document_id", productionDocumentId)
         .maybeSingle();
       if (attempt.data?.before_fetch_at) {
-        await supabaseAdmin.rpc("dte_mark_ambiguous_no_retry", {
-          p_tenant_id: item.tenant_id,
-          p_intent_id: item.intent_id,
-          p_safe_reason: "NETWORK_RESULT_UNKNOWN",
-        });
+        await markAmbiguousNoRetry(item, "NETWORK_RESULT_UNKNOWN");
         return { processed: true, status: "AMBIGUOUS", siiContacted: true, networkAttempts: 1 };
       }
     }

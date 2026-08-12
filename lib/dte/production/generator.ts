@@ -12,6 +12,10 @@ import {
 } from "../certification/factura-printed-samples-dry-run";
 import type { ImportedCaf } from "../certification/caf-secure-import";
 import type { TaxDocumentDraft } from "../types";
+import {
+  buildProductionBoleta39Document,
+  encodeBoleta39Iso88591,
+} from "../production-boleta39";
 import { assertProductionConfig } from "./config";
 import {
   assertValidProductionIssuerActivityCode,
@@ -112,6 +116,69 @@ export class CertifiedProductionDteGenerator
     env: NodeJS.ProcessEnv;
   }): Promise<ProductionGeneratedArtifacts> {
     const config = assertProductionConfig(input.env, process.cwd());
+
+    // --- Boleta Electrónica (tipo 39) path ---
+    if (input.document.dteType === 39) {
+      if (!input.document.issuerSnapshot)
+        throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
+      if (input.document.folio === null)
+        throw new Error("DTE_FOLIO_NOT_RESERVED");
+      const issuer = input.document.issuerSnapshot;
+      if (
+        input.caf.materialKind !== "production_real" ||
+        input.caf.trustStatus !== "verified_official" ||
+        input.caf.realUseBlocked
+      ) {
+        throw new Error("DTE_PRODUCTION_CAF_NOT_AUTHORIZED");
+      }
+      const boletaLines = input.document.lines.map((line) => ({
+        description: line.name,
+        quantity: line.quantity,
+        unitGrossAmount: line.unitGrossAmount ?? (line.unitPrice ? Math.round(line.unitPrice * 1.19) : 0),
+      }));
+      const boletaResult = await buildProductionBoleta39Document({
+        tenantId: input.settings.tenantId,
+        folio: input.document.folio,
+        issueDate: input.document.issueDate,
+        issuer: {
+          rut: issuer.rut,
+          senderRut: input.settings.senderRut,
+          legalName: issuer.legalName,
+          businessActivity: issuer.businessActivity,
+          address: issuer.address,
+          commune: issuer.commune,
+          city: issuer.city,
+          resolutionDate: issuer.resolutionDate,
+          resolutionNumber: issuer.resolutionNumber,
+        },
+        recipient: input.document.recipient ? {
+          rut: input.document.recipient.rut,
+          legalName: input.document.recipient.legalName,
+          address: input.document.recipient.address ?? undefined,
+          commune: input.document.recipient.commune ?? undefined,
+          city: input.document.recipient.city ?? undefined,
+        } : undefined,
+        lines: boletaLines,
+        cafXml: input.caf.cafXml,
+        cafPrivateKeyPem: input.caf.privateKeyPem,
+        cafPublicKeyPem: input.caf.publicKeyPem,
+        privateKeyPath: input.settings.privateKeyPath,
+        certificatePath: input.settings.certificatePath,
+      });
+      return {
+        dteXml: encodeBoleta39Iso88591(boletaResult.dteXml),
+        envioXml: encodeBoleta39Iso88591(boletaResult.envioXml),
+        pdf: boletaResult.pdfBytes,
+        metadata: {
+          encoding: "ISO-8859-1",
+          xsd: "valid",
+          xmlsec1: "valid",
+          frmt: "valid",
+          xmlnsXsiPhysical: true,
+        },
+      };
+    }
+    // --- End boleta39 path ---
     if (!input.document.issuerSnapshot)
       throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
     assertValidProductionIssuerResolution(input.document.issuerSnapshot);
@@ -144,7 +211,11 @@ export class CertifiedProductionDteGenerator
         drafts: [buildDraft(input.document)],
         caseIds: [caseId],
         rutEnvia: input.settings.senderRut,
-        importedCafs: [input.caf],
+        importedCafs: [
+          input.caf as NonNullable<
+            Parameters<typeof runControlledCertificationSet>[0]["importedCafs"]
+          >[number],
+        ],
         setDteId: `CitayaProd-${input.document.id}`,
         envelopeFileName,
         manifestFileName,

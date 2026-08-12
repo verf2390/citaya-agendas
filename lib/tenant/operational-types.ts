@@ -15,6 +15,7 @@ export type TenantOperationalCapabilities = {
   sendCampaign: boolean;
   callExternalAutomation: boolean;
   enqueueDte: boolean;
+  manualDteEnqueue: boolean;
   runDteWorker: boolean;
   publicTaxDocument: boolean;
   taxAdministration: boolean;

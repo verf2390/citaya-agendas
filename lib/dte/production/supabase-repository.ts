@@ -156,6 +156,7 @@ function mapArtifact(row: Record<string, unknown>): ProductionArtifact {
     tenantId: text(row.tenant_id),
     documentId: text(row.document_id),
     kind: text(row.kind) as ProductionArtifact["kind"],
+    version: number(row.version ?? 1),
     storageKey: text(row.storage_key),
     sha256: text(row.sha256),
     byteLength: number(row.byte_length),
@@ -201,21 +202,24 @@ export class SupabaseProductionDteRepository
   ): Promise<ProductionTenantSettings | null> {
     const result = await this.client
       .from("dte_production_tenant_settings")
-      .select(
-        "tenant_id,enabled,sender_rut,certificate_valid_from,certificate_valid_to",
-      )
+      .select()
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (result.error) fail(result.error);
     if (!result.data) return null;
-    const certificateRoot = String(
-      this.env.DTE_PRODUCTION_CERTIFICATE_ROOT ?? "",
-    ).trim();
-    const privateKeyRoot = String(
-      this.env.DTE_PRODUCTION_PRIVATE_KEY_ROOT ?? "",
-    ).trim();
-    if (!certificateRoot) throw new Error("DTE_PRODUCTION_CERTIFICATE_ROOT_MISSING");
-    if (!privateKeyRoot) throw new Error("DTE_PRODUCTION_PRIVATE_KEY_ROOT_MISSING");
+    const base = mapSettings(result.data, this.env);
+    const mergedIssuer: ProductionTenantSettings["issuer"] = {
+      rut: text(issuerSnapshot?.rut) || base.issuer.rut,
+      legalName: text(issuerSnapshot?.legalName) || base.issuer.legalName,
+      businessActivity: text(issuerSnapshot?.businessActivity) || base.issuer.businessActivity,
+      businessActivityCode: text(issuerSnapshot?.businessActivityCode) || base.issuer.businessActivityCode,
+      address: text(issuerSnapshot?.address) || base.issuer.address,
+      commune: text(issuerSnapshot?.commune) || base.issuer.commune,
+      city: text(issuerSnapshot?.city) || base.issuer.city,
+      resolutionDate: text(issuerSnapshot?.resolutionDate) || base.issuer.resolutionDate,
+      resolutionNumber: text(issuerSnapshot?.resolutionNumber) || base.issuer.resolutionNumber,
+      siiOffice: text(issuerSnapshot?.siiOffice) || base.issuer.siiOffice,
+    };
     const delivery = await this.client
       .from("dte_tenant_issuance_settings")
       .select("auto_email_delivery")
@@ -223,14 +227,8 @@ export class SupabaseProductionDteRepository
       .maybeSingle();
     if (delivery.error) fail(delivery.error);
     return {
-      tenantId,
-      enabled: result.data.enabled === true,
-      issuer: structuredClone(issuerSnapshot),
-      senderRut: text(result.data.sender_rut),
-      certificatePath: resolve(certificateRoot, tenantId, "certificate.pem"),
-      privateKeyPath: resolve(privateKeyRoot, tenantId, "private-key.pem"),
-      certificateValidFrom: text(result.data.certificate_valid_from),
-      certificateValidTo: text(result.data.certificate_valid_to),
+      ...base,
+      issuer: mergedIssuer,
       autoEmailDelivery: delivery.data?.auto_email_delivery === true,
     };
   }
@@ -402,12 +400,26 @@ export class SupabaseProductionDteRepository
   async storeArtifact(
     input: Omit<ProductionArtifact, "id" | "createdAt" | "immutable">,
   ): Promise<ProductionArtifact> {
+    const existing = await this.client
+      .from("dte_production_artifacts")
+      .select()
+      .eq("tenant_id", input.tenantId)
+      .eq("document_id", input.documentId)
+      .eq("kind", input.kind)
+      .eq("version", input.version ?? 1)
+      .maybeSingle();
+
+    if (existing.data) {
+      return mapArtifact(existing.data);
+    }
+
     const result = await this.client
       .from("dte_production_artifacts")
       .insert({
         tenant_id: input.tenantId,
         document_id: input.documentId,
         kind: input.kind,
+        version: input.version ?? 1,
         storage_key: input.storageKey,
         sha256: input.sha256,
         byte_length: input.byteLength,
@@ -416,7 +428,30 @@ export class SupabaseProductionDteRepository
       .select()
       .single();
     if (result.error || !result.data) fail(result.error);
-    return mapArtifact(result.data);
+    const artifact = mapArtifact(result.data);
+    const current = await this.client
+      .from("dte_production_artifact_heads")
+      .select("artifact_id")
+      .eq("tenant_id", input.tenantId)
+      .eq("document_id", input.documentId)
+      .eq("kind", input.kind)
+      .maybeSingle();
+    if (current.error) fail(current.error);
+    if (!current.data) {
+      const head = await this.client
+        .from("dte_production_artifact_heads")
+        .insert({
+          tenant_id: input.tenantId,
+          document_id: input.documentId,
+          kind: input.kind,
+          version: artifact.version ?? 1,
+          artifact_id: artifact.id,
+        })
+        .select()
+        .single();
+      if (head.error) fail(head.error);
+    }
+    return artifact;
   }
 
   async listArtifacts(
@@ -427,20 +462,54 @@ export class SupabaseProductionDteRepository
       .from("dte_production_artifacts")
       .select()
       .eq("tenant_id", tenantId)
-      .eq("document_id", documentId);
+      .eq("document_id", documentId)
+      .order("version", { ascending: true });
     if (result.error) fail(result.error);
     return (result.data ?? []).map(mapArtifact);
+  }
+
+  async getCurrentArtifact(
+    tenantId: string,
+    documentId: string,
+    kind: ProductionArtifact["kind"],
+  ): Promise<ProductionArtifact | null> {
+    const head = await this.client
+      .from("dte_production_artifact_heads")
+      .select("artifact_id")
+      .eq("tenant_id", tenantId)
+      .eq("document_id", documentId)
+      .eq("kind", kind)
+      .maybeSingle();
+    if (head.error) fail(head.error);
+    if (!head.data) return null;
+    const result = await this.client
+      .from("dte_production_artifacts")
+      .select()
+      .eq("tenant_id", tenantId)
+      .eq("document_id", documentId)
+      .eq("kind", kind)
+      .eq("id", text(head.data.artifact_id))
+      .maybeSingle();
+    if (result.error) fail(result.error);
+    return result.data ? mapArtifact(result.data) : null;
   }
 
   async createSubmissionAttempt(
     input: Omit<ProductionSubmissionAttempt, "id" | "createdAt">,
   ): Promise<ProductionSubmissionAttempt> {
+    const existing = await this.client
+      .from("dte_production_submission_attempts")
+      .select("attempt_number")
+      .eq("tenant_id", input.tenantId)
+      .eq("document_id", input.documentId);
+    const nextNumber = (existing.data?.length ?? 0) + 1;
+
     const result = await this.client
       .from("dte_production_submission_attempts")
       .insert({
         tenant_id: input.tenantId,
         document_id: input.documentId,
-        attempt_number: 1,
+        attempt_number: nextNumber,
         status: input.status,
         request_sha256: input.requestSha256,
       })

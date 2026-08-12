@@ -223,7 +223,7 @@ export function prepareCertificationSimulationSet(env: NodeJS.ProcessEnv = proce
     const generation = runControlledCertificationSet({
       env: { ...env, DTE_CAF_PATH: undefined, DTE_CAF_PRIVATE_KEY_PATH: undefined }, outputDir, signingMaterial: { privateKeyPath: keyPath, certificatePath: certPath }, drafts,
       caseIds: CERTIFICATION_SIMULATION_PLAN.map((item) => item.caseId), rutEnvia: identity.rutEnvia,
-      importedCafs: cafs.map((caf) => ({ typeCode: caf.typeCode, rangeFrom: caf.rangeFrom, rangeTo: caf.rangeTo, cafXml: caf.cafXml, privateKeyPem: caf.privateKeyPem, publicKeyPem: caf.publicKeyPem, sha256: caf.sha256 })),
+      importedCafs: cafs.map((caf) => ({ typeCode: caf.typeCode as 33 | 56 | 61, rangeFrom: caf.rangeFrom, rangeTo: caf.rangeTo, cafXml: caf.cafXml, privateKeyPem: caf.privateKeyPem, publicKeyPem: caf.publicKeyPem, sha256: caf.sha256 })),
       setDteId: SET_ID, envelopeFileName: ENVELOPE_FILE, manifestFileName: MANIFEST_FILE,
       generationTimestamp: issueDate + "T12:00:00",
       manifestMetadata: {
