@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  canRunAppointmentOperationalEffects,
   isSafeDemoAppointmentMode,
   resolveTenantOperationalCapabilities,
 } from "../../lib/tenant/operational-mode.mjs";
@@ -97,6 +98,7 @@ test("[behavioral] safe demo appointment mode requires the complete fail-closed 
   assert.equal(safe.createAppointment, true);
   assert.equal(safe.appointmentOperationalCommunication, true);
   assert.equal(isSafeDemoAppointmentMode(safe), true);
+  assert.equal(canRunAppointmentOperationalEffects(safe), true);
 
   const dangerousCapabilities = [
     "createPayment", "confirmTransfer", "acceptPaymentWebhook",
@@ -109,6 +111,11 @@ test("[behavioral] safe demo appointment mode requires the complete fail-closed 
       isSafeDemoAppointmentMode({ ...safe, [capability]: true }),
       false,
       capability,
+    );
+    assert.equal(
+      canRunAppointmentOperationalEffects({ ...safe, [capability]: true }),
+      false,
+      `operational effect drift: ${capability}`,
     );
   }
   assert.equal(isSafeDemoAppointmentMode({ ...safe, demoSimulation: false }), false);
@@ -135,6 +142,22 @@ test("[behavioral] safe demo appointment mode requires the complete fail-closed 
   assert.equal(isSafeDemoAppointmentMode({}), false);
   assert.equal(isSafeDemoAppointmentMode(null), false);
   assert.equal(isSafeDemoAppointmentMode(undefined), false);
+  assert.equal(canRunAppointmentOperationalEffects({}), false);
+  assert.equal(canRunAppointmentOperationalEffects(null), false);
+  assert.equal(canRunAppointmentOperationalEffects(undefined), false);
+
+  const live = resolveTenantOperationalCapabilities({
+    lifecycleStatus: "active",
+    operationalMode: "live",
+  });
+  assert.equal(canRunAppointmentOperationalEffects(live), true);
+  assert.equal(
+    canRunAppointmentOperationalEffects({
+      ...live,
+      appointmentOperationalCommunication: false,
+    }),
+    false,
+  );
 });
 
 test("[structural] central guards cover external effects, platform classification and type 39 remains gated", () => {

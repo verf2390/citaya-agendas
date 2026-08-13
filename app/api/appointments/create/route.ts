@@ -21,14 +21,31 @@ import {
   getPublicLegalBundleByTenantId,
   resolveTenantForPublicRequest,
 } from "@/lib/legal/server";
+import { getTenantSlugFromHostname } from "@/lib/tenant";
 import { isSafeDemoAppointmentMode } from "@/lib/tenant/operational-mode.mjs";
 import {
   loadTenantOperationalContext,
   TenantOperationalError,
 } from "@/lib/tenant/operational-server";
+import {
+  dispatchAppointmentCreatedEvent,
+  runPostPersistedAppointmentEffect,
+  shouldDispatchAppointmentCreatedEvent,
+} from "@/services/automations/appointment-events.mjs";
 
 function publicError(status = 400, error = "No se pudo crear la reserva") {
   return NextResponse.json({ ok: false, error }, { status });
+}
+
+function publicTenantBaseUrl(req: Request, tenantSlug: string) {
+  const forwardedHost = (req.headers.get("x-forwarded-host") ?? "").split(",")[0]?.trim();
+  const requestHost = (req.headers.get("host") ?? "").split(",")[0]?.trim();
+  const host = forwardedHost || requestHost || "";
+  const hostname = host.split(":")[0]?.toLowerCase() ?? "";
+  if (!host || getTenantSlugFromHostname(hostname) !== tenantSlug) return null;
+  const forwardedProtocol = (req.headers.get("x-forwarded-proto") ?? "").split(",")[0]?.trim();
+  const protocol = forwardedProtocol === "https" ? "https" : "http";
+  return `${protocol}://${host}`;
 }
 
 async function resolveCustomerId(input: {
@@ -321,6 +338,29 @@ export async function POST(req: Request) {
       if (saleError) {
         console.warn("[appointments/create] sale initialization rejected", { code: saleError.code ?? null });
         return publicError(409, "La configuración comercial del servicio está incompleta");
+      }
+    }
+    if (
+      shouldDispatchAppointmentCreatedEvent(
+        operational.capabilities,
+        row.duplicate,
+      )
+    ) {
+      const notification = await runPostPersistedAppointmentEffect(
+        () => dispatchAppointmentCreatedEvent({
+          appointmentId: row.appointment_id,
+          manageToken,
+          publicBaseUrl: publicTenantSlug
+            ? publicTenantBaseUrl(req, publicTenantSlug) ?? ""
+            : "",
+        }),
+      );
+      if (!notification.ok) {
+        console.warn("[appointments/create] appointment notification failed", {
+          called: notification.called,
+          status: notification.status,
+          reason: notification.reason,
+        });
       }
     }
     return NextResponse.json({

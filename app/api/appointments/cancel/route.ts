@@ -3,7 +3,11 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hashManageToken } from "@/lib/security/manage-tokens.mjs";
 import { authorizeAppointmentActor } from "@/lib/api/appointmentAccess";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
-import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
+import {
+  assertTenantCanCreateAppointment,
+  assertTenantCanRunAppointmentOperationalEffects,
+} from "@/lib/tenant/operational-server";
+import { dispatchAppointmentCanceledEvent } from "@/services/automations/appointment-events.mjs";
 
 function denied() {
   return NextResponse.json({ ok: false, error: "Cita no disponible" }, { status: 404 });
@@ -52,6 +56,24 @@ export async function POST(req: Request) {
         serviceId: appointment.service_id,
         startAt: appointment.start_at,
       });
+    }
+    if (canceled) {
+      try {
+        await assertTenantCanRunAppointmentOperationalEffects(appointment.tenant_id);
+        const notification = await dispatchAppointmentCanceledEvent({
+          appointmentId: appointment.id,
+          tenantId: appointment.tenant_id,
+          source: "manage_token",
+        });
+        if (notification.called && !notification.ok) {
+          console.warn("[appointments/cancel] appointment notification rejected", {
+            status: notification.status,
+            reason: notification.reason,
+          });
+        }
+      } catch {
+        // Cancellation remains successful when operational communication is unavailable.
+      }
     }
     return NextResponse.json({ ok: true, alreadyCanceled: !canceled });
   } catch {

@@ -2,7 +2,10 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
-import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
+import {
+  assertTenantCanCreateAppointment,
+  assertTenantCanRunAppointmentOperationalEffects,
+} from "@/lib/tenant/operational-server";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
@@ -172,6 +175,13 @@ export async function POST(req: Request) {
     // 3) Llamar a n8n (si hay envs) SIN romper el reagendado
     const secret = process.env.CITAYA_SECRET;
     const webhookUrl = process.env.N8N_RESCHEDULE_WEBHOOK_URL;
+    let appointmentCommunicationAllowed = false;
+    try {
+      await assertTenantCanRunAppointmentOperationalEffects(tenant_id_from_body);
+      appointmentCommunicationAllowed = true;
+    } catch {
+      // The reschedule remains available; only its external effect is skipped.
+    }
 
     let n8n = {
       called: false,
@@ -180,7 +190,7 @@ export async function POST(req: Request) {
       result: null as unknown,
     };
 
-    if (secret && webhookUrl) {
+    if (appointmentCommunicationAllowed && secret && webhookUrl) {
       const payload = {
         kind: "reschedule",
         appointment_id,
@@ -233,7 +243,9 @@ export async function POST(req: Request) {
       n8n = {
         ...n8n,
         called: false,
-        result: "Missing env CITAYA_SECRET or N8N_RESCHEDULE_WEBHOOK_URL",
+        result: appointmentCommunicationAllowed
+          ? "Missing env CITAYA_SECRET or N8N_RESCHEDULE_WEBHOOK_URL"
+          : "Tenant capability blocks appointment communication",
       };
     }
 

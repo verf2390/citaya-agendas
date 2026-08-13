@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
-import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
+import {
+  assertTenantCanCreateAppointment,
+  assertTenantCanRunAppointmentOperationalEffects,
+} from "@/lib/tenant/operational-server";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
 
 function isUuid(v: string) {
@@ -66,6 +69,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Forbidden: tenant mismatch" }, { status: 403 });
     }
 
+    let appointmentCommunicationAllowed = false;
+    try {
+      await assertTenantCanRunAppointmentOperationalEffects(tenant_id);
+      appointmentCommunicationAllowed = true;
+    } catch {
+      // The appointment operation remains available; only its external effect is skipped.
+    }
+
     // Config n8n
     const n8nUrl =
       process.env.N8N_CANCEL_WEBHOOK_URL ||
@@ -78,7 +89,7 @@ export async function POST(req: Request) {
         ok: true,
         appointment: appt,
         n8n: {
-          called: !!secret,
+          called: Boolean(secret && appointmentCommunicationAllowed),
           ok: true,
           result: { ok: true, skipped: "already_canceled" },
         },
@@ -121,10 +132,15 @@ export async function POST(req: Request) {
     let n8nOk = false;
     let n8nResult: unknown = null;
 
-    if (!secret) {
-      console.warn("[cancel-by-id] Missing CITAYA_SECRET env var. Skipping n8n call.");
+    if (!secret || !appointmentCommunicationAllowed) {
+      console.warn("[cancel-by-id] Appointment communication unavailable. Skipping n8n call.");
       n8nOk = true;
-      n8nResult = { ok: true, skipped: "missing_secret" };
+      n8nResult = {
+        ok: true,
+        skipped: !appointmentCommunicationAllowed
+          ? "tenant_capability_blocked"
+          : "missing_secret",
+      };
     } else {
       try {
         const r = await fetchWithTimeout(
@@ -169,7 +185,11 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       appointment: updated,
-      n8n: { called: !!secret, ok: n8nOk, result: n8nResult },
+      n8n: {
+        called: Boolean(secret && appointmentCommunicationAllowed),
+        ok: n8nOk,
+        result: n8nResult,
+      },
     });
   } catch (e: unknown) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error" }, { status: 500 });

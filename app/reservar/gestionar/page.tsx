@@ -245,7 +245,8 @@ function SectionHeader({
 function GestionarCitaInner() {
   const router = useRouter();
   const sp = useSearchParams();
-  const token = sp.get("token") || "";
+  const tokenFromQuery = sp.get("token") || "";
+  const [manageToken, setManageToken] = useState(tokenFromQuery);
 
   const [appt, setAppt] = useState<Appt | null>(null);
   const [loading, setLoading] = useState(true);
@@ -270,6 +271,10 @@ function GestionarCitaInner() {
       block: "start",
     });
 
+  useEffect(() => {
+    setManageToken(tokenFromQuery);
+  }, [tokenFromQuery]);
+
   const durationMins = useMemo(() => {
     if (!appt?.start_at || !appt?.end_at) return 30;
     const a = parseTimestamptz(appt.start_at).getTime();
@@ -285,7 +290,7 @@ function GestionarCitaInner() {
       setError(null);
       setNotice(null);
 
-      if (!token) {
+      if (!manageToken) {
         setError(
           "Falta el token. Abre este enlace desde tu correo de confirmación.",
         );
@@ -295,7 +300,7 @@ function GestionarCitaInner() {
 
       try {
         const res = await fetch(
-          `/api/appointments/by-token?token=${encodeURIComponent(token)}`,
+          `/api/appointments/by-token?token=${encodeURIComponent(manageToken)}`,
           { method: "GET", headers: { "Content-Type": "application/json" } },
         );
 
@@ -319,7 +324,7 @@ function GestionarCitaInner() {
     };
 
     run();
-  }, [token]);
+  }, [manageToken]);
 
   const isCanceled = (appt?.status || "").toLowerCase() === "canceled";
 
@@ -461,7 +466,7 @@ function GestionarCitaInner() {
 
   // Cancelar
   const onCancel = async () => {
-    if (!token) return;
+    if (!manageToken) return;
     if (blockIfLessThan3Hours()) return;
     if (!confirm("¿Seguro que quieres cancelar esta cita?")) return;
 
@@ -473,7 +478,7 @@ function GestionarCitaInner() {
       const res = await fetch(`/api/appointments/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token: manageToken }),
       });
 
       const data = await res.json().catch(() => null);
@@ -496,7 +501,7 @@ function GestionarCitaInner() {
 
   // Reagendar usando slot elegido
   const onReschedulePickSlot = async () => {
-    if (!token) return;
+    if (!manageToken) return;
     if (blockIfLessThan3Hours()) return;
 
     if (!selectedSlotStartISO) {
@@ -522,7 +527,7 @@ function GestionarCitaInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token,
+          token: manageToken,
           start_at: chosen.start_at,
           end_at: chosen.end_at,
         }),
@@ -541,6 +546,20 @@ function GestionarCitaInner() {
           data?.error ||
           `No se pudo reagendar (HTTP ${res.status})`;
         throw new Error(String(msg));
+      }
+
+      const rotatedManageToken = String(data?.manageToken ?? "").trim();
+      if (rotatedManageToken.length < 32 || rotatedManageToken.length > 256) {
+        throw new Error("La cita fue reagendada, pero no se pudo renovar el enlace seguro.");
+      }
+      setManageToken(rotatedManageToken);
+      const manageUrl = new URL(window.location.href);
+      manageUrl.searchParams.set("token", rotatedManageToken);
+      window.history.replaceState(window.history.state, "", manageUrl.toString());
+      if (appt?.id) {
+        try {
+          sessionStorage.setItem(`citaya_manage_token:${appt.id}`, rotatedManageToken);
+        } catch {}
       }
 
       goResult(

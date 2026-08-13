@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
+import {
+  canRunAppointmentOperationalEffects,
+  resolveTenantOperationalCapabilities,
+} from "@/lib/tenant/operational-mode.mjs";
 import type {
   TenantOperationalCapabilities,
   TenantOperationalMode,
@@ -87,6 +90,14 @@ export async function assertTenantCanEnqueueDte(
 
 export async function assertTenantCanSendExternalCommunication(tenantId: string) {
   return requireCapability(await loadTenantOperationalContext(tenantId), "sendExternalEmail", "TENANT_MODE_EXTERNAL_COMMUNICATION_BLOCKED");
+}
+
+export async function assertTenantCanRunAppointmentOperationalEffects(tenantId: string) {
+  const context = await loadTenantOperationalContext(tenantId);
+  if (!canRunAppointmentOperationalEffects(context.capabilities)) {
+    throw new TenantOperationalError("TENANT_MODE_APPOINTMENT_COMMUNICATION_BLOCKED");
+  }
+  return context;
 }
 
 export async function assertTenantCanSendCampaign(tenantId: string) {

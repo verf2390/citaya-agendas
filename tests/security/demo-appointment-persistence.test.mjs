@@ -38,10 +38,10 @@ test("[structural] safe demo forces no payment and bypasses billing initializati
   assert.match(productiveEffects[0], /tax_document_selection/);
 });
 
-test("[structural] demo appointment creation has no application dispatcher or external communication", () => {
-  assert.doesNotMatch(createRoute, /dispatchAppointmentCreatedEvent/);
+test("[structural] demo appointment creation uses only the narrow appointment dispatcher", () => {
+  assert.match(createRoute, /shouldDispatchAppointmentCreatedEvent/);
+  assert.match(createRoute, /dispatchAppointmentCreatedEvent/);
   assert.doesNotMatch(createRoute, /sendExternalEmail|sendCampaign|callExternalAutomation/);
-  assert.doesNotMatch(createRoute, /webhook|n8n/i);
 });
 
 test("[structural] demo document choice is separate from productive Boleta 39 capability", () => {

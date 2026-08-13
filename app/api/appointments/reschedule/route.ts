@@ -8,7 +8,11 @@ import {
 import { authorizeAppointmentActor } from "@/lib/api/appointmentAccess";
 import { consumeRateLimit, opaqueKey, requestIp } from "@/lib/security/request";
 import { notifyWaitlistSlotReleased } from "@/services/automations/notify-waitlist-slot-released";
-import { assertTenantCanCreateAppointment } from "@/lib/tenant/operational-server";
+import {
+  assertTenantCanCreateAppointment,
+  assertTenantCanRunAppointmentOperationalEffects,
+} from "@/lib/tenant/operational-server";
+import { dispatchAppointmentRescheduledEvent } from "@/services/automations/appointment-events.mjs";
 
 function denied(status = 404) {
   return NextResponse.json({ ok: false, error: "No se pudo reagendar" }, { status });
@@ -111,6 +115,27 @@ export async function POST(req: Request) {
         serviceId: appointment.service_id,
         startAt: appointment.start_at,
       });
+    }
+    try {
+      await assertTenantCanRunAppointmentOperationalEffects(appointment.tenant_id);
+      const notification = await dispatchAppointmentRescheduledEvent({
+        appointmentId: appointment.id,
+        tenantId: appointment.tenant_id,
+        oldStartAt: appointment.start_at,
+        oldEndAt: appointment.end_at,
+        newStartAt: updated.start_at,
+        newEndAt: updated.end_at,
+        manageToken: nextToken,
+        source: "manage_token",
+      });
+      if (notification.called && !notification.ok) {
+        console.warn("[appointments/reschedule] appointment notification rejected", {
+          status: notification.status,
+          reason: notification.reason,
+        });
+      }
+    } catch {
+      // Reschedule remains successful when operational communication is unavailable.
     }
     return NextResponse.json({ ok: true, appointment: updated, manageToken: nextToken });
   } catch {

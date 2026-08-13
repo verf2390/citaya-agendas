@@ -11,3 +11,6 @@ export function resolveTenantOperationalCapabilities(input: {
 export function isSafeDemoAppointmentMode(
   capabilities: Partial<TenantOperationalCapabilities> | null | undefined,
 ): boolean;
+export function canRunAppointmentOperationalEffects(
+  capabilities: Partial<TenantOperationalCapabilities> | null | undefined,
+): boolean;
