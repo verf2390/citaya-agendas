@@ -38,3 +38,9 @@ test("UUID-only IDOR is blocked and public response excludes sensitive fields", 
   const responseSection = byId.slice(byId.indexOf("const common ="));
   assert.doesNotMatch(responseSection, /manage_token|payment_reference|payment_url|audit_metadata/);
 });
+
+test("[structural] appointment by-id disambiguates the direct tenant relationship", () => {
+  const byId = readFileSync(new URL("../../app/api/appointments/by-id/route.ts", import.meta.url), "utf8");
+  assert.match(byId, /tenant:tenants!appointments_tenant_id_fkey\(/);
+  assert.doesNotMatch(byId, /tenant:tenants\(/);
+});

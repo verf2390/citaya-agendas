@@ -20,7 +20,7 @@ export async function GET(req: Request) {
         manage_token, manage_token_hash, manage_token_expires_at,
         manage_token_revoked_at, manage_token_legacy_expires_at,
         professional:professionals(id, name),
-        tenant:tenants(id, name, slug, logo_url, address, city, phone_display,
+        tenant:tenants!appointments_tenant_id_fkey(id, name, slug, logo_url, address, city, phone_display,
           show_address_after_booking, show_phone_after_booking)
       `)
       .eq("id", id)
