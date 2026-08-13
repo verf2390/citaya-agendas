@@ -7,6 +7,8 @@ import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 import { Button } from "@/components/ui/button";
 import { Section } from "@/components/ui/section";
 import { SurfaceCard } from "@/components/ui/card";
+import { isSafeDemoAppointmentMode } from "@/lib/tenant/operational-mode.mjs";
+import type { TenantOperationalCapabilities } from "@/lib/tenant/operational-types";
 import {
   BadgeCheck,
   CalendarPlus,
@@ -22,9 +24,9 @@ type Appt = {
   id: string;
   start_at: string;
   end_at: string;
-  customer_name: string;
-  customer_phone: string | null;
-  customer_email: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
   professional_id: string;
   tenant_id: string;
   service_name?: string | null; // ✅ viene desde DB
@@ -42,6 +44,7 @@ type Tenant = {
 
   show_address_after_booking?: boolean | null;
   show_phone_after_booking?: boolean | null;
+  operational_capabilities?: TenantOperationalCapabilities | null;
 };
 
 type Professional = {
@@ -175,7 +178,6 @@ function ConfirmacionFallback() {
 function ConfirmacionInner() {
   const sp = useSearchParams();
   const id = sp.get("id") ?? "";
-  const demoSimulation = sp.get("demo") === "1";
 
   const tenantFromQuery = sp.get("tenant") ?? "";
   const host =
@@ -199,10 +201,14 @@ function ConfirmacionInner() {
   const [loadingPros, setLoadingPros] = useState(false);
 
   const [copied, setCopied] = useState(false);
+  const tenantOperationalCapabilities = tenant?.operational_capabilities ?? null;
+  const isSafeDemoAppointment = isSafeDemoAppointmentMode(
+    tenantOperationalCapabilities,
+  );
+  const tenantOperationalStateLoaded = tenantOperationalCapabilities !== null;
 
   // 1) Cargar cita por id (source of truth)
   useEffect(() => {
-    if (demoSimulation) return;
     let cancelled = false;
 
     (async () => {
@@ -240,7 +246,7 @@ function ConfirmacionInner() {
     return () => {
       cancelled = true;
     };
-  }, [demoSimulation, id]);
+  }, [id]);
 
   // 2) Resolver tenant
   useEffect(() => {
@@ -579,24 +585,6 @@ function ConfirmacionInner() {
     }
   }
 
-  if (demoSimulation) {
-    return (
-      <DemoShell>
-        <DemoContainer className="max-w-2xl px-4 py-10">
-          <SurfaceCard tone="glass" shadow="panel" radius="xl" className="p-7 text-center">
-            <BadgeCheck className="mx-auto h-12 w-12 text-emerald-600" />
-            <h1 className="mt-4 text-2xl font-black">Simulación completada</h1>
-            <p className="mt-3 text-slate-600">No se creó una reserva real, no se guardaron datos personales y no se contactó ningún servicio externo.</p>
-            <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-100 p-3 text-sm font-bold text-amber-950">
-              Entorno de demostración. No ingrese información personal, clínica o financiera real
-            </div>
-            <Button asChild className="mt-6"><Link href="/reservar">Volver a la demo</Link></Button>
-          </SurfaceCard>
-        </DemoContainer>
-      </DemoShell>
-    );
-  }
-
   return (
     <DemoShell>
       <DemoContainer className="max-w-4xl px-4 py-8 font-[system-ui] sm:py-10">
@@ -634,8 +622,11 @@ function ConfirmacionInner() {
                   ¡Reserva confirmada!
                 </div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  Guarda estos detalles. Si necesitas cambios, podrás gestionarlo
-                  desde el correo.
+                  {isSafeDemoAppointment
+                    ? "Tu reserva de demostración quedó registrada correctamente. Puedes gestionarla desde este enlace seguro."
+                    : tenantOperationalStateLoaded
+                      ? "Guarda estos detalles. Si necesitas cambios, podrás gestionarlo desde el correo."
+                      : "Guarda estos detalles para consultar tu reserva de forma segura."}
                 </div>
               </div>
             </div>
@@ -688,9 +679,9 @@ function ConfirmacionInner() {
               label="Servicio"
               value={`${serviceLabel}${durationLabel !== "—" ? ` · ${durationLabel}` : ""}`}
             />
-            <Row label="Cliente" value={appt?.customer_name ?? "—"} />
-            <Row label="Correo" value={appt?.customer_email ?? "—"} />
-            <Row label="Celular" value={appt?.customer_phone ?? "—"} />
+            {safeText(appt?.customer_name) ? <Row label="Cliente" value={safeText(appt?.customer_name)} /> : null}
+            {safeText(appt?.customer_email) ? <Row label="Correo" value={safeText(appt?.customer_email)} /> : null}
+            {safeText(appt?.customer_phone) ? <Row label="Celular" value={safeText(appt?.customer_phone)} /> : null}
             {businessAddress ? <Row label="Dirección" value={businessAddress} /> : null}
           </div>
 
@@ -748,34 +739,38 @@ function ConfirmacionInner() {
               Descargar .ics
             </a>
 
-            <a
-              href={canOpenWA ? waUrl : undefined}
-              target="_blank"
-              rel="noreferrer"
-              aria-disabled={!canOpenWA}
-              onClick={(e) => {
-                if (!canOpenWA) e.preventDefault();
-              }}
-              className={cn(
-                "sm:col-span-2 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold transition",
-                canOpenWA
-                  ? "bg-emerald-700 text-white hover:opacity-95"
-                  : "cursor-not-allowed bg-muted text-muted-foreground",
-              )}
-            >
-              <MessageCircle className="h-4 w-4" />
-              Abrir WhatsApp (opcional)
-            </a>
+            {tenantOperationalStateLoaded && !isSafeDemoAppointment ? (
+              <>
+                <a
+                  href={canOpenWA ? waUrl : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-disabled={!canOpenWA}
+                  onClick={(e) => {
+                    if (!canOpenWA) e.preventDefault();
+                  }}
+                  className={cn(
+                    "sm:col-span-2 inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold transition",
+                    canOpenWA
+                      ? "bg-emerald-700 text-white hover:opacity-95"
+                      : "cursor-not-allowed bg-muted text-muted-foreground",
+                  )}
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Abrir WhatsApp (opcional)
+                </a>
 
-            {!canOpenWA ? (
-              <div className="sm:col-span-2 text-xs text-emerald-950/70">
-                No se pudo generar el link de WhatsApp (falta teléfono válido del
-                negocio o el negocio ocultó su teléfono).
-              </div>
-            ) : !businessPhoneE164 ? (
-              <div className="sm:col-span-2 text-xs text-emerald-950/70">
-                WhatsApp requiere un teléfono del negocio válido.
-              </div>
+                {!canOpenWA ? (
+                  <div className="sm:col-span-2 text-xs text-emerald-950/70">
+                    No se pudo generar el link de WhatsApp (falta teléfono válido del
+                    negocio o el negocio ocultó su teléfono).
+                  </div>
+                ) : !businessPhoneE164 ? (
+                  <div className="sm:col-span-2 text-xs text-emerald-950/70">
+                    WhatsApp requiere un teléfono del negocio válido.
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
         </Section>

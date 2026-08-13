@@ -8,11 +8,6 @@ export function resolveTenantOperationalCapabilities(input: {
   lifecycleStatus?: string | null;
   operationalMode?: string | null;
 }): TenantOperationalCapabilities;
-export function createDemoSimulation(): {
-  ok: true;
-  demoSimulation: true;
-  ephemeralId: string;
-  persisted: false;
-  externalContact: false;
-  summary: { title: string; message: string };
-};
+export function isSafeDemoAppointmentMode(
+  capabilities: Partial<TenantOperationalCapabilities> | null | undefined,
+): boolean;

@@ -16,7 +16,7 @@ export class TenantOperationalError extends Error {
 
 export type TenantOperationalContext = {
   tenantId: string;
-  lifecycleStatus: "active" | "archived";
+  lifecycleStatus: TenantOperationalCapabilities["lifecycleStatus"];
   operationalMode: TenantOperationalMode;
   capabilities: TenantOperationalCapabilities;
 };
@@ -26,14 +26,13 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
     .select("id,lifecycle_status,operational_mode")
     .eq("id", tenantId).maybeSingle();
   if (error || !data?.id) throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
-  const lifecycleStatus = data.lifecycle_status === "archived" ? "archived" : "active";
   const capabilities = resolveTenantOperationalCapabilities({
-    lifecycleStatus,
+    lifecycleStatus: data.lifecycle_status,
     operationalMode: data.operational_mode,
   });
   return {
     tenantId: data.id,
-    lifecycleStatus,
+    lifecycleStatus: capabilities.lifecycleStatus,
     operationalMode: capabilities.operationalMode,
     capabilities,
   };

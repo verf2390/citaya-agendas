@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
-import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
+import {
+  isSafeDemoAppointmentMode,
+  resolveTenantOperationalCapabilities,
+} from "@/lib/tenant/operational-mode.mjs";
 
 type TenantRow = {
   id: string;
@@ -104,15 +107,30 @@ export async function GET(req: Request) {
   if (!operationalCapabilities.informationalPage) {
     return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
   }
+  const safeDemoAppointment = isSafeDemoAppointmentMode(
+    operationalCapabilities,
+  );
   const [paymentConfig, boletaCapability] = await Promise.all([
-    getTenantPaymentConfig(data.id),
-    supabaseAdmin
-      .from("dte_tenant_document_capabilities")
-      .select("customer_selection_enabled,issuance_enabled,certification_status")
-      .eq("tenant_id", data.id)
-      .eq("environment", "production")
-      .eq("dte_type", 39)
-      .maybeSingle(),
+    safeDemoAppointment
+      ? Promise.resolve({
+          enabled: false,
+          mode: "none" as const,
+          provider: "mercadopago" as const,
+          paymentMethodsEnabled: ["mercadopago" as const],
+          collectionMode: "none" as const,
+          depositType: null,
+          depositValue: null,
+        })
+      : getTenantPaymentConfig(data.id),
+    safeDemoAppointment
+      ? Promise.resolve({ data: null })
+      : supabaseAdmin
+          .from("dte_tenant_document_capabilities")
+          .select("customer_selection_enabled,issuance_enabled,certification_status")
+          .eq("tenant_id", data.id)
+          .eq("environment", "production")
+          .eq("dte_type", 39)
+          .maybeSingle(),
   ]);
 
   const tenant = {
@@ -146,6 +164,7 @@ export async function GET(req: Request) {
     payment_collection_mode: paymentConfig.collectionMode,
     deposit_type: paymentConfig.depositType,
     deposit_value: paymentConfig.depositValue,
+    demo_document_selection_enabled: safeDemoAppointment,
     boleta_document_selection_enabled:
       operationalCapabilities.publicTaxDocument &&
       boletaCapability.data?.customer_selection_enabled === true &&

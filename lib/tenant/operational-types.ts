@@ -1,4 +1,4 @@
-export type TenantLifecycleStatus = "active" | "archived";
+export type TenantLifecycleStatus = "active" | "archived" | "suspended" | "unknown";
 
 export type TenantOperationalMode = "unclassified" | "demo" | "live" | "internal";
 
@@ -11,6 +11,7 @@ export type TenantOperationalCapabilities = {
   createPayment: boolean;
   confirmTransfer: boolean;
   acceptPaymentWebhook: boolean;
+  appointmentOperationalCommunication: boolean;
   sendExternalEmail: boolean;
   sendCampaign: boolean;
   callExternalAutomation: boolean;

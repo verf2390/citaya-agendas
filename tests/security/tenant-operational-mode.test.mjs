@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  createDemoSimulation,
+  isSafeDemoAppointmentMode,
   resolveTenantOperationalCapabilities,
 } from "../../lib/tenant/operational-mode.mjs";
 
@@ -14,32 +14,40 @@ const matrix = [
   },
   {
     mode: "demo",
-    allowed: ["informationalPage", "demoSimulation", "ordinaryAdmin"],
+    allowed: [
+      "informationalPage", "demoSimulation", "createAppointment",
+      "appointmentOperationalCommunication", "ordinaryAdmin",
+    ],
   },
   {
     mode: "live",
     allowed: [
       "informationalPage", "createAppointment", "createPayment", "confirmTransfer",
-      "acceptPaymentWebhook", "sendExternalEmail", "sendCampaign",
+      "acceptPaymentWebhook", "appointmentOperationalCommunication",
+      "sendExternalEmail", "sendCampaign",
       "callExternalAutomation", "enqueueDte", "runDteWorker",
-      "publicTaxDocument", "taxAdministration", "ordinaryAdmin",
+      "manualDteEnqueue", "publicTaxDocument", "taxAdministration", "ordinaryAdmin",
     ],
   },
   {
     mode: "internal",
-    allowed: ["informationalPage", "taxAdministration", "dteCertification", "ordinaryAdmin"],
+    allowed: [
+      "informationalPage", "manualDteEnqueue", "taxAdministration",
+      "dteCertification", "ordinaryAdmin",
+    ],
   },
 ];
 
 const booleanCapabilities = [
   "informationalPage", "demoSimulation", "createAppointment", "createPayment",
-  "confirmTransfer", "acceptPaymentWebhook", "sendExternalEmail", "sendCampaign",
-  "callExternalAutomation", "enqueueDte", "runDteWorker", "publicTaxDocument",
-  "taxAdministration", "dteCertification", "ordinaryAdmin",
+  "confirmTransfer", "acceptPaymentWebhook", "appointmentOperationalCommunication",
+  "sendExternalEmail", "sendCampaign", "callExternalAutomation", "enqueueDte",
+  "manualDteEnqueue", "runDteWorker", "publicTaxDocument", "taxAdministration",
+  "dteCertification", "ordinaryAdmin",
   "exceptionalPlatformAccess", "classificationAdmin",
 ];
 
-test("tenant operational matrix is explicit and archived always wins", () => {
+test("[behavioral] tenant operational matrix is explicit and archived always wins", () => {
   for (const row of matrix) {
     const capabilities = resolveTenantOperationalCapabilities({
       lifecycleStatus: "active",
@@ -68,32 +76,68 @@ test("tenant operational matrix is explicit and archived always wins", () => {
     resolveTenantOperationalCapabilities({ lifecycleStatus: "active", operationalMode: "unknown" }).operationalMode,
     "unclassified",
   );
-});
-
-test("demo response is ephemeral, contains no visitor data and the public route exits before writes", () => {
-  const first = createDemoSimulation();
-  const second = createDemoSimulation();
-  assert.equal(first.demoSimulation, true);
-  assert.equal(first.persisted, false);
-  assert.equal(first.externalContact, false);
-  assert.notEqual(first.ephemeralId, second.ephemeralId);
-  assert.deepEqual(Object.keys(first).sort(), [
-    "demoSimulation", "ephemeralId", "externalContact", "ok", "persisted", "summary",
-  ]);
-  assert.doesNotMatch(JSON.stringify(first), /name|email|phone|rut|clinical|financial|customer|appointmentId/i);
-
-  const createRoute = readFileSync("app/api/appointments/create/route.ts", "utf8");
-  const demoExit = createRoute.indexOf("return NextResponse.json(createDemoSimulation())");
-  for (const laterOperation of [
-    "getPublicLegalBundleByTenantId", "validateBookingTaxInput", "resolveCustomerId({",
-    'supabaseAdmin.rpc(rpcName', "billing_initialize_appointment_sale",
-  ]) {
-    assert.ok(createRoute.indexOf(laterOperation, demoExit + 1) > demoExit, `${laterOperation} must follow demo exit`);
+  for (const lifecycleStatus of ["suspended", "unknown"]) {
+    const capabilities = resolveTenantOperationalCapabilities({
+      lifecycleStatus,
+      operationalMode: "demo",
+    });
+    assert.equal(capabilities.lifecycleStatus, lifecycleStatus);
+    assert.equal(capabilities.informationalPage, false);
+    assert.equal(capabilities.createAppointment, false);
+    assert.equal(capabilities.classificationAdmin, true);
   }
-  assert.doesNotMatch(createRoute, /console\.(?:log|warn|error)\([^\n]*(?:customerName|customerEmail|customerPhone|notes|rut)/i);
 });
 
-test("central guards cover external effects, platform classification and type 39 remains gated", () => {
+test("[behavioral] safe demo appointment mode requires the complete fail-closed capability set", () => {
+  const safe = resolveTenantOperationalCapabilities({
+    lifecycleStatus: "active",
+    operationalMode: "demo",
+  });
+  assert.equal(safe.demoSimulation, true);
+  assert.equal(safe.createAppointment, true);
+  assert.equal(safe.appointmentOperationalCommunication, true);
+  assert.equal(isSafeDemoAppointmentMode(safe), true);
+
+  const dangerousCapabilities = [
+    "createPayment", "confirmTransfer", "acceptPaymentWebhook",
+    "sendExternalEmail", "sendCampaign", "callExternalAutomation",
+    "enqueueDte", "manualDteEnqueue", "runDteWorker",
+    "publicTaxDocument", "taxAdministration", "dteCertification",
+  ];
+  for (const capability of dangerousCapabilities) {
+    assert.equal(
+      isSafeDemoAppointmentMode({ ...safe, [capability]: true }),
+      false,
+      capability,
+    );
+  }
+  assert.equal(isSafeDemoAppointmentMode({ ...safe, demoSimulation: false }), false);
+  assert.equal(isSafeDemoAppointmentMode({ ...safe, createAppointment: false }), false);
+  assert.equal(
+    isSafeDemoAppointmentMode({ ...safe, appointmentOperationalCommunication: false }),
+    false,
+  );
+  assert.equal(isSafeDemoAppointmentMode({ ...safe, lifecycleStatus: "archived" }), false);
+  assert.equal(
+    isSafeDemoAppointmentMode(resolveTenantOperationalCapabilities({
+      lifecycleStatus: "active",
+      operationalMode: "live",
+    })),
+    false,
+  );
+  assert.equal(
+    isSafeDemoAppointmentMode(resolveTenantOperationalCapabilities({
+      lifecycleStatus: "suspended",
+      operationalMode: "demo",
+    })),
+    false,
+  );
+  assert.equal(isSafeDemoAppointmentMode({}), false);
+  assert.equal(isSafeDemoAppointmentMode(null), false);
+  assert.equal(isSafeDemoAppointmentMode(undefined), false);
+});
+
+test("[structural] central guards cover external effects, platform classification and type 39 remains gated", () => {
   const requiredSources = new Map([
     ["app/api/payments/create/route.ts", /assertTenantCanCreatePayment/],
     ["app/api/webhooks/mercadopago/route.ts", /acceptPaymentWebhook/],

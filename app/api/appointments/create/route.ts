@@ -21,9 +21,8 @@ import {
   getPublicLegalBundleByTenantId,
   resolveTenantForPublicRequest,
 } from "@/lib/legal/server";
-import { createDemoSimulation } from "@/lib/tenant/operational-mode.mjs";
+import { isSafeDemoAppointmentMode } from "@/lib/tenant/operational-mode.mjs";
 import {
-  assertTenantCanCreateAppointment,
   loadTenantOperationalContext,
   TenantOperationalError,
 } from "@/lib/tenant/operational-server";
@@ -94,6 +93,7 @@ export async function POST(req: Request) {
     if (!parsed.ok) return parsed.res;
     const input = parsed.data;
     const isAdminRequest = Boolean(req.headers.get("authorization"));
+    let publicTenantSlug: string | null = null;
     let legalConsent: Record<string, unknown> | null = null;
     if (!isAdminRequest) {
       const resolvedTenant = await resolveTenantForPublicRequest(
@@ -101,30 +101,47 @@ export async function POST(req: Request) {
         String(input.tenantSlug ?? ""),
       );
       if (!resolvedTenant || resolvedTenant.id !== input.tenantId) return publicError(404);
-      const operational = await loadTenantOperationalContext(input.tenantId);
-      if (operational.capabilities.demoSimulation) {
-        return NextResponse.json(createDemoSimulation());
+      publicTenantSlug = resolvedTenant.slug;
+    }
+    const operational = await loadTenantOperationalContext(input.tenantId);
+    const isDemoAppointment = isSafeDemoAppointmentMode(
+      operational.capabilities,
+    );
+    if (
+      operational.operationalMode === "demo" &&
+      !isDemoAppointment
+    ) {
+      return publicError(409);
+    }
+    if (!operational.capabilities.createAppointment) return publicError(404);
+
+    if (!isAdminRequest) {
+      if (!isDemoAppointment) {
+        const legalBundle = await getPublicLegalBundleByTenantId(
+          input.tenantId,
+          publicTenantSlug ?? undefined,
+        );
+        const validation = validatePublicLegalConsent({
+          tenantId: input.tenantId,
+          bundle: legalBundle ?? {},
+          consent: input.legalConsent,
+        });
+        if (!validation.ok) {
+          return publicError(409, "Debes revisar y aceptar las condiciones vigentes del prestador.");
+        }
+        legalConsent = validation.value;
       }
-      if (!operational.capabilities.createAppointment) return publicError(404);
-      const legalBundle = await getPublicLegalBundleByTenantId(input.tenantId, resolvedTenant.slug);
-      const validation = validatePublicLegalConsent({
-        tenantId: input.tenantId,
-        bundle: legalBundle ?? {},
-        consent: input.legalConsent,
-      });
-      if (!validation.ok) {
-        return publicError(409, "Debes revisar y aceptar las condiciones vigentes del prestador.");
-      }
-      legalConsent = validation.value;
     }
     const requestedDocumentType =
-      input.taxDocumentType ??
-      (input.invoiceRequested === true ? 33 : null);
+      isDemoAppointment
+        ? null
+        : input.taxDocumentType ??
+          (input.invoiceRequested === true ? 33 : null);
     let bookingTax;
     try {
       bookingTax = validateBookingTaxInput({
-        customerRut: input.customerRut,
-        invoiceRequested: input.invoiceRequested === true,
+        customerRut: isDemoAppointment ? undefined : input.customerRut,
+        invoiceRequested: !isDemoAppointment && input.invoiceRequested === true,
         taxDocumentType: requestedDocumentType,
         taxProfile: requestedDocumentType === 33 ? {
           rut: input.invoiceReceiverRut ?? "",
@@ -141,7 +158,7 @@ export async function POST(req: Request) {
         ? "Datos tributarios de factura incompletos"
         : "RUT inválido");
     }
-    if (requestedDocumentType === 39) {
+    if (!isDemoAppointment && requestedDocumentType === 39) {
       const { data: capability, error: capabilityError } = await supabaseAdmin
         .from("dte_tenant_document_capabilities")
         .select("customer_selection_enabled,issuance_enabled,certification_status")
@@ -168,7 +185,6 @@ export async function POST(req: Request) {
     if (isAdminRequest) {
       const admin = await requireTenantAdmin({ req, tenantId: input.tenantId });
       if (!admin.ok) return publicError(404);
-      await assertTenantCanCreateAppointment(input.tenantId);
     } else {
       const allowed = await consumeRateLimit({
         scope: "appointment_create",
@@ -193,7 +209,9 @@ export async function POST(req: Request) {
           .select("id, tenant_id, active")
           .eq("id", input.professionalId).eq("tenant_id", input.tenantId)
           .eq("active", true).maybeSingle(),
-        supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment,deposit_tax_document_policy_status").eq("tenant_id", input.tenantId).maybeSingle(),
+        isDemoAppointment
+          ? Promise.resolve({ data: null })
+          : supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment,deposit_tax_document_policy_status").eq("tenant_id", input.tenantId).maybeSingle(),
       ]);
     const duration = Number(service?.duration_min);
     const price = Number(service?.price);
@@ -201,12 +219,14 @@ export async function POST(req: Request) {
       serviceError || professionalError || !service || !professional ||
       !Number.isInteger(duration) || duration < 5 || duration > 480 ||
       !Number.isSafeInteger(price) || price < 0 ||
-      service.payment_configuration_complete !== true ||
-      service.tax_description_review_status !== "approved"
+      (!isDemoAppointment && (
+        service.payment_configuration_complete !== true ||
+        service.tax_description_review_status !== "approved"
+      ))
     ) {
       return publicError(409);
     }
-    if (service.payment_policy === "deposit" && (
+    if (!isDemoAppointment && service.payment_policy === "deposit" && (
       service.deposit_tax_document_policy_status !== "enabled" ||
       issuanceConfig?.deposit_tax_document_policy_status !== "enabled"
     )) {
@@ -221,7 +241,7 @@ export async function POST(req: Request) {
       email: input.customerEmail,
       rut: bookingTax.customerRut || null,
     });
-    if (bookingTax.taxProfile) {
+    if (!isDemoAppointment && bookingTax.taxProfile) {
       const profile = bookingTax.taxProfile;
       const { error: taxProfileError } = await supabaseAdmin.from("customer_tax_profiles").upsert({
         tenant_id: input.tenantId, customer_id: customerId, rut_normalized: profile.rut,
@@ -231,9 +251,9 @@ export async function POST(req: Request) {
       }, { onConflict: "tenant_id,customer_id" });
       if (taxProfileError) return publicError(409, "Perfil tributario duplicado o inválido");
     }
-    const paymentRequired = service.payment_policy !== "no_advance";
+    const paymentRequired = !isDemoAppointment && service.payment_policy !== "no_advance";
     const manageToken = deriveManageToken(input.tenantId, key, pepper);
-    const rpcName = isAdminRequest
+    const rpcName = isAdminRequest || isDemoAppointment
       ? "create_public_appointment"
       : "create_public_appointment_with_legal_acceptance";
     const rpcInput: Record<string, unknown> = {
@@ -247,12 +267,16 @@ export async function POST(req: Request) {
       p_customer_email: input.customerEmail ?? "",
       p_notes: input.notes ?? "",
       p_payment_required: paymentRequired,
-      p_payment_status: isAdminRequest ? input.paymentStatus ?? "not_required" : "pending",
+      p_payment_status: isDemoAppointment
+        ? "not_required"
+        : isAdminRequest
+          ? input.paymentStatus ?? "not_required"
+          : "pending",
       p_manage_token_hash: hashManageToken(manageToken, pepper),
       p_manage_token_expires_at: manageTokenExpiresAt(),
       p_idempotency_key: key,
     };
-    if (!isAdminRequest) {
+    if (!isAdminRequest && !isDemoAppointment) {
       const forwardedIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "";
       rpcInput.p_legal = legalConsent;
       rpcInput.p_source_ip = /^[0-9a-f:.]+$/i.test(forwardedIp) ? forwardedIp : null;
@@ -265,43 +289,46 @@ export async function POST(req: Request) {
     }
     const row = Array.isArray(data) ? data[0] : data;
     if (!row?.appointment_id) return publicError(500);
-    const taxTreatmentSnapshot = service.tax_treatment ??
-      (["affected", "exempt"].includes(String(issuanceConfig?.tax_treatment)) ? issuanceConfig?.tax_treatment : null);
-    const { error: taxSnapshotError } = await supabaseAdmin
-      .from("appointments")
-      .update({
-        invoice_requested: requestedDocumentType === 33,
-        invoice_receiver_rut: requestedDocumentType === 33 && input.invoiceReceiverRut ? normalizeRut(input.invoiceReceiverRut) : null,
-        invoice_receiver_legal_name: requestedDocumentType === 33 ? input.invoiceReceiverLegalName ?? null : null,
-        invoice_receiver_activity: requestedDocumentType === 33 ? input.invoiceReceiverActivity ?? null : null,
-        invoice_receiver_address: requestedDocumentType === 33 ? input.invoiceReceiverAddress ?? null : null,
-        invoice_receiver_commune: requestedDocumentType === 33 ? input.invoiceReceiverCommune ?? null : null,
-        invoice_receiver_city: requestedDocumentType === 33 ? input.invoiceReceiverCity ?? null : null,
-        customer_rut_snapshot: bookingTax.customerRut,
-        requested_document_type: bookingTax.requestedDocumentType,
-        tax_document_selection: bookingTax.requestedDocumentType,
-        tax_treatment_snapshot: taxTreatmentSnapshot,
-      })
-      .eq("id", row.appointment_id)
-      .eq("tenant_id", input.tenantId);
-    if (taxSnapshotError) return publicError(500);
-    const { error: saleError } = await supabaseAdmin.rpc(
-      "billing_initialize_appointment_sale",
-      {
-        p_tenant_id: input.tenantId,
-        p_appointment_id: row.appointment_id,
-        p_requested_document_type: bookingTax.requestedDocumentType,
-      },
-    );
-    if (saleError) {
-      console.warn("[appointments/create] sale initialization rejected", { code: saleError.code ?? null });
-      return publicError(409, "La configuración comercial del servicio está incompleta");
+    if (!isDemoAppointment) {
+      const taxTreatmentSnapshot = service.tax_treatment ??
+        (["affected", "exempt"].includes(String(issuanceConfig?.tax_treatment)) ? issuanceConfig?.tax_treatment : null);
+      const { error: taxSnapshotError } = await supabaseAdmin
+        .from("appointments")
+        .update({
+          invoice_requested: requestedDocumentType === 33,
+          invoice_receiver_rut: requestedDocumentType === 33 && input.invoiceReceiverRut ? normalizeRut(input.invoiceReceiverRut) : null,
+          invoice_receiver_legal_name: requestedDocumentType === 33 ? input.invoiceReceiverLegalName ?? null : null,
+          invoice_receiver_activity: requestedDocumentType === 33 ? input.invoiceReceiverActivity ?? null : null,
+          invoice_receiver_address: requestedDocumentType === 33 ? input.invoiceReceiverAddress ?? null : null,
+          invoice_receiver_commune: requestedDocumentType === 33 ? input.invoiceReceiverCommune ?? null : null,
+          invoice_receiver_city: requestedDocumentType === 33 ? input.invoiceReceiverCity ?? null : null,
+          customer_rut_snapshot: bookingTax.customerRut,
+          requested_document_type: bookingTax.requestedDocumentType,
+          tax_document_selection: bookingTax.requestedDocumentType,
+          tax_treatment_snapshot: taxTreatmentSnapshot,
+        })
+        .eq("id", row.appointment_id)
+        .eq("tenant_id", input.tenantId);
+      if (taxSnapshotError) return publicError(500);
+      const { error: saleError } = await supabaseAdmin.rpc(
+        "billing_initialize_appointment_sale",
+        {
+          p_tenant_id: input.tenantId,
+          p_appointment_id: row.appointment_id,
+          p_requested_document_type: bookingTax.requestedDocumentType,
+        },
+      );
+      if (saleError) {
+        console.warn("[appointments/create] sale initialization rejected", { code: saleError.code ?? null });
+        return publicError(409, "La configuración comercial del servicio está incompleta");
+      }
     }
     return NextResponse.json({
       ok: true,
       appointmentId: row.appointment_id,
       manageToken,
       duplicate: row.duplicate === true,
+      ...(isDemoAppointment ? { persisted: true } : {}),
     });
   } catch (error) {
     if (error instanceof TenantOperationalError) return publicError(409);

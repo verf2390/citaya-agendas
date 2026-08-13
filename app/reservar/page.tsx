@@ -36,6 +36,8 @@ import { DemoContainer, DemoShell } from "@/components/layouts/demo-shell";
 import { fetchWithClientTimeout } from "@/lib/client/async-timeout";
 import { resolveTenantBySlug } from "@/lib/client/tenant-resolution";
 import { getTenantSlugFromHostname, normalizeTenantSlug } from "@/lib/tenant";
+import { isSafeDemoAppointmentMode } from "@/lib/tenant/operational-mode.mjs";
+import type { TenantOperationalCapabilities } from "@/lib/tenant/operational-types";
 import { normalizeRut, validateRut } from "@/lib/dte/rut";
 import { calculateServicePolicySnapshot, safeClpNumber } from "@/services/payments/service-payment-policy";
 
@@ -421,7 +423,8 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const [tenantId, setTenantId] = useState<string>("");
   const [loadingTenant, setLoadingTenant] = useState(true);
   const [tenantName, setTenantName] = useState<string>("");
-  const [tenantOperationalMode, setTenantOperationalMode] = useState<string>("unclassified");
+  const [tenantOperationalCapabilities, setTenantOperationalCapabilities] =
+    useState<TenantOperationalCapabilities | null>(null);
   const [tenantPaymentMode, setTenantPaymentMode] =
     useState<TenantPaymentMode>("none");
 
@@ -454,7 +457,12 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const [email, setEmail] = useState("");
   const [taxDocumentType, setTaxDocumentType] = useState<33 | 39 | null>(null);
   const [boletaSelectionEnabled, setBoletaSelectionEnabled] = useState(false);
-  const invoiceRequested = taxDocumentType === 33;
+  const [demoDocumentSelectionEnabled, setDemoDocumentSelectionEnabled] =
+    useState(false);
+  const [demoPersonalSelection, setDemoPersonalSelection] = useState(false);
+  const isSafeDemoAppointment = tenantOperationalCapabilities !== null &&
+    isSafeDemoAppointmentMode(tenantOperationalCapabilities);
+  const invoiceRequested = !isSafeDemoAppointment && taxDocumentType === 33;
   const [invoiceRut, setInvoiceRut] = useState("");
   const [invoiceLegalName, setInvoiceLegalName] = useState("");
   const [invoiceActivity, setInvoiceActivity] = useState("");
@@ -518,6 +526,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       setLoadingTenant(false);
       setTenantId("");
       setTenantName("");
+      setTenantOperationalCapabilities(null);
+      setBoletaSelectionEnabled(false);
+      setDemoDocumentSelectionEnabled(false);
+      setDemoPersonalSelection(false);
       setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
       setTenantPaymentMode("none");
       setPaymentMethodsEnabled(["mercadopago"]);
@@ -527,7 +539,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   }, [tenantSlug]);
 
   useEffect(() => {
-    if (!tenantSlug || !tenantId || tenantOperationalMode === "demo") {
+    if (!tenantSlug || !tenantId || isSafeDemoAppointment) {
       setLegalBundle(null);
       setLegalLoading(false);
       return;
@@ -554,7 +566,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       if (!cancelled) setLegalLoading(false);
     });
     return () => { cancelled = true; };
-  }, [tenantId, tenantSlug, tenantOperationalMode]);
+  }, [isSafeDemoAppointment, tenantId, tenantSlug]);
 
   useEffect(() => {
     if (!tenantSlug) return;
@@ -573,9 +585,14 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         if (!cancelled) {
           setTenantId(tenant.id ?? "");
           setTenantName(tenant.name ?? "");
-          setTenantOperationalMode(String(tenant.operational_mode ?? "unclassified"));
+          setTenantOperationalCapabilities(
+            (tenant.operational_capabilities as TenantOperationalCapabilities | undefined) ?? null,
+          );
           setBoletaSelectionEnabled(
             tenant.boleta_document_selection_enabled === true,
+          );
+          setDemoDocumentSelectionEnabled(
+            tenant.demo_document_selection_enabled === true,
           );
           setTenantPaymentMode(
             (tenant.payment_mode as TenantPaymentMode | undefined) ??
@@ -608,7 +625,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         if (!cancelled) {
           setTenantId("");
           setTenantName("");
-          setTenantOperationalMode("unclassified");
+          setTenantOperationalCapabilities(null);
+          setBoletaSelectionEnabled(false);
+          setDemoDocumentSelectionEnabled(false);
+          setDemoPersonalSelection(false);
           setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
           setTenantPaymentMode("none");
           setPaymentMethodsEnabled(["mercadopago"]);
@@ -722,12 +742,16 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   }, [serviceId]);
 
   useEffect(() => {
+    if (isSafeDemoAppointment) {
+      setPaymentChoice("pay_later");
+      return;
+    }
     if (service?.payment_policy === "deposit" || service?.payment_policy === "full_payment") {
       setPaymentChoice("pay_now");
       return;
     }
     setPaymentChoice("pay_later");
-  }, [service?.payment_policy]);
+  }, [isSafeDemoAppointment, service?.payment_policy]);
 
   const range = useMemo(() => {
     const now = new Date();
@@ -879,8 +903,26 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     };
   }, [buckets]);
 
-  const depositUnavailable = service?.payment_policy === "deposit" &&
+  const depositUnavailable = !isSafeDemoAppointment &&
+    service?.payment_policy === "deposit" &&
     service.deposit_tax_document_policy_status !== "enabled";
+  const documentSelectionComplete = isSafeDemoAppointment
+    ? demoDocumentSelectionEnabled && demoPersonalSelection
+    : taxDocumentType === 33 || taxDocumentType === 39;
+  const legalRequirementsComplete = isSafeDemoAppointment || (
+    legalBundle?.identity.complete === true &&
+    !!legalBundle.documents.consumer_terms &&
+    !!legalBundle.documents.privacy_notice &&
+    !!legalBundle.documents.cancellation_refund_policy &&
+    (!legalBundle.handlesSensitiveData || !!legalBundle.documents.sensitive_data_authorization) &&
+    termsAccepted &&
+    privacyInformed &&
+    (!legalBundle.handlesSensitiveData || sensitiveAccepted)
+  );
+  const paymentRequirementsComplete = isSafeDemoAppointment || (
+    (!(service?.payment_policy === "deposit" || service?.payment_policy === "full_payment") || paymentChoice === "pay_now") &&
+    (!(service?.payment_policy === "deposit" || service?.payment_policy === "full_payment") || tenantPaymentMode !== "none")
+  );
   const canSubmit =
     !!serviceId &&
     !!service &&
@@ -890,23 +932,16 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     fullName.trim().length >= 2 &&
     isPhoneValid &&
     isValidEmail(email) &&
-    (taxDocumentType === 33 || taxDocumentType === 39) &&
+    documentSelectionComplete &&
     !depositUnavailable &&
-    legalBundle?.identity.complete === true &&
-    !!legalBundle.documents.consumer_terms &&
-    !!legalBundle.documents.privacy_notice &&
-    !!legalBundle.documents.cancellation_refund_policy &&
-    (!legalBundle.handlesSensitiveData || !!legalBundle.documents.sensitive_data_authorization) &&
-    termsAccepted &&
-    privacyInformed &&
-    (!legalBundle.handlesSensitiveData || sensitiveAccepted) &&
+    legalRequirementsComplete &&
     (!invoiceRequested || (validateRut(invoiceRut) && invoiceLegalName.trim().length >= 2 && invoiceActivity.trim().length >= 2 && invoiceAddress.trim().length >= 2 && invoiceCommune.trim().length >= 2 && invoiceCity.trim().length >= 2 && isValidEmail(invoiceTaxEmail))) &&
-    (!(service.payment_policy === "deposit" || service.payment_policy === "full_payment") || paymentChoice === "pay_now") &&
-    (!(service.payment_policy === "deposit" || service.payment_policy === "full_payment") || tenantPaymentMode !== "none") &&
+    paymentRequirementsComplete &&
     !saving;
 
-  const showPaymentOptions = service?.payment_policy !== "no_advance";
-  const isPaymentRequired = service?.payment_policy === "deposit" || service?.payment_policy === "full_payment";
+  const showPaymentOptions = !isSafeDemoAppointment && service?.payment_policy !== "no_advance";
+  const isPaymentRequired = !isSafeDemoAppointment &&
+    (service?.payment_policy === "deposit" || service?.payment_policy === "full_payment");
   const isPayNowSelected = showPaymentOptions && paymentChoice === "pay_now";
   const currentPaymentStatus = showPaymentOptions
     ? isPayNowSelected
@@ -967,7 +1002,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       return;
     }
 
-    if (invoiceRequested && (
+    if (!isSafeDemoAppointment && invoiceRequested && (
       !validateRut(invoiceRut) || !invoiceLegalName.trim() || !invoiceActivity.trim() ||
       !invoiceAddress.trim() || !invoiceCommune.trim() || !invoiceCity.trim() || !isValidEmail(invoiceTaxEmail)
     )) {
@@ -982,7 +1017,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       return;
     }
 
-    if (tenantOperationalMode !== "demo" && (
+    if (!isSafeDemoAppointment && (
       !legalBundle?.identity.complete || !termsAccepted || !privacyInformed ||
       (legalBundle.handlesSensitiveData && !sensitiveAccepted)
     )) {
@@ -998,7 +1033,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
 
     try {
       const appointmentIdempotencyKey = crypto.randomUUID();
-      const acceptedLegalBundle = tenantOperationalMode === "demo" ? null : legalBundle;
+      const acceptedLegalBundle = isSafeDemoAppointment ? null : legalBundle;
+      const productiveTaxDocumentType = isSafeDemoAppointment
+        ? null
+        : taxDocumentType;
       const payload = {
         tenantId,
         tenantSlug,
@@ -1010,26 +1048,28 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         customerName: fullName.trim(),
         customerPhone: normalizeToE164CLMobile(phoneNorm.trim()),
         customerEmail: email.trim().toLowerCase(),
-        customerRut: taxDocumentType === 33 ? normalizeRut(invoiceRut) : undefined,
+        customerRut: !isSafeDemoAppointment && taxDocumentType === 33
+          ? normalizeRut(invoiceRut)
+          : undefined,
 
         customerId: null,
         serviceId: serviceId || null,
 
         status: "confirmed",
         currency: (service?.currency || "CLP").toUpperCase(),
-        paymentRequired: isPayNowSelected,
-        paymentStatus: currentPaymentStatus,
+        paymentRequired: isSafeDemoAppointment ? false : isPayNowSelected,
+        paymentStatus: isSafeDemoAppointment ? "not_required" : currentPaymentStatus,
 
         notes: null,
-        invoiceRequested,
-        taxDocumentType,
-        invoiceReceiverRut: invoiceRequested ? invoiceRut : null,
-        invoiceReceiverLegalName: invoiceRequested ? invoiceLegalName : null,
-        invoiceReceiverActivity: invoiceRequested ? invoiceActivity : null,
-        invoiceReceiverAddress: invoiceRequested ? invoiceAddress : null,
-        invoiceReceiverCommune: invoiceRequested ? invoiceCommune : null,
-        invoiceReceiverCity: invoiceRequested ? invoiceCity : null,
-        invoiceReceiverTaxEmail: invoiceRequested ? invoiceTaxEmail.trim().toLowerCase() : null,
+        invoiceRequested: isSafeDemoAppointment ? false : invoiceRequested,
+        taxDocumentType: productiveTaxDocumentType,
+        invoiceReceiverRut: !isSafeDemoAppointment && invoiceRequested ? invoiceRut : null,
+        invoiceReceiverLegalName: !isSafeDemoAppointment && invoiceRequested ? invoiceLegalName : null,
+        invoiceReceiverActivity: !isSafeDemoAppointment && invoiceRequested ? invoiceActivity : null,
+        invoiceReceiverAddress: !isSafeDemoAppointment && invoiceRequested ? invoiceAddress : null,
+        invoiceReceiverCommune: !isSafeDemoAppointment && invoiceRequested ? invoiceCommune : null,
+        invoiceReceiverCity: !isSafeDemoAppointment && invoiceRequested ? invoiceCity : null,
+        invoiceReceiverTaxEmail: !isSafeDemoAppointment && invoiceRequested ? invoiceTaxEmail.trim().toLowerCase() : null,
         legalConsent: acceptedLegalBundle ? {
           consumer_terms: {
             documentId: acceptedLegalBundle.documents.consumer_terms.id,
@@ -1080,11 +1120,6 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
 
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "No se pudo crear la cita");
-
-      if (json?.demoSimulation === true && typeof json?.ephemeralId === "string") {
-        router.push(`/reservar/confirmacion?demo=1&id=${encodeURIComponent(json.ephemeralId)}&tenant=${encodeURIComponent(tenantSlug)}`);
-        return;
-      }
 
       const appointmentId = json?.appointmentId;
       const manageToken = json?.manageToken;
@@ -1438,7 +1473,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
         size="booking"
         className="max-w-full overflow-x-clip font-[system-ui] text-[12px] leading-snug sm:text-[14px] sm:leading-normal"
       >
-        {tenantOperationalMode === "demo" ? (
+        {isSafeDemoAppointment ? (
           <div className="sticky top-0 z-50 mb-3 rounded-2xl border border-amber-300 bg-amber-100 px-4 py-3 text-center text-sm font-black text-amber-950 shadow-sm">
             Entorno de demostración. No ingrese información personal, clínica o financiera real
           </div>
@@ -2323,60 +2358,84 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
 
                 <div className="rounded-2xl border border-slate-200 bg-white/80 p-3">
                   <p className="text-[11px] font-extrabold sm:text-sm">
-                    ¿Qué documento necesitas?
+                    {isSafeDemoAppointment
+                      ? "Selección demostrativa"
+                      : "¿Qué documento necesitas?"}
                   </p>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {isSafeDemoAppointment ? (
                     <button
                       type="button"
-                      disabled={saving || !tenantId || !boletaSelectionEnabled}
-                      onClick={() => setTaxDocumentType(39)}
+                      disabled={saving || !tenantId || !demoDocumentSelectionEnabled}
+                      onClick={() => setDemoPersonalSelection((current) => !current)}
                       className={cn(
-                        "rounded-xl border p-3 text-left text-xs transition",
-                        taxDocumentType === 39
+                        "mt-2 w-full rounded-xl border p-3 text-left text-xs transition",
+                        demoPersonalSelection
                           ? "border-slate-900 bg-slate-900 text-white"
                           : "border-slate-200 bg-white",
-                        !boletaSelectionEnabled && "cursor-not-allowed opacity-55",
+                        !demoDocumentSelectionEnabled && "cursor-not-allowed opacity-55",
                       )}
                     >
                       <span className="block font-extrabold">
-                        Boleta electrónica — compra personal
+                        Compra personal — documento simulado
                       </span>
                       <span className="mt-1 block opacity-75">
-                        {boletaSelectionEnabled
-                          ? "Precio final con IVA incluido."
-                          : "Disponible próximamente."}
+                        Simulación de demostración — no genera documento tributario real
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      disabled={saving || !tenantId}
-                      onClick={() =>
-                        setTaxDocumentType((current) =>
-                          current === 33 ? null : 33,
-                        )
-                      }
-                      className={cn(
-                        "rounded-xl border p-3 text-left text-xs transition",
-                        taxDocumentType === 33
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-white",
-                      )}
-                    >
-                      <span className="block font-extrabold">
-                        Factura electrónica — empresa
-                      </span>
-                      <span className="mt-1 block opacity-75">
-                        Requiere datos tributarios completos.
-                      </span>
-                    </button>
-                  </div>
-                  {taxDocumentType === null ? (
+                  ) : (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        disabled={saving || !tenantId || !boletaSelectionEnabled}
+                        onClick={() => setTaxDocumentType(39)}
+                        className={cn(
+                          "rounded-xl border p-3 text-left text-xs transition",
+                          taxDocumentType === 39
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white",
+                          !boletaSelectionEnabled && "cursor-not-allowed opacity-55",
+                        )}
+                      >
+                        <span className="block font-extrabold">
+                          Boleta electrónica — compra personal
+                        </span>
+                        <span className="mt-1 block opacity-75">
+                          {boletaSelectionEnabled
+                            ? "Precio final con IVA incluido."
+                            : "Disponible próximamente."}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving || !tenantId}
+                        onClick={() =>
+                          setTaxDocumentType((current) =>
+                            current === 33 ? null : 33,
+                          )
+                        }
+                        className={cn(
+                          "rounded-xl border p-3 text-left text-xs transition",
+                          taxDocumentType === 33
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white",
+                        )}
+                      >
+                        <span className="block font-extrabold">
+                          Factura electrónica — empresa
+                        </span>
+                        <span className="mt-1 block opacity-75">
+                          Requiere datos tributarios completos.
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                  {!isSafeDemoAppointment && taxDocumentType === null ? (
                     <p className="mt-2 text-[10px] text-slate-500 sm:text-xs">
                       Sin selección: la operación quedará pendiente de revisión
                       y no se emitirá automáticamente.
                     </p>
                   ) : null}
-                  {invoiceRequested ? (
+                  {!isSafeDemoAppointment && invoiceRequested ? (
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       {[
                         ["RUT receptor", invoiceRut, setInvoiceRut, "76.543.210-3"],
@@ -2403,7 +2462,14 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                 </div>
 
                 <SurfaceCard tone="default" shadow="soft" radius="lg" className="max-w-full border-white/80 bg-white/76 p-4 text-xs leading-relaxed shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
-                  {legalLoading ? <p className="text-muted-foreground">Cargando información legal del prestador…</p> : legalBundle?.identity.complete ? (
+                  {isSafeDemoAppointment ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
+                      <p className="font-black">Reserva demostrativa persistida</p>
+                      <p className="mt-1">
+                        No se realizarán pagos, no se emitirán documentos tributarios y no se enviarán comunicaciones externas.
+                      </p>
+                    </div>
+                  ) : legalLoading ? <p className="text-muted-foreground">Cargando información legal del prestador…</p> : legalBundle?.identity.complete ? (
                     <div className="grid gap-3">
                       <div>
                         <p className="font-black text-slate-900">Prestador del servicio: {legalBundle.identity.legalName || legalBundle.identity.providerName}</p>
