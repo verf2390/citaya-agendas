@@ -8,6 +8,7 @@ import {
   getWebpayCredentials,
   webpayTransaction,
 } from "@/services/payments/provider-credentials";
+import { enqueueAutomaticDteBestEffort } from "@/services/payments/automatic-dte";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import {
   loadTenantOperationalContext,
@@ -57,7 +58,10 @@ async function handleWebpayReturn(req: Request) {
       });
       return redirectResult(req, "failure");
     }
-    if (intent.status === "succeeded") return redirectResult(req, "success", intent.appointment_id);
+    if (intent.status === "succeeded") {
+      await enqueueAutomaticDteBestEffort(intent.id);
+      return redirectResult(req, "success", intent.appointment_id);
+    }
     if (intent.status !== "pending") return redirectResult(req, "failure");
 
     const credentials = getWebpayCredentials(intent.tenant_id);
@@ -97,6 +101,7 @@ async function handleWebpayReturn(req: Request) {
       });
       return redirectResult(req, "failure");
     }
+    await enqueueAutomaticDteBestEffort(intent.id);
     if (transitioned === true) {
       await notifyPaymentConfirmed({
         appointmentId: intent.appointment_id,

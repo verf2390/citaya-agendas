@@ -102,8 +102,19 @@ test("invoice on request is implemented for type 33 when every gate is green", (
   assert.equal(result.documentType, 33);
 });
 
-test("consumer receipt 39/41 is blocked without silent factura fallback", () => {
-  for (const consumerDocumentType of ["39", "41", "unsupported"]) {
+test("consumer receipt 39 is supported without silent factura fallback", () => {
+  const result = resolveAutomaticIssuance({
+    globalProductionEnabled: true,
+    config: { ...config, consumerDocumentType: "39" },
+    appointment: { ...appointment, invoiceRequested: false },
+    payment,
+  });
+  assert.equal(result.status, "PENDING");
+  assert.equal(result.documentType, 39);
+});
+
+test("consumer receipt 41 and unknown types stay blocked without factura fallback", () => {
+  for (const consumerDocumentType of ["41", "unsupported"]) {
     const result = resolveAutomaticIssuance({
       globalProductionEnabled: true,
       config: { ...config, consumerDocumentType },

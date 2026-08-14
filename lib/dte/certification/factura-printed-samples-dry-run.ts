@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 
 import { DOMParser, type Document as XmlDocument, type Element as XmlElement } from "@xmldom/xmldom";
@@ -125,7 +126,11 @@ function safeText(pdf: jsPDF, text: string, x: number, y: number, maxWidth = 520
 }
 
 async function barcodePng(ted: Buffer, corrupt: boolean): Promise<Buffer> {
-  const { writeBarcode } = await import("zxing-wasm/writer");
+  const { prepareZXingModule, writeBarcode } = await import("zxing-wasm/writer");
+  const requireFromWorkspace = createRequire(resolve(process.cwd(), "package.json"));
+  const wasm = readFileSync(requireFromWorkspace.resolve("zxing-wasm/writer/zxing_writer.wasm"));
+  const wasmBinary = wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength);
+  await prepareZXingModule({ overrides: { wasmBinary }, fireImmediately: true });
   const output = await writeBarcode(new Uint8Array(ted), { format: "PDF417", scale: 3, options: "ecLevel=2,columns=5" });
   if (output.error || !output.image) fail("generacion PDF417 fixture fallo");
   const result = Buffer.from(await output.image.arrayBuffer());

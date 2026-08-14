@@ -6,6 +6,7 @@ import {
   verifyKhipuSignature,
 } from "@/lib/security/payment-verification.mjs";
 import { getKhipuCredentials } from "@/services/payments/provider-credentials";
+import { enqueueAutomaticDteBestEffort } from "@/services/payments/automatic-dte";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import {
   loadTenantOperationalContext,
@@ -53,6 +54,7 @@ export async function POST(req: Request) {
     }
 
     if (intent.status === "succeeded") {
+      await enqueueAutomaticDteBestEffort(intent.id);
       return NextResponse.json({ ok: true, replay: true });
     }
 
@@ -102,6 +104,7 @@ export async function POST(req: Request) {
       });
       return reject(500);
     }
+    await enqueueAutomaticDteBestEffort(intent.id);
 
     if (transitioned === true) {
       await notifyPaymentConfirmed({

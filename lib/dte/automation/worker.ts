@@ -1,17 +1,50 @@
 import { expectedProductionConfirmation } from "@/lib/dte/production/config";
 import { createServerProductionDteService } from "@/lib/dte/production/server";
 import { ProductionPreparationError } from "@/lib/dte/production/service";
+import type { ProductionDteService } from "@/lib/dte/production/service";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertTenantCanRunDteWorker } from "@/lib/tenant/operational-server";
+import { randomUUID } from "node:crypto";
 
 const SYSTEM_ACTOR_ID = "00000000-0000-4000-8000-000000000001";
 
-type ClaimedOutbox = {
+export type ClaimedOutbox = {
   id: string;
   tenant_id: string;
   intent_id: string;
   deterministic_attempts: number;
   issuance_origin?: string;
+  locked_by?: string | null;
+  claim_token?: string | null;
+};
+
+export type ManualWorkerOptions = {
+  targetOutboxId?: string;
+  controlledResume?: {
+    intentId: string;
+    documentId: string;
+    folio: number;
+    grossAmount: number;
+    netAmount: number;
+    taxAmount: number;
+  };
+};
+
+export type DteWorkerResult = {
+  processed: boolean;
+  status: string | null;
+  siiContacted: boolean;
+  networkAttempts: number;
+};
+
+export type DteWorkerDependencies = {
+  claimManual: (options: ManualWorkerOptions) => Promise<ClaimedOutbox | null>;
+  claimAutomatic: () => Promise<ClaimedOutbox | null>;
+  processClaimed: (item: ClaimedOutbox) => Promise<DteWorkerResult>;
+};
+
+export type ProcessClaimedDteItemOptions = {
+  createProductionService?: () => ProductionDteService;
 };
 
 type IssuanceIntent = {
@@ -93,6 +126,49 @@ function affectedNetFromGross(gross: number) {
   throw new Error("DTE_AMOUNT_TAX_RECONCILIATION_FAILED");
 }
 
+function isAutomaticClaim(item: ClaimedOutbox) {
+  return item.issuance_origin === "automatic_system";
+}
+
+function automaticClaimIdentity(item: ClaimedOutbox) {
+  const workerId = String(item.locked_by ?? "");
+  const claimToken = String(item.claim_token ?? "");
+  if (!/^[A-Za-z0-9:_-]{3,100}$/.test(workerId) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claimToken)) {
+    throw new Error("DTE_AUTOMATIC_CLAIM_FENCED");
+  }
+  return { workerId, claimToken };
+}
+
+async function mutateAutomaticClaim(item: ClaimedOutbox, input: {
+  action: "RENEW" | "PREPARING" | "READY" | "SUBMITTING" | "NETWORK_BOUNDARY" | "COMPLETE" | "BLOCK" | "AMBIGUOUS";
+  productionDocumentId?: string | null;
+  finalStatus?: "SUBMITTED" | "REJECTED" | null;
+  safeReason?: string | null;
+  deterministicAttempts?: number | null;
+  eventType?: string | null;
+  safeMetadata?: Record<string, unknown>;
+  submissionAttemptId?: string | null;
+  networkMilestone?: "seed_before_fetch" | "token_before_fetch" | "upload_before_fetch" | null;
+}) {
+  const identity = automaticClaimIdentity(item);
+  const result = await supabaseAdmin.rpc("dte_mutate_automatic_issuance_claim", {
+    p_outbox_id: item.id,
+    p_worker_id: identity.workerId,
+    p_claim_token: identity.claimToken,
+    p_action: input.action,
+    p_production_document_id: input.productionDocumentId ?? null,
+    p_final_status: input.finalStatus ?? null,
+    p_safe_reason: input.safeReason ?? null,
+    p_deterministic_attempts: input.deterministicAttempts ?? null,
+    p_event_type: input.eventType ?? null,
+    p_safe_metadata: input.safeMetadata ?? {},
+    p_submission_attempt_id: input.submissionAttemptId ?? null,
+    p_network_milestone: input.networkMilestone ?? null,
+  });
+  if (result.error || !result.data) throw new Error("DTE_AUTOMATIC_CLAIM_FENCED");
+}
+
 async function appendEvent(item: ClaimedOutbox, eventType: string, metadata: Record<string, unknown> = {}) {
   const result = await supabaseAdmin.from("dte_document_events").insert({
     tenant_id: item.tenant_id,
@@ -118,6 +194,16 @@ async function block(
   deterministicAttempts = item.deterministic_attempts,
   failure: SafeFailureDetails | null = null,
 ) {
+  if (isAutomaticClaim(item)) {
+    await mutateAutomaticClaim(item, {
+      action: "BLOCK",
+      safeReason: reason,
+      deterministicAttempts: Math.min(Math.max(deterministicAttempts, 0), 3),
+      eventType: "ISSUANCE_BLOCKED",
+      safeMetadata: { reason, ...(failure ?? {}) },
+    });
+    return;
+  }
   await updateIntent(item, {
     status: "BLOCKED",
     safe_blocking_reason: reason,
@@ -179,6 +265,15 @@ async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED"
 }
 
 async function markAmbiguousNoRetry(item: ClaimedOutbox, reason: string) {
+  if (isAutomaticClaim(item)) {
+    await mutateAutomaticClaim(item, {
+      action: "AMBIGUOUS",
+      safeReason: reason,
+      eventType: "SUBMISSION_AMBIGUOUS",
+      safeMetadata: { automaticRetry: false, reason },
+    });
+    return;
+  }
   await updateIntent(item, {
     status: "AMBIGUOUS",
     safe_blocking_reason: reason,
@@ -205,19 +300,7 @@ async function markAmbiguousNoRetry(item: ClaimedOutbox, reason: string) {
   });
 }
 
-export async function runOneManualIssuanceWorker(options: {
-  targetOutboxId?: string;
-  controlledResume?: {
-    intentId: string;
-    documentId: string;
-    folio: number;
-    grossAmount: number;
-    netAmount: number;
-    taxAmount: number;
-  };
-} = {}) {
-  const globalProductionEnabled = process.env.DTE_PRODUCTION_ENABLED === "true";
-  if (!globalProductionEnabled) return { processed: false, status: "DISABLED", siiContacted: false, networkAttempts: 0 };
+async function claimManualIssuance(options: ManualWorkerOptions): Promise<ClaimedOutbox | null> {
   const targetOutboxId = String(options.targetOutboxId ?? "").trim();
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const resume = options.controlledResume;
@@ -253,8 +336,32 @@ export async function runOneManualIssuanceWorker(options: {
         p_worker_id: workerId,
       });
   if (claimed.error) throw new Error("DTE_OUTBOX_CLAIM_FAILED");
+  return (Array.isArray(claimed.data) ? claimed.data[0] : null) as ClaimedOutbox | null;
+}
+
+async function claimAutomaticIssuance(): Promise<ClaimedOutbox | null> {
+  const workerId = `citaya-automatic:${process.pid}:${randomUUID()}`;
+  const claimed = await supabaseAdmin.rpc("dte_claim_automatic_issuance_outbox", {
+    p_worker_id: workerId,
+  });
+  if (claimed.error) throw new Error("DTE_AUTOMATIC_OUTBOX_CLAIM_FAILED");
   const item = (Array.isArray(claimed.data) ? claimed.data[0] : null) as ClaimedOutbox | null;
-  if (!item) return { processed: false, status: null, siiContacted: false, networkAttempts: 0 };
+  if (item && (item.issuance_origin !== "automatic_system" || item.locked_by !== workerId)) {
+    throw new Error("DTE_AUTOMATIC_CLAIM_DOMAIN_INVALID");
+  }
+  if (item) automaticClaimIdentity(item);
+  return item;
+}
+
+export async function processClaimedDteItem(
+  item: ClaimedOutbox,
+  options: ProcessClaimedDteItemOptions = {},
+): Promise<DteWorkerResult> {
+  const automatic = isAutomaticClaim(item);
+  if (automatic) {
+    automaticClaimIdentity(item);
+    await mutateAutomaticClaim(item, { action: "RENEW" });
+  }
 
   try {
     await assertTenantCanRunDteWorker(item.tenant_id, { issuanceOrigin: item.issuance_origin });
@@ -266,7 +373,8 @@ export async function runOneManualIssuanceWorker(options: {
   let intent: IssuanceIntent | null = null;
   try {
     intent = await loadIntent(item);
-    if (intent.status !== "PENDING" || ![33, 39, 56, 61].includes(Number(intent.resolved_dte_type))) {
+    const allowedTypes = automatic ? [33, 39] : [33, 39, 56, 61];
+    if (intent.status !== "PENDING" || !allowedTypes.includes(Number(intent.resolved_dte_type))) {
       throw new Error("DTE_INTENT_STATE_INVALID");
     }
     const dteType = Number(intent.resolved_dte_type) as 33 | 39 | 56 | 61;
@@ -374,7 +482,11 @@ export async function runOneManualIssuanceWorker(options: {
       }];
     }
     const actorId = intent.created_by ?? SYSTEM_ACTOR_ID;
-    const service = createServerProductionDteService();
+    const service = (options.createProductionService ?? createServerProductionDteService)();
+    const assertAutomaticMutationLease = automatic
+      ? async () => mutateAutomaticClaim(item, { action: "RENEW" })
+      : undefined;
+    if (automatic) await mutateAutomaticClaim(item, { action: "RENEW" });
     const draft = intent.production_document_id
       ? { id: intent.production_document_id }
       : await service.createDraft({
@@ -408,30 +520,74 @@ export async function runOneManualIssuanceWorker(options: {
           },
           lines: productionLines,
           references,
-        }, actorId);
+        }, actorId, assertAutomaticMutationLease);
 
     if ("totalAmount" in draft && Number(draft.totalAmount) !== grossAmount) {
       throw new Error("DTE_AMOUNT_TAX_RECONCILIATION_FAILED");
     }
     intent.production_document_id = draft.id;
-    await updateIntent(item, {
-      status: "PREPARING",
-      production_document_id: draft.id,
-      safe_blocking_reason: null,
-    });
-    await appendEvent(item, "ISSUANCE_PREPARING", { productionDocumentId: draft.id, dteType });
+    if (automatic) {
+      await mutateAutomaticClaim(item, {
+        action: "PREPARING",
+        productionDocumentId: draft.id,
+        eventType: "ISSUANCE_PREPARING",
+        safeMetadata: { productionDocumentId: draft.id, dteType },
+      });
+    } else {
+      await updateIntent(item, {
+        status: "PREPARING",
+        production_document_id: draft.id,
+        safe_blocking_reason: null,
+      });
+      await appendEvent(item, "ISSUANCE_PREPARING", { productionDocumentId: draft.id, dteType });
+    }
 
-    await service.prepare(item.tenant_id, draft.id, actorId);
-    await updateIntent(item, { status: "READY" });
-    await appendEvent(item, "ISSUANCE_READY", { productionDocumentId: draft.id });
+    if (automatic) await mutateAutomaticClaim(item, { action: "RENEW" });
+    await service.prepare(
+      item.tenant_id,
+      draft.id,
+      actorId,
+      assertAutomaticMutationLease,
+    );
+    if (automatic) {
+      await mutateAutomaticClaim(item, {
+        action: "READY",
+        productionDocumentId: draft.id,
+        eventType: "ISSUANCE_READY",
+        safeMetadata: { productionDocumentId: draft.id },
+      });
+    } else {
+      await updateIntent(item, { status: "READY" });
+      await appendEvent(item, "ISSUANCE_READY", { productionDocumentId: draft.id });
+    }
 
-    await updateIntent(item, { status: "SUBMITTING", network_attempt_count: 1 });
-    await appendEvent(item, "SUBMISSION_STARTED", { automaticRetry: false });
+    if (automatic) {
+      await mutateAutomaticClaim(item, {
+        action: "SUBMITTING",
+        productionDocumentId: draft.id,
+        eventType: "SUBMISSION_STARTED",
+        safeMetadata: { automaticRetry: false },
+      });
+    } else {
+      await updateIntent(item, { status: "SUBMITTING", network_attempt_count: 1 });
+      await appendEvent(item, "SUBMISSION_STARTED", { automaticRetry: false });
+    }
     const emitted = await service.emitOnce({
       tenantId: item.tenant_id,
       documentId: draft.id,
       confirmation: expectedProductionConfirmation(draft.id),
       actorId,
+      assertMutationLease: assertAutomaticMutationLease,
+      beforeNetworkAttempt: automatic
+        ? async ({ milestone, submissionAttemptId }) => {
+            await mutateAutomaticClaim(item, {
+              action: "NETWORK_BOUNDARY",
+              productionDocumentId: draft.id,
+              submissionAttemptId,
+              networkMilestone: milestone,
+            });
+          }
+        : undefined,
     });
     const finalStatus = emitted.status.toUpperCase();
     if (finalStatus === "AMBIGUOUS") {
@@ -439,13 +595,42 @@ export async function runOneManualIssuanceWorker(options: {
       return { processed: true, status: "AMBIGUOUS", siiContacted: true, networkAttempts: 1 };
     }
     const status = finalStatus === "SUBMITTED" ? "SUBMITTED" : "REJECTED";
-    await updateIntent(item, { status, safe_blocking_reason: status === "REJECTED" ? "SII_EXPLICIT_REJECTION" : null });
-    await finishOutbox(item, "COMPLETED", 1, status === "REJECTED" ? "SII_EXPLICIT_REJECTION" : null);
-    await appendEvent(item, `SUBMISSION_${status}`, { automaticRetry: false });
+    if (automatic) {
+      await mutateAutomaticClaim(item, {
+        action: "COMPLETE",
+        productionDocumentId: draft.id,
+        finalStatus: status,
+        safeReason: status === "REJECTED" ? "SII_EXPLICIT_REJECTION" : null,
+        eventType: `SUBMISSION_${status}`,
+        safeMetadata: { automaticRetry: false },
+      });
+    } else {
+      await updateIntent(item, { status, safe_blocking_reason: status === "REJECTED" ? "SII_EXPLICIT_REJECTION" : null });
+      await finishOutbox(item, "COMPLETED", 1, status === "REJECTED" ? "SII_EXPLICIT_REJECTION" : null);
+      await appendEvent(item, `SUBMISSION_${status}`, { automaticRetry: false });
+    }
     return { processed: true, status, siiContacted: true, networkAttempts: 1 };
   } catch (error) {
     const reason = safeReason(error, "DTE_MANUAL_PREPARATION_FAILED");
     const productionDocumentId = intent?.production_document_id;
+    if (reason === "DTE_AUTOMATIC_CLAIM_FENCED") {
+      let siiContacted = false;
+      if (productionDocumentId) {
+        const attempt = await supabaseAdmin
+          .from("dte_production_submission_attempts")
+          .select("before_fetch_at")
+          .eq("tenant_id", item.tenant_id)
+          .eq("document_id", productionDocumentId)
+          .maybeSingle();
+        siiContacted = Boolean(attempt.data?.before_fetch_at);
+      }
+      return {
+        processed: true,
+        status: "FENCED",
+        siiContacted,
+        networkAttempts: siiContacted ? 1 : 0,
+      };
+    }
     if (productionDocumentId) {
       const attempt = await supabaseAdmin
         .from("dte_production_submission_attempts")
@@ -462,4 +647,37 @@ export async function runOneManualIssuanceWorker(options: {
       safeFailureDetails(error));
     return { processed: true, status: "BLOCKED", siiContacted: false, networkAttempts: 0 };
   }
+}
+
+const defaultWorkerDependencies: DteWorkerDependencies = {
+  claimManual: claimManualIssuance,
+  claimAutomatic: claimAutomaticIssuance,
+  processClaimed: processClaimedDteItem,
+};
+
+export async function runOneManualIssuanceWorker(
+  options: ManualWorkerOptions = {},
+  dependencies: DteWorkerDependencies = defaultWorkerDependencies,
+): Promise<DteWorkerResult> {
+  if (process.env.DTE_PRODUCTION_ENABLED !== "true") {
+    return { processed: false, status: "DISABLED", siiContacted: false, networkAttempts: 0 };
+  }
+  const item = await dependencies.claimManual(options);
+  if (!item) return { processed: false, status: null, siiContacted: false, networkAttempts: 0 };
+  return dependencies.processClaimed(item);
+}
+
+export async function runOneAutomaticIssuanceWorker(
+  dependencies: DteWorkerDependencies = defaultWorkerDependencies,
+): Promise<DteWorkerResult> {
+  if (
+    process.env.DTE_PRODUCTION_ENABLED !== "true" ||
+    process.env.DTE_AUTOMATIC_WORKER_ENABLED !== "true"
+  ) {
+    return { processed: false, status: "DISABLED", siiContacted: false, networkAttempts: 0 };
+  }
+  const item = await dependencies.claimAutomatic();
+  if (!item) return { processed: false, status: null, siiContacted: false, networkAttempts: 0 };
+  if (!isAutomaticClaim(item)) throw new Error("DTE_AUTOMATIC_CLAIM_DOMAIN_INVALID");
+  return dependencies.processClaimed(item);
 }

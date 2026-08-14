@@ -194,6 +194,7 @@ export class ProductionDteService {
   async createDraft(
     input: ProductionDraftInput,
     actorId: string,
+    assertMutationLease?: () => Promise<void>,
   ): Promise<ReturnType<typeof safeDocument>> {
     assertSupportedType(input.dteType);
     validateRecipient(input.recipient);
@@ -209,6 +210,7 @@ export class ProductionDteService {
         discountPercent: line.discountPercent,
       })),
     });
+    await assertMutationLease?.();
     const draft = await this.repository.createDraft({
       ...input,
       tenantId: settings.tenantId,
@@ -222,6 +224,7 @@ export class ProductionDteService {
       taxAmount: tax.vatAmount,
       totalAmount: tax.totalAmount,
     });
+    await assertMutationLease?.();
     await this.repository.appendAudit({
       tenantId: draft.tenantId,
       documentId: draft.id,
@@ -239,6 +242,7 @@ export class ProductionDteService {
     tenantId: string,
     documentId: string,
     actorId: string,
+    assertMutationLease?: () => Promise<void>,
   ): Promise<ReturnType<typeof safeDocument>> {
     let failureStage: ProductionPreparationFailureStage = "runtime_config";
     try {
@@ -274,6 +278,7 @@ export class ProductionDteService {
       });
 
       failureStage = "folio_reservation";
+      await assertMutationLease?.();
       const reservation =
         current.folio === null
           ? await this.repository.reserveFolio({
@@ -291,6 +296,7 @@ export class ProductionDteService {
         throw new Error("DTE_FOLIO_NOT_AVAILABLE");
       }
       failureStage = "document_transition";
+      await assertMutationLease?.();
       const prepared =
         current.status === "prepared"
           ? current
@@ -322,14 +328,17 @@ export class ProductionDteService {
         env: this.env,
       });
       failureStage = "artifact_persistence";
+      await assertMutationLease?.();
       await this.persistGeneratedArtifacts(prepared, generated);
       failureStage = "ready_transition";
+      await assertMutationLease?.();
       const ready = await this.repository.transitionDocument({
         tenantId,
         documentId,
         from: ["prepared"],
         to: "ready",
       });
+      await assertMutationLease?.();
       await this.repository.appendAudit({
         tenantId,
         documentId,
@@ -345,6 +354,9 @@ export class ProductionDteService {
       });
       return safeDocument(ready);
     } catch (error) {
+      if (error instanceof Error && error.message === "DTE_AUTOMATIC_CLAIM_FENCED") {
+        throw error;
+      }
       if (error instanceof ProductionPreparationError) throw error;
       throw new ProductionPreparationError(failureStage, error);
     }
@@ -383,6 +395,11 @@ export class ProductionDteService {
     documentId: string;
     confirmation: string;
     actorId: string;
+    assertMutationLease?: () => Promise<void>;
+    beforeNetworkAttempt?: (input: {
+      milestone: "seed_before_fetch" | "token_before_fetch" | "upload_before_fetch";
+      submissionAttemptId: string;
+    }) => Promise<void>;
   }): Promise<ReturnType<typeof safeDocument>> {
     const config = this.config();
     assertExactProductionConfirmation(input.documentId, input.confirmation);
@@ -422,6 +439,7 @@ export class ProductionDteService {
     );
     if (sha256(envelope.bytes) !== envelopeArtifact.sha256)
       throw new Error("DTE_ARTIFACT_HASH_MISMATCH");
+    await input.assertMutationLease?.();
     const attempt = await this.repository.createSubmissionAttempt({
       tenantId: input.tenantId,
       documentId: input.documentId,
@@ -434,6 +452,7 @@ export class ProductionDteService {
       beforeFetchAt: null,
       afterFetchAt: null,
     });
+    await input.assertMutationLease?.();
     await this.repository.transitionDocument({
       tenantId: input.tenantId,
       documentId: input.documentId,
@@ -441,6 +460,16 @@ export class ProductionDteService {
       to: "submitting",
     });
     const milestone = async (event: ProductionSiiMilestone) => {
+      if (
+        event === "seed_before_fetch" ||
+        event === "token_before_fetch" ||
+        event === "upload_before_fetch"
+      ) {
+        await input.beforeNetworkAttempt?.({
+          milestone: event,
+          submissionAttemptId: attempt.id,
+        });
+      }
       const now = new Date().toISOString();
       await this.repository.appendAudit({
         tenantId: input.tenantId,
@@ -449,7 +478,7 @@ export class ProductionDteService {
         actorId: input.actorId,
         metadata: { attempt: 1 },
       });
-      if (event === "upload_before_fetch")
+      if (event === "upload_before_fetch" && !input.beforeNetworkAttempt)
         await this.repository.updateSubmissionAttempt(
           input.tenantId,
           attempt.id,
@@ -477,6 +506,10 @@ export class ProductionDteService {
         milestone,
       });
     } catch (error) {
+      if (error instanceof Error && error.message === "DTE_AUTOMATIC_CLAIM_FENCED") {
+        throw error;
+      }
+      await input.assertMutationLease?.();
       await this.repository.updateSubmissionAttempt(
         input.tenantId,
         attempt.id,
@@ -493,12 +526,14 @@ export class ProductionDteService {
       });
       throw error;
     }
+    await input.assertMutationLease?.();
     if (result.responseBytes?.length)
       await this.persistSiiResponseArtifact(
         document,
         result.responseBytes,
         result.responseSha256,
       );
+    await input.assertMutationLease?.();
     await this.repository.updateSubmissionAttempt(
       input.tenantId,
       attempt.id,
@@ -509,6 +544,7 @@ export class ProductionDteService {
         trackId: result.trackId,
       },
     );
+    await input.assertMutationLease?.();
     const final = await this.repository.transitionDocument({
       tenantId: input.tenantId,
       documentId: input.documentId,

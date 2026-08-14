@@ -56,10 +56,11 @@ test("production routes derive tenant from hostname and never trust body tenant 
   assert.match(hostAuth, /\.eq\("slug", tenantSlug\)/);
 });
 
-test("consumer boleta automatic issuance remains explicitly disabled in production", () => {
+test("consumer boleta 39 is implemented while automatic activation remains gated", () => {
   const types = read("lib/dte/production/types.ts");
   const policy = read("lib/dte/automation/issuance-policy.mjs");
-  assert.match(types, /PRODUCTION_DTE_TYPES = \[33, 56, 61\]/);
-  assert.match(policy, /BOLETA39_AUTOMATIC_ISSUANCE_DISABLED/);
+  assert.match(types, /PRODUCTION_DTE_TYPES = \[[^\]]*39[^\]]*\]/);
+  assert.doesNotMatch(policy, /BOLETA39_AUTOMATIC_ISSUANCE_DISABLED/);
   assert.match(policy, /IMPLEMENTED_PRODUCTION_TYPES = Object\.freeze\(\[33, 39\]\)/);
+  assert.match(policy, /config\.issuanceMode !== "automatic_on_verified_payment"/);
 });

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { fetchMercadoPagoPayment } from "@/services/payments/mercadopago";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
+import { enqueueAutomaticDteBestEffort } from "@/services/payments/automatic-dte";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import { safePaymentAuditMetadata } from "@/lib/security/payment-verification.mjs";
 import {
@@ -37,7 +38,10 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ ok: true, ignored: true }, { status: 202 });
     }
-    if (intent.status === "succeeded") return NextResponse.json({ ok: true, replay: true });
+    if (intent.status === "succeeded") {
+      await enqueueAutomaticDteBestEffort(intent.id);
+      return NextResponse.json({ ok: true, replay: true });
+    }
 
     const config = await getTenantPaymentConfig(intent.tenant_id);
     if (!config.accessToken) return reject(503);
@@ -74,6 +78,7 @@ export async function POST(req: Request) {
       },
     );
     if (finalizeError) return reject(500);
+    await enqueueAutomaticDteBestEffort(intent.id);
     if (transitioned === true) {
       await notifyPaymentConfirmed({
         appointmentId: intent.appointment_id,

@@ -27,6 +27,7 @@ import {
   type ProductionPreparationPreflight,
 } from "../production/service";
 import {
+  type IProductionSiiClient,
   ProductionSiiClient,
   type ProductionStatusResult,
   type ProductionUploadResult,
@@ -195,8 +196,16 @@ class MockSiiClient extends ProductionSiiClient {
   ) {
     super(validProductionConfig());
   }
-  override async uploadExactlyOnce(): Promise<ProductionUploadResult> {
+  override async uploadExactlyOnce(
+    input: Parameters<IProductionSiiClient["uploadExactlyOnce"]>[0],
+  ): Promise<ProductionUploadResult> {
+    await input.milestone("seed_before_fetch");
+    await input.milestone("seed_after_fetch");
+    await input.milestone("token_before_fetch");
+    await input.milestone("token_after_fetch");
+    await input.milestone("upload_before_fetch");
     this.uploads += 1;
+    await input.milestone("upload_after_fetch");
     return this.uploadResult;
   }
   override async queryStatusManually(): Promise<ProductionStatusResult> {
@@ -474,6 +483,31 @@ test("emit performs one upload, persists Track ID safely and enqueues delivery o
   );
   assert.equal(context.client.uploads, 1);
   assert.equal(context.repository.outboxRecords().length, 0);
+});
+
+test("BEHAVIORAL: automatic lease fence is checked before the first SII network boundary", async () => {
+  const context = await preparedService({});
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 33, "fenced-before-network"),
+    "admin-user",
+  );
+  await context.service.prepare(context.tenantId, draft.id, "admin-user");
+  const boundaries: string[] = [];
+  await assert.rejects(
+    context.service.emitOnce({
+      tenantId: context.tenantId,
+      documentId: draft.id,
+      confirmation: `EMITIR DTE PRODUCCION ${draft.id}`,
+      actorId: "system",
+      beforeNetworkAttempt: async ({ milestone }) => {
+        boundaries.push(milestone);
+        throw new Error("DTE_AUTOMATIC_CLAIM_FENCED");
+      },
+    }),
+    /DTE_AUTOMATIC_CLAIM_FENCED/,
+  );
+  assert.deepEqual(boundaries, ["seed_before_fetch"]);
+  assert.equal(context.client.uploads, 0);
 });
 
 test("SII rejection and ambiguous response are terminal for automatic emission", async () => {

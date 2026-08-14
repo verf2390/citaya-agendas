@@ -53,7 +53,7 @@ test("Historical CAFs, certification CAFs, and legacy outbox items are fail-clos
   assert.equal(legacyOriginCheck.blockingCodes.includes("BOLETA39_MANUAL_ORIGIN_REQUIRED"), true);
 });
 
-test("FASE J 20-21: Automatic origin for Type 39 is blocked; manual_admin is required", () => {
+test("Automatic Type 39 policy is ready only when every automatic gate is green", () => {
   const automaticResult = resolveAutomaticIssuance({
     appointment: { serverAmount: 1000, canceled: false, taxTreatmentSnapshot: "taxable" },
     payment: { verified: true, currency: "CLP", verifiedAmount: 1000 },
@@ -74,8 +74,8 @@ test("FASE J 20-21: Automatic origin for Type 39 is blocked; manual_admin is req
     globalProductionEnabled: true,
   });
 
-  assert.equal(automaticResult.status, "BLOCKED");
-  assert.equal(automaticResult.reason, "BOLETA39_AUTOMATIC_ISSUANCE_DISABLED");
+  assert.equal(automaticResult.status, "PENDING");
+  assert.equal(automaticResult.documentType, 39);
 });
 
 test("FASE J 22-23: Production Boleta 39 PDF includes /verificar/boleta and excludes /verificar-boleta", () => {
