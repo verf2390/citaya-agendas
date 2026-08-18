@@ -19,6 +19,7 @@ export class TenantOperationalError extends Error {
 
 export type TenantOperationalContext = {
   tenantId: string;
+  tenantSlug: string;
   lifecycleStatus: TenantOperationalCapabilities["lifecycleStatus"];
   operationalMode: TenantOperationalMode;
   capabilities: TenantOperationalCapabilities;
@@ -26,7 +27,7 @@ export type TenantOperationalContext = {
 
 export async function loadTenantOperationalContext(tenantId: string): Promise<TenantOperationalContext> {
   const { data, error } = await supabaseAdmin.from("tenants")
-    .select("id,lifecycle_status,operational_mode")
+    .select("id,slug,lifecycle_status,operational_mode")
     .eq("id", tenantId).maybeSingle();
   if (error || !data?.id) throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
   const capabilities = resolveTenantOperationalCapabilities({
@@ -35,6 +36,7 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
   });
   return {
     tenantId: data.id,
+    tenantSlug: String(data.slug ?? "").trim().toLowerCase(),
     lifecycleStatus: capabilities.lifecycleStatus,
     operationalMode: capabilities.operationalMode,
     capabilities,

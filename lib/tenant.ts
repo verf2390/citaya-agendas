@@ -24,6 +24,18 @@ function rootDomain() {
   ).replace(/^\.+|\.+$/g, "");
 }
 
+export function getTenantPublicBaseUrl(
+  tenantSlug: string | null | undefined,
+): string | null {
+  const slug = normalizeTenantSlug(tenantSlug);
+  if (!slug) return null;
+
+  const baseDomain = rootDomain();
+  if (!baseDomain) return null;
+
+  return `https://${slug}.${baseDomain}`;
+}
+
 /**
  * Devuelve el slug si hostname es <slug>.citaya.online
  * Si no aplica, devuelve null.

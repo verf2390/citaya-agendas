@@ -256,6 +256,14 @@ test("[structural] appointment effects are capability-gated and rotated token re
 
   assert.match(createRoute, /shouldDispatchAppointmentCreatedEvent\([\s\S]*row\.duplicate,/);
   assert.match(createRoute, /runPostPersistedAppointmentEffect\([\s\S]*dispatchAppointmentCreatedEvent/);
+  assert.match(
+    createRoute,
+    /if \(isAdminRequest\) \{[\s\S]*publicTenantSlug = operational\.tenantSlug \|\| null;/,
+  );
+  assert.match(
+    createRoute,
+    /publicTenantBaseUrl\(req, publicTenantSlug\) \?\?[\s\S]*getTenantPublicBaseUrl\(publicTenantSlug\)/,
+  );
   assert.match(cancelRoute, /assertTenantCanRunAppointmentOperationalEffects[\s\S]*dispatchAppointmentCanceledEvent/);
   assert.match(rescheduleRoute, /assertTenantCanRunAppointmentOperationalEffects[\s\S]*dispatchAppointmentRescheduledEvent/);
   assert.match(adminCancelRoute, /appointmentCommunicationAllowed[\s\S]*assertTenantCanRunAppointmentOperationalEffects/);

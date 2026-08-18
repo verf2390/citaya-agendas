@@ -21,7 +21,10 @@ import {
   getPublicLegalBundleByTenantId,
   resolveTenantForPublicRequest,
 } from "@/lib/legal/server";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import {
+  getTenantPublicBaseUrl,
+  getTenantSlugFromHostname,
+} from "@/lib/tenant";
 import { isSafeDemoAppointmentMode } from "@/lib/tenant/operational-mode.mjs";
 import {
   loadTenantOperationalContext,
@@ -121,6 +124,9 @@ export async function POST(req: Request) {
       publicTenantSlug = resolvedTenant.slug;
     }
     const operational = await loadTenantOperationalContext(input.tenantId);
+    if (isAdminRequest) {
+      publicTenantSlug = operational.tenantSlug || null;
+    }
     const isDemoAppointment = isSafeDemoAppointmentMode(
       operational.capabilities,
     );
@@ -351,7 +357,9 @@ export async function POST(req: Request) {
           appointmentId: row.appointment_id,
           manageToken,
           publicBaseUrl: publicTenantSlug
-            ? publicTenantBaseUrl(req, publicTenantSlug) ?? ""
+            ? publicTenantBaseUrl(req, publicTenantSlug) ??
+              getTenantPublicBaseUrl(publicTenantSlug) ??
+              ""
             : "",
         }),
       );
