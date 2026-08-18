@@ -42,12 +42,11 @@ const PAYMENT_PROVIDERS: PaymentProviderId[] = [
 ];
 
 function parsePaymentMethods(value: unknown): PaymentProviderId[] {
-  const raw = Array.isArray(value) ? value : ['mercadopago'];
-  const methods = raw.filter((item): item is PaymentProviderId =>
+  if (!Array.isArray(value)) return [];
+
+  return value.filter((item): item is PaymentProviderId =>
     PAYMENT_PROVIDERS.includes(item as PaymentProviderId),
   );
-
-  return methods.length > 0 ? methods : ['mercadopago'];
 }
 
 function parseCollectionMode(value: unknown, legacyMode: PaymentMode): PaymentCollectionMode {
@@ -76,7 +75,7 @@ export async function getTenantPaymentConfig(
       accessToken: undefined,
       depositType: null,
       depositValue: null,
-      paymentMethodsEnabled: ['mercadopago'],
+      paymentMethodsEnabled: [],
       collectionMode: 'none',
       webpayCommerceCode: undefined,
       webpayApiKey: undefined,
