@@ -457,9 +457,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const [email, setEmail] = useState("");
   const [taxDocumentType, setTaxDocumentType] = useState<33 | 39 | null>(null);
   const [boletaSelectionEnabled, setBoletaSelectionEnabled] = useState(false);
+  const [invoiceSelectionEnabled, setInvoiceSelectionEnabled] = useState(false);
   const [demoDocumentSelectionEnabled, setDemoDocumentSelectionEnabled] =
     useState(false);
-  const [demoPersonalSelection, setDemoPersonalSelection] = useState(false);
+  const [demoTaxDocumentType, setDemoTaxDocumentType] = useState<33 | 39 | null>(null);
   const isSafeDemoAppointment = tenantOperationalCapabilities !== null &&
     isSafeDemoAppointmentMode(tenantOperationalCapabilities);
   const invoiceRequested = !isSafeDemoAppointment && taxDocumentType === 33;
@@ -528,8 +529,9 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       setTenantName("");
       setTenantOperationalCapabilities(null);
       setBoletaSelectionEnabled(false);
+      setInvoiceSelectionEnabled(false);
       setDemoDocumentSelectionEnabled(false);
-      setDemoPersonalSelection(false);
+      setDemoTaxDocumentType(null);
       setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
       setTenantPaymentMode("none");
       setPaymentMethodsEnabled(["mercadopago"]);
@@ -591,6 +593,9 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
           setBoletaSelectionEnabled(
             tenant.boleta_document_selection_enabled === true,
           );
+          setInvoiceSelectionEnabled(
+            tenant.invoice_document_selection_enabled === true,
+          );
           setDemoDocumentSelectionEnabled(
             tenant.demo_document_selection_enabled === true,
           );
@@ -627,8 +632,9 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
           setTenantName("");
           setTenantOperationalCapabilities(null);
           setBoletaSelectionEnabled(false);
+          setInvoiceSelectionEnabled(false);
           setDemoDocumentSelectionEnabled(false);
-          setDemoPersonalSelection(false);
+          setDemoTaxDocumentType(null);
           setMinLeadTimeMin(DEFAULT_MIN_LEAD_TIME_MIN);
           setTenantPaymentMode("none");
           setPaymentMethodsEnabled(["mercadopago"]);
@@ -907,7 +913,8 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     service?.payment_policy === "deposit" &&
     service.deposit_tax_document_policy_status !== "enabled";
   const documentSelectionComplete = isSafeDemoAppointment
-    ? demoDocumentSelectionEnabled && demoPersonalSelection
+    ? demoDocumentSelectionEnabled &&
+      (demoTaxDocumentType === 33 || demoTaxDocumentType === 39)
     : taxDocumentType === 33 || taxDocumentType === 39;
   const legalRequirementsComplete = isSafeDemoAppointment || (
     legalBundle?.identity.complete === true &&
@@ -2363,25 +2370,47 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                       : "¿Qué documento necesitas?"}
                   </p>
                   {isSafeDemoAppointment ? (
-                    <button
-                      type="button"
-                      disabled={saving || !tenantId || !demoDocumentSelectionEnabled}
-                      onClick={() => setDemoPersonalSelection((current) => !current)}
-                      className={cn(
-                        "mt-2 w-full rounded-xl border p-3 text-left text-xs transition",
-                        demoPersonalSelection
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-white",
-                        !demoDocumentSelectionEnabled && "cursor-not-allowed opacity-55",
-                      )}
-                    >
-                      <span className="block font-extrabold">
-                        Compra personal — documento simulado
-                      </span>
-                      <span className="mt-1 block opacity-75">
-                        Simulación de demostración — no genera documento tributario real
-                      </span>
-                    </button>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        disabled={saving || !tenantId || !demoDocumentSelectionEnabled}
+                        onClick={() => setDemoTaxDocumentType(39)}
+                        className={cn(
+                          "rounded-xl border p-3 text-left text-xs transition",
+                          demoTaxDocumentType === 39
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white",
+                          !demoDocumentSelectionEnabled && "cursor-not-allowed opacity-55",
+                        )}
+                      >
+                        <span className="block font-extrabold">
+                          Boleta electrónica — simulación
+                        </span>
+                        <span className="mt-1 block opacity-75">
+                          Compra personal. No genera un documento tributario real.
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={saving || !tenantId || !demoDocumentSelectionEnabled}
+                        onClick={() => setDemoTaxDocumentType(33)}
+                        className={cn(
+                          "rounded-xl border p-3 text-left text-xs transition",
+                          demoTaxDocumentType === 33
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white",
+                          !demoDocumentSelectionEnabled && "cursor-not-allowed opacity-55",
+                        )}
+                      >
+                        <span className="block font-extrabold">
+                          Factura electrónica — simulación
+                        </span>
+                        <span className="mt-1 block opacity-75">
+                          Compra empresa. No solicita ni emite datos tributarios reales.
+                        </span>
+                      </button>
+                    </div>
                   ) : (
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                       <button
@@ -2407,24 +2436,23 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                       </button>
                       <button
                         type="button"
-                        disabled={saving || !tenantId}
-                        onClick={() =>
-                          setTaxDocumentType((current) =>
-                            current === 33 ? null : 33,
-                          )
-                        }
+                        disabled={saving || !tenantId || !invoiceSelectionEnabled}
+                        onClick={() => setTaxDocumentType(33)}
                         className={cn(
                           "rounded-xl border p-3 text-left text-xs transition",
                           taxDocumentType === 33
                             ? "border-slate-900 bg-slate-900 text-white"
                             : "border-slate-200 bg-white",
+                          !invoiceSelectionEnabled && "cursor-not-allowed opacity-55",
                         )}
                       >
                         <span className="block font-extrabold">
                           Factura electrónica — empresa
                         </span>
                         <span className="mt-1 block opacity-75">
-                          Requiere datos tributarios completos.
+                          {invoiceSelectionEnabled
+                            ? "Requiere datos tributarios completos."
+                            : "No disponible para este prestador."}
                         </span>
                       </button>
                     </div>

@@ -68,7 +68,14 @@ test("worker is tenant-aware, type-aware, exactly once and has no R&G fallback",
   assert.match(worker, /dte_activation_gate_report/);
   assert.match(worker, /dte_legal_activation/);
   assert.match(worker, /immutable_snapshot/);
-  assert.match(worker, /\[33, 56, 61\]\.includes/);
+  assert.match(
+    worker,
+    /const allowedTypes = automatic \? \[33, 39\] : \[33, 39, 56, 61\]/,
+  );
+  assert.match(
+    worker,
+    /allowedTypes\.includes\(Number\(intent\.resolved_dte_type\)\)/,
+  );
   assert.match(worker, /original_production_document_id/);
   assert.match(worker, /\.eq\("tenant_id", item\.tenant_id\)/);
   assert.doesNotMatch(worker, /rg-spa|781956457|R&G/i);

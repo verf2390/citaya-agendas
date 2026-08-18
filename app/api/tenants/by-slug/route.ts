@@ -110,7 +110,7 @@ export async function GET(req: Request) {
   const safeDemoAppointment = isSafeDemoAppointmentMode(
     operationalCapabilities,
   );
-  const [paymentConfig, boletaCapability] = await Promise.all([
+  const [paymentConfig, boletaCapability, dteAuthorization, invoiceActivation, invoiceGate] = await Promise.all([
     safeDemoAppointment
       ? Promise.resolve({
           enabled: false,
@@ -131,6 +131,29 @@ export async function GET(req: Request) {
           .eq("environment", "production")
           .eq("dte_type", 39)
           .maybeSingle(),
+    safeDemoAppointment
+      ? Promise.resolve({ data: null })
+      : supabaseAdmin
+          .from("dte_sii_authorization_evidence")
+          .select("authorized_types")
+          .eq("tenant_id", data.id)
+          .eq("status", "current")
+          .maybeSingle(),
+    safeDemoAppointment
+      ? Promise.resolve({ data: null })
+      : supabaseAdmin
+          .from("dte_legal_activation")
+          .select("status")
+          .eq("tenant_id", data.id)
+          .eq("dte_type", 33)
+          .maybeSingle(),
+    safeDemoAppointment
+      ? Promise.resolve({ data: null, error: null })
+      : supabaseAdmin.rpc("dte_activation_gate_report", {
+          p_tenant_id: data.id,
+          p_dte_type: 33,
+          p_global_feature_enabled: process.env.DTE_PRODUCTION_ENABLED === "true",
+        }),
   ]);
 
   const tenant = {
@@ -165,6 +188,13 @@ export async function GET(req: Request) {
     deposit_type: paymentConfig.depositType,
     deposit_value: paymentConfig.depositValue,
     demo_document_selection_enabled: safeDemoAppointment,
+    invoice_document_selection_enabled:
+      operationalCapabilities.publicTaxDocument &&
+      Array.isArray(dteAuthorization.data?.authorized_types) &&
+      dteAuthorization.data.authorized_types.includes(33) &&
+      invoiceActivation.data?.status === "active" &&
+      !invoiceGate.error &&
+      (invoiceGate.data as { ready?: boolean } | null)?.ready === true,
     boleta_document_selection_enabled:
       operationalCapabilities.publicTaxDocument &&
       boletaCapability.data?.customer_selection_enabled === true &&

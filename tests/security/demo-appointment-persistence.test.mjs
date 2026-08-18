@@ -63,7 +63,11 @@ test("[structural] demo document choice is separate from productive Boleta 39 ca
   );
   assert.match(
     bookingPage,
-    /Simulación de demostración — no genera documento tributario real/,
+    /Boleta electrónica — simulación/,
+  );
+  assert.match(
+    bookingPage,
+    /Factura electrónica — simulación/,
   );
   assert.match(
     bookingPage,

@@ -181,6 +181,57 @@ export async function POST(req: Request) {
         ? "Datos tributarios de factura incompletos"
         : "RUT inválido");
     }
+    if (
+      !isDemoAppointment &&
+      !isAdminRequest &&
+      (requestedDocumentType === 33 || requestedDocumentType === 39) &&
+      !operational.capabilities.publicTaxDocument
+    ) {
+      return publicError(409, "La emisión de documentos tributarios no está disponible.");
+    }
+
+    if (!isDemoAppointment && !isAdminRequest && requestedDocumentType === 33) {
+      const [
+        { data: authorization, error: authorizationError },
+        { data: activation, error: activationError },
+        invoiceGate,
+      ] = await Promise.all([
+        supabaseAdmin
+          .from("dte_sii_authorization_evidence")
+          .select("authorized_types")
+          .eq("tenant_id", input.tenantId)
+          .eq("status", "current")
+          .maybeSingle(),
+        supabaseAdmin
+          .from("dte_legal_activation")
+          .select("status")
+          .eq("tenant_id", input.tenantId)
+          .eq("dte_type", 33)
+          .maybeSingle(),
+        supabaseAdmin.rpc("dte_activation_gate_report", {
+          p_tenant_id: input.tenantId,
+          p_dte_type: 33,
+          p_global_feature_enabled: process.env.DTE_PRODUCTION_ENABLED === "true",
+        }),
+      ]);
+
+      const invoiceAuthorized =
+        !authorizationError &&
+        !activationError &&
+        !invoiceGate.error &&
+        Array.isArray(authorization?.authorized_types) &&
+        authorization.authorized_types.includes(33) &&
+        activation?.status === "active" &&
+        (invoiceGate.data as { ready?: boolean } | null)?.ready === true;
+
+      if (!invoiceAuthorized) {
+        return publicError(
+          409,
+          "La factura electrónica no está disponible para este prestador.",
+        );
+      }
+    }
+
     if (!isDemoAppointment && requestedDocumentType === 39) {
       const { data: capability, error: capabilityError } = await supabaseAdmin
         .from("dte_tenant_document_capabilities")
