@@ -142,6 +142,8 @@ type TenantInfo = {
 
 type SendResult = {
   campaignId?: string;
+  simulated?: boolean;
+  recipientCount?: number;
   sentCount: number;
   skippedCount: number;
   errorCount: number;
@@ -257,8 +259,9 @@ export default function AdminCampanasPage() {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [sending, setSending] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [sendState, setSendState] = useState<{
-    type: "success" | "setup" | "error";
+    type: "success" | "simulation" | "setup" | "error";
     text: string;
   } | null>(null);
   const [result, setResult] = useState<SendResult | null>(null);
@@ -329,14 +332,28 @@ export default function AdminCampanasPage() {
     !loadingAudienceStats &&
     (!audienceStats || Boolean(audienceStatsError));
 
-  const statusLabel = sending
-    ? "Enviando"
-    : sendState?.type === "success"
-      ? "Enviada"
-      : "Preparada";
+  const statusLabel = simulating
+    ? "Simulando"
+    : sending
+      ? "Enviando"
+      : sendState?.type === "simulation"
+        ? "Simulada"
+        : sendState?.type === "success"
+          ? "Enviada"
+          : "Preparada";
+
+  const isSimulationDisabled =
+    sending ||
+    simulating ||
+    !authChecked ||
+    !subject.trim() ||
+    !message.trim() ||
+    !ctaLabel.trim() ||
+    (!pendingPaymentCampaign && !ctaUrl.trim());
 
   const isSendDisabled =
     sending ||
+    simulating ||
     !authChecked ||
     !subject.trim() ||
     !message.trim() ||
@@ -504,8 +521,8 @@ export default function AdminCampanasPage() {
     }
   };
 
-  const sendCampaign = async () => {
-    if (sending) return;
+  const sendCampaign = async (simulation = false) => {
+    if (sending || simulating) return;
 
     const cleanSubject = subject.trim();
     const cleanHeadline = headline.trim();
@@ -527,14 +544,15 @@ export default function AdminCampanasPage() {
       return;
     }
 
-    if (!confirmed) {
+    if (!simulation && !confirmed) {
       const text = "Confirma el envío antes de continuar.";
       setSendState({ type: "error", text });
       toast({ title: "Confirmación requerida", description: text, variant: "destructive" });
       return;
     }
 
-    setSending(true);
+    if (simulation) setSimulating(true);
+    else setSending(true);
     setSendState(null);
     setResult(null);
 
@@ -557,6 +575,7 @@ export default function AdminCampanasPage() {
           ctaLabel: cleanCtaLabel,
           ctaUrl: cleanCtaUrl,
           tenantSlug,
+          simulation,
           mediaType,
           mediaUrl: cleanMediaUrl,
           mediaFileName,
@@ -585,6 +604,30 @@ export default function AdminCampanasPage() {
         return;
       }
 
+      if (json.simulated === true) {
+        const text =
+          json.message ??
+          `Simulación lista: ${Number(json.recipientCount ?? 0)} destinatarios válidos.`;
+        setSendState({ type: "simulation", text });
+        setResult({
+          simulated: true,
+          recipientCount: Number(json.recipientCount ?? 0),
+          sentCount: 0,
+          skippedCount: Number(json.skippedCount ?? 0),
+          errorCount: 0,
+          invalidEmailCount: Number(json.invalidEmailCount ?? 0),
+          missingPaymentLinkCount: Number(json.missingPaymentLinkCount ?? 0),
+          validPaymentLinkCount: Number(json.validPaymentLinkCount ?? 0),
+          totalMatchedCount: Number(json.totalMatchedCount ?? 0),
+          message: text,
+        });
+        toast({
+          title: "Simulación lista",
+          description: `${Number(json.recipientCount ?? 0)} destinatarios válidos. No se envió ningún mensaje.`,
+        });
+        return;
+      }
+
       const text = json.message ?? "Campaña enviada a automatización.";
       setSendState({ type: "success", text });
       setResult({
@@ -608,7 +651,8 @@ export default function AdminCampanasPage() {
       setSendState({ type: "error", text });
       toast({ title: "Error en campaña", description: text, variant: "destructive" });
     } finally {
-      setSending(false);
+      if (simulation) setSimulating(false);
+      else setSending(false);
     }
   };
 
@@ -1102,14 +1146,31 @@ export default function AdminCampanasPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => void sendCampaign()}
+                    onClick={() => void sendCampaign(true)}
+                    disabled={isSimulationDisabled}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    {simulating ? "Simulando campaña..." : "Simular campaña"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void sendCampaign(false)}
                     disabled={isSendDisabled}
                     className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Send className="h-4 w-4" />
                     {sending ? "Enviando campaña..." : "Enviar campaña"}
                   </button>
-                  <StatusBadge status={sending ? "sending" : sendState?.type === "success" ? "sent" : "prepared"} />
+                  <StatusBadge
+                    status={
+                      sending || simulating
+                        ? "sending"
+                        : sendState?.type === "success"
+                          ? "sent"
+                          : "prepared"
+                    }
+                  />
                 </div>
                 {pendingPaymentHasNoValidRecipients ? (
                   <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-800">
@@ -1127,9 +1188,11 @@ export default function AdminCampanasPage() {
                     className={`rounded-2xl border p-3 text-sm font-bold ${
                       sendState.type === "success"
                         ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                        : sendState.type === "setup"
-                          ? "border-amber-200 bg-amber-50 text-amber-900"
-                          : "border-red-200 bg-red-50 text-red-800"
+                        : sendState.type === "simulation"
+                          ? "border-blue-200 bg-blue-50 text-blue-800"
+                          : sendState.type === "setup"
+                            ? "border-amber-200 bg-amber-50 text-amber-900"
+                            : "border-red-200 bg-red-50 text-red-800"
                     }`}
                   >
                     {sendState.text}
@@ -1264,7 +1327,15 @@ export default function AdminCampanasPage() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="font-bold text-slate-500">Estado</span>
-                <StatusBadge status={sending ? "sending" : sendState?.type === "success" ? "sent" : "prepared"} />
+                <StatusBadge
+                  status={
+                    sending || simulating
+                      ? "sending"
+                      : sendState?.type === "success"
+                        ? "sent"
+                        : "prepared"
+                  }
+                />
               </div>
               <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 font-bold text-amber-900">
                 Límite de seguridad: máximo 100 destinatarios.
@@ -1306,8 +1377,14 @@ export default function AdminCampanasPage() {
           {result ? (
             <AdminSectionCard title="Resultado">
               <div className="grid gap-2 text-sm font-bold text-slate-700">
+                {result.simulated ? (
+                  <div className="flex justify-between">
+                    <span>Destinatarios válidos</span>
+                    <span className="font-black text-blue-700">{result.recipientCount ?? 0}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
-                  <span>Enviados</span>
+                  <span>{result.simulated ? "Mensajes enviados" : "Enviados"}</span>
                   <span className="font-black text-emerald-700">{result.sentCount}</span>
                 </div>
                 <div className="flex justify-between">

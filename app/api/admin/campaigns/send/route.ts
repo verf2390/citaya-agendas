@@ -24,6 +24,7 @@ type CampaignPayload = {
   videoUrl?: string;
   imageUrl?: string;
   campaignImageUrl?: string;
+  simulation?: boolean;
 };
 
 type TenantBranding = {
@@ -673,6 +674,8 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => null)) as CampaignPayload | null;
     if (!body || typeof body !== "object") return badRequest("JSON invalido");
 
+    const simulation = body.simulation === true;
+
     const payload = {
       templateKey: String(body.templateKey ?? "").trim(),
       segmentKey: String(body.segmentKey ?? "").trim(),
@@ -718,8 +721,11 @@ export async function POST(req: Request) {
 
     const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
-    try { await assertTenantCanSendCampaign(tenant.id); }
-    catch { return NextResponse.json({ ok: false, error: "Campañas no disponibles para este entorno" }, { status: 409 }); }
+
+    if (!simulation) {
+      try { await assertTenantCanSendCampaign(tenant.id); }
+      catch { return NextResponse.json({ ok: false, error: "Campañas no disponibles para este entorno" }, { status: 409 }); }
+    }
 
     const ctaLabel = paymentCampaign ? "Pagar ahora" : payload.ctaLabel || "Reservar hora";
     const ctaUrl = paymentCampaign
@@ -730,12 +736,6 @@ export async function POST(req: Request) {
     }
 
     const webhookUrl = process.env.N8N_CAMPAIGN_WEBHOOK_URL;
-    if (!webhookUrl) {
-      return NextResponse.json(
-        { ok: false, error: "No esta configurado el webhook de campanas." },
-        { status: 500 },
-      );
-    }
 
     const recipientSegmentKey = paymentCampaign ? "pending_payment" : payload.segmentKey;
     const allRecipients = paymentCampaign
@@ -756,6 +756,30 @@ export async function POST(req: Request) {
     const recipients = paymentFiltered.recipients;
     const missingPaymentLinkCount = paymentFiltered.skippedMissingPaymentLink.length;
     const skippedCount = emailSkippedCount + missingPaymentLinkCount;
+
+    if (simulation) {
+      return NextResponse.json({
+        ok: true,
+        simulated: true,
+        sentCount: 0,
+        recipientCount: recipients.length,
+        skippedCount,
+        invalidEmailCount,
+        missingPaymentLinkCount,
+        validPaymentLinkCount: paymentCampaign ? recipients.length : emailRecipients.length,
+        totalMatchedCount: allRecipients.length,
+        segmentKey: payload.segmentKey,
+        templateKey: payload.templateKey,
+        message: `Simulación lista: ${recipients.length} destinatarios válidos. No se envió ningún mensaje.`,
+      });
+    }
+
+    if (!webhookUrl) {
+      return NextResponse.json(
+        { ok: false, error: "No esta configurado el webhook de campanas." },
+        { status: 500 },
+      );
+    }
 
     if (recipients.length === 0) {
       if (paymentFiltered.skippedMissingPaymentLink.length > 0) {
