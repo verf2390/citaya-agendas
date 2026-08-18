@@ -65,6 +65,15 @@ function maskSecret(value: string | null | undefined) {
   return `${secret.slice(0, 3)}***${secret.slice(-3)}`;
 }
 
+const DEMO_BANK_SETTINGS = {
+  bankName: "Otro banco",
+  bankAccountType: "Otro",
+  bankAccountNumber: "DEMO-NO-TRANSFERIR",
+  bankAccountHolder: "EMPRESA DEMO CITAYA",
+  bankRut: "00.000.000-0",
+  bankEmail: "demo@citaya.invalid",
+} as const;
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -81,6 +90,17 @@ export async function GET(req: Request) {
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const config = await getTenantPaymentConfig(tenantId);
+    const bankSettings =
+      access.operationalMode === "demo"
+        ? DEMO_BANK_SETTINGS
+        : {
+            bankName: config.bankName ?? null,
+            bankAccountType: config.bankAccountType ?? null,
+            bankAccountNumber: config.bankAccountNumber ?? null,
+            bankAccountHolder: config.bankAccountHolder ?? null,
+            bankRut: config.bankRut ?? null,
+            bankEmail: config.bankEmail ?? null,
+          };
 
     return NextResponse.json({
       ok: true,
@@ -100,12 +120,7 @@ export async function GET(req: Request) {
         khipuSecretConfigured: !!config.khipuSecret,
         khipuSecretPreview: maskSecret(config.khipuSecret),
         khipuEnvironment: config.khipuEnvironment ?? "development",
-        bankName: config.bankName ?? null,
-        bankAccountType: config.bankAccountType ?? null,
-        bankAccountNumber: config.bankAccountNumber ?? null,
-        bankAccountHolder: config.bankAccountHolder ?? null,
-        bankRut: config.bankRut ?? null,
-        bankEmail: config.bankEmail ?? null,
+        ...bankSettings,
       },
     });
   } catch (error: unknown) {
@@ -316,6 +331,15 @@ export async function POST(req: Request) {
     if (hasOwn(body, "bankEmail")) {
       paymentSettingsPayload.bank_email =
         String(body?.bankEmail ?? "").trim() || null;
+    }
+
+    if (access.operationalMode === "demo") {
+      paymentSettingsPayload.bank_name = DEMO_BANK_SETTINGS.bankName;
+      paymentSettingsPayload.bank_account_type = DEMO_BANK_SETTINGS.bankAccountType;
+      paymentSettingsPayload.bank_account_number = DEMO_BANK_SETTINGS.bankAccountNumber;
+      paymentSettingsPayload.bank_account_holder = DEMO_BANK_SETTINGS.bankAccountHolder;
+      paymentSettingsPayload.bank_rut = DEMO_BANK_SETTINGS.bankRut;
+      paymentSettingsPayload.bank_email = DEMO_BANK_SETTINGS.bankEmail;
     }
 
     const { data: existing, error: existingError } = await supabaseAdmin
