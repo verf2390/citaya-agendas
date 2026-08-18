@@ -42,3 +42,29 @@ test("legacy plaintext manage tokens have a bounded removal migration", () => {
   assert.match(sql, /set manage_token = null/);
   assert.match(sql, /check \(manage_token is null\)/);
 });
+
+test("manage-token appointment response exposes customer contact only after token authorization", () => {
+  const route = readFileSync(
+    new URL("../../app/api/appointments/by-token/route.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    route,
+    /customer_name,\s*customer_phone,\s*customer_email,/,
+  );
+
+  const authorization = route.indexOf(
+    'if (!access.ok || access.actor !== "manage_token") return notFound();',
+  );
+  const customerResponse = route.indexOf(
+    "customer_name: data.customer_name",
+  );
+
+  assert.notEqual(authorization, -1);
+  assert.notEqual(customerResponse, -1);
+  assert.ok(customerResponse > authorization);
+
+  assert.match(route, /customer_phone: data\.customer_phone/);
+  assert.match(route, /customer_email: data\.customer_email/);
+});

@@ -14,6 +14,7 @@ export async function GET(req: Request) {
     const pepper = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();
     if (!pepper) return notFound();
     const columns = `id, tenant_id, professional_id, service_id, service_name,
+      customer_name, customer_phone, customer_email,
       start_at, end_at, status, booking_status, payment_status,
       manage_token, manage_token_hash, manage_token_expires_at,
       manage_token_revoked_at, manage_token_legacy_expires_at,
@@ -47,6 +48,9 @@ export async function GET(req: Request) {
         professional_id: data.professional_id,
         service_id: data.service_id,
         service_name: data.service_name,
+        customer_name: data.customer_name,
+        customer_phone: data.customer_phone,
+        customer_email: data.customer_email,
         start_at: data.start_at,
         end_at: data.end_at,
         status: data.status,
