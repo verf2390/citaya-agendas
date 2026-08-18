@@ -564,10 +564,6 @@ export default function AdminPagosPage() {
         },
         body: JSON.stringify({
           appointmentId: row.id,
-          customerEmail: row.customer_email,
-          customerName: row.customer_name,
-          paymentLink: row.payment_url,
-          amount: moneyNumber(row.payment_remaining_amount) || moneyNumber(row.payment_required_amount),
           tenantSlug,
         }),
       });

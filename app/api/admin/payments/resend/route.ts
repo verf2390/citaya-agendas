@@ -7,10 +7,6 @@ import { assertTenantCanSendExternalCommunication } from "@/lib/tenant/operation
 
 type PaymentResendPayload = {
   appointmentId?: string;
-  customerEmail?: string;
-  customerName?: string | null;
-  paymentLink?: string;
-  amount?: number | string | null;
   tenantSlug?: string;
 };
 
@@ -25,8 +21,13 @@ type TenantBranding = {
 type AppointmentBranding = {
   id: string;
   tenant_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
   service_name: string | null;
   start_at: string | null;
+  payment_url: string | null;
+  payment_remaining_amount: number | null;
+  payment_required_amount: number | null;
 };
 
 function getBearerToken(req: Request): string {
@@ -116,24 +117,11 @@ export async function POST(req: Request) {
 
     const payload = {
       appointmentId: String(body.appointmentId ?? "").trim(),
-      customerEmail: String(body.customerEmail ?? "").trim().toLowerCase(),
-      customerName: String(body.customerName ?? "").trim(),
-      paymentLink: String(body.paymentLink ?? "").trim(),
-      amount: Number(body.amount ?? 0),
       tenantSlug: String(body.tenantSlug ?? "").trim(),
     };
 
     if (!payload.appointmentId) return badRequest("appointmentId requerido");
-    if (!payload.customerEmail || !isEmail(payload.customerEmail)) {
-      return badRequest("customerEmail valido requerido");
-    }
-    if (!payload.paymentLink || !isHttpUrl(payload.paymentLink)) {
-      return badRequest("paymentLink valido requerido");
-    }
     if (!payload.tenantSlug) return badRequest("tenantSlug requerido");
-    if (!Number.isFinite(payload.amount) || payload.amount < 0) {
-      return badRequest("amount invalido");
-    }
 
     const tenant = await fetchTenantBranding(payload.tenantSlug);
     if (!tenant?.id) return badRequest("tenantSlug invalido");
@@ -145,17 +133,45 @@ export async function POST(req: Request) {
 
     const { data: appointment } = await supabaseAdmin
       .from("appointments")
-      .select("id, tenant_id, service_name, start_at")
+      .select(
+        "id, tenant_id, customer_name, customer_email, service_name, start_at, payment_url, payment_remaining_amount, payment_required_amount",
+      )
       .eq("id", payload.appointmentId)
       .eq("tenant_id", tenant.id)
       .maybeSingle<AppointmentBranding>();
+
+    if (!appointment?.id) return badRequest("Cita no disponible");
+
+    const customerEmail = String(appointment.customer_email ?? "").trim().toLowerCase();
+    const paymentLink = String(appointment.payment_url ?? "").trim();
+    const remainingAmount = Number(appointment.payment_remaining_amount ?? 0);
+    const requiredAmount = Number(appointment.payment_required_amount ?? 0);
+    const amount =
+      Number.isFinite(remainingAmount) && remainingAmount > 0
+        ? remainingAmount
+        : requiredAmount;
+
+    if (!customerEmail || !isEmail(customerEmail)) {
+      return badRequest("La cita no tiene un email válido");
+    }
+    if (!paymentLink || !isHttpUrl(paymentLink)) {
+      return badRequest("La cita no tiene un link de pago válido");
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return badRequest("La cita no tiene un monto pendiente válido");
+    }
 
     const businessName = tenant.name?.trim() || payload.tenantSlug;
     const logoUrl = tenant.logo_url?.trim() || "";
     const whatsapp =
       tenant.whatsapp?.trim() || tenant.phone_display?.trim() || "";
     const enrichedPayload = {
-      ...payload,
+      appointmentId: payload.appointmentId,
+      customerEmail,
+      customerName: String(appointment.customer_name ?? "").trim(),
+      paymentLink,
+      amount,
+      tenantSlug: payload.tenantSlug,
       businessName,
       logoUrl,
       whatsapp,
@@ -188,7 +204,7 @@ export async function POST(req: Request) {
       await logMessage(req, token, {
         tenantSlug: payload.tenantSlug,
         type: "payment_resend",
-        recipient: payload.customerEmail,
+        recipient: customerEmail,
         subject: logSubject,
         status: "error",
         errorMessage: message,
@@ -208,7 +224,7 @@ export async function POST(req: Request) {
       await logMessage(req, token, {
         tenantSlug: payload.tenantSlug,
         type: "payment_resend",
-        recipient: payload.customerEmail,
+        recipient: customerEmail,
         subject: logSubject,
         status: "error",
         errorMessage: `n8n respondio con error (${n8nRes.status})`,
@@ -222,7 +238,7 @@ export async function POST(req: Request) {
     await logMessage(req, token, {
       tenantSlug: payload.tenantSlug,
       type: "payment_resend",
-      recipient: payload.customerEmail,
+      recipient: customerEmail,
       subject: logSubject,
       status: "sent",
     });
