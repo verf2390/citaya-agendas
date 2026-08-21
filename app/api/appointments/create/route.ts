@@ -234,7 +234,7 @@ export async function POST(req: Request) {
       }
     }
 
-    if (!isDemoAppointment && requestedDocumentType === 39) {
+    if (!isDemoAppointment && !isAdminRequest && requestedDocumentType === 39) {
       const { data: capability, error: capabilityError } = await supabaseAdmin
         .from("dte_tenant_document_capabilities")
         .select("customer_selection_enabled,issuance_enabled,certification_status")
