@@ -364,7 +364,10 @@ export async function processClaimedDteItem(
   }
 
   try {
-    await assertTenantCanRunDteWorker(item.tenant_id, { issuanceOrigin: item.issuance_origin });
+    await assertTenantCanRunDteWorker(item.tenant_id, {
+      issuanceOrigin: item.issuance_origin,
+      intentId: item.intent_id,
+    });
   } catch {
     await block(item, "TENANT_MODE_DTE_WORKER_BLOCKED");
     return { processed: true, status: "BLOCKED", siiContacted: false, networkAttempts: 0 };

@@ -517,6 +517,11 @@ export default function AdminPagosPage() {
   };
 
   const markAsPaid = async (appointmentId: string) => {
+    const confirmed = window.confirm(
+      "Confirma que la transferencia ya fue recibida en la cuenta bancaria. Esta acción registrará el pago como verificado.",
+    );
+    if (!confirmed) return;
+
     setMarkingId(appointmentId);
     try {
       const res = await adminFetch("/api/admin/appointments/mark-paid", {
@@ -527,13 +532,13 @@ export default function AdminPagosPage() {
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
         toast({
-          title: "No se pudo marcar como pagado",
+          title: "No se pudo confirmar la transferencia",
           description: json?.error ?? "Intenta nuevamente en unos segundos.",
           variant: "destructive",
         });
         return;
       }
-      toast({ title: "Pago marcado correctamente" });
+      toast({ title: "Transferencia confirmada correctamente" });
       await loadRows();
     } finally {
       setMarkingId(null);
@@ -1107,7 +1112,7 @@ export default function AdminPagosPage() {
                         onClick={() => void markAsPaid(row.id)}
                         className="rounded-xl border bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {markingId === row.id ? "Marcando..." : "Marcar como pagado"}
+                        {markingId === row.id ? "Confirmando..." : "Confirmar transferencia recibida"}
                       </button>
                       <button
                         type="button"

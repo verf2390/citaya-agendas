@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import {
-  assertTenantCanCreatePayment,
+  assertTenantCanConfirmTransfer,
   TenantOperationalError,
 } from "@/lib/tenant/operational-server";
 export async function POST(req: Request) {
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     if (!access.ok) {
       return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
     }
-    await assertTenantCanCreatePayment(access.tenantId);
+    const operational = await assertTenantCanConfirmTransfer(access.tenantId);
 
     const { data: paymentIntentId, error } = await supabaseAdmin.rpc(
       "billing_record_manual_verified_payment",
@@ -34,11 +34,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No se pudo marcar la cita como pagada" }, { status: 500 });
     }
 
-    await notifyPaymentConfirmed({
-      appointmentId,
-      provider: "manual",
-      externalPaymentId: `manual:${appointmentId}`,
-    });
+    if (operational.capabilities.sendExternalEmail === true) {
+      await notifyPaymentConfirmed({
+        appointmentId,
+        provider: "manual",
+        externalPaymentId: `manual:${appointmentId}`,
+      });
+    }
 
     const { data: appointment } = await supabaseAdmin.from("appointments")
       .select("payment_status,payment_remaining_amount")

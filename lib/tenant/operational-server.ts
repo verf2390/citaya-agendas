@@ -76,6 +76,14 @@ export async function assertTenantCanCreatePayment(tenantId: string) {
   return requireCapability(await loadTenantOperationalContext(tenantId), "createPayment", "TENANT_MODE_PAYMENT_BLOCKED");
 }
 
+export async function assertTenantCanConfirmTransfer(tenantId: string) {
+  return requireCapability(
+    await loadTenantOperationalContext(tenantId),
+    "confirmTransfer",
+    "TENANT_MODE_TRANSFER_CONFIRMATION_BLOCKED",
+  );
+}
+
 export async function assertTenantCanEnqueueDte(
   tenantId: string,
   options?: { dteType?: number; issuanceOrigin?: string },
@@ -108,15 +116,66 @@ export async function assertTenantCanSendCampaign(tenantId: string) {
 
 export async function assertTenantCanRunDteWorker(
   tenantId: string,
-  options?: { issuanceOrigin?: string },
+  options?: { issuanceOrigin?: string; intentId?: string },
 ) {
   const context = await loadTenantOperationalContext(tenantId);
+
   if (
     options?.issuanceOrigin === "manual_admin" &&
     (context.capabilities.runDteWorker === true || context.capabilities.manualDteEnqueue === true)
   ) {
     return context;
   }
+
+  if (
+    options?.issuanceOrigin === "automatic_system" &&
+    options.intentId &&
+    context.capabilities.confirmTransfer === true &&
+    context.capabilities.manualDteEnqueue === true
+  ) {
+    const { data: intent, error: intentError } = await supabaseAdmin
+      .from("dte_payment_document_intents")
+      .select("trigger_source,payment_intent_id,created_by")
+      .eq("tenant_id", tenantId)
+      .eq("id", options.intentId)
+      .maybeSingle();
+
+    if (
+      !intentError &&
+      intent?.trigger_source === "manual_verified" &&
+      intent.payment_intent_id &&
+      intent.created_by
+    ) {
+      const [{ data: payment, error: paymentError }, { data: evidence, error: evidenceError }] =
+        await Promise.all([
+          supabaseAdmin
+            .from("payment_intents")
+            .select("provider,status")
+            .eq("tenant_id", tenantId)
+            .eq("id", intent.payment_intent_id)
+            .maybeSingle(),
+          supabaseAdmin
+            .from("billing_sale_payments")
+            .select("provider,status,verified_by")
+            .eq("tenant_id", tenantId)
+            .eq("payment_intent_id", intent.payment_intent_id)
+            .maybeSingle(),
+        ]);
+
+      if (
+        !paymentError &&
+        !evidenceError &&
+        payment?.provider === "manual" &&
+        payment?.status === "succeeded" &&
+        evidence?.provider === "manual" &&
+        evidence?.status === "VERIFIED" &&
+        evidence?.verified_by === intent.created_by
+      ) {
+        return context;
+      }
+    }
+  }
+
   return requireCapability(context, "runDteWorker", "TENANT_MODE_DTE_WORKER_BLOCKED");
 }
 
