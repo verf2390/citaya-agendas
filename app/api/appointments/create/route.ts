@@ -380,7 +380,7 @@ export async function POST(req: Request) {
           invoice_receiver_address: requestedDocumentType === 33 ? input.invoiceReceiverAddress ?? null : null,
           invoice_receiver_commune: requestedDocumentType === 33 ? input.invoiceReceiverCommune ?? null : null,
           invoice_receiver_city: requestedDocumentType === 33 ? input.invoiceReceiverCity ?? null : null,
-          customer_rut_snapshot: bookingTax.customerRut,
+          customer_rut_snapshot: bookingTax.customerRut || null,
           requested_document_type: bookingTax.requestedDocumentType,
           tax_document_selection: bookingTax.requestedDocumentType,
           tax_treatment_snapshot: taxTreatmentSnapshot,
