@@ -13,9 +13,9 @@ type TenantResolution = {
 };
 
 const SERVICE_SELECT =
-  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,tax_treatment,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
 const SERVICE_SELECT_NO_CREATED =
-  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
+  "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,tax_treatment,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
 
 function getHostnameFromReq(req: Request) {
   const host =
@@ -218,6 +218,14 @@ export async function POST(req: Request) {
     const publicDescription = cleanText(body?.publicDescription ?? body?.public_description);
     const internalDescription = cleanText(body?.internalDescription ?? body?.internal_description);
     const taxDescription = cleanText(body?.taxDescription ?? body?.tax_description);
+    const taxTreatmentRaw = cleanText(body?.taxTreatment ?? body?.tax_treatment);
+    const taxTreatment =
+      taxTreatmentRaw === "affected" || taxTreatmentRaw === "exempt"
+        ? taxTreatmentRaw
+        : null;
+    if (taxTreatmentRaw && !taxTreatment) {
+      return jsonError("Tratamiento tributario inválido", 400);
+    }
     const price = parseNonNegativeNumber(body?.price);
     const durationMin = parsePositiveInteger(
       body?.duration_min ?? body?.duration_minutes ?? body?.duration,
@@ -242,6 +250,9 @@ export async function POST(req: Request) {
     const taxReviewStatus = body?.taxDescriptionApproved === true ? "approved" : "pending";
     if (taxReviewStatus === "approved" && !taxDescription) return jsonError("La descripción tributaria aprobada es obligatoria", 400);
     if (isActive && taxReviewStatus !== "approved") return jsonError("Revisa y aprueba la descripción tributaria antes de publicar el servicio", 409);
+    if (isActive && !taxTreatment) {
+      return jsonError("Selecciona el tratamiento tributario antes de publicar el servicio", 409);
+    }
 
     const payload = {
       tenant_id: tenant.tenantId,
@@ -251,6 +262,7 @@ export async function POST(req: Request) {
       internal_description: internalDescription || null,
       tax_description: taxDescription || null,
       tax_description_review_status: taxReviewStatus,
+      tax_treatment: taxTreatment,
       contains_potentially_sensitive_information: body?.containsPotentiallySensitiveInformation === true,
       ...policy,
       price,
@@ -322,6 +334,13 @@ export async function PATCH(req: Request) {
       update.tax_description = cleanText(body?.taxDescription ?? body?.tax_description) || null;
       update.tax_description_review_status = "pending";
     }
+    if ("taxTreatment" in (body ?? {}) || "tax_treatment" in (body ?? {})) {
+      const taxTreatment = cleanText(body?.taxTreatment ?? body?.tax_treatment);
+      if (taxTreatment && taxTreatment !== "affected" && taxTreatment !== "exempt") {
+        return jsonError("Tratamiento tributario inválido", 400);
+      }
+      update.tax_treatment = taxTreatment || null;
+    }
     if ("containsPotentiallySensitiveInformation" in (body ?? {})) {
       update.contains_potentially_sensitive_information = body.containsPotentiallySensitiveInformation === true;
     }
@@ -368,12 +387,35 @@ export async function PATCH(req: Request) {
           : typeof body?.active === "boolean"
             ? body.active
             : true;
-      const review = String(update.tax_description_review_status ?? existing.data.tax_description_review_status ?? "pending");
-      const paymentComplete = Boolean(update.payment_configuration_complete ?? existing.data.payment_configuration_complete);
-      if (nextActive && (review !== "approved" || !paymentComplete)) {
-        return jsonError("El servicio requiere descripción tributaria aprobada y condición de pago completa", 409);
-      }
       update.is_active = nextActive;
+    }
+
+    const effectiveActive = Boolean(update.is_active ?? existing.data.is_active ?? true);
+    if (effectiveActive) {
+      const review = String(
+        update.tax_description_review_status ??
+        existing.data.tax_description_review_status ??
+        "pending"
+      );
+      const paymentComplete = Boolean(
+        update.payment_configuration_complete ??
+        existing.data.payment_configuration_complete
+      );
+      const taxTreatment = String(
+        update.tax_treatment ??
+        existing.data.tax_treatment ??
+        ""
+      );
+      if (
+        review !== "approved" ||
+        !paymentComplete ||
+        !["affected", "exempt"].includes(taxTreatment)
+      ) {
+        return jsonError(
+          "El servicio requiere tratamiento tributario, descripción tributaria aprobada y condición de pago completa",
+          409,
+        );
+      }
     }
 
     if (Object.keys(update).length === 0) {

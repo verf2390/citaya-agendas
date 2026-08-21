@@ -26,6 +26,7 @@ type ServiceRow = {
   internal_description: string | null;
   tax_description: string | null;
   tax_description_review_status: "pending" | "approved" | "rejected";
+  tax_treatment: "affected" | "exempt" | null;
   contains_potentially_sensitive_information: boolean;
   payment_policy: "no_advance" | "deposit" | "full_payment";
   deposit_type: "fixed_amount" | "percentage" | null;
@@ -50,6 +51,7 @@ const EMPTY_SERVICE = {
   internal_description: "",
   tax_description: "",
   tax_description_approved: false,
+  tax_treatment: "" as "" | "affected" | "exempt",
   contains_potentially_sensitive_information: false,
   payment_policy: "no_advance" as "no_advance" | "deposit" | "full_payment",
   deposit_type: null as "fixed_amount" | "percentage" | null,
@@ -178,6 +180,7 @@ export default function ServiciosPage() {
       internal_description: service.internal_description ?? "",
       tax_description: service.tax_description ?? "",
       tax_description_approved: service.tax_description_review_status === "approved",
+      tax_treatment: service.tax_treatment ?? "",
       contains_potentially_sensitive_information: service.contains_potentially_sensitive_information,
       payment_policy: service.payment_policy ?? "no_advance",
       deposit_type: service.deposit_type,
@@ -202,6 +205,15 @@ export default function ServiciosPage() {
       return;
     }
 
+    if (form.is_active && !form.tax_treatment) {
+      toast({
+        title: "Selecciona el tratamiento tributario",
+        description: "Un servicio activo debe indicar si es afecto o exento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
     setSaveError("");
     const isEditing = Boolean(form.id);
@@ -214,6 +226,7 @@ export default function ServiciosPage() {
       internalDescription: form.internal_description.trim() || null,
       taxDescription: form.tax_description.trim() || null,
       taxDescriptionApproved: form.tax_description_approved,
+      taxTreatment: form.tax_treatment || null,
       containsPotentiallySensitiveInformation: form.contains_potentially_sensitive_information,
       paymentPolicy: form.payment_policy,
       depositType: form.payment_policy === "deposit" ? form.deposit_type : null,
@@ -414,6 +427,23 @@ export default function ServiciosPage() {
                   <input type="number" min={5} max={10080} className="rounded-xl border px-3 py-2" value={form.provisional_expiry_minutes} onChange={(e) => setForm((p) => ({ ...p, provisional_expiry_minutes: Number(e.target.value) }))} />
                 </label>
               </fieldset>
+              <label className="grid gap-1 text-sm font-semibold">
+                Tratamiento tributario
+                <select
+                  className="rounded-xl border px-3 py-2"
+                  value={form.tax_treatment}
+                  onChange={(e) =>
+                    setForm((p) => ({
+                      ...p,
+                      tax_treatment: e.target.value as "" | "affected" | "exempt",
+                    }))
+                  }
+                >
+                  <option value="">Seleccionar tratamiento</option>
+                  <option value="affected">Afecto a IVA</option>
+                  <option value="exempt">Exento</option>
+                </select>
+              </label>
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-900">
                 <strong>Tratamiento tributario:</strong> todo pago debe quedar documentado. Anticipo y saldo se documentan por separado mediante boleta, factura o voucher según la configuración tributaria. Las garantías reembolsables no están soportadas. Los servicios exentos permanecen bloqueados hasta implementar documentos 34/41.
               </div>
