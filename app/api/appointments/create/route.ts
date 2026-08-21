@@ -136,7 +136,9 @@ export async function POST(req: Request) {
     ) {
       return publicError(409);
     }
-    if (!operational.capabilities.createAppointment) return publicError(404);
+    if (!operational.capabilities.createAppointment && !isAdminRequest) {
+      return publicError(404);
+    }
 
     if (!isAdminRequest) {
       if (!isDemoAppointment) {
@@ -327,9 +329,11 @@ export async function POST(req: Request) {
     }
     const paymentRequired = !isDemoAppointment && service.payment_policy !== "no_advance";
     const manageToken = deriveManageToken(input.tenantId, key, pepper);
-    const rpcName = isAdminRequest || isDemoAppointment
-      ? "create_public_appointment"
-      : "create_public_appointment_with_legal_acceptance";
+    const rpcName = isAdminRequest
+      ? "create_admin_appointment"
+      : isDemoAppointment
+        ? "create_public_appointment"
+        : "create_public_appointment_with_legal_acceptance";
     const rpcInput: Record<string, unknown> = {
       p_tenant_id: input.tenantId,
       p_professional_id: input.professionalId,
