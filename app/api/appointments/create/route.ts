@@ -161,7 +161,7 @@ export async function POST(req: Request) {
       isDemoAppointment
         ? null
         : input.taxDocumentType ??
-          (input.invoiceRequested === true ? 33 : null);
+          (input.invoiceRequested === true ? 33 : isAdminRequest ? 39 : null);
     let bookingTax;
     try {
       bookingTax = validateBookingTaxInput({
