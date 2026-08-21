@@ -36,6 +36,13 @@ import { SupabaseProductionDteRepository } from "@/lib/dte/production/supabase-r
 
 const SUPABASE_URL = String(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const SERVICE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY);
+const SUPABASE_HOST = (() => {
+  try {
+    return new URL(SUPABASE_URL).hostname;
+  } catch {
+    return "";
+  }
+})();
 const FIXTURE_ROOT = "/tmp/citaya-dte-auto-fixtures";
 let issuerRut = "76000000-0";
 const ACTOR_ID = "00000000-0000-4000-8000-000000000001";
@@ -50,7 +57,8 @@ globalThis.fetch = async (input, init) => {
   if (
     ["http:", "https:"].includes(url.protocol) &&
     url.hostname !== "127.0.0.1" &&
-    url.hostname !== "localhost"
+    url.hostname !== "localhost" &&
+    url.hostname !== SUPABASE_HOST
   ) {
     externalFetchAttempts += 1;
     throw new Error(`OFFLINE_E2E_EXTERNAL_FETCH_BLOCKED:${url.protocol}:${url.hostname}`);
@@ -521,8 +529,14 @@ function serviceFactory(
   cafs: Map<33 | 39, FixtureCaf>,
   boundary: BoundaryClient,
 ) {
+  const fixtureEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    DTE_PRODUCTION_CERTIFICATE_ROOT: join(FIXTURE_ROOT, "certificate"),
+    DTE_PRODUCTION_PRIVATE_KEY_ROOT: join(FIXTURE_ROOT, "certificate"),
+  };
+
   return () => new ProductionDteService(
-    new SupabaseProductionDteRepository(client as never, process.env),
+    new SupabaseProductionDteRepository(client as never, fixtureEnv),
     new SupabasePrivateDteArtifactStore(
       client as never,
       "dte-production-private",
@@ -539,7 +553,7 @@ function serviceFactory(
     async () => {
       throw new Error("OFFLINE_E2E_STATUS_TOKEN_FORBIDDEN");
     },
-    process.env,
+    fixtureEnv,
     process.cwd(),
     async ({ settings }) => {
       loadValidatedProductionSigningMaterial({
@@ -549,14 +563,14 @@ function serviceFactory(
           enabled: true,
           environment: "production",
           signingMode: "production",
-          seedUrl: String(process.env.DTE_PRODUCTION_SEED_URL),
-          tokenUrl: String(process.env.DTE_PRODUCTION_TOKEN_URL),
-          uploadUrl: String(process.env.DTE_PRODUCTION_UPLOAD_URL),
-          statusUrl: String(process.env.DTE_PRODUCTION_STATUS_URL),
+          seedUrl: String(fixtureEnv.DTE_PRODUCTION_SEED_URL),
+          tokenUrl: String(fixtureEnv.DTE_PRODUCTION_TOKEN_URL),
+          uploadUrl: String(fixtureEnv.DTE_PRODUCTION_UPLOAD_URL),
+          statusUrl: String(fixtureEnv.DTE_PRODUCTION_STATUS_URL),
           storageBucket: "dte-production-private",
-          cafRoot: String(process.env.DTE_PRODUCTION_CAF_ROOT),
-          certificateRoot: String(process.env.DTE_PRODUCTION_CERTIFICATE_ROOT),
-          privateKeyRoot: String(process.env.DTE_PRODUCTION_PRIVATE_KEY_ROOT),
+          cafRoot: String(fixtureEnv.DTE_PRODUCTION_CAF_ROOT),
+          certificateRoot: String(fixtureEnv.DTE_PRODUCTION_CERTIFICATE_ROOT),
+          privateKeyRoot: String(fixtureEnv.DTE_PRODUCTION_PRIVATE_KEY_ROOT),
           timeoutMs: 30000,
         },
       });
@@ -753,6 +767,7 @@ async function main() {
     auth: { persistSession: false },
   });
   const tenantId = randomUUID();
+  console.log(JSON.stringify({ FIXTURE_TENANT_ID: tenantId }));
   issuerRut = fixtureRut(tenantId);
   signingFixture(tenantId);
   const cafs = new Map<33 | 39, FixtureCaf>([
@@ -795,12 +810,18 @@ async function main() {
     NETWORK_UNKNOWN_SAFE: "PASS",
     AUTOMATIC_DEFAULT_OFF: "PASS",
     externalFetchAttempts,
+    tenantId,
     success33,
     success39,
   }));
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack : error);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    console.error(error instanceof Error ? error.stack : error);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    globalThis.fetch = originalFetch;
+    rmSync(FIXTURE_ROOT, { recursive: true, force: true });
+  });
