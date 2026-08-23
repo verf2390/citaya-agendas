@@ -1788,10 +1788,13 @@ export async function requestBoletaRestDocumentStatus(
       signal: controller.signal,
     });
     const contentType = response.headers.get("content-type") ?? "";
-    const raw = await response.text();
-    if (response.status !== 200 || !contentType.toLowerCase().includes("application/json")) {
-      throw new Error("BOLETA_REST_DOCUMENT_STATUS_HTTP_INVALID");
+    if (response.status !== 200) {
+      throw new Error(`BOLETA_REST_DOCUMENT_STATUS_HTTP_${response.status}`);
     }
+    if (!contentType.toLowerCase().includes("application/json")) {
+      throw new Error("BOLETA_REST_DOCUMENT_STATUS_CONTENT_TYPE_INVALID");
+    }
+    const raw = await response.text();
     let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(raw) as Record<string, unknown>;
