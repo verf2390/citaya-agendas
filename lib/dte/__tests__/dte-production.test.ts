@@ -258,18 +258,30 @@ async function preparedService(input: {
     },
     input.statusResult,
   );
+  const statusTokenTypes: ProductionDteType[] = [];
   const service = new ProductionDteService(
     repository,
     artifactStore,
     generator,
     ({ dteType }) => importedCaf(dteType),
     () => client,
-    async () => "STATUS_TOKEN_NOT_EXPOSED",
+    async ({ dteType }) => {
+      statusTokenTypes.push(dteType);
+      return "STATUS_TOKEN_NOT_EXPOSED";
+    },
     input.env ?? productionEnv,
     resolve("."),
     input.preparationPreflight,
   );
-  return { service, repository, artifactStore, generator, client, tenantId };
+  return {
+    service,
+    repository,
+    artifactStore,
+    generator,
+    client,
+    tenantId,
+    statusTokenTypes,
+  };
 }
 
 test("production config is disabled by default and rejects certification URLs", async () => {
@@ -616,6 +628,7 @@ test("status is never automatic and only executes through explicit manual action
   });
   assert.equal(status.siiStatus, "accepted");
   assert.equal(context.client.statuses, 1);
+  assert.deepEqual(context.statusTokenTypes, [33]);
 });
 
 test("manual status reconciliation makes only rejection terminal on the production document", async () => {
@@ -665,6 +678,7 @@ test("manual status reconciliation makes only rejection terminal on the producti
     );
 
     assert.equal(result.siiStatus, expected.siiStatus);
+    assert.deepEqual(context.statusTokenTypes, [39]);
     assert.equal(detail.document.status, expected.documentStatus);
     assert.equal(
       context.repository.outboxRecords().length,

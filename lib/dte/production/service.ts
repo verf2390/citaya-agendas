@@ -44,6 +44,7 @@ export type ProductionSiiClientFactory = (
 
 export type ManualStatusTokenProvider = (input: {
   settings: ProductionTenantSettings;
+  dteType: ProductionDteType;
   milestone: (event: ProductionSiiMilestone) => Promise<void>;
 }) => Promise<string>;
 
@@ -596,7 +597,11 @@ export class ProductionDteService {
         metadata: { manual: true },
       });
     };
-    const token = await this.manualStatusTokenProvider({ settings, milestone });
+    const token = await this.manualStatusTokenProvider({
+      settings,
+      dteType: document.dteType,
+      milestone,
+    });
     const result = await this.siiClientFactory(config, document.dteType).queryStatusManually({
       trackId,
       token,

@@ -13,7 +13,7 @@ import { loadValidatedProductionSigningMaterial } from "./signing-material";
 import { ProductionDteService } from "./service";
 import { SiiBoletaApiTransport } from "./boleta-api-transport";
 import { ProductionSiiClient } from "./sii-client";
-import { requestProductionStatusToken } from "./status-auth";
+import { requestProductionStatusTokenForDteType } from "./status-auth";
 import { SupabaseProductionDteRepository } from "./supabase-repository";
 import type { ProductionDteType, ProductionTenantSettings } from "./types";
 
@@ -101,10 +101,11 @@ export function createServerProductionDteService(): ProductionDteService {
       dteType && [39, 41].includes(Number(dteType))
         ? new SiiBoletaApiTransport(config)
         : new ProductionSiiClient(config),
-    async ({ settings, milestone }) =>
-      requestProductionStatusToken({
+    async ({ settings, dteType, milestone }) =>
+      requestProductionStatusTokenForDteType({
         config: assertProductionConfig(process.env, process.cwd()),
         settings,
+        dteType,
         milestone,
       }),
     process.env,
