@@ -89,4 +89,8 @@ test("normalized manual Boleta statuses reconcile terminal results and keep proc
     planSiiStatusReconciliation("SUBMITTED", "processing"),
     { targetStatus: "SUBMITTED", shouldReconcile: false },
   );
+  assert.deepEqual(
+    planSiiStatusReconciliation("SUBMITTED", "unknown"),
+    { targetStatus: "SUBMITTED", shouldReconcile: false },
+  );
 });

@@ -1724,7 +1724,11 @@ export type BoletaRestStatusResult = {
       rechazados: number;
       reparos: number;
     }>;
-    detalleRepRech: Array<unknown>;
+    detalleRepRech: Array<{
+      tipo: number;
+      folio: number | null;
+      status: string;
+    }>;
   };
 };
 
@@ -1861,22 +1865,37 @@ export async function requestBoletaRestStatus(
       signal: controller.signal,
     });
 
+    const contentType = response.headers.get("content-type") ?? "";
+    if (response.status !== 200) {
+      throw new Error(`BOLETA_REST_STATUS_HTTP_${response.status}`);
+    }
+    if (!contentType.toLowerCase().includes("application/json")) {
+      throw new Error("BOLETA_REST_STATUS_CONTENT_TYPE_INVALID");
+    }
+
     const rawBody = await response.text();
     const responseBytes = Buffer.byteLength(rawBody, "utf8");
     const responseSha256 = createHash("sha256")
       .update(Buffer.from(rawBody, "utf8"))
       .digest("hex");
 
-    let rawJson: Record<string, unknown> = {};
+    let rawJson: Record<string, unknown>;
     try {
-      rawJson = JSON.parse(rawBody);
+      const parsed = JSON.parse(rawBody) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("BOLETA_REST_STATUS_RESPONSE_INVALID");
+      }
+      rawJson = parsed as Record<string, unknown>;
     } catch {
-      rawJson = { rawText: rawBody };
+      throw new Error("BOLETA_REST_STATUS_RESPONSE_INVALID");
+    }
+    if (!String(rawJson.estado ?? rawJson.status ?? "").trim()) {
+      throw new Error("BOLETA_REST_STATUS_RESPONSE_INVALID");
     }
 
     const sanitizedString = sanitizeBoletaRestResponseBody(
       rawBody,
-      response.headers.get("content-type") ?? "application/json",
+      contentType,
     );
     let sanitizedJson: Record<string, unknown> = {};
     try {
@@ -1897,23 +1916,44 @@ export async function requestBoletaRestStatus(
           ? candidate as Record<string, unknown>
           : {};
       return {
-        tipo: Number(st.tipo ?? st.tipo_doc ?? 39),
-        informados: Number(st.informados ?? st.cantidad_informados ?? 0),
-        aceptados: Number(st.aceptados ?? st.cantidad_aceptados ?? 0),
-        rechazados: Number(st.rechazados ?? st.cantidad_rechazados ?? 0),
-        reparos: Number(st.reparos ?? st.cantidad_reparos ?? 0),
+        tipo: Number(st.tipo ?? st.tipo_doc ?? st.tipoDte),
+        informados: Number(st.informados ?? st.cantidad_informados),
+        aceptados: Number(st.aceptados ?? st.cantidad_aceptados),
+        rechazados: Number(st.rechazados ?? st.cantidad_rechazados),
+        reparos: Number(st.reparos ?? st.cantidad_reparos),
       };
     });
 
-    const detalleRepRech = Array.isArray(rawJson.detalle_rep_rech)
+    const detailsRaw = Array.isArray(rawJson.detalle_rep_rech)
       ? rawJson.detalle_rep_rech
       : Array.isArray(rawJson.detalleRepRech)
       ? rawJson.detalleRepRech
       : [];
+    const detalleRepRech = detailsRaw.map((candidate) => {
+      const detail =
+        candidate && typeof candidate === "object"
+          ? candidate as Record<string, unknown>
+          : {};
+      const rawFolio = detail.folio ?? detail.folio_dte ?? detail.folioDte;
+      return {
+        tipo: Number(
+          detail.tipo ?? detail.tipo_doc ?? detail.tipo_dte ?? detail.tipoDte,
+        ),
+        folio:
+          rawFolio === undefined || rawFolio === null || rawFolio === ""
+            ? null
+            : Number(rawFolio),
+        status: String(
+          detail.estado ?? detail.status ?? detail.codigo ?? detail.code ?? "",
+        )
+          .trim()
+          .toUpperCase(),
+      };
+    });
 
     return {
       httpStatus: response.status,
-      contentType: response.headers.get("content-type") ?? "application/json",
+      contentType,
       responseBytes,
       responseSha256,
       sanitizedJson,

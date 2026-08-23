@@ -47,6 +47,12 @@ type BoletaTrackStatistic = {
   reparos: number;
 };
 
+type BoletaTrackRejectionDetail = {
+  tipo: number;
+  folio: number | null;
+  status: string;
+};
+
 const BOLETA_PROCESSING_ENVELOPE_STATUSES = new Set([
   "REC",
   "PRD",
@@ -61,17 +67,36 @@ const BOLETA_REJECTED_ENVELOPE_STATUSES = new Set([
   "RFR",
   "RSC",
   "RCT",
+  "RPT",
+  // VOF means the SII could not find the submitted XML. In this exactly-once
+  // flow that envelope cannot progress, so it is a terminal rejection rather
+  // than a reason to upload or query the document again.
+  "VOF",
 ]);
+
+function normalizedBoletaStatus(value: unknown): string {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return /^[A-Z0-9_-]{1,32}$/.test(normalized) ? normalized : "";
+}
+
+function detailStatus(status: string): Exclude<
+  SingleBoletaTrackStatus,
+  "processing" | null
+> | null {
+  if (status === "DOK") return "accepted";
+  if (status === "RPR") return "accepted_with_observations";
+  if (status === "RCH") return "rejected";
+  return null;
+}
 
 export function deriveSingleBoletaStatusFromTrack(input: {
   dteType: number;
+  expectedFolio?: number | null;
   envelopeStatus: string | null | undefined;
   statistics: readonly BoletaTrackStatistic[];
-  rejectionDetails?: readonly unknown[];
+  rejectionDetails?: readonly BoletaTrackRejectionDetail[];
 }): SingleBoletaTrackStatus {
-  const envelopeStatus = String(input.envelopeStatus ?? "")
-    .trim()
-    .toUpperCase();
+  const envelopeStatus = normalizedBoletaStatus(input.envelopeStatus);
   const matchingStatistics = input.statistics.filter(
     (statistic) => statistic.tipo === input.dteType,
   );
@@ -79,6 +104,10 @@ export function deriveSingleBoletaStatusFromTrack(input: {
   // More than one aggregate for the same type cannot describe exactly one DTE.
   if (matchingStatistics.length > 1) return null;
 
+  let statisticStatus: Exclude<
+    SingleBoletaTrackStatus,
+    "processing" | null
+  > | null = null;
   const statistic = matchingStatistics[0];
   if (statistic) {
     const counters = [
@@ -89,34 +118,74 @@ export function deriveSingleBoletaStatusFromTrack(input: {
     ];
     if (
       !counters.every(
-        (counter) => Number.isSafeInteger(counter) && counter >= 0,
+        (counter) =>
+          Number.isSafeInteger(counter) && counter >= 0 && counter <= 1,
       ) ||
-      statistic.informados !== 1 ||
-      statistic.aceptados + statistic.rechazados + statistic.reparos !==
-        statistic.informados
+      statistic.informados !== 1
     ) {
       return null;
     }
 
-    const counterStatus: Exclude<SingleBoletaTrackStatus, "processing" | null> =
-      statistic.rechazados === 1
-        ? "rejected"
-        : statistic.reparos === 1
-          ? "accepted_with_observations"
-          : "accepted";
-
-    // Do not choose between contradictory envelope and document aggregates.
     if (
-      BOLETA_REJECTED_ENVELOPE_STATUSES.has(envelopeStatus) &&
-      counterStatus !== "rejected"
+      statistic.rechazados === 1 &&
+      statistic.aceptados === 0 &&
+      statistic.reparos === 0
+    ) {
+      statisticStatus = "rejected";
+    } else if (
+      statistic.reparos === 1 &&
+      statistic.rechazados === 0
+    ) {
+      // SII responses can report a repaired document either separately from
+      // accepted documents or as an accepted document carrying one repair.
+      statisticStatus = "accepted_with_observations";
+    } else if (
+      statistic.aceptados === 1 &&
+      statistic.rechazados === 0 &&
+      statistic.reparos === 0
+    ) {
+      statisticStatus = "accepted";
+    } else if (
+      statistic.aceptados !== 0 ||
+      statistic.rechazados !== 0 ||
+      statistic.reparos !== 0
     ) {
       return null;
     }
-    return counterStatus;
   }
 
-  if (BOLETA_REJECTED_ENVELOPE_STATUSES.has(envelopeStatus)) {
-    return "rejected";
+  const expectedFolio = input.expectedFolio ?? null;
+  const matchingDetails = (input.rejectionDetails ?? []).filter(
+    (detail) =>
+      detail.tipo === input.dteType &&
+      (expectedFolio === null || detail.folio === expectedFolio),
+  );
+  if (matchingDetails.length > 1) return null;
+  const matchedDetailStatus = matchingDetails[0]
+    ? detailStatus(normalizedBoletaStatus(matchingDetails[0].status))
+    : null;
+
+  const envelopeTerminalStatus:
+    | Exclude<SingleBoletaTrackStatus, "processing" | null>
+    | null = envelopeStatus === "RPR"
+      ? "accepted_with_observations"
+      : BOLETA_REJECTED_ENVELOPE_STATUSES.has(envelopeStatus)
+        ? "rejected"
+        : null;
+  const terminalEvidence = [
+    statisticStatus,
+    matchedDetailStatus,
+    envelopeTerminalStatus,
+  ].filter((status): status is Exclude<
+    SingleBoletaTrackStatus,
+    "processing" | null
+  > => status !== null);
+  const distinctTerminalEvidence = new Set(terminalEvidence);
+  if (distinctTerminalEvidence.size > 1) return null;
+  if (terminalEvidence[0]) return terminalEvidence[0];
+
+  if (envelopeStatus === "EPR") {
+    return "processing";
   }
   if (BOLETA_PROCESSING_ENVELOPE_STATUSES.has(envelopeStatus)) {
     return "processing";
@@ -328,9 +397,13 @@ export class SiiBoletaApiTransport implements IProductionSiiClient {
       userAgent: resolveBoletaSiiUploadUserAgent(),
       fetchImpl: this.fetchImpl,
     });
-    const trackStatus = input.document
+    const singleBoleta39 = input.document?.dteType === 39
+      ? input.document
+      : null;
+    const trackStatus = singleBoleta39
       ? deriveSingleBoletaStatusFromTrack({
-          dteType: input.document.dteType,
+          dteType: singleBoleta39.dteType,
+          expectedFolio: singleBoleta39.folio,
           envelopeStatus: statusResult.data.status,
           statistics: statusResult.data.estadisticas,
           rejectionDetails: statusResult.data.detalleRepRech,
@@ -342,18 +415,21 @@ export class SiiBoletaApiTransport implements IProductionSiiClient {
       httpStatus: statusResult.httpStatus,
       contentType: statusResult.contentType.slice(0, 80),
       bytes: statusResult.responseBytes,
-      envelopeStatus: String(statusResult.data.status).slice(0, 32),
+      envelopeStatus:
+        normalizedBoletaStatus(statusResult.data.status) || "UNKNOWN",
       statistics: statusResult.data.estadisticas
         .filter((statistic) => statistic.tipo === input.document?.dteType)
         .map((statistic) => ({ ...statistic })),
       rejectionDetailCount: statusResult.data.detalleRepRech.length,
+      derivedStatus: trackStatus ?? "processing",
+      derivationConclusive: trackStatus !== null && trackStatus !== "processing",
     };
 
-    if (trackStatus) {
+    if (singleBoleta39) {
       await input.milestone("status_after_fetch");
       return {
         trackId: input.trackId,
-        siiStatus: trackStatus,
+        siiStatus: trackStatus ?? "processing",
         responseSha256: statusResult.responseSha256,
         responseBytes: Buffer.from(JSON.stringify(safeTrackResponse), "utf8"),
         responseSafe: safeTrackResponse,

@@ -628,6 +628,7 @@ test("manual status reconciliation makes only rejection terminal on the producti
     },
     { siiStatus: "rejected", documentStatus: "rejected", outboxCount: 0 },
     { siiStatus: "processing", documentStatus: "submitted", outboxCount: 0 },
+    { siiStatus: "unknown", documentStatus: "submitted", outboxCount: 0 },
   ] as const;
 
   for (const [index, expected] of cases.entries()) {
