@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
+const SAFE_PRODUCTION_ERROR_CODE =
+  /\b(?:DTE|BOLETA_REST|BOLETA_API)_[A-Z0-9_:-]+\b/;
+const DEFAULT_PRODUCTION_ERROR_CODE = "DTE_PRODUCTION_REQUEST_FAILED";
+
 export async function requireProductionAdmin(
   req: Request,
   ...legacyTenantHints: unknown[]
@@ -10,11 +14,14 @@ export async function requireProductionAdmin(
   return requireHostTenantAdmin(req);
 }
 
-export function safeProductionApiError(error: unknown): NextResponse {
+export function safeProductionApiErrorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
-  const code =
-    message.match(/\bDTE_[A-Z0-9_:-]+\b/)?.[0] ??
-    "DTE_PRODUCTION_REQUEST_FAILED";
+  return message.match(SAFE_PRODUCTION_ERROR_CODE)?.[0] ??
+    DEFAULT_PRODUCTION_ERROR_CODE;
+}
+
+export function safeProductionApiError(error: unknown): NextResponse {
+  const code = safeProductionApiErrorCode(error);
   const status =
     /NOT_FOUND/.test(code) ? 404
     : /UNAUTHORIZED/.test(code) ? 401
