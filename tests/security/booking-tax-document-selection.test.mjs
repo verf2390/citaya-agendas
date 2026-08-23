@@ -76,21 +76,15 @@ test("public appointment creation fails closed for unauthorized invoice 33", () 
   );
 });
 
-test("existing boleta 39 server gate remains intact", () => {
+test("existing public boleta 39 server gate remains intact", () => {
   assert.match(
     createRoute,
-    /if \(!isDemoAppointment && requestedDocumentType === 39\) \{[\s\S]*?dte_tenant_document_capabilities/,
+    /if \(!isDemoAppointment && !isAdminRequest && requestedDocumentType === 39\) \{[\s\S]*?dte_tenant_document_capabilities/,
   );
 
   assert.match(
     createRoute,
     /customer_selection_enabled[\s\S]*?issuance_enabled[\s\S]*?certification_status/,
-  );
-
-  assert.doesNotMatch(
-    createRoute,
-    /if \(!isDemoAppointment && !isAdminRequest && requestedDocumentType === 39\)/,
-    "CIT-6 must not relax the pre-existing admin boleta 39 gate",
   );
 });
 

@@ -9,6 +9,7 @@ import {
   manualIssuanceIdempotencyMaterial,
   normalizeRequiredCustomerRut,
   normalizeTaxProfile,
+  resolveBookingTaxDocumentType,
   validateBookingTaxInput,
   validateStandaloneLines,
   type ActivationGates,
@@ -23,6 +24,39 @@ const validProfile = {
   city: "Santiago",
   taxEmail: "facturacion@example.test",
 };
+
+test("admin tax document selection defaults to 39 and explicit selection wins", () => {
+  const base = { isAdminRequest: true, isDemoAppointment: false };
+  assert.equal(resolveBookingTaxDocumentType(base), 39);
+  assert.equal(resolveBookingTaxDocumentType({
+    ...base,
+    taxDocumentType: 39,
+    invoiceRequested: true,
+  }), 39);
+  assert.equal(resolveBookingTaxDocumentType({
+    ...base,
+    taxDocumentType: 33,
+    invoiceRequested: false,
+  }), 33);
+});
+
+test("public and demo tax document selection keep their existing semantics", () => {
+  assert.equal(resolveBookingTaxDocumentType({
+    isAdminRequest: false,
+    isDemoAppointment: false,
+  }), null);
+  assert.equal(resolveBookingTaxDocumentType({
+    isAdminRequest: false,
+    isDemoAppointment: false,
+    invoiceRequested: true,
+  }), 33);
+  assert.equal(resolveBookingTaxDocumentType({
+    isAdminRequest: true,
+    isDemoAppointment: true,
+    taxDocumentType: 33,
+    invoiceRequested: true,
+  }), null);
+});
 
 test("customer RUT is required, validates DV and normalizes consistently", () => {
   assert.throws(() => normalizeRequiredCustomerRut(""), /CUSTOMER_RUT_INVALID/);

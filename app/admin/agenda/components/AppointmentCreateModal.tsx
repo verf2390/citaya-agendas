@@ -11,6 +11,16 @@ export type CustomerLite = {
   email: string | null;
 };
 
+export type AdminAppointmentTaxDocumentType = 39 | 33;
+
+const TAX_DOCUMENT_OPTIONS = [
+  { value: 39, label: "Boleta electrónica (39)" },
+  { value: 33, label: "Factura electrónica (33)" },
+] as const satisfies ReadonlyArray<{
+  value: AdminAppointmentTaxDocumentType;
+  label: string;
+}>;
+
 type Props = {
   open: boolean;
   onClose: () => void;
@@ -24,7 +34,8 @@ type Props = {
   onConfirm: (args: {
     customerId: string;
     serviceId: string;
-  }) => Promise<void> | void;
+    taxDocumentType: AdminAppointmentTaxDocumentType;
+  }) => Promise<boolean | void> | boolean | void;
 
   tenantId: string;
 
@@ -32,14 +43,6 @@ type Props = {
 
   // ✅ servicios disponibles (para seleccionar)
   services: { id: string; name: string }[];
-};
-
-type PostgrestErrorLike = {
-  message?: string;
-  details?: string | null;
-  hint?: string | null;
-  code?: string | null; // Postgres error code (ej: 23505)
-  status?: number; // HTTP status (a veces viene)
 };
 
 function formatSlotLabel(startISO: string, endISO: string) {
@@ -71,25 +74,6 @@ function normalizePhone(raw: string) {
   return p;
 }
 
-function isDuplicateCustomerError(err: PostgrestErrorLike | null) {
-  if (!err) return false;
-
-  // Postgres unique violation
-  if (err.code === "23505") return true;
-
-  // a veces PostgREST manda status 409 en conflictos
-  if (err.status === 409) return true;
-
-  const msg = (err.message ?? "").toLowerCase();
-  const details = (err.details ?? "").toLowerCase();
-
-  // fallback por texto (depende de cómo venga)
-  if (msg.includes("duplicate") || msg.includes("unique")) return true;
-  if (details.includes("duplicate") || details.includes("unique")) return true;
-
-  return false;
-}
-
 export default function AppointmentCreateModal({
   open,
   onClose,
@@ -107,6 +91,8 @@ export default function AppointmentCreateModal({
 
   // ✅ NUEVO: servicio seleccionado obligatorio
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+  const [selectedTaxDocumentType, setSelectedTaxDocumentType] =
+    useState<AdminAppointmentTaxDocumentType>(39);
 
   // UI: crear cliente inline
   const [showCreate, setShowCreate] = useState(false);
@@ -123,6 +109,7 @@ export default function AppointmentCreateModal({
 
     // ✅ reset servicio
     setSelectedServiceId("");
+    setSelectedTaxDocumentType(39);
 
     setShowCreate(false);
     setNewName("");
@@ -253,10 +240,12 @@ export default function AppointmentCreateModal({
 
     setSaving(true);
     try {
-      await onConfirm({
+      const confirmed = await onConfirm({
         customerId: selected.id,
         serviceId: selectedServiceId,
+        taxDocumentType: selectedTaxDocumentType,
       });
+      if (confirmed === false) return;
       onClose();
     } finally {
       setSaving(false);
@@ -317,9 +306,6 @@ export default function AppointmentCreateModal({
         </div>
 
         <div style={{ marginTop: 12 }}>
-          {/* ✅ (UI todavía no agregada): aquí luego metemos el selector visual de servicio */}
-          {/* Por ahora solo dejamos listo el state + props + validación */}
-
           {/* ✅ Seleccionar servicio (obligatorio) */}
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
@@ -352,6 +338,48 @@ export default function AppointmentCreateModal({
               </div>
             ) : null}
           </div>
+
+          <fieldset
+            style={{
+              marginTop: 12,
+              marginBottom: 12,
+              padding: 0,
+              border: 0,
+            }}
+          >
+            <legend style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+              Documento tributario
+            </legend>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {TAX_DOCUMENT_OPTIONS.map((option) => {
+                const active = selectedTaxDocumentType === option.value;
+                return (
+                  <label
+                    key={option.value}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "9px 12px",
+                      borderRadius: 10,
+                      border: active ? "1px solid #111" : "1px solid #ddd",
+                      background: active ? "rgba(0,0,0,0.04)" : "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="taxDocumentType"
+                      value={option.value}
+                      checked={active}
+                      onChange={() => setSelectedTaxDocumentType(option.value)}
+                    />
+                    <span style={{ fontSize: 13 }}>{option.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
 
           <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
             Buscar cliente

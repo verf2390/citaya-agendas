@@ -9,12 +9,18 @@ const confirmationPage = readFileSync("app/reservar/confirmacion/page.tsx", "utf
 
 test("[structural] safe demo uses the persisted RPC without productive legal or tax input", () => {
   assert.match(createRoute, /const isDemoAppointment = isSafeDemoAppointmentMode\(/);
-  assert.match(createRoute, /isDemoAppointment\s*\? null\s*:\s*input\.taxDocumentType/);
-  assert.match(createRoute, /customerRut: isDemoAppointment \? undefined : input\.customerRut/);
-  assert.match(createRoute, /if \(!isDemoAppointment\) \{\s*const legalBundle/);
   assert.match(
     createRoute,
-    /const rpcName = isAdminRequest \|\| isDemoAppointment\s*\? "create_public_appointment"\s*:\s*"create_public_appointment_with_legal_acceptance"/,
+    /resolveBookingTaxDocumentType\(\{[\s\S]*isDemoAppointment,[\s\S]*taxDocumentType: input\.taxDocumentType/,
+  );
+  assert.match(
+    createRoute,
+    /customerRut: isDemoAppointment[\s\S]*\? undefined[\s\S]*: adminInvoiceTaxProfile\?\.rut \?\? input\.customerRut/,
+  );
+  assert.match(createRoute, /if \(!isAdminRequest\) \{\s*if \(!isDemoAppointment\) \{/);
+  assert.match(
+    createRoute,
+    /const rpcName = isAdminRequest\s*\? "create_admin_appointment"\s*:\s*isDemoAppointment\s*\? "create_public_appointment"\s*:\s*"create_public_appointment_with_legal_acceptance"/,
   );
   assert.match(createRoute, /if \(!isAdminRequest && !isDemoAppointment\) \{/);
   assert.match(createRoute, /persisted: true/);
@@ -107,10 +113,10 @@ test("[structural] demo submit keeps normal booking/contact minimums and bypasse
 test("[structural] live Factura 33 and Boleta 39 retain productive validation paths", () => {
   assert.match(
     createRoute,
-    /taxProfile: requestedDocumentType === 33 \? \{/,
+    /taxProfile: requestedDocumentType === 33[\s\S]*\? adminInvoiceTaxProfile \?\? \{/,
   );
-  assert.match(createRoute, /if \(!isDemoAppointment && bookingTax\.taxProfile\)/);
-  assert.match(createRoute, /if \(!isDemoAppointment && requestedDocumentType === 39\)/);
+  assert.match(createRoute, /if \(!isDemoAppointment && !isAdminRequest && bookingTax\.taxProfile\)/);
+  assert.match(createRoute, /if \(!isDemoAppointment && !isAdminRequest && requestedDocumentType === 39\)/);
   assert.match(createRoute, /certification_status !== "production_authorized"/);
   assert.match(createRoute, /billing_initialize_appointment_sale/);
 });

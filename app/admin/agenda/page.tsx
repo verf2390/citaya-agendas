@@ -51,7 +51,8 @@ import AdminNav from "@/components/admin/AdminNav";
 import WeeklyAvailabilityCalendar from "@/components/admin/availability/WeeklyAvailabilityCalendar";
 
 import AppointmentCreateModal, {
-  CustomerLite,
+  type AdminAppointmentTaxDocumentType,
+  type CustomerLite,
 } from "./components/AppointmentCreateModal";
 
 /* =====================================================
@@ -1103,6 +1104,8 @@ export default function AgendaPage() {
     customerEmail?: string | null;
 
     serviceId?: string | null;
+    taxDocumentType: AdminAppointmentTaxDocumentType;
+    invoiceRequested: boolean;
   }) {
     const idempotencyKey = crypto.randomUUID();
     const res = await adminFetch("/api/appointments/create", {
@@ -1122,8 +1125,9 @@ export default function AgendaPage() {
   async function createAppointmentWithCustomer(args: {
     customerId: string;
     serviceId: string;
+    taxDocumentType: AdminAppointmentTaxDocumentType;
   }) {
-    if (!slot) return;
+    if (!slot) return false;
 
     const customer = customers.find((c) => c.id === args.customerId) ?? null;
 
@@ -1140,7 +1144,7 @@ export default function AgendaPage() {
           description: "Este cliente no tiene un email válido guardado.",
           variant: "destructive",
         });
-        return;
+        return false;
       }
 
       const payload = {
@@ -1156,6 +1160,8 @@ export default function AgendaPage() {
 
         // ✅ servicio SIEMPRE desde el modal (fuente de verdad)
         serviceId: args.serviceId,
+        taxDocumentType: args.taxDocumentType,
+        invoiceRequested: args.taxDocumentType === 33,
       };
 
       if (!payload.customerName) {
@@ -1164,7 +1170,7 @@ export default function AgendaPage() {
           description: "Este cliente no tiene nombre guardado.",
           variant: "destructive",
         });
-        return;
+        return false;
       }
 
       await createAppointmentViaApi(payload);
@@ -1177,7 +1183,7 @@ export default function AgendaPage() {
         description: getErrorMessage(e, "Error creando cita"),
         variant: "destructive",
       });
-      return;
+      return false;
     }
 
     setCreateOpen(false);
@@ -1190,6 +1196,7 @@ export default function AgendaPage() {
         selectedProfessionalId,
       );
     else await loadAppointments(undefined, undefined, selectedProfessionalId);
+    return true;
   }
 
   const handleEventDrop = async (dropInfo: EventDropArg) => {
@@ -1965,8 +1972,12 @@ export default function AgendaPage() {
               return [c, ...prev];
             });
           }}
-          onConfirm={async ({ customerId, serviceId }) => {
-            await createAppointmentWithCustomer({ customerId, serviceId });
+          onConfirm={async ({ customerId, serviceId, taxDocumentType }) => {
+            return createAppointmentWithCustomer({
+              customerId,
+              serviceId,
+              taxDocumentType,
+            });
           }}
         />
 

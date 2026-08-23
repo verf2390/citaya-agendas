@@ -15,7 +15,11 @@ import {
   requestIp,
 } from "@/lib/security/request";
 import { normalizeRut } from "@/lib/dte/rut";
-import { validateBookingTaxInput } from "@/lib/dte/cutover";
+import {
+  type CustomerTaxProfileInput,
+  resolveBookingTaxDocumentType,
+  validateBookingTaxInput,
+} from "@/lib/dte/cutover";
 import { validatePublicLegalConsent } from "@/lib/legal/consent.mjs";
 import {
   getPublicLegalBundleByTenantId,
@@ -38,6 +42,14 @@ import {
 
 function publicError(status = 400, error = "No se pudo crear la reserva") {
   return NextResponse.json({ ok: false, error }, { status });
+}
+
+function incompleteAdminInvoiceProfileError() {
+  return NextResponse.json({
+    ok: false,
+    error: "El cliente no tiene un perfil tributario completo para emitir factura.",
+    code: "DATOS_TRIBUTARIOS_FACTURA_INCOMPLETOS",
+  }, { status: 409 });
 }
 
 function publicTenantBaseUrl(req: Request, tenantSlug: string) {
@@ -140,6 +152,11 @@ export async function POST(req: Request) {
       return publicError(404);
     }
 
+    if (isAdminRequest) {
+      const admin = await requireTenantAdmin({ req, tenantId: input.tenantId });
+      if (!admin.ok) return publicError(404);
+    }
+
     if (!isAdminRequest) {
       if (!isDemoAppointment) {
         const legalBundle = await getPublicLegalBundleByTenantId(
@@ -157,28 +174,68 @@ export async function POST(req: Request) {
         legalConsent = validation.value;
       }
     }
-    const requestedDocumentType =
-      isDemoAppointment
-        ? null
-        : input.taxDocumentType ??
-          (input.invoiceRequested === true ? 33 : isAdminRequest ? 39 : null);
+    const requestedDocumentType = resolveBookingTaxDocumentType({
+      isAdminRequest,
+      isDemoAppointment,
+      taxDocumentType: input.taxDocumentType,
+      invoiceRequested: input.invoiceRequested,
+    });
+    let adminInvoiceTaxProfile: CustomerTaxProfileInput | null = null;
+    if (!isDemoAppointment && isAdminRequest && requestedDocumentType === 33) {
+      if (!input.customerId) return incompleteAdminInvoiceProfileError();
+
+      const { data: customer, error: customerError } = await supabaseAdmin
+        .from("customers")
+        .select("id")
+        .eq("tenant_id", input.tenantId)
+        .eq("id", input.customerId)
+        .maybeSingle();
+      if (customerError || !customer) return publicError(404);
+
+      const { data: storedProfile, error: storedProfileError } =
+        await supabaseAdmin
+          .from("customer_tax_profiles")
+          .select("rut_normalized,legal_name,business_activity,tax_address,tax_commune,tax_city,tax_email")
+          .eq("tenant_id", input.tenantId)
+          .eq("customer_id", customer.id)
+          .maybeSingle();
+      if (storedProfileError || !storedProfile) {
+        return incompleteAdminInvoiceProfileError();
+      }
+      adminInvoiceTaxProfile = {
+        rut: storedProfile.rut_normalized ?? "",
+        legalName: storedProfile.legal_name ?? "",
+        businessActivity: storedProfile.business_activity ?? "",
+        address: storedProfile.tax_address ?? "",
+        commune: storedProfile.tax_commune ?? "",
+        city: storedProfile.tax_city ?? "",
+        taxEmail: storedProfile.tax_email ?? "",
+      };
+    }
     let bookingTax;
     try {
       bookingTax = validateBookingTaxInput({
-        customerRut: isDemoAppointment ? undefined : input.customerRut,
-        invoiceRequested: !isDemoAppointment && input.invoiceRequested === true,
+        customerRut: isDemoAppointment
+          ? undefined
+          : adminInvoiceTaxProfile?.rut ?? input.customerRut,
+        invoiceRequested: requestedDocumentType === 33,
         taxDocumentType: requestedDocumentType,
-        taxProfile: requestedDocumentType === 33 ? {
-          rut: input.invoiceReceiverRut ?? "",
-          legalName: input.invoiceReceiverLegalName ?? "",
-          businessActivity: input.invoiceReceiverActivity ?? "",
-          address: input.invoiceReceiverAddress ?? "",
-          commune: input.invoiceReceiverCommune ?? "",
-          city: input.invoiceReceiverCity ?? "",
-          taxEmail: input.invoiceReceiverTaxEmail ?? input.customerEmail,
-        } : null,
+        taxProfile: requestedDocumentType === 33
+          ? adminInvoiceTaxProfile ?? {
+              rut: input.invoiceReceiverRut ?? "",
+              legalName: input.invoiceReceiverLegalName ?? "",
+              businessActivity: input.invoiceReceiverActivity ?? "",
+              address: input.invoiceReceiverAddress ?? "",
+              commune: input.invoiceReceiverCommune ?? "",
+              city: input.invoiceReceiverCity ?? "",
+              taxEmail: input.invoiceReceiverTaxEmail ?? input.customerEmail,
+            }
+          : null,
       });
     } catch {
+      if (isAdminRequest && requestedDocumentType === 33) {
+        return incompleteAdminInvoiceProfileError();
+      }
       return publicError(400, requestedDocumentType === 33
         ? "Datos tributarios de factura incompletos"
         : "RUT inválido");
@@ -258,10 +315,7 @@ export async function POST(req: Request) {
     const pepper = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();
     if (!key || !pepper) return publicError(503);
 
-    if (isAdminRequest) {
-      const admin = await requireTenantAdmin({ req, tenantId: input.tenantId });
-      if (!admin.ok) return publicError(404);
-    } else {
+    if (!isAdminRequest) {
       const allowed = await consumeRateLimit({
         scope: "appointment_create",
         key: opaqueKey(
@@ -317,7 +371,7 @@ export async function POST(req: Request) {
       email: input.customerEmail,
       rut: bookingTax.customerRut || null,
     });
-    if (!isDemoAppointment && bookingTax.taxProfile) {
+    if (!isDemoAppointment && !isAdminRequest && bookingTax.taxProfile) {
       const profile = bookingTax.taxProfile;
       const { error: taxProfileError } = await supabaseAdmin.from("customer_tax_profiles").upsert({
         tenant_id: input.tenantId, customer_id: customerId, rut_normalized: profile.rut,
@@ -370,16 +424,17 @@ export async function POST(req: Request) {
     if (!isDemoAppointment) {
       const taxTreatmentSnapshot = service.tax_treatment ??
         (["affected", "exempt"].includes(String(issuanceConfig?.tax_treatment)) ? issuanceConfig?.tax_treatment : null);
+      const invoiceReceiver = bookingTax.taxProfile;
       const { error: taxSnapshotError } = await supabaseAdmin
         .from("appointments")
         .update({
           invoice_requested: requestedDocumentType === 33,
-          invoice_receiver_rut: requestedDocumentType === 33 && input.invoiceReceiverRut ? normalizeRut(input.invoiceReceiverRut) : null,
-          invoice_receiver_legal_name: requestedDocumentType === 33 ? input.invoiceReceiverLegalName ?? null : null,
-          invoice_receiver_activity: requestedDocumentType === 33 ? input.invoiceReceiverActivity ?? null : null,
-          invoice_receiver_address: requestedDocumentType === 33 ? input.invoiceReceiverAddress ?? null : null,
-          invoice_receiver_commune: requestedDocumentType === 33 ? input.invoiceReceiverCommune ?? null : null,
-          invoice_receiver_city: requestedDocumentType === 33 ? input.invoiceReceiverCity ?? null : null,
+          invoice_receiver_rut: invoiceReceiver?.rut ?? null,
+          invoice_receiver_legal_name: invoiceReceiver?.legalName ?? null,
+          invoice_receiver_activity: invoiceReceiver?.businessActivity ?? null,
+          invoice_receiver_address: invoiceReceiver?.address ?? null,
+          invoice_receiver_commune: invoiceReceiver?.commune ?? null,
+          invoice_receiver_city: invoiceReceiver?.city ?? null,
           customer_rut_snapshot: bookingTax.customerRut || null,
           requested_document_type: bookingTax.requestedDocumentType,
           tax_document_selection: bookingTax.requestedDocumentType,

@@ -17,6 +17,20 @@ export type CustomerTaxProfileInput = {
   taxEmail: string;
 };
 
+export function resolveBookingTaxDocumentType(input: {
+  isAdminRequest: boolean;
+  isDemoAppointment: boolean;
+  taxDocumentType?: 33 | 39 | null;
+  invoiceRequested?: boolean;
+}): 33 | 39 | null {
+  if (input.isDemoAppointment) return null;
+  if (input.taxDocumentType === 33 || input.taxDocumentType === 39) {
+    return input.taxDocumentType;
+  }
+  if (input.invoiceRequested === true) return 33;
+  return input.isAdminRequest ? 39 : null;
+}
+
 export type ActivationGates = {
   issuerDataExact: boolean;
   issuerLegalNameMatch: boolean;
