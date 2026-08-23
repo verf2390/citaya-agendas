@@ -236,6 +236,7 @@ async function preparedService(input: {
   tenantId?: string;
   types?: ProductionDteType[];
   uploadResult?: ProductionUploadResult;
+  statusResult?: ProductionStatusResult;
   env?: NodeJS.ProcessEnv;
   preparationPreflight?: ProductionPreparationPreflight;
 }) {
@@ -255,6 +256,7 @@ async function preparedService(input: {
       responseSafe: { category: "xml_receipt" },
       uploadCount: 1,
     },
+    input.statusResult,
   );
   const service = new ProductionDteService(
     repository,
@@ -614,6 +616,60 @@ test("status is never automatic and only executes through explicit manual action
   });
   assert.equal(status.siiStatus, "accepted");
   assert.equal(context.client.statuses, 1);
+});
+
+test("manual status reconciliation makes only rejection terminal on the production document", async () => {
+  const cases = [
+    { siiStatus: "accepted", documentStatus: "submitted", outboxCount: 1 },
+    {
+      siiStatus: "accepted_with_observations",
+      documentStatus: "submitted",
+      outboxCount: 1,
+    },
+    { siiStatus: "rejected", documentStatus: "rejected", outboxCount: 0 },
+    { siiStatus: "processing", documentStatus: "submitted", outboxCount: 0 },
+  ] as const;
+
+  for (const [index, expected] of cases.entries()) {
+    const context = await preparedService({
+      tenantId: `tenant-status-${index}`,
+      types: [39],
+      statusResult: {
+        trackId: "1234567890",
+        siiStatus: expected.siiStatus,
+        responseSha256: "d".repeat(64),
+        responseSafe: { category: "manual_status" },
+      },
+    });
+    const draft = await context.service.createDraft(
+      draftInput(context.tenantId, 39, expected.siiStatus),
+      "admin-user",
+    );
+    await context.service.prepare(context.tenantId, draft.id, "admin-user");
+    await context.service.emitOnce({
+      tenantId: context.tenantId,
+      documentId: draft.id,
+      confirmation: `EMITIR DTE PRODUCCION ${draft.id}`,
+      actorId: "admin-user",
+    });
+
+    const result = await context.service.queryStatusManually({
+      tenantId: context.tenantId,
+      documentId: draft.id,
+      actorId: "admin-user",
+    });
+    const detail = await context.service.getSafeDetail(
+      context.tenantId,
+      draft.id,
+    );
+
+    assert.equal(result.siiStatus, expected.siiStatus);
+    assert.equal(detail.document.status, expected.documentStatus);
+    assert.equal(
+      context.repository.outboxRecords().length,
+      expected.outboxCount,
+    );
+  }
 });
 
 test("production SII client performs seed, token and exactly one upload with mocks", async () => {

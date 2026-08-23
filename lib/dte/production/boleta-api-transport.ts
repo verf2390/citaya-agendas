@@ -32,6 +32,98 @@ export { BOLETA_PRODUCTION_API_BASE, BOLETA_PRODUCTION_SUBMIT_URL };
 export const BOLETA_SII_DEFAULT_USER_AGENT =
   "Mozilla/4.0 ( compatible; PROG 1.0; Windows NT)";
 
+export type SingleBoletaTrackStatus =
+  | "accepted"
+  | "accepted_with_observations"
+  | "rejected"
+  | "processing"
+  | null;
+
+type BoletaTrackStatistic = {
+  tipo: number;
+  informados: number;
+  aceptados: number;
+  rechazados: number;
+  reparos: number;
+};
+
+const BOLETA_PROCESSING_ENVELOPE_STATUSES = new Set([
+  "REC",
+  "PRD",
+  "CRT",
+  "FOK",
+  "SOK",
+]);
+
+const BOLETA_REJECTED_ENVELOPE_STATUSES = new Set([
+  "RCH",
+  "RCO",
+  "RFR",
+  "RSC",
+  "RCT",
+]);
+
+export function deriveSingleBoletaStatusFromTrack(input: {
+  dteType: number;
+  envelopeStatus: string | null | undefined;
+  statistics: readonly BoletaTrackStatistic[];
+  rejectionDetails?: readonly unknown[];
+}): SingleBoletaTrackStatus {
+  const envelopeStatus = String(input.envelopeStatus ?? "")
+    .trim()
+    .toUpperCase();
+  const matchingStatistics = input.statistics.filter(
+    (statistic) => statistic.tipo === input.dteType,
+  );
+
+  // More than one aggregate for the same type cannot describe exactly one DTE.
+  if (matchingStatistics.length > 1) return null;
+
+  const statistic = matchingStatistics[0];
+  if (statistic) {
+    const counters = [
+      statistic.informados,
+      statistic.aceptados,
+      statistic.rechazados,
+      statistic.reparos,
+    ];
+    if (
+      !counters.every(
+        (counter) => Number.isSafeInteger(counter) && counter >= 0,
+      ) ||
+      statistic.informados !== 1 ||
+      statistic.aceptados + statistic.rechazados + statistic.reparos !==
+        statistic.informados
+    ) {
+      return null;
+    }
+
+    const counterStatus: Exclude<SingleBoletaTrackStatus, "processing" | null> =
+      statistic.rechazados === 1
+        ? "rejected"
+        : statistic.reparos === 1
+          ? "accepted_with_observations"
+          : "accepted";
+
+    // Do not choose between contradictory envelope and document aggregates.
+    if (
+      BOLETA_REJECTED_ENVELOPE_STATUSES.has(envelopeStatus) &&
+      counterStatus !== "rejected"
+    ) {
+      return null;
+    }
+    return counterStatus;
+  }
+
+  if (BOLETA_REJECTED_ENVELOPE_STATUSES.has(envelopeStatus)) {
+    return "rejected";
+  }
+  if (BOLETA_PROCESSING_ENVELOPE_STATUSES.has(envelopeStatus)) {
+    return "processing";
+  }
+  return null;
+}
+
 export function resolveBoletaSiiUploadUserAgent(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
@@ -43,6 +135,7 @@ export class SiiBoletaApiTransport implements IProductionSiiClient {
   constructor(
     private readonly config: ProductionRuntimeConfig,
     private readonly environment: BoletaApiEnvironment = "production",
+    private readonly fetchImpl?: typeof fetch,
   ) {
     assertBoletaApiEnvironmentHosts(this.environment);
   }
@@ -233,7 +326,40 @@ export class SiiBoletaApiTransport implements IProductionSiiClient {
       apiBaseUrl: endpoints.queryBaseUrl,
       timeoutMs: this.config.timeoutMs,
       userAgent: resolveBoletaSiiUploadUserAgent(),
+      fetchImpl: this.fetchImpl,
     });
+    const trackStatus = input.document
+      ? deriveSingleBoletaStatusFromTrack({
+          dteType: input.document.dteType,
+          envelopeStatus: statusResult.data.status,
+          statistics: statusResult.data.estadisticas,
+          rejectionDetails: statusResult.data.detalleRepRech,
+        })
+      : null;
+    const safeTrackResponse = {
+      category: "boleta_track_status",
+      source: "track_id",
+      httpStatus: statusResult.httpStatus,
+      contentType: statusResult.contentType.slice(0, 80),
+      bytes: statusResult.responseBytes,
+      envelopeStatus: String(statusResult.data.status).slice(0, 32),
+      statistics: statusResult.data.estadisticas
+        .filter((statistic) => statistic.tipo === input.document?.dteType)
+        .map((statistic) => ({ ...statistic })),
+      rejectionDetailCount: statusResult.data.detalleRepRech.length,
+    };
+
+    if (trackStatus) {
+      await input.milestone("status_after_fetch");
+      return {
+        trackId: input.trackId,
+        siiStatus: trackStatus,
+        responseSha256: statusResult.responseSha256,
+        responseBytes: Buffer.from(JSON.stringify(safeTrackResponse), "utf8"),
+        responseSafe: safeTrackResponse,
+      };
+    }
+
     const documentResult = input.document
       ? await requestBoletaRestDocumentStatus({
           environment: this.environment,
@@ -246,6 +372,7 @@ export class SiiBoletaApiTransport implements IProductionSiiClient {
           issueDate: input.document.issueDate,
           timeoutMs: this.config.timeoutMs,
           userAgent: resolveBoletaSiiUploadUserAgent(),
+          fetchImpl: this.fetchImpl,
         })
       : null;
     await input.milestone("status_after_fetch");
@@ -255,8 +382,17 @@ export class SiiBoletaApiTransport implements IProductionSiiClient {
       ? documentCode
       : statusResult.data.status;
     const responseSafe = documentResult
-      ? { track: statusResult.sanitizedJson, document: documentResult.sanitizedJson }
-      : statusResult.sanitizedJson;
+      ? {
+          track: safeTrackResponse,
+          document: {
+            category: "boleta_document_status",
+            httpStatus: documentResult.httpStatus,
+            contentType: documentResult.contentType.slice(0, 80),
+            bytes: documentResult.responseBytes,
+            code: documentCode.slice(0, 32),
+          },
+        }
+      : safeTrackResponse;
 
     return {
       trackId: input.trackId,

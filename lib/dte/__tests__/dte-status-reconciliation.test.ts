@@ -68,3 +68,25 @@ test("EPR accepted status is labeled and reconciled idempotently without fiscal 
   assert.equal(after.outboxStatus, before.outboxStatus);
   assert.deepEqual(after.artifactHashes, before.artifactHashes);
 });
+
+test("normalized manual Boleta statuses reconcile terminal results and keep processing submitted", () => {
+  assert.deepEqual(
+    planSiiStatusReconciliation("SUBMITTED", "accepted"),
+    { targetStatus: "ACCEPTED", shouldReconcile: true },
+  );
+  assert.deepEqual(
+    planSiiStatusReconciliation(
+      "SUBMITTED",
+      "accepted_with_observations",
+    ),
+    { targetStatus: "ACCEPTED_WITH_OBJECTIONS", shouldReconcile: true },
+  );
+  assert.deepEqual(
+    planSiiStatusReconciliation("SUBMITTED", "rejected"),
+    { targetStatus: "REJECTED", shouldReconcile: true },
+  );
+  assert.deepEqual(
+    planSiiStatusReconciliation("SUBMITTED", "processing"),
+    { targetStatus: "SUBMITTED", shouldReconcile: false },
+  );
+});
