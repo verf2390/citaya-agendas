@@ -7,6 +7,11 @@ const migration = readFileSync(
   "utf8",
 );
 
+const documentPathMigration = readFileSync(
+  "migrations/202608220001_prevent_automatic_payment_manual_draft.sql",
+  "utf8",
+);
+
 const mode = readFileSync(
   "lib/tenant/operational-mode.mjs",
   "utf8",
@@ -132,4 +137,75 @@ test("[security] admin explicitly confirms receipt of bank transfer", () => {
   );
   assert.match(page, /Confirmar transferencia recibida/);
   assert.match(page, /window\.confirm/);
+});
+
+test("[security] automatic verified payments use one document path", () => {
+  const automaticDecision =
+    documentPathMigration.match(
+      /create or replace function public\.billing_verified_payment_uses_automatic_dte[\s\S]*?\n\$\$;/,
+    )?.[0] ?? "";
+
+  assert.match(
+    automaticDecision,
+    /create or replace function public\.billing_verified_payment_uses_automatic_dte/,
+  );
+  assert.match(
+    automaticDecision,
+    /p_provider in \('khipu','webpay','mercadopago'\)/,
+  );
+  assert.match(
+    automaticDecision,
+    /citaya\.manual_transfer_tenant_id/,
+  );
+  assert.match(
+    automaticDecision,
+    /issuance_mode = 'automatic_on_verified_payment'[\s\S]*production_enabled = true/,
+  );
+  assert.match(
+    automaticDecision,
+    /from public\.dte_production_tenant_settings production_settings[\s\S]*production_settings\.enabled = true[\s\S]*production_settings\.issuance_mode = 'automatic'/,
+  );
+  assert.doesNotMatch(
+    automaticDecision,
+    /sii_authorization_status|authorized_types|dte_legal_activation|caf_ready|folio_ready/,
+  );
+  assert.match(
+    automaticDecision,
+    /billing_sale_item_document_coverage[\s\S]*c\.amount_range && a\.amount_range/,
+  );
+  assert.match(
+    automaticDecision,
+    /dte_payment_document_policy_decision/,
+  );
+  assert.match(
+    documentPathMigration,
+    /if not automatic_dte then[\s\S]*billing_create_payment_review_document/,
+  );
+  assert.match(
+    documentPathMigration,
+    /if automatic_dte and p_provider in \('khipu','webpay','mercadopago'\) then[\s\S]*dte_enqueue_payment_snapshot/,
+  );
+  assert.doesNotMatch(
+    documentPathMigration,
+    /delete\s+from\s+public\.dte_invoice_drafts|truncate\s+public\.dte_invoice_drafts/i,
+  );
+});
+
+test("[security] voucher and manual review remain outside automatic DTE", () => {
+  assert.match(
+    documentPathMigration,
+    /decision->>'action' not in \('ISSUE_FACTURA_33','ISSUE_BOLETA_39'\)/,
+  );
+  assert.match(
+    documentPathMigration,
+    /uncovered = 0 or uncovered <> sale_payment\.amount/,
+  );
+  assert.match(
+    documentPathMigration,
+    /sale\.requested_document_type = 33 and not exists/,
+  );
+  assert.match(
+    documentPathMigration,
+    /if public\.billing_verified_payment_uses_automatic_dte\([\s\S]*'manual',[\s\S]*method_classification[\s\S]*then[\s\S]*'manual_verified'/,
+  );
 });
