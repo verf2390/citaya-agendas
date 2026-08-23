@@ -10,7 +10,10 @@ import {
 } from "../certification/boleta39-rest-api";
 import { SiiBoletaApiTransport } from "../production/boleta-api-transport";
 import type { ProductionRuntimeConfig } from "../production/config";
-import type { ProductionSiiMilestone } from "../production/sii-client";
+import {
+  ProductionSiiClient,
+  type ProductionSiiMilestone,
+} from "../production/sii-client";
 import {
   requestProductionBoletaStatusToken,
   requestProductionStatusTokenForDteType,
@@ -24,6 +27,95 @@ const seedXml =
 const tokenXml =
   "<RESPUESTA><RESP_HDR><ESTADO>00</ESTADO></RESP_HDR>" +
   `<RESP_BODY><TOKEN>${REST_TOKEN}</TOKEN></RESP_BODY></RESPUESTA>`;
+
+function statusQueryConfig(): ProductionRuntimeConfig {
+  return {
+    enabled: true,
+    environment: "production",
+    signingMode: "production",
+    seedUrl: "https://seed.example.invalid",
+    tokenUrl: "https://token.example.invalid",
+    uploadUrl: "https://upload.example.invalid",
+    statusUrl: "https://status.example.invalid",
+    storageBucket: "dte-production-private",
+    cafRoot: "/tmp/citaya-status-test/caf",
+    certificateRoot: "/tmp/citaya-status-test/certificate",
+    privateKeyRoot: "/tmp/citaya-status-test/key",
+    timeoutMs: 2_000,
+  };
+}
+
+async function queryDte33Status(rawResponse: string, token = "STATUS_TOKEN_SECRET") {
+  const milestones: string[] = [];
+  const client = new ProductionSiiClient(
+    statusQueryConfig(),
+    async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("cookie"), `TOKEN=${token}`);
+      return new Response(rawResponse, {
+        status: 200,
+        headers: { "Content-Type": "application/xml" },
+      });
+    },
+  );
+  const result = await client.queryStatusManually({
+    trackId: "1234567890",
+    token,
+    milestone: async (event) => {
+      milestones.push(event);
+    },
+  });
+  assert.deepEqual(milestones, ["status_before_fetch", "status_after_fetch"]);
+  return result;
+}
+
+test("DTE 33 manual status keeps known SII states canonical", async () => {
+  const result = await queryDte33Status(
+    "<RESPUESTA><ESTADO>EPR</ESTADO><GLOSA>Procesado</GLOSA></RESPUESTA>",
+  );
+  assert.equal(result.siiStatus, "accepted");
+  assert.equal(result.responseSafe.siiStatus, "accepted");
+  assert.equal("responseBytes" in result, false);
+});
+
+test("DTE 33 manual status exposes only a short allowlisted unknown code", async () => {
+  const result = await queryDte33Status(
+    "<RESPUESTA><ESTADO>NO_SE</ESTADO><GLOSA>Sin clasificar</GLOSA></RESPUESTA>",
+  );
+  assert.equal(result.siiStatus, "DTE_SII_STATUS_UNKNOWN_NO_SE");
+  assert.equal(
+    result.responseSafe.siiStatus,
+    "DTE_SII_STATUS_UNKNOWN_NO_SE",
+  );
+  assert.equal("responseBytes" in result, false);
+});
+
+test("DTE 33 manual status collapses unsafe unknown content without leakage", async () => {
+  const token = "STATUS_TOKEN_SECRET";
+  const sensitive = [
+    token,
+    "COOKIE_SECRET",
+    "BODY_XML_SECRET",
+    "PRIVATE KEY",
+    "CERTIFICATE",
+    "12.345.678-5",
+    "https://sensitive.example.invalid/status?token=secret",
+    "Error: sensitive stack",
+  ];
+  const rawResponse =
+    `<RESPUESTA><ESTADO>TOKEN=${token}</ESTADO>` +
+    `<GLOSA>${sensitive.join(" ")}</GLOSA></RESPUESTA>`;
+  const result = await queryDte33Status(rawResponse, token);
+  assert.equal(result.siiStatus, "DTE_SII_STATUS_UNKNOWN");
+  assert.equal(result.responseSafe.siiStatus, "DTE_SII_STATUS_UNKNOWN");
+  assert.equal("responseBytes" in result, false);
+
+  const exposed = JSON.stringify(result);
+  for (const value of sensitive) {
+    assert.equal(exposed.includes(value), false, value);
+  }
+  assert.equal(exposed.includes(rawResponse), false);
+});
 
 function signingFixture(): {
   root: string;

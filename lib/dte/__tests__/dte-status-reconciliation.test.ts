@@ -5,7 +5,10 @@ import {
   friendlyDteStatus,
   planSiiStatusReconciliation,
 } from "../cutover";
-import { parseSiiStatusResponse } from "../sii/sii-status";
+import {
+  parseSiiStatusResponse,
+  safeUnknownSiiStatusCode,
+} from "../sii/sii-status";
 
 test("EPR accepted status is labeled and reconciled idempotently without fiscal mutations", () => {
   const response = parseSiiStatusResponse(
@@ -91,6 +94,27 @@ test("normalized manual Boleta statuses reconcile terminal results and keep proc
   );
   assert.deepEqual(
     planSiiStatusReconciliation("SUBMITTED", "unknown"),
+    { targetStatus: "SUBMITTED", shouldReconcile: false },
+  );
+});
+
+test("unknown DTE 33 diagnostics are safe and never reconcile the intent", () => {
+  const safeUnknown = safeUnknownSiiStatusCode("NO_SE");
+  assert.equal(safeUnknown, "DTE_SII_STATUS_UNKNOWN_NO_SE");
+  assert.equal(
+    safeUnknownSiiStatusCode("TOKEN=secret https://example.invalid PRIVATE KEY"),
+    "DTE_SII_STATUS_UNKNOWN",
+  );
+  assert.equal(
+    safeUnknownSiiStatusCode("12345678"),
+    "DTE_SII_STATUS_UNKNOWN",
+  );
+  assert.equal(
+    safeUnknownSiiStatusCode("999999-K"),
+    "DTE_SII_STATUS_UNKNOWN",
+  );
+  assert.deepEqual(
+    planSiiStatusReconciliation("SUBMITTED", safeUnknown),
     { targetStatus: "SUBMITTED", shouldReconcile: false },
   );
 });

@@ -93,6 +93,17 @@ export function mapRawSiiStatus(status: string): SiiCertificationStatus {
   return "unknown";
 }
 
+export function safeUnknownSiiStatusCode(rawStatus: unknown): string {
+  const token = String(rawStatus ?? "").trim().toUpperCase();
+  if (
+    !/^[A-Z0-9_-]{1,8}$/.test(token) ||
+    /\d{5}/.test(token)
+  ) {
+    return "DTE_SII_STATUS_UNKNOWN";
+  }
+  return `DTE_SII_STATUS_UNKNOWN_${token}`;
+}
+
 export function mapSiiStatusToInternalStatus(
   status: SiiCertificationStatus,
 ): DteOperationalStatus {

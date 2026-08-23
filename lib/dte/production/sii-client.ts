@@ -7,7 +7,10 @@ import {
   parseTokenSoapResponse,
   signSiiSeedXml,
 } from "../sii/sii-auth";
-import { parseSiiStatusResponse } from "../sii/sii-status";
+import {
+  parseSiiStatusResponse,
+  safeUnknownSiiStatusCode,
+} from "../sii/sii-status";
 import type { ProductionRuntimeConfig } from "./config";
 import { loadValidatedProductionSigningMaterial } from "./signing-material";
 
@@ -316,13 +319,16 @@ export class ProductionSiiClient implements IProductionSiiClient {
     const raw = await response.text();
     await input.milestone("status_after_fetch");
     const parsed = parseSiiStatusResponse(raw);
+    const siiStatus = parsed.status === "unknown"
+      ? safeUnknownSiiStatusCode(parsed.rawStatus)
+      : parsed.status;
     const responseSafe = {
       ...safeResponse({
         httpStatus: response.status,
         contentType: response.headers.get("content-type"),
         bytes: Buffer.byteLength(raw),
         category: "manual_status",
-        siiStatus: parsed.status,
+        siiStatus,
       }),
       informedCount: parsed.informedCount,
       acceptedCount: parsed.acceptedCount,
@@ -331,9 +337,8 @@ export class ProductionSiiClient implements IProductionSiiClient {
     };
     return {
       trackId: input.trackId,
-      siiStatus: parsed.status,
+      siiStatus,
       responseSha256: sha256(raw),
-      responseBytes: Buffer.from(raw, "utf8"),
       responseSafe,
     };
   }
