@@ -47,11 +47,32 @@ function statusQueryConfig(): ProductionRuntimeConfig {
 
 async function queryDte33Status(rawResponse: string, token = "STATUS_TOKEN_SECRET") {
   const milestones: string[] = [];
+  const config = statusQueryConfig();
   const client = new ProductionSiiClient(
-    statusQueryConfig(),
-    async (_input, init) => {
+    config,
+    async (input, init) => {
       const headers = new Headers(init?.headers);
-      assert.equal(headers.get("cookie"), `TOKEN=${token}`);
+      const url = String(input);
+      const body = String(init?.body ?? "");
+      assert.equal(url, config.statusUrl);
+      assert.equal(url.includes("trackId="), false);
+      assert.equal(url.includes(token), false);
+      assert.equal(init?.method, "POST");
+      assert.equal(headers.get("content-type"), "text/xml; charset=utf-8");
+      assert.equal(headers.get("soapaction"), "");
+      assert.equal(headers.get("cookie"), null);
+      assert.match(body, /<SOAP-ENV:Envelope/);
+      assert.match(body, /<m:getEstUp>/);
+      assert.deepEqual(
+        [...body.matchAll(/<([A-Z][A-Za-z]+) xsi:type="xsd:string">/g)]
+          .map((match) => match[1]),
+        ["Rut", "Dv", "TrackId", "Token"],
+      );
+      assert.match(body, /<Rut xsi:type="xsd:string">78195645<\/Rut>/);
+      assert.match(body, /<Dv xsi:type="xsd:string">7<\/Dv>/);
+      assert.match(body, /<TrackId xsi:type="xsd:string">1234567890<\/TrackId>/);
+      assert.equal((body.match(/<Token xsi:type=/g) ?? []).length, 1);
+      assert.equal(body.includes(`<Token xsi:type="xsd:string">${token}</Token>`), true);
       return new Response(rawResponse, {
         status: 200,
         headers: { "Content-Type": "application/xml" },
@@ -61,6 +82,7 @@ async function queryDte33Status(rawResponse: string, token = "STATUS_TOKEN_SECRE
   const result = await client.queryStatusManually({
     trackId: "1234567890",
     token,
+    companyRut: "78.195.645-7",
     milestone: async (event) => {
       milestones.push(event);
     },
@@ -69,13 +91,47 @@ async function queryDte33Status(rawResponse: string, token = "STATUS_TOKEN_SECRE
   return result;
 }
 
-test("DTE 33 manual status keeps known SII states canonical", async () => {
-  const result = await queryDte33Status(
-    "<RESPUESTA><ESTADO>EPR</ESTADO><GLOSA>Procesado</GLOSA></RESPUESTA>",
-  );
-  assert.equal(result.siiStatus, "accepted");
-  assert.equal(result.responseSafe.siiStatus, "accepted");
-  assert.equal("responseBytes" in result, false);
+test("DTE 33 QueryEstUp parses escaped SOAP and nested XML status mappings", async () => {
+  const cases = [
+    {
+      raw:
+        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">' +
+        "<soapenv:Body><getEstUpResponse><getEstUpReturn>" +
+        "&lt;RESPUESTA&gt;&lt;RESP_HDR&gt;&lt;ESTADO&gt;EPR&lt;/ESTADO&gt;" +
+        "&lt;/RESP_HDR&gt;&lt;/RESPUESTA&gt;" +
+        "</getEstUpReturn></getEstUpResponse></soapenv:Body></soapenv:Envelope>",
+      expected: "accepted",
+    },
+    {
+      raw:
+        "<Envelope><Body><getEstUpResponse><getEstUpReturn>" +
+        "<RESPUESTA><RESP_HDR><ESTADO>PDR</ESTADO></RESP_HDR></RESPUESTA>" +
+        "</getEstUpReturn></getEstUpResponse></Body></Envelope>",
+      expected: "processing",
+    },
+    {
+      raw:
+        "<Envelope><Body><getEstUpReturn>" +
+        "&lt;RESPUESTA&gt;&lt;RESP_HDR&gt;&lt;ESTADO&gt;REC&lt;/ESTADO&gt;" +
+        "&lt;/RESP_HDR&gt;&lt;/RESPUESTA&gt;" +
+        "</getEstUpReturn></Body></Envelope>",
+      expected: "sent",
+    },
+    {
+      raw:
+        "<Envelope><Body><getEstUpReturn><RESPUESTA><RESP_HDR>" +
+        "<ESTADO>RCH</ESTADO></RESP_HDR></RESPUESTA>" +
+        "</getEstUpReturn></Body></Envelope>",
+      expected: "rejected",
+    },
+  ] as const;
+
+  for (const item of cases) {
+    const result = await queryDte33Status(item.raw);
+    assert.equal(result.siiStatus, item.expected);
+    assert.equal(result.responseSafe.siiStatus, item.expected);
+    assert.equal("responseBytes" in result, false);
+  }
 });
 
 test("DTE 33 manual status exposes only a short allowlisted unknown code", async () => {
@@ -101,6 +157,7 @@ test("DTE 33 manual status collapses unsafe unknown content without leakage", as
     "12.345.678-5",
     "https://sensitive.example.invalid/status?token=secret",
     "Error: sensitive stack",
+    statusQueryConfig().statusUrl,
   ];
   const rawResponse =
     `<RESPUESTA><ESTADO>TOKEN=${token}</ESTADO>` +

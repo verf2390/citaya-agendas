@@ -85,6 +85,36 @@ function splitRut(rut: string): { rut: string; dv: string } {
   return { rut: match[1], dv: match[2] };
 }
 
+function escapeSoapValue(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function buildQueryEstUpSoapEnvelope(input: {
+  companyRut: string;
+  trackId: string;
+  token: string;
+}): string {
+  const company = splitRut(input.companyRut);
+  const value = (name: string, content: string) =>
+    `<${name} xsi:type="xsd:string">${escapeSoapValue(content)}</${name}>`;
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:m="http://DefaultNamespace" SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">',
+    "<SOAP-ENV:Body>",
+    "<m:getEstUp>",
+    value("Rut", company.rut),
+    value("Dv", company.dv),
+    value("TrackId", input.trackId),
+    value("Token", input.token),
+    "</m:getEstUp>",
+    "</SOAP-ENV:Body>",
+    "</SOAP-ENV:Envelope>",
+  ].join("");
+}
+
 function assertOkAuth(
   response: Response,
   parsed: { estado: string | null; glosa: string | null },
@@ -304,16 +334,23 @@ export class ProductionSiiClient implements IProductionSiiClient {
     trackId: string;
     token: string;
     milestone: (event: ProductionSiiMilestone) => Promise<void>;
+    companyRut?: string;
   }): Promise<ProductionStatusResult> {
-    if (!input.trackId.trim() || !input.token.trim())
+    if (!input.trackId.trim() || !input.token.trim() || !input.companyRut?.trim())
       throw new Error("DTE_MANUAL_STATUS_INPUT_REQUIRED");
+    const body = buildQueryEstUpSoapEnvelope({
+      companyRut: input.companyRut,
+      trackId: input.trackId,
+      token: input.token,
+    });
     await input.milestone("status_before_fetch");
-    const url = `${this.config.statusUrl}${
-      this.config.statusUrl.includes("?") ? "&" : "?"
-    }trackId=${encodeURIComponent(input.trackId)}`;
-    const response = await this.fetchImpl(url, {
-      method: "GET",
-      headers: { cookie: `TOKEN=${input.token}` },
+    const response = await this.fetchImpl(this.config.statusUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "text/xml; charset=utf-8",
+        soapaction: "",
+      },
+      body,
       signal: AbortSignal.timeout(this.config.timeoutMs),
     });
     const raw = await response.text();
