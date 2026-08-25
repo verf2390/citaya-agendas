@@ -9,6 +9,7 @@ type DocumentIntentRow = {
   safe_blocking_reason: string | null;
   production_document_id: string | null;
   trigger_source: string;
+  origin: string;
   receiver_snapshot: { legalName?: string } | null;
   appointment_snapshot: { customerName?: string } | null;
   created_at: string;
@@ -79,7 +80,7 @@ export async function loadAdminDocumentRows(tenantId: string) {
   const [intentsResult, draftsResult] = await Promise.all([
     supabaseAdmin
       .from("dte_payment_document_intents")
-      .select("id,resolved_dte_type,amount_snapshot,status,safe_blocking_reason,production_document_id,trigger_source,receiver_snapshot,appointment_snapshot,created_at")
+      .select("id,resolved_dte_type,amount_snapshot,status,safe_blocking_reason,production_document_id,trigger_source,origin,receiver_snapshot,appointment_snapshot,created_at")
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .limit(20),
@@ -229,6 +230,12 @@ export async function loadAdminDocumentRows(tenantId: string) {
         row.status === "PENDING" &&
         row.trigger_source === "manual_admin" &&
         [33, 39].includes(Number(row.resolved_dte_type)),
+      canProcessAutomatic: !row.production_document_id &&
+        row.status === "PENDING" &&
+        row.origin === "automatic_payment" &&
+        ["khipu", "webpay", "mercadopago", "manual_verified"]
+          .includes(row.trigger_source) &&
+        [33, 39].includes(Number(row.resolved_dte_type)),
     };
   });
   const draftRows = rawDrafts.map((row) => ({
@@ -250,6 +257,7 @@ export async function loadAdminDocumentRows(tenantId: string) {
     canCreateNote: false,
     canEmail: false,
     canProcessManual: false,
+    canProcessAutomatic: false,
   }));
   return [...draftRows, ...intentRows]
     .sort((left, right) => right.date.localeCompare(left.date))

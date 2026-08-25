@@ -21,6 +21,7 @@ import LegalActivationControl from "@/components/admin/dte/LegalActivationContro
 import AuthorizationEvidencePanel from "@/components/admin/dte/AuthorizationEvidencePanel";
 import DteNoteActions from "@/components/admin/dte/DteNoteActions";
 import DteDocumentActions from "@/components/admin/dte/DteDocumentActions";
+import AutomaticPendingDteAction from "@/components/admin/dte/AutomaticPendingDteAction";
 import ManualPendingBoletaAction from "@/components/admin/dte/ManualPendingBoletaAction";
 import DeclarationReadinessCard, {
   type DeclarationReadinessState,
@@ -54,6 +55,7 @@ type DocumentRow = {
   canCreateNote: boolean;
   canEmail: boolean;
   canProcessManual: boolean;
+  canProcessAutomatic: boolean;
 };
 type BillingView = "summary" | "new" | "documents" | "settings" | "diagnostics";
 type DocumentFilter = "current" | "canceled" | "all";
@@ -600,6 +602,8 @@ export default function AdminFacturacionPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     {document.productionDocumentId ? (
                       <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} canQuery={document.canQuery} onUpdated={() => void refreshDocuments()} />
+                    ) : document.canProcessAutomatic && [33, 39].includes(Number(document.type)) ? (
+                      <AutomaticPendingDteAction intentId={document.id} dteType={Number(document.type) as 33 | 39} onProcessed={() => void refreshDocuments()} />
                     ) : document.canProcessManual && [33, 39].includes(Number(document.type)) ? (
                       <ManualPendingBoletaAction intentId={document.id} dteType={Number(document.type) as 33 | 39} onProcessed={() => void refreshDocuments()} />
                     ) : document.folio === null && !["CANCELED", "QUEUED", "PENDING", "PREPARING", "SUBMITTING", "SUBMITTED", "ACCEPTED", "REJECTED"].includes(document.rawStatus) ? (
@@ -638,6 +642,8 @@ export default function AdminFacturacionPage() {
                       <div className="flex flex-wrap gap-2">
                         {document.productionDocumentId ? (
                           <DteDocumentActions intentId={document.id} productionDocumentId={document.productionDocumentId} canViewTrackId={document.canView} canDownloadXml={document.canDownloadXml} canDownloadPdf={document.canDownloadPdf} canEmail={document.canEmail} canQuery={document.canQuery} onUpdated={() => void refreshDocuments()} />
+                        ) : document.canProcessAutomatic && [33, 39].includes(Number(document.type)) ? (
+                          <AutomaticPendingDteAction intentId={document.id} dteType={Number(document.type) as 33 | 39} onProcessed={() => void refreshDocuments()} />
                         ) : document.canProcessManual && [33, 39].includes(Number(document.type)) ? (
                           <ManualPendingBoletaAction intentId={document.id} dteType={Number(document.type) as 33 | 39} onProcessed={() => void refreshDocuments()} />
                         ) : document.folio === null && !["CANCELED", "QUEUED", "PENDING", "PREPARING", "SUBMITTING", "SUBMITTED", "ACCEPTED", "REJECTED"].includes(document.rawStatus) ? (
