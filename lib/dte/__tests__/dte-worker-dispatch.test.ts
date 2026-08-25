@@ -55,7 +55,7 @@ test("automatic worker is fail-closed and does not claim when its flag is absent
       claimAutomatic: async () => { claims += 1; return automaticItem; },
       processClaimed: async () => processed,
     };
-    const result = await runOneAutomaticIssuanceWorker(dependencies);
+    const result = await runOneAutomaticIssuanceWorker({}, dependencies);
     assert.equal(result.status, "DISABLED");
     assert.equal(claims, 0);
   } finally {
@@ -66,20 +66,55 @@ test("automatic worker is fail-closed and does not claim when its flag is absent
 test("manual and explicitly enabled automatic dispatch use the same claimed-item engine", async () => {
   const restore = preserveWorkerEnv();
   const processedOrigins: string[] = [];
+  const claimedTargets: Array<string | undefined> = [];
   try {
     process.env.DTE_PRODUCTION_ENABLED = "true";
     process.env.DTE_AUTOMATIC_WORKER_ENABLED = "true";
     const dependencies: DteWorkerDependencies = {
       claimManual: async () => manualItem,
-      claimAutomatic: async () => automaticItem,
+      claimAutomatic: async (options) => {
+        claimedTargets.push(options.automaticTargetOutboxId);
+        return automaticItem;
+      },
       processClaimed: async (item) => {
         processedOrigins.push(String(item.issuance_origin));
         return processed;
       },
     };
     assert.deepEqual(await runOneManualIssuanceWorker({}, dependencies), processed);
-    assert.deepEqual(await runOneAutomaticIssuanceWorker(dependencies), processed);
+    assert.deepEqual(await runOneAutomaticIssuanceWorker({
+      automaticTargetOutboxId: automaticItem.id,
+    }, dependencies), processed);
     assert.deepEqual(processedOrigins, ["manual_admin", "automatic_system"]);
+    assert.deepEqual(claimedTargets, [automaticItem.id]);
+  } finally {
+    restore();
+  }
+});
+
+test("automatic target presence is fail-closed and never degrades to a global claim", async () => {
+  const restore = preserveWorkerEnv();
+  let claims = 0;
+  try {
+    process.env.DTE_PRODUCTION_ENABLED = "true";
+    process.env.DTE_AUTOMATIC_WORKER_ENABLED = "true";
+    const dependencies: DteWorkerDependencies = {
+      claimManual: async () => null,
+      claimAutomatic: async () => { claims += 1; return null; },
+      processClaimed: async () => processed,
+    };
+    await assert.rejects(
+      runOneAutomaticIssuanceWorker({ automaticTargetOutboxId: "" }, dependencies),
+      /DTE_AUTOMATIC_TARGET_OUTBOX_INVALID/,
+    );
+    await assert.rejects(
+      runOneAutomaticIssuanceWorker(
+        { automaticTargetOutboxId: 42 } as unknown as { automaticTargetOutboxId: string },
+        dependencies,
+      ),
+      /DTE_AUTOMATIC_TARGET_OUTBOX_INVALID/,
+    );
+    assert.equal(claims, 0);
   } finally {
     restore();
   }

@@ -7,6 +7,9 @@ import test from "node:test";
 const migrationPath =
   "migrations/202608110003_enable_automatic_dte_enqueue_and_claim.sql";
 const migration = readFileSync(migrationPath, "utf8");
+const hardeningPath =
+  "migrations/202608240001_dte_automatic_worker_canary_fencing.sql";
+const hardening = readFileSync(hardeningPath, "utf8");
 const bookingRoute = readFileSync("app/api/appointments/create/route.ts", "utf8");
 const cutover = readFileSync("lib/dte/cutover.ts", "utf8");
 const manualClaim = readFileSync(
@@ -73,10 +76,25 @@ test("automatic DTE migration source is fail-closed, separated from manual, and 
   );
 });
 
+test("automatic worker hardening has exact canary, gate and crash fences", () => {
+  assert.match(hardening, /dte_claim_automatic_issuance_outbox_exact/);
+  assert.match(hardening, /DTE_AUTOMATIC_TARGET_NOT_ELIGIBLE/);
+  assert.match(hardening, /dte_automatic_issuance_gate_open/);
+  assert.match(hardening, /AUTOMATIC_GATE_CLOSED_PRE_NETWORK/);
+  assert.match(hardening, /PRE_NETWORK_CRASH_STATE_PRESERVED/);
+  assert.match(hardening, /i\.production_document_id is null/);
+  assert.match(hardening, /i\.resolved_dte_type in \(33,39\)/);
+  assert.doesNotMatch(hardening, /i\.resolved_dte_type in \(33,39,41\)/);
+});
+
 const bootstrap = String.raw`
 create extension if not exists pgcrypto;
 
-create table public.tenants(id uuid primary key);
+create table public.tenants(
+  id uuid primary key,
+  lifecycle_status text not null default 'active',
+  operational_mode text not null default 'live'
+);
 create table public.customers(
   id uuid primary key,
   tenant_id uuid not null,
@@ -266,9 +284,11 @@ create table public.dte_production_documents(
   sii_status text
 );
 create table public.dte_production_submission_attempts(
+  id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
   document_id uuid not null,
-  before_fetch_at timestamptz
+  before_fetch_at timestamptz,
+  status text not null default 'persisted'
 );
 create table public.billing_sales(
   id uuid primary key,
@@ -314,7 +334,8 @@ create table public.billing_sale_payments(
   status text,
   validation_result text,
   evidence_sha256 text,
-  reconciliation_status text
+  reconciliation_status text,
+  verified_by uuid
 );
 create table public.billing_payment_schedule_events(
   tenant_id uuid,
@@ -326,6 +347,12 @@ create or replace function public.payment_audit_metadata_minimal(text,jsonb)
 returns jsonb language sql immutable set search_path=public as $$select '{}'::jsonb$$;
 create or replace function public.billing_create_payment_review_document(uuid,uuid,uuid,uuid,text,text)
 returns uuid language sql set search_path=public as $$select gen_random_uuid()$$;
+create or replace function public.dte_tenant_operational_readiness(uuid)
+returns table(ready_for_issuance boolean)
+language sql set search_path=public as $$select true$$;
+create or replace function public.dte_activation_gate_report(uuid,integer,boolean)
+returns jsonb
+language sql set search_path=public as $$select '{"ready":true}'::jsonb$$;
 create or replace function public.test_complete_automatic_intent()
 returns trigger language plpgsql set search_path=public as $$
 begin
@@ -448,8 +475,9 @@ begin
   values(document_id_value,tenant_id_value,'prepared');
   update public.dte_payment_document_intents set production_document_id=document_id_value
    where id=second_intent;
-  insert into public.dte_production_submission_attempts
-  values(tenant_id_value,document_id_value,now());
+  insert into public.dte_production_submission_attempts(
+    tenant_id,document_id,before_fetch_at,status
+  ) values(tenant_id_value,document_id_value,now(),'uploading');
   update public.dte_issuance_outbox set lease_expires_at=now()-interval '1 minute'
    where id=claimed.id;
   perform public.dte_claim_automatic_issuance_outbox('automatic-worker-4');
@@ -562,6 +590,375 @@ select 'DTE_AUTOMATIC_SQL_ASSERTIONS_PASSED=19';
 rollback;
 `;
 
+const hardeningAssertions = String.raw`
+begin;
+do $$
+declare
+  tenant_id_value constant uuid := '11000000-0000-4000-8000-000000000001';
+  auto_a constant uuid := '21000000-0000-4000-8000-000000000001';
+  auto_b constant uuid := '21000000-0000-4000-8000-000000000002';
+  auto_crash constant uuid := '21000000-0000-4000-8000-000000000003';
+  auto_ambiguous constant uuid := '21000000-0000-4000-8000-000000000004';
+  auto_pre_gate constant uuid := '21000000-0000-4000-8000-000000000005';
+  auto_post_gate constant uuid := '21000000-0000-4000-8000-000000000006';
+  auto_mid_gate constant uuid := '21000000-0000-4000-8000-000000000007';
+  auto_operational_gate constant uuid := '21000000-0000-4000-8000-000000000008';
+  manual_intent constant uuid := '31000000-0000-4000-8000-000000000001';
+  outbox_a constant uuid := '41000000-0000-4000-8000-000000000001';
+  outbox_b constant uuid := '41000000-0000-4000-8000-000000000002';
+  outbox_crash constant uuid := '41000000-0000-4000-8000-000000000003';
+  outbox_ambiguous constant uuid := '41000000-0000-4000-8000-000000000004';
+  outbox_pre_gate constant uuid := '41000000-0000-4000-8000-000000000005';
+  outbox_post_gate constant uuid := '41000000-0000-4000-8000-000000000006';
+  outbox_mid_gate constant uuid := '41000000-0000-4000-8000-000000000007';
+  outbox_operational_gate constant uuid := '41000000-0000-4000-8000-000000000008';
+  manual_outbox constant uuid := '51000000-0000-4000-8000-000000000001';
+  crash_document constant uuid := '61000000-0000-4000-8000-000000000001';
+  ambiguous_document constant uuid := '61000000-0000-4000-8000-000000000002';
+  post_document constant uuid := '61000000-0000-4000-8000-000000000003';
+  mid_document constant uuid := '61000000-0000-4000-8000-000000000004';
+  crash_attempt constant uuid := '71000000-0000-4000-8000-000000000001';
+  ambiguous_attempt constant uuid := '71000000-0000-4000-8000-000000000002';
+  post_attempt constant uuid := '71000000-0000-4000-8000-000000000003';
+  mid_attempt constant uuid := '71000000-0000-4000-8000-000000000004';
+  claimed public.dte_issuance_outbox%rowtype;
+  row_count_value integer;
+  mutation_ok boolean;
+begin
+  insert into public.tenants values(tenant_id_value);
+  insert into public.dte_tenant_issuance_settings values(
+    tenant_id_value,'automatic_on_verified_payment','39',true,true,'approved',
+    true,now()+interval '30 days',true,true,true,true,true,true,'enabled'
+  );
+  insert into public.dte_production_tenant_settings
+  values(tenant_id_value,true,'automatic','approved',array[33,39]);
+  insert into public.dte_legal_activation values
+    (tenant_id_value,33,'active'),(tenant_id_value,39,'active');
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin
+  ) values
+    (auto_a,tenant_id_value,'auto-a','webpay','auto-a','invoice',33,1190,'CLP','{}','PENDING','automatic_payment'),
+    (auto_b,tenant_id_value,'auto-b','webpay','auto-b','invoice',33,1190,'CLP','{}','PENDING','automatic_payment'),
+    (manual_intent,tenant_id_value,'manual-a','manual_admin','manual-a','invoice',33,1190,'CLP','{}','PENDING','manual_appointment');
+  insert into public.dte_issuance_outbox(id,tenant_id,intent_id,status,issuance_origin)
+  values
+    (outbox_a,tenant_id_value,auto_a,'PENDING','automatic_system'),
+    (outbox_b,tenant_id_value,auto_b,'PENDING','automatic_system'),
+    (manual_outbox,tenant_id_value,manual_intent,'PENDING','manual_admin');
+
+  begin
+    perform public.dte_claim_automatic_issuance_outbox_exact(
+      'auto-invalid','99999999-9999-4999-8999-999999999999'
+    );
+    raise exception 'INVALID_TARGET_WAS_ACCEPTED';
+  exception when others then
+    if sqlerrm not like '%DTE_AUTOMATIC_TARGET_NOT_ELIGIBLE%' then raise; end if;
+  end;
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id in (outbox_a,outbox_b) and status='PENDING';
+  if row_count_value <> 2 then raise exception 'INVALID_TARGET_FELL_BACK'; end if;
+
+  begin
+    perform public.dte_claim_automatic_issuance_outbox_exact(
+      'auto-manual',manual_outbox
+    );
+    raise exception 'MANUAL_ORIGIN_WAS_ACCEPTED';
+  exception when others then
+    if sqlerrm not like '%DTE_AUTOMATIC_TARGET_NOT_ELIGIBLE%' then raise; end if;
+  end;
+
+  select * into claimed
+    from public.dte_claim_automatic_issuance_outbox_exact('auto-target-b',outbox_b);
+  if claimed.id <> outbox_b or claimed.intent_id <> auto_b then
+    raise exception 'EXACT_TARGET_CLAIMED_WRONG_ROW';
+  end if;
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id=outbox_a and status='PENDING';
+  if row_count_value <> 1 then raise exception 'EXACT_TARGET_CLAIMED_OLDEST'; end if;
+  begin
+    perform public.dte_claim_automatic_issuance_outbox_exact(
+      'auto-target-b-race',outbox_b
+    );
+    raise exception 'EXACT_TARGET_DOUBLE_CLAIMED';
+  exception when others then
+    if sqlerrm not like '%DTE_AUTOMATIC_TARGET_NOT_ELIGIBLE%' then raise; end if;
+  end;
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where tenant_id=tenant_id_value and status='PROCESSING';
+  if row_count_value <> 1 then raise exception 'CONCURRENT_CLAIM_FENCE_FAILED'; end if;
+
+  update public.dte_issuance_outbox
+     set lease_expires_at=now()-interval '1 minute'
+   where id=outbox_b;
+  perform public.dte_claim_manual_issuance_outbox('manual-isolation');
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id=outbox_b and status='PROCESSING' and claim_token is not null;
+  if row_count_value <> 1 then raise exception 'MANUAL_STALE_TOUCHED_AUTOMATIC'; end if;
+
+  perform public.dte_claim_automatic_issuance_outbox('auto-stale-b');
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id=outbox_b and status='BLOCKED'
+     and last_safe_error='WORKER_LEASE_EXPIRED'
+     and locked_by is null and claim_token is null and lease_expires_at is null;
+  if row_count_value <> 1 then raise exception 'AUTOMATIC_STALE_NOT_BLOCKED'; end if;
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id=outbox_a and status='PROCESSING';
+  if row_count_value <> 1 then raise exception 'GLOBAL_CLAIM_DID_NOT_TAKE_REMAINING_AUTO'; end if;
+  update public.dte_issuance_outbox
+     set lease_expires_at=now()-interval '1 minute'
+   where id=outbox_a;
+  perform public.dte_claim_automatic_issuance_outbox('auto-stale-a');
+
+  select * into claimed
+    from public.dte_claim_manual_issuance_outbox('manual-claim');
+  if claimed.id <> manual_outbox then raise exception 'MANUAL_CLAIM_FAILED'; end if;
+  update public.dte_issuance_outbox
+     set lease_expires_at=now()-interval '1 minute'
+   where id=manual_outbox;
+  perform public.dte_claim_automatic_issuance_outbox('auto-manual-stale-isolation');
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id=manual_outbox and status='PROCESSING';
+  if row_count_value <> 1 then raise exception 'AUTOMATIC_STALE_TOUCHED_MANUAL'; end if;
+  perform public.dte_claim_manual_issuance_outbox('manual-stale-owner');
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin,
+    production_document_id
+  ) values(
+    auto_crash,tenant_id_value,'auto-crash','webpay','auto-crash','invoice',
+    33,1190,'CLP','{}','SUBMITTING','automatic_payment',crash_document
+  );
+  insert into public.dte_production_documents(id,tenant_id,status)
+  values(crash_document,tenant_id_value,'ready');
+  insert into public.dte_production_submission_attempts(
+    id,tenant_id,document_id,before_fetch_at,status
+  ) values(crash_attempt,tenant_id_value,crash_document,null,'persisted');
+  insert into public.dte_issuance_outbox(
+    id,tenant_id,intent_id,status,issuance_origin,locked_by,claim_token,
+    lease_expires_at
+  ) values(
+    outbox_crash,tenant_id_value,auto_crash,'PROCESSING','automatic_system',
+    'crashed-auto','81000000-0000-4000-8000-000000000001',
+    now()-interval '1 minute'
+  );
+  perform public.dte_claim_automatic_issuance_outbox('auto-crash-recovery');
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox o
+    join public.dte_payment_document_intents i on i.id=o.intent_id
+   where o.id=outbox_crash and o.status='BLOCKED' and i.status='BLOCKED'
+     and o.last_safe_error='PRE_NETWORK_CRASH_STATE_PRESERVED'
+     and i.safe_blocking_reason='PRE_NETWORK_CRASH_STATE_PRESERVED';
+  if row_count_value <> 1 then raise exception 'PRE_NETWORK_CRASH_NOT_PRESERVED'; end if;
+  mutation_ok := public.dte_retry_blocked_issuance(tenant_id_value,auto_crash);
+  if mutation_ok then raise exception 'PRE_NETWORK_CRASH_WAS_REQUEUED'; end if;
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin,
+    production_document_id,network_attempt_count
+  ) values(
+    auto_ambiguous,tenant_id_value,'auto-ambiguous','webpay','auto-ambiguous',
+    'invoice',33,1190,'CLP','{}','SUBMITTING','automatic_payment',
+    ambiguous_document,1
+  );
+  insert into public.dte_production_documents(id,tenant_id,status)
+  values(ambiguous_document,tenant_id_value,'ready');
+  insert into public.dte_production_submission_attempts(
+    id,tenant_id,document_id,before_fetch_at,status
+  ) values(ambiguous_attempt,tenant_id_value,ambiguous_document,now(),'uploading');
+  insert into public.dte_issuance_outbox(
+    id,tenant_id,intent_id,status,issuance_origin,locked_by,claim_token,
+    lease_expires_at,network_attempts
+  ) values(
+    outbox_ambiguous,tenant_id_value,auto_ambiguous,'PROCESSING','automatic_system',
+    'ambiguous-auto','81000000-0000-4000-8000-000000000002',
+    now()-interval '1 minute',1
+  );
+  perform public.dte_claim_automatic_issuance_outbox('auto-ambiguous-recovery');
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox o
+    join public.dte_payment_document_intents i on i.id=o.intent_id
+   where o.id=outbox_ambiguous and o.status='AMBIGUOUS' and i.status='AMBIGUOUS'
+     and o.last_safe_error='NETWORK_RESULT_UNKNOWN';
+  if row_count_value <> 1 then raise exception 'NETWORK_STATE_NOT_AMBIGUOUS'; end if;
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin
+  ) values(
+    auto_pre_gate,tenant_id_value,'auto-pre-gate','webpay','auto-pre-gate',
+    'invoice',33,1190,'CLP','{}','PENDING','automatic_payment'
+  );
+  insert into public.dte_issuance_outbox(id,tenant_id,intent_id,status,issuance_origin)
+  values(outbox_pre_gate,tenant_id_value,auto_pre_gate,'PENDING','automatic_system');
+  select * into claimed from public.dte_claim_automatic_issuance_outbox_exact(
+    'auto-pre-gate-worker',outbox_pre_gate
+  );
+  update public.dte_tenant_issuance_settings
+     set issuance_mode='manual' where tenant_id=tenant_id_value;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'RENEW'
+  );
+  if mutation_ok then raise exception 'PRE_NETWORK_GATE_ALLOWED_MUTATION'; end if;
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox o
+    join public.dte_payment_document_intents i on i.id=o.intent_id
+   where o.id=outbox_pre_gate and o.status='BLOCKED' and i.status='BLOCKED'
+     and o.network_attempts=0 and i.network_attempt_count=0
+     and o.last_safe_error='AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+     and o.claim_token is null;
+  if row_count_value <> 1 then raise exception 'PRE_NETWORK_GATE_DID_NOT_BLOCK'; end if;
+  update public.dte_tenant_issuance_settings
+     set issuance_mode='automatic_on_verified_payment' where tenant_id=tenant_id_value;
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin
+  ) values(
+    auto_operational_gate,tenant_id_value,'auto-operational-gate','webpay',
+    'auto-operational-gate','invoice',33,1190,'CLP','{}','PENDING','automatic_payment'
+  );
+  insert into public.dte_issuance_outbox(id,tenant_id,intent_id,status,issuance_origin)
+  values(
+    outbox_operational_gate,tenant_id_value,auto_operational_gate,
+    'PENDING','automatic_system'
+  );
+  select * into claimed from public.dte_claim_automatic_issuance_outbox_exact(
+    'auto-operational-gate-worker',outbox_operational_gate
+  );
+  update public.tenants set operational_mode='demo' where id=tenant_id_value;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'RENEW'
+  );
+  if mutation_ok then raise exception 'OPERATIONAL_MODE_GATE_ALLOWED_MUTATION'; end if;
+  select count(*) into row_count_value from public.dte_issuance_outbox
+   where id=outbox_operational_gate and status='BLOCKED'
+     and network_attempts=0 and last_safe_error='AUTOMATIC_GATE_CLOSED_PRE_NETWORK';
+  if row_count_value <> 1 then raise exception 'OPERATIONAL_MODE_GATE_DID_NOT_BLOCK'; end if;
+  update public.tenants set operational_mode='live' where id=tenant_id_value;
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin
+  ) values(
+    auto_mid_gate,tenant_id_value,'auto-mid-gate','webpay','auto-mid-gate',
+    'invoice',33,1190,'CLP','{}','PENDING','automatic_payment'
+  );
+  insert into public.dte_issuance_outbox(id,tenant_id,intent_id,status,issuance_origin)
+  values(outbox_mid_gate,tenant_id_value,auto_mid_gate,'PENDING','automatic_system');
+  insert into public.dte_production_documents(id,tenant_id,status)
+  values(mid_document,tenant_id_value,'ready');
+  select * into claimed from public.dte_claim_automatic_issuance_outbox_exact(
+    'auto-mid-gate-worker',outbox_mid_gate
+  );
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'PREPARING',mid_document
+  );
+  if not mutation_ok then raise exception 'MID_GATE_PREPARING_FAILED'; end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'READY',mid_document
+  );
+  if not mutation_ok then raise exception 'MID_GATE_READY_FAILED'; end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'SUBMITTING',mid_document
+  );
+  if not mutation_ok then raise exception 'MID_GATE_SUBMITTING_FAILED'; end if;
+  insert into public.dte_production_submission_attempts(
+    id,tenant_id,document_id,before_fetch_at,status
+  ) values(mid_attempt,tenant_id_value,mid_document,null,'persisted');
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'NETWORK_BOUNDARY',
+    mid_document,null,null,null,null,'{}',mid_attempt,'seed_before_fetch'
+  );
+  if not mutation_ok then raise exception 'MID_GATE_FIRST_BOUNDARY_FAILED'; end if;
+  update public.dte_tenant_issuance_settings
+     set issuance_mode='manual' where tenant_id=tenant_id_value;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'NETWORK_BOUNDARY',
+    mid_document,null,null,null,null,'{}',mid_attempt,'token_before_fetch'
+  );
+  if mutation_ok then raise exception 'MID_GATE_SECOND_BOUNDARY_ALLOWED'; end if;
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox o
+    join public.dte_payment_document_intents i on i.id=o.intent_id
+   where o.id=outbox_mid_gate and o.status='AMBIGUOUS' and i.status='AMBIGUOUS'
+     and o.network_attempts=1 and i.network_attempt_count=1
+     and o.last_safe_error='AUTOMATIC_GATE_CLOSED_POST_NETWORK';
+  if row_count_value <> 1 then raise exception 'MID_GATE_NOT_AMBIGUOUS'; end if;
+  update public.dte_tenant_issuance_settings
+     set issuance_mode='automatic_on_verified_payment' where tenant_id=tenant_id_value;
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin
+  ) values(
+    auto_post_gate,tenant_id_value,'auto-post-gate','webpay','auto-post-gate',
+    'invoice',33,1190,'CLP','{}','PENDING','automatic_payment'
+  );
+  insert into public.dte_issuance_outbox(id,tenant_id,intent_id,status,issuance_origin)
+  values(outbox_post_gate,tenant_id_value,auto_post_gate,'PENDING','automatic_system');
+  insert into public.dte_production_documents(id,tenant_id,status)
+  values(post_document,tenant_id_value,'ready');
+  select * into claimed from public.dte_claim_automatic_issuance_outbox_exact(
+    'auto-post-gate-worker',outbox_post_gate
+  );
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'PREPARING',post_document
+  );
+  if not mutation_ok then raise exception 'PREPARING_MUTATION_FAILED'; end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'READY',post_document
+  );
+  if not mutation_ok then raise exception 'READY_MUTATION_FAILED'; end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'SUBMITTING',post_document
+  );
+  if not mutation_ok then raise exception 'SUBMITTING_MUTATION_FAILED'; end if;
+  insert into public.dte_production_submission_attempts(
+    id,tenant_id,document_id,before_fetch_at,status
+  ) values(post_attempt,tenant_id_value,post_document,null,'persisted');
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'NETWORK_BOUNDARY',
+    post_document,null,null,null,null,'{}',post_attempt,'upload_before_fetch'
+  );
+  if not mutation_ok then raise exception 'NETWORK_BOUNDARY_MUTATION_FAILED'; end if;
+  update public.dte_tenant_issuance_settings
+     set issuance_mode='manual' where tenant_id=tenant_id_value;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'COMPLETE',
+    post_document,'SUBMITTED'
+  );
+  if not mutation_ok then raise exception 'POST_NETWORK_TERMINAL_PERSISTENCE_BLOCKED'; end if;
+  select count(*) into row_count_value
+    from public.dte_issuance_outbox o
+    join public.dte_payment_document_intents i on i.id=o.intent_id
+    join public.dte_production_submission_attempts s
+      on s.document_id=i.production_document_id
+   where o.id=outbox_post_gate and o.status='COMPLETED' and i.status='SUBMITTED'
+     and o.network_attempts=1 and i.network_attempt_count=1
+     and s.before_fetch_at is not null;
+  if row_count_value <> 1 then raise exception 'POST_NETWORK_EVIDENCE_NOT_PERSISTED'; end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'NETWORK_BOUNDARY',
+    post_document,null,null,null,null,'{}',post_attempt,'upload_before_fetch'
+  );
+  if mutation_ok then raise exception 'SECOND_NETWORK_BOUNDARY_ALLOWED'; end if;
+end;
+$$;
+select 'DTE_AUTOMATIC_HARDENING_SQL_ASSERTIONS_PASSED=15';
+rollback;
+`;
+
 test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, actor, and idempotency", () => {
   const database = `citaya_auto_${randomUUID().replaceAll("-", "")}`;
   const create = spawnSync(
@@ -598,12 +995,13 @@ test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, a
         "ON_ERROR_STOP=1",
       ],
       {
-        input: `${bootstrap}\n${manualClaim}\n${migration}\n${assertions}`,
+        input: `${bootstrap}\n${manualClaim}\n${migration}\n${hardening}\n${assertions}\n${hardeningAssertions}`,
         encoding: "utf8",
       },
     );
     assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
     assert.match(run.stdout, /DTE_AUTOMATIC_SQL_ASSERTIONS_PASSED=19/);
+    assert.match(run.stdout, /DTE_AUTOMATIC_HARDENING_SQL_ASSERTIONS_PASSED=15/);
   } finally {
     const drop = spawnSync(
       "docker",

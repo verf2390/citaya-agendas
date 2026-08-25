@@ -30,6 +30,28 @@ export type ManualWorkerOptions = {
   };
 };
 
+export type AutomaticWorkerOptions = {
+  automaticTargetOutboxId?: string;
+};
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function validateAutomaticWorkerOptions(
+  options: AutomaticWorkerOptions,
+): AutomaticWorkerOptions {
+  const rawTarget = (options as { automaticTargetOutboxId?: unknown })
+    .automaticTargetOutboxId;
+  if (rawTarget === undefined) return {};
+  if (typeof rawTarget !== "string") {
+    throw new Error("DTE_AUTOMATIC_TARGET_OUTBOX_INVALID");
+  }
+  const automaticTargetOutboxId = rawTarget.trim();
+  if (!UUID_PATTERN.test(automaticTargetOutboxId)) {
+    throw new Error("DTE_AUTOMATIC_TARGET_OUTBOX_INVALID");
+  }
+  return { automaticTargetOutboxId };
+}
+
 export type DteWorkerResult = {
   processed: boolean;
   status: string | null;
@@ -39,7 +61,7 @@ export type DteWorkerResult = {
 
 export type DteWorkerDependencies = {
   claimManual: (options: ManualWorkerOptions) => Promise<ClaimedOutbox | null>;
-  claimAutomatic: () => Promise<ClaimedOutbox | null>;
+  claimAutomatic: (options: AutomaticWorkerOptions) => Promise<ClaimedOutbox | null>;
   processClaimed: (item: ClaimedOutbox) => Promise<DteWorkerResult>;
 };
 
@@ -112,6 +134,15 @@ function safeFailureDetails(error: unknown): SafeFailureDetails {
 function safeReason(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : "";
   return /^[A-Z][A-Z0-9_:=-]{2,180}$/.test(message) ? message : fallback;
+}
+
+function safeAutomaticReason(error: unknown) {
+  const candidate = error instanceof ProductionPreparationError
+    ? error.code
+    : error instanceof Error ? error.message : "";
+  return /^(?:DTE|SII|BOLETA_API)_[A-Z0-9_]{2,176}$/.test(candidate)
+    ? candidate
+    : "DTE_AUTOMATIC_PREPARATION_FAILED";
 }
 
 function value(record: Record<string, unknown>, key: string) {
@@ -339,11 +370,19 @@ async function claimManualIssuance(options: ManualWorkerOptions): Promise<Claime
   return (Array.isArray(claimed.data) ? claimed.data[0] : null) as ClaimedOutbox | null;
 }
 
-async function claimAutomaticIssuance(): Promise<ClaimedOutbox | null> {
+async function claimAutomaticIssuance(
+  options: AutomaticWorkerOptions,
+): Promise<ClaimedOutbox | null> {
+  const targetOutboxId = options.automaticTargetOutboxId;
   const workerId = `citaya-automatic:${process.pid}:${randomUUID()}`;
-  const claimed = await supabaseAdmin.rpc("dte_claim_automatic_issuance_outbox", {
-    p_worker_id: workerId,
-  });
+  const claimed = targetOutboxId
+    ? await supabaseAdmin.rpc("dte_claim_automatic_issuance_outbox_exact", {
+        p_worker_id: workerId,
+        p_outbox_id: targetOutboxId,
+      })
+    : await supabaseAdmin.rpc("dte_claim_automatic_issuance_outbox", {
+        p_worker_id: workerId,
+      });
   if (claimed.error) throw new Error("DTE_AUTOMATIC_OUTBOX_CLAIM_FAILED");
   const item = (Array.isArray(claimed.data) ? claimed.data[0] : null) as ClaimedOutbox | null;
   if (item && (item.issuance_origin !== "automatic_system" || item.locked_by !== workerId)) {
@@ -614,7 +653,9 @@ export async function processClaimedDteItem(
     }
     return { processed: true, status, siiContacted: true, networkAttempts: 1 };
   } catch (error) {
-    const reason = safeReason(error, "DTE_MANUAL_PREPARATION_FAILED");
+    const reason = automatic
+      ? safeAutomaticReason(error)
+      : safeReason(error, "DTE_MANUAL_PREPARATION_FAILED");
     const productionDocumentId = intent?.production_document_id;
     if (reason === "DTE_AUTOMATIC_CLAIM_FENCED") {
       let siiContacted = false;
@@ -646,8 +687,12 @@ export async function processClaimedDteItem(
         return { processed: true, status: "AMBIGUOUS", siiContacted: true, networkAttempts: 1 };
       }
     }
-    await block(item, reason, Math.min(item.deterministic_attempts + 1, 3),
-      safeFailureDetails(error));
+    await block(
+      item,
+      reason,
+      Math.min(item.deterministic_attempts + 1, 3),
+      automatic ? null : safeFailureDetails(error),
+    );
     return { processed: true, status: "BLOCKED", siiContacted: false, networkAttempts: 0 };
   }
 }
@@ -671,6 +716,7 @@ export async function runOneManualIssuanceWorker(
 }
 
 export async function runOneAutomaticIssuanceWorker(
+  options: AutomaticWorkerOptions = {},
   dependencies: DteWorkerDependencies = defaultWorkerDependencies,
 ): Promise<DteWorkerResult> {
   if (
@@ -679,7 +725,8 @@ export async function runOneAutomaticIssuanceWorker(
   ) {
     return { processed: false, status: "DISABLED", siiContacted: false, networkAttempts: 0 };
   }
-  const item = await dependencies.claimAutomatic();
+  const validatedOptions = validateAutomaticWorkerOptions(options);
+  const item = await dependencies.claimAutomatic(validatedOptions);
   if (!item) return { processed: false, status: null, siiContacted: false, networkAttempts: 0 };
   if (!isAutomaticClaim(item)) throw new Error("DTE_AUTOMATIC_CLAIM_DOMAIN_INVALID");
   return dependencies.processClaimed(item);

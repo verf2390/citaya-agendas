@@ -776,7 +776,7 @@ async function main() {
   ]);
   await seedTenant(client, tenantId, cafs);
 
-  const automaticDefault = await runOneAutomaticIssuanceWorker({
+  const automaticDefault = await runOneAutomaticIssuanceWorker({}, {
     claimManual: async () => { throw new Error("DEFAULT_OFF_CLAIM_CALLED"); },
     claimAutomatic: async () => { throw new Error("DEFAULT_OFF_CLAIM_CALLED"); },
     processClaimed: async () => { throw new Error("DEFAULT_OFF_PROCESS_CALLED"); },

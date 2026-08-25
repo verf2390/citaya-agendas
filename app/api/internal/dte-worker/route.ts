@@ -24,8 +24,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "DTE_WORKER_MODE_INVALID" }, { status: 400 });
     }
     if (mode === "automatic") {
-      const result = await runOneAutomaticIssuanceWorker();
+      if (Object.hasOwn(body ?? {}, "targetOutboxId")) {
+        return NextResponse.json({ ok: false, error: "DTE_WORKER_TARGET_DOMAIN_INVALID" }, { status: 400 });
+      }
+      const hasAutomaticTarget = Object.hasOwn(body ?? {}, "automaticTargetOutboxId");
+      if (hasAutomaticTarget && typeof body.automaticTargetOutboxId !== "string") {
+        return NextResponse.json({ ok: false, error: "DTE_WORKER_TARGET_INVALID" }, { status: 400 });
+      }
+      const automaticTargetOutboxId = hasAutomaticTarget
+        ? body.automaticTargetOutboxId
+        : undefined;
+      const result = await runOneAutomaticIssuanceWorker({ automaticTargetOutboxId });
       return NextResponse.json({ ok: true, result });
+    }
+    if (Object.hasOwn(body ?? {}, "automaticTargetOutboxId")) {
+      return NextResponse.json({ ok: false, error: "DTE_WORKER_TARGET_DOMAIN_INVALID" }, { status: 400 });
     }
     const targetOutboxId = typeof body?.targetOutboxId === "string"
       ? body.targetOutboxId

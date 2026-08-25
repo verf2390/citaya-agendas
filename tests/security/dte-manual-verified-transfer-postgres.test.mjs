@@ -43,20 +43,18 @@ const noDuplicateDraftMigration = readFileSync(
   "utf8",
 );
 
-const schemaAugment = String.raw`
-alter table public.tenants
-  add column lifecycle_status text not null default 'active',
-  add column operational_mode text not null default 'internal';
+const automaticWorkerHardeningMigration = readFileSync(
+  "migrations/202608240001_dte_automatic_worker_canary_fencing.sql",
+  "utf8",
+);
 
+const schemaAugment = String.raw`
 alter table public.payment_intents
   add column idempotency_key text;
 
 alter table public.billing_sales
   add column customer_id uuid,
   add column tax_treatment_status text not null default 'AFFECTED';
-
-alter table public.billing_sale_payments
-  add column verified_by uuid;
 
 alter table public.dte_tenant_issuance_settings
   add column boleta_payment_document_model text
@@ -1335,6 +1333,7 @@ test(
             schemaAugment,
             manualVerifiedMigration,
             noDuplicateDraftMigration,
+            automaticWorkerHardeningMigration,
             triggerSetup,
             assertions,
             policyRegressionAssertions,

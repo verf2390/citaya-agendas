@@ -1,0 +1,13 @@
+[Unit]
+Description=Poll Citaya automatic DTE outbox conservatively
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+RandomizedDelaySec=15s
+Persistent=false
+Unit=citaya-dte-auto-worker.service
+
+[Install]
+WantedBy=timers.target
