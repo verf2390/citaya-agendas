@@ -10,6 +10,9 @@ const migration = readFileSync(migrationPath, "utf8");
 const hardeningPath =
   "migrations/202608240001_dte_automatic_worker_canary_fencing.sql";
 const hardening = readFileSync(hardeningPath, "utf8");
+const ownedLastFolioPath =
+  "migrations/202608260001_cit33_allow_owned_last_folio.sql";
+const ownedLastFolio = readFileSync(ownedLastFolioPath, "utf8");
 const bookingRoute = readFileSync("app/api/appointments/create/route.ts", "utf8");
 const cutover = readFileSync("lib/dte/cutover.ts", "utf8");
 const manualClaim = readFileSync(
@@ -85,6 +88,26 @@ test("automatic worker hardening has exact canary, gate and crash fences", () =>
   assert.match(hardening, /i\.production_document_id is null/);
   assert.match(hardening, /i\.resolved_dte_type in \(33,39\)/);
   assert.doesNotMatch(hardening, /i\.resolved_dte_type in \(33,39,41\)/);
+});
+
+test("CIT-33 owned-last-folio exception is narrow, fail-closed, and offline", () => {
+  assert.match(ownedLastFolio, /i\.production_document_id is not null/);
+  assert.match(ownedLastFolio, /activation_report\.value -> 'foliosAvailable' = 'false'::jsonb/);
+  assert.match(ownedLastFolio, /document\.dte_type in \(33,39\)/);
+  assert.match(ownedLastFolio, /ledger\.document_id = document\.id/);
+  assert.match(ownedLastFolio, /ledger\.business_operation_id = document\.business_operation_id/);
+  assert.match(ownedLastFolio, /ledger\.state = 'reserved'/);
+  assert.match(ownedLastFolio, /ledger\.state = 'issued'/);
+  assert.match(ownedLastFolio, /security definer[\s\S]*set search_path = ''/);
+  assert.match(
+    ownedLastFolio,
+    /revoke all on function public\.dte_automatic_issuance_gate_open\(uuid, uuid\)[\s\S]*from public, anon, authenticated, service_role/,
+  );
+  assert.doesNotMatch(ownedLastFolio, /document\.dte_type in \(33,39,41/);
+  assert.doesNotMatch(
+    ownedLastFolio,
+    /(?:net\.http|http_(?:get|post)|dblink|pg_net)/i,
+  );
 });
 
 const bootstrap = String.raw`
@@ -278,10 +301,26 @@ create table public.dte_legal_activation(
 create table public.dte_production_documents(
   id uuid primary key,
   tenant_id uuid not null,
+  dte_type integer,
+  business_operation_id text,
   status text,
+  folio integer,
+  caf_id uuid,
   track_id_ciphertext text,
   track_id_fingerprint text,
   sii_status text
+);
+create table public.dte_production_folio_ledger(
+  tenant_id uuid not null,
+  dte_type integer not null,
+  folio integer not null,
+  caf_id uuid not null,
+  state text not null,
+  document_id uuid,
+  business_operation_id text,
+  reserved_at timestamptz,
+  issued_at timestamptz,
+  primary key(tenant_id,dte_type,folio)
 );
 create table public.dte_production_submission_attempts(
   id uuid primary key default gen_random_uuid(),
@@ -959,6 +998,567 @@ select 'DTE_AUTOMATIC_HARDENING_SQL_ASSERTIONS_PASSED=15';
 rollback;
 `;
 
+const ownedLastFolioAssertions = String.raw`
+begin;
+
+create table public.cit33_activation_controls(
+  tenant_id uuid primary key,
+  certificate_current jsonb not null default 'true'::jsonb
+);
+
+create or replace function public.dte_activation_gate_report(
+  p_tenant_id uuid,
+  p_dte_type integer,
+  p_global_feature_enabled boolean
+) returns jsonb
+language sql
+stable
+set search_path = ''
+as $$
+  with gates as (
+    select pg_catalog.jsonb_build_object(
+      'issuerDataExact', true,
+      'issuerLegalNameMatch', true,
+      'issuerResolutionConfigured', true,
+      'typeAuthorized', true,
+      'certificateCurrent', coalesce(
+        (
+          select controls.certificate_current
+            from public.cit33_activation_controls controls
+           where controls.tenant_id = p_tenant_id
+        ),
+        'true'::jsonb
+      ),
+      'certificateKeyMatch', true,
+      'certificateRutMatch', true,
+      'officialTrustAnchor', true,
+      'authenticTypeCaf', true,
+      'foliosAvailable', exists (
+        select 1
+          from public.dte_production_folio_ledger ledger
+         where ledger.tenant_id = p_tenant_id
+           and ledger.dte_type = p_dte_type
+           and ledger.state = 'available'
+      ),
+      'tenantAwareLedger', true,
+      'privateStorage', true,
+      'productionEndpoints', true,
+      'officialXsd', true,
+      'xmlDsig', true,
+      'workerConfigured', true,
+      'migrationsApplied', true,
+      'offlinePreflightComplete', true,
+      'documentEngineReady', p_dte_type in (33,39),
+      'globalFeatureEnabled', p_global_feature_enabled
+    ) as value
+  )
+  select gates.value || pg_catalog.jsonb_build_object(
+    'ready', not exists (
+      select 1
+        from pg_catalog.jsonb_each(gates.value) entry
+       where entry.value is distinct from 'true'::jsonb
+    )
+  )
+  from gates;
+$$;
+
+do $$
+declare
+  tenant_id_value constant uuid := '12000000-0000-4000-8000-000000000001';
+  other_tenant_id constant uuid := '12000000-0000-4000-8000-000000000002';
+  intent_id_value constant uuid := '22000000-0000-4000-8000-000000000001';
+  outbox_id_value constant uuid := '32000000-0000-4000-8000-000000000001';
+  document_id_value constant uuid := '42000000-0000-4000-8000-000000000001';
+  other_document_id constant uuid := '42000000-0000-4000-8000-000000000002';
+  caf_id_value constant uuid := '52000000-0000-4000-8000-000000000001';
+  type39_customer_id constant uuid := '62000000-0000-4000-8000-000000000001';
+  type39_actor_id constant uuid := '62000000-0000-4000-8000-000000000002';
+  type39_intent_id constant uuid := '22000000-0000-4000-8000-000000000039';
+  type39_outbox_id constant uuid := '32000000-0000-4000-8000-000000000039';
+  type39_document_id constant uuid := '42000000-0000-4000-8000-000000000039';
+  type39_caf_id constant uuid := '52000000-0000-4000-8000-000000000039';
+  claim public.dte_issuance_outbox%rowtype;
+  report jsonb;
+  mutation_ok boolean;
+  row_count_value integer;
+begin
+  insert into public.tenants(id) values(tenant_id_value),(other_tenant_id);
+  insert into public.dte_tenant_issuance_settings values(
+    tenant_id_value,'automatic_on_verified_payment','39',true,true,'approved',
+    true,now()+interval '30 days',true,true,true,true,true,true,'enabled'
+  );
+  insert into public.dte_production_tenant_settings
+  values(tenant_id_value,true,'automatic','approved',array[33,39]);
+  insert into public.dte_legal_activation values(tenant_id_value,33,'active');
+  insert into public.cit33_activation_controls
+  values(tenant_id_value,'true'::jsonb);
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin
+  ) values(
+    intent_id_value,tenant_id_value,'cit33-owned-last','webpay',
+    'cit33-owned-last','invoice',33,1190,'CLP','{}','PENDING',
+    'automatic_payment'
+  );
+  insert into public.dte_issuance_outbox(
+    id,tenant_id,intent_id,status,issuance_origin
+  ) values(
+    outbox_id_value,tenant_id_value,intent_id_value,'PENDING','automatic_system'
+  );
+  insert into public.dte_production_documents(
+    id,tenant_id,dte_type,business_operation_id,status,folio,caf_id
+  ) values
+    (document_id_value,tenant_id_value,33,'intent:cit33-owned','draft',null,null),
+    (other_document_id,tenant_id_value,33,'intent:cit33-other','draft',null,null);
+  insert into public.dte_production_folio_ledger(
+    tenant_id,dte_type,folio,caf_id,state
+  ) values(tenant_id_value,33,40017,caf_id_value,'available');
+
+  report := public.dte_activation_gate_report(tenant_id_value,33,true);
+  if report -> 'ready' <> 'true'::jsonb
+     or report -> 'foliosAvailable' <> 'true'::jsonb then
+    raise exception 'CIT33_INITIAL_REPORT_NOT_READY';
+  end if;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then
+    raise exception 'CIT33_INITIAL_LAST_FOLIO_GATE_CLOSED';
+  end if;
+
+  select * into claim
+    from public.dte_claim_automatic_issuance_outbox_exact(
+      'cit33-worker',outbox_id_value
+    );
+  if claim.id <> outbox_id_value then
+    raise exception 'CIT33_INITIAL_CLAIM_FAILED';
+  end if;
+
+  update public.dte_production_folio_ledger
+     set state='reserved',document_id=document_id_value,
+         business_operation_id='intent:cit33-owned',reserved_at=now()
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+
+  report := public.dte_activation_gate_report(tenant_id_value,33,true);
+  if report -> 'ready' <> 'false'::jsonb
+     or report -> 'foliosAvailable' <> 'false'::jsonb then
+    raise exception 'CIT33_EXHAUSTED_REPORT_SHAPE_INVALID';
+  end if;
+  select pg_catalog.count(*) into row_count_value
+    from pg_catalog.jsonb_each(report) entry
+   where entry.key not in ('ready','foliosAvailable')
+     and entry.value is distinct from 'true'::jsonb;
+  if row_count_value <> 0 then
+    raise exception 'CIT33_REPORT_HAS_NON_FOLIO_FAILURE';
+  end if;
+
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then
+    raise exception 'CIT33_NO_OWN_DOCUMENT_GATE_OPENED';
+  end if;
+  begin
+    mutation_ok := public.dte_mutate_automatic_issuance_claim(
+      claim.id,claim.locked_by,claim.claim_token,'RENEW'
+    );
+    if mutation_ok then raise exception 'CIT33_NO_OWN_DOCUMENT_MUTATION_ALLOWED'; end if;
+    select pg_catalog.count(*) into row_count_value
+      from public.dte_issuance_outbox outbox
+      join public.dte_payment_document_intents intent on intent.id=outbox.intent_id
+     where outbox.id=outbox_id_value
+       and outbox.status='BLOCKED'
+       and intent.status='BLOCKED'
+       and outbox.last_safe_error='AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+       and intent.safe_blocking_reason='AUTOMATIC_GATE_CLOSED_PRE_NETWORK';
+    if row_count_value <> 1 then
+      raise exception 'CIT33_NO_OWN_DOCUMENT_NOT_BLOCKED';
+    end if;
+    raise exception 'CIT33_ROLLBACK_EXPECTED_NO_DOCUMENT';
+  exception when raise_exception then
+    if sqlerrm <> 'CIT33_ROLLBACK_EXPECTED_NO_DOCUMENT' then raise; end if;
+  end;
+
+  update public.dte_payment_document_intents
+     set production_document_id=document_id_value,status='PREPARING'
+   where id=intent_id_value;
+  update public.dte_production_folio_ledger
+     set document_id=other_document_id,
+         business_operation_id='intent:cit33-other'
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then
+    raise exception 'CIT33_OTHER_RESERVATION_GATE_OPENED';
+  end if;
+  begin
+    mutation_ok := public.dte_mutate_automatic_issuance_claim(
+      claim.id,claim.locked_by,claim.claim_token,'RENEW'
+    );
+    if mutation_ok then raise exception 'CIT33_OTHER_RESERVATION_MUTATION_ALLOWED'; end if;
+    select pg_catalog.count(*) into row_count_value
+      from public.dte_issuance_outbox outbox
+      join public.dte_payment_document_intents intent on intent.id=outbox.intent_id
+     where outbox.id=outbox_id_value
+       and outbox.status='BLOCKED'
+       and intent.status='BLOCKED'
+       and outbox.last_safe_error='AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+       and intent.safe_blocking_reason='AUTOMATIC_GATE_CLOSED_PRE_NETWORK';
+    if row_count_value <> 1 then
+      raise exception 'CIT33_OTHER_RESERVATION_NOT_BLOCKED';
+    end if;
+    raise exception 'CIT33_ROLLBACK_EXPECTED_OTHER_RESERVATION';
+  exception when raise_exception then
+    if sqlerrm <> 'CIT33_ROLLBACK_EXPECTED_OTHER_RESERVATION' then raise; end if;
+  end;
+
+  update public.dte_production_folio_ledger
+     set document_id=document_id_value,
+         business_operation_id='intent:cit33-owned'
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then
+    raise exception 'CIT33_OWN_DRAFT_RESERVATION_GATE_CLOSED';
+  end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claim.id,claim.locked_by,claim.claim_token,'RENEW'
+  );
+  if not mutation_ok then
+    raise exception 'CIT33_OWN_RESERVED_MUTATION_BLOCKED';
+  end if;
+
+  update public.dte_production_documents
+     set tenant_id=other_tenant_id where id=document_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_DOCUMENT_TENANT_MISMATCH_ALLOWED'; end if;
+  update public.dte_production_documents
+     set tenant_id=tenant_id_value where id=document_id_value;
+
+  update public.dte_production_folio_ledger
+     set tenant_id=other_tenant_id
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_LEDGER_TENANT_MISMATCH_ALLOWED'; end if;
+  update public.dte_production_folio_ledger
+     set tenant_id=tenant_id_value
+   where tenant_id=other_tenant_id and dte_type=33 and folio=40017;
+
+  update public.dte_production_documents
+     set dte_type=39 where id=document_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_DOCUMENT_TYPE_MISMATCH_ALLOWED'; end if;
+  update public.dte_production_documents
+     set dte_type=33 where id=document_id_value;
+
+  update public.dte_payment_document_intents
+     set resolved_dte_type=41 where id=intent_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_UNSUPPORTED_TYPE_ALLOWED'; end if;
+  update public.dte_payment_document_intents
+     set resolved_dte_type=33 where id=intent_id_value;
+
+  update public.dte_production_documents
+     set folio=40018 where id=document_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_DRAFT_FOLIO_MISMATCH_ALLOWED'; end if;
+  update public.dte_production_documents
+     set folio=null where id=document_id_value;
+
+  update public.dte_production_documents
+     set caf_id='52000000-0000-4000-8000-000000000099'
+   where id=document_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_DRAFT_CAF_MISMATCH_ALLOWED'; end if;
+  update public.dte_production_documents
+     set caf_id=null where id=document_id_value;
+
+  update public.dte_production_documents
+     set business_operation_id=' ' where id=document_id_value;
+  update public.dte_production_folio_ledger
+     set business_operation_id=' '
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_EMPTY_BUSINESS_OPERATION_ALLOWED'; end if;
+  update public.dte_production_documents
+     set business_operation_id='intent:cit33-owned' where id=document_id_value;
+  update public.dte_production_folio_ledger
+     set business_operation_id='intent:cit33-wrong'
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_BUSINESS_OPERATION_MISMATCH_ALLOWED'; end if;
+  update public.dte_production_folio_ledger
+     set business_operation_id='intent:cit33-owned'
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+
+  insert into public.dte_production_folio_ledger(
+    tenant_id,dte_type,folio,caf_id,state,document_id,business_operation_id
+  ) values(
+    tenant_id_value,33,40018,caf_id_value,'reserved',document_id_value,
+    'intent:cit33-duplicate'
+  );
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_AMBIGUOUS_DOCUMENT_OWNERSHIP_ALLOWED'; end if;
+  delete from public.dte_production_folio_ledger
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40018;
+
+  update public.dte_production_documents
+     set status='prepared',folio=null,caf_id=null where id=document_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_PREPARED_WITHOUT_FOLIO_CAF_ALLOWED'; end if;
+  update public.dte_production_documents
+     set folio=40017,caf_id=caf_id_value where id=document_id_value;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_PREPARED_MATCHING_RESERVATION_BLOCKED'; end if;
+
+  update public.dte_production_documents
+     set status='submitting' where id=document_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_RESERVED_SUBMITTING_DOCUMENT_ALLOWED'; end if;
+  update public.dte_production_folio_ledger
+     set state='issued',issued_at=now()
+   where tenant_id=tenant_id_value and dte_type=33 and folio=40017;
+  update public.dte_production_documents
+     set status='ready' where id=document_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_ISSUED_READY_DOCUMENT_ALLOWED'; end if;
+  update public.dte_production_documents
+     set status='submitting' where id=document_id_value;
+  update public.dte_payment_document_intents
+     set status='SUBMITTING' where id=intent_id_value;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_OWN_ISSUED_SUBMITTING_GATE_CLOSED'; end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claim.id,claim.locked_by,claim.claim_token,'RENEW'
+  );
+  if not mutation_ok then
+    raise exception 'CIT33_OWN_ISSUED_MUTATION_BLOCKED';
+  end if;
+
+  update public.cit33_activation_controls
+     set certificate_current='"invalid"'::jsonb where tenant_id=tenant_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then
+    raise exception 'CIT33_INVALID_NON_FOLIO_GATE_ALLOWED';
+  end if;
+
+  update public.cit33_activation_controls
+     set certificate_current='false'::jsonb where tenant_id=tenant_id_value;
+  report := public.dte_activation_gate_report(tenant_id_value,33,true);
+  if report -> 'certificateCurrent' <> 'false'::jsonb
+     or report -> 'ready' <> 'false'::jsonb then
+    raise exception 'CIT33_OTHER_FALSE_GATE_REPORT_INVALID';
+  end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claim.id,claim.locked_by,claim.claim_token,'RENEW'
+  );
+  if mutation_ok then
+    raise exception 'CIT33_NON_FOLIO_FALSE_GATE_ALLOWED';
+  end if;
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_issuance_outbox outbox
+    join public.dte_payment_document_intents intent on intent.id=outbox.intent_id
+   where outbox.id=outbox_id_value
+     and outbox.status='BLOCKED'
+     and intent.status='BLOCKED'
+     and outbox.last_safe_error='AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+     and intent.safe_blocking_reason='AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+     and outbox.network_attempts=0
+     and intent.network_attempt_count=0;
+  if row_count_value <> 1 then
+    raise exception 'CIT33_OTHER_GATE_DID_NOT_BLOCK_PRE_NETWORK';
+  end if;
+
+  -- Material regression for the production bug's DTE 39 path, including its
+  -- mandatory commercial-customer snapshot gate. Everything remains local and
+  -- stops before NETWORK_BOUNDARY.
+  update public.cit33_activation_controls
+     set certificate_current='true'::jsonb where tenant_id=tenant_id_value;
+  insert into public.dte_legal_activation values(tenant_id_value,39,'active');
+  insert into public.customers(id,tenant_id,full_name)
+  values(type39_customer_id,tenant_id_value,'Cliente Boleta 39');
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,
+    origin,customer_id
+  ) values(
+    type39_intent_id,tenant_id_value,'cit33-type39-owned-last','webpay',
+    'cit33-type39-owned-last','consumer',39,1000,'CLP','{}','PENDING',
+    'automatic_payment',type39_customer_id
+  );
+  insert into public.dte_issuance_outbox(
+    id,tenant_id,intent_id,status,issuance_origin
+  ) values(
+    type39_outbox_id,tenant_id_value,type39_intent_id,'PENDING',
+    'automatic_system'
+  );
+  insert into public.dte_production_documents(
+    id,tenant_id,dte_type,business_operation_id,status,folio,caf_id
+  ) values(
+    type39_document_id,tenant_id_value,39,'intent:cit33-type39-owned',
+    'draft',null,null
+  );
+  insert into public.dte_production_folio_ledger(
+    tenant_id,dte_type,folio,caf_id,state
+  ) values(tenant_id_value,39,50001,type39_caf_id,'available');
+
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_payment_document_intents intent
+   where intent.id=type39_intent_id
+     and intent.tenant_id=tenant_id_value
+     and intent.resolved_dte_type=39
+     and intent.customer_id=type39_customer_id
+     and intent.production_document_id is null;
+  if row_count_value <> 1 then
+    raise exception 'CIT33_TYPE39_INTENT_FIXTURE_INVALID';
+  end if;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,type39_intent_id
+  ) then
+    raise exception 'CIT33_TYPE39_WITHOUT_SNAPSHOT_GATE_OPENED';
+  end if;
+
+  insert into public.dte_boleta39_commercial_customer_snapshots(
+    intent_id,tenant_id,customer_id,customer_name,customer_rut,
+    customer_email,customer_phone,captured_by
+  ) values(
+    type39_intent_id,tenant_id_value,type39_customer_id,'Cliente Boleta 39',
+    null,'cliente39@example.test',null,type39_actor_id
+  );
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_production_folio_ledger ledger
+   where ledger.tenant_id=tenant_id_value
+     and ledger.dte_type=39
+     and ledger.state='available';
+  if row_count_value <> 1 then
+    raise exception 'CIT33_TYPE39_INITIAL_AVAILABLE_FOLIO_COUNT_INVALID';
+  end if;
+  report := public.dte_activation_gate_report(tenant_id_value,39,true);
+  if report -> 'ready' <> 'true'::jsonb
+     or report -> 'foliosAvailable' <> 'true'::jsonb then
+    raise exception 'CIT33_TYPE39_INITIAL_REPORT_NOT_READY';
+  end if;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,type39_intent_id
+  ) then
+    raise exception 'CIT33_TYPE39_VALID_SNAPSHOT_GATE_CLOSED';
+  end if;
+
+  select * into claim
+    from public.dte_claim_automatic_issuance_outbox_exact(
+      'cit33-type39-worker',type39_outbox_id
+    );
+  if claim.id <> type39_outbox_id or claim.intent_id <> type39_intent_id then
+    raise exception 'CIT33_TYPE39_EXACT_CLAIM_FAILED';
+  end if;
+
+  update public.dte_production_folio_ledger
+     set state='reserved',document_id=type39_document_id,
+         business_operation_id='intent:cit33-type39-owned',reserved_at=now()
+   where tenant_id=tenant_id_value and dte_type=39 and folio=50001;
+  report := public.dte_activation_gate_report(tenant_id_value,39,true);
+  if report -> 'ready' <> 'false'::jsonb
+     or report -> 'foliosAvailable' <> 'false'::jsonb then
+    raise exception 'CIT33_TYPE39_LAST_FOLIO_REPORT_INVALID';
+  end if;
+
+  update public.dte_payment_document_intents
+     set production_document_id=type39_document_id,status='PREPARING'
+   where id=type39_intent_id and tenant_id=tenant_id_value;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,type39_intent_id
+  ) then
+    raise exception 'CIT33_TYPE39_OWN_DRAFT_RESERVATION_GATE_CLOSED';
+  end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claim.id,claim.locked_by,claim.claim_token,'RENEW'
+  );
+  if not mutation_ok then
+    raise exception 'CIT33_TYPE39_OWN_RESERVED_RENEW_BLOCKED';
+  end if;
+
+  update public.dte_production_documents
+     set status='prepared',folio=50001,caf_id=type39_caf_id
+   where id=type39_document_id and tenant_id=tenant_id_value;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,type39_intent_id
+  ) then
+    raise exception 'CIT33_TYPE39_PREPARED_RESERVATION_GATE_CLOSED';
+  end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claim.id,claim.locked_by,claim.claim_token,'READY',type39_document_id
+  );
+  if not mutation_ok then
+    raise exception 'CIT33_TYPE39_READY_MUTATION_BLOCKED';
+  end if;
+  update public.dte_production_documents
+     set status='ready' where id=type39_document_id and tenant_id=tenant_id_value;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claim.id,claim.locked_by,claim.claim_token,'SUBMITTING',type39_document_id
+  );
+  if not mutation_ok then
+    raise exception 'CIT33_TYPE39_SUBMITTING_MUTATION_BLOCKED';
+  end if;
+
+  update public.dte_production_documents
+     set status='submitting'
+   where id=type39_document_id and tenant_id=tenant_id_value;
+  update public.dte_production_folio_ledger
+     set state='issued',issued_at=now()
+   where tenant_id=tenant_id_value and dte_type=39 and folio=50001;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,type39_intent_id
+  ) then
+    raise exception 'CIT33_TYPE39_OWN_ISSUED_SUBMITTING_GATE_CLOSED';
+  end if;
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claim.id,claim.locked_by,claim.claim_token,'RENEW'
+  );
+  if not mutation_ok then
+    raise exception 'CIT33_TYPE39_OWN_ISSUED_RENEW_BLOCKED';
+  end if;
+
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_payment_document_intents intent
+    join public.dte_issuance_outbox outbox
+      on outbox.tenant_id=intent.tenant_id and outbox.intent_id=intent.id
+   where intent.id=type39_intent_id
+     and intent.status='SUBMITTING'
+     and intent.network_attempt_count=0
+     and outbox.id=type39_outbox_id
+     and outbox.status='PROCESSING'
+     and outbox.network_attempts=0
+     and not exists (
+       select 1
+         from public.dte_production_submission_attempts submission
+        where submission.tenant_id=intent.tenant_id
+          and submission.document_id=type39_document_id
+          and submission.before_fetch_at is not null
+     );
+  if row_count_value <> 1 then
+    raise exception 'CIT33_TYPE39_PRE_NETWORK_EVIDENCE_INVALID';
+  end if;
+end;
+$$;
+
+select 'CIT33_OWNED_LAST_FOLIO_SQL_ASSERTIONS_PASSED=47';
+rollback;
+`;
+
 test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, actor, and idempotency", () => {
   const database = `citaya_auto_${randomUUID().replaceAll("-", "")}`;
   const create = spawnSync(
@@ -995,13 +1595,14 @@ test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, a
         "ON_ERROR_STOP=1",
       ],
       {
-        input: `${bootstrap}\n${manualClaim}\n${migration}\n${hardening}\n${assertions}\n${hardeningAssertions}`,
+        input: `${bootstrap}\n${manualClaim}\n${migration}\n${hardening}\n${ownedLastFolio}\n${assertions}\n${hardeningAssertions}\n${ownedLastFolioAssertions}`,
         encoding: "utf8",
       },
     );
     assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
     assert.match(run.stdout, /DTE_AUTOMATIC_SQL_ASSERTIONS_PASSED=19/);
     assert.match(run.stdout, /DTE_AUTOMATIC_HARDENING_SQL_ASSERTIONS_PASSED=15/);
+    assert.match(run.stdout, /CIT33_OWNED_LAST_FOLIO_SQL_ASSERTIONS_PASSED=47/);
   } finally {
     const drop = spawnSync(
       "docker",
