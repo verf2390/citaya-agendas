@@ -108,6 +108,7 @@ test("automatic type 33 emits a gross-detail DTE for the immutable 59.440 catalo
     }],
     netAmount: 49_950,
     exemptAmount: 0,
+    taxAmount: 9_490,
     totalAmount: 59_440,
   });
   assert.equal(lines[0].unitPrice, 49_950);
@@ -169,18 +170,23 @@ test("automatic type 33 emits a gross-detail DTE for the immutable 59.440 catalo
   assert.match(printHtml, /Total[\s\S]*\$59\.440/);
 });
 
-test("automatic type 33 recognizes the exact historical unitPrice-only gross snapshot", async () => {
+test("automatic type 33 recognizes the literal historical production snapshot", async () => {
   const { repository, service } = createContext();
   const lines = buildProductionLinesFromMoneySnapshot({
     automatic: true,
     dteType: 33,
     rawLines: [{
-      description: "Servicio afecto",
       quantity: 1,
-      unitPrice: 59_440,
+      netAmount: 49_950,
+      taxAmount: 9_490,
+      description: "Servicios de app minimarket",
+      totalAmount: 59_440,
+      unitNetAmount: 49_950,
+      discountBasisPoints: 0,
     }],
     netAmount: 49_950,
     exemptAmount: 0,
+    taxAmount: 9_490,
     totalAmount: 59_440,
   });
 
@@ -213,19 +219,24 @@ test("automatic type 33 recognizes the exact historical unitPrice-only gross sna
   assert.match(xml, /<MntTotal>59440<\/MntTotal>/);
 });
 
-test("automatic legacy unitPrice does not infer gross with a contradictory pricing mode", async () => {
+test("historical production snapshot does not infer gross with explicit net pricing", async () => {
   const { service } = createContext();
   const lines = buildProductionLinesFromMoneySnapshot({
     automatic: true,
     dteType: 33,
     rawLines: [{
-      description: "Servicio afecto ambiguo",
       quantity: 1,
-      unitPrice: 59_440,
+      netAmount: 49_950,
+      taxAmount: 9_490,
+      description: "Servicios de app minimarket",
+      totalAmount: 59_440,
+      unitNetAmount: 49_950,
+      discountBasisPoints: 0,
       pricingMode: "net",
     }],
     netAmount: 49_950,
     exemptAmount: 0,
+    taxAmount: 9_490,
     totalAmount: 59_440,
   });
 
@@ -240,6 +251,101 @@ test("automatic legacy unitPrice does not infer gross with a contradictory prici
         taxAmount: 9_490,
         totalAmount: 59_440,
       }),
+      "automatic-worker",
+    ),
+    /DTE_FROZEN_MONEY_SNAPSHOT_INVALID/,
+  );
+});
+
+test("historical production gross inference rejects every incoherent boundary", async () => {
+  const { service } = createContext();
+  const historicalLine = {
+    quantity: 1,
+    netAmount: 49_950,
+    taxAmount: 9_490,
+    description: "Servicios de app minimarket",
+    totalAmount: 59_440,
+    unitNetAmount: 49_950,
+    discountBasisPoints: 0,
+  };
+  const input = {
+    automatic: true,
+    dteType: 33 as const,
+    netAmount: 49_950,
+    exemptAmount: 0,
+    taxAmount: 9_490,
+    totalAmount: 59_440,
+  };
+  const frozenMoneySnapshot = {
+    source: "automatic_intent_immutable_snapshot" as const,
+    amountSnapshot: 59_440,
+    netAmount: 49_950,
+    exemptAmount: 0,
+    taxAmount: 9_490,
+    totalAmount: 59_440,
+  };
+
+  assert.throws(
+    () => buildProductionLinesFromMoneySnapshot({
+      ...input,
+      rawLines: [{ ...historicalLine, totalAmount: 59_441 }],
+    }),
+    /DTE_LINES_MONEY_SNAPSHOT_INVALID/,
+  );
+  assert.throws(
+    () => buildProductionLinesFromMoneySnapshot({
+      ...input,
+      rawLines: [historicalLine, historicalLine],
+    }),
+    /DTE_LINES_MONEY_SNAPSHOT_INVALID/,
+  );
+  const discountedLines = buildProductionLinesFromMoneySnapshot({
+    ...input,
+    rawLines: [{ ...historicalLine, discountBasisPoints: 1 }],
+  });
+  assert.equal(discountedLines[0].pricingMode, "net");
+  await assert.rejects(
+    service.createDraft(
+      draftInput(
+        "type-33-legacy-discount",
+        discountedLines,
+        frozenMoneySnapshot,
+      ),
+      "automatic-worker",
+    ),
+    /DTE_FROZEN_MONEY_SNAPSHOT_INVALID/,
+  );
+
+  const incoherentTaxLines = buildProductionLinesFromMoneySnapshot({
+    ...input,
+    rawLines: [{ ...historicalLine, taxAmount: 9_491 }],
+  });
+  assert.equal(incoherentTaxLines[0].pricingMode, "net");
+  await assert.rejects(
+    service.createDraft(
+      draftInput(
+        "type-33-legacy-tax-mismatch",
+        incoherentTaxLines,
+        frozenMoneySnapshot,
+      ),
+      "automatic-worker",
+    ),
+    /DTE_FROZEN_MONEY_SNAPSHOT_INVALID/,
+  );
+
+  const exemptLines = buildProductionLinesFromMoneySnapshot({
+    ...input,
+    rawLines: [{ ...historicalLine, exempt: true }],
+  });
+  assert.equal(exemptLines[0].pricingMode, "net");
+  assert.equal(exemptLines[0].exempt, true);
+  await assert.rejects(
+    service.createDraft(
+      draftInput(
+        "type-33-legacy-exempt",
+        exemptLines,
+        frozenMoneySnapshot,
+      ),
       "automatic-worker",
     ),
     /DTE_FROZEN_MONEY_SNAPSHOT_INVALID/,
@@ -278,6 +384,7 @@ test("manipulated frozen money and incoherent automatic lines fail closed", asyn
     }],
     netAmount: 49_950,
     exemptAmount: 0,
+    taxAmount: 9_490,
     totalAmount: 59_440,
   });
   await assert.rejects(
@@ -306,6 +413,7 @@ test("manipulated frozen money and incoherent automatic lines fail closed", asyn
       }],
       netAmount: 49_950,
       exemptAmount: 0,
+      taxAmount: 9_490,
       totalAmount: 59_440,
     }),
     /DTE_LINES_MONEY_SNAPSHOT_INVALID/,
@@ -355,6 +463,7 @@ test("automatic boleta 39 keeps its existing gross-derived monetary result", asy
     }],
     netAmount: 4_202,
     exemptAmount: 0,
+    taxAmount: 798,
     totalAmount: 5_000,
   });
   const draft = await service.createDraft(

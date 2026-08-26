@@ -164,6 +164,7 @@ export function buildProductionLinesFromMoneySnapshot(input: {
   rawLines: unknown[];
   netAmount: number;
   exemptAmount: number;
+  taxAmount: number;
   totalAmount: number;
 }): ProductionDraftInput["lines"] {
   const defaultTreatment = input.exemptAmount === input.totalAmount
@@ -210,7 +211,7 @@ export function buildProductionLinesFromMoneySnapshot(input: {
     // Compatibility boundary for the historical automatic snapshot produced by
     // dte_enqueue_payment_snapshot: its single affected line only persisted the
     // paid catalog amount as unitPrice. Keep every other legacy shape fail-closed.
-    const usesLegacyAutomaticGrossContract =
+    const usesLegacyUnitPriceGrossContract =
       input.automatic &&
       input.dteType === 33 &&
       treatment === "affected" &&
@@ -229,7 +230,34 @@ export function buildProductionLinesFromMoneySnapshot(input: {
       rawUnitAmount === input.totalAmount &&
       snapshotLineGross === input.totalAmount &&
       input.netAmount > 0 &&
-      input.netAmount < input.totalAmount;
+      input.netAmount < input.totalAmount &&
+      input.netAmount + input.taxAmount === input.totalAmount;
+
+    // Compatibility boundary for the exact historical affected line emitted by
+    // dte_intent_freeze_final_tax_snapshot before it preserved catalog pricing.
+    const usesHistoricalFrozenGrossContract =
+      input.automatic &&
+      input.dteType === 33 &&
+      treatment === "affected" &&
+      input.exemptAmount === 0 &&
+      input.rawLines.length === 1 &&
+      quantity === 1 &&
+      discountBasisPoints === 0 &&
+      hasNetContract &&
+      line.pricingMode === undefined &&
+      line.capturedAs === undefined &&
+      line.unitPrice === undefined &&
+      line.unitGrossAmount === undefined &&
+      line.catalogUnitGrossAmount === undefined &&
+      line.grossAmount === undefined &&
+      Number(line.unitNetAmount) === input.netAmount &&
+      Number(line.netAmount) === input.netAmount &&
+      Number(line.taxAmount) === input.taxAmount &&
+      Number(line.totalAmount) === input.totalAmount &&
+      snapshotLineGross === input.totalAmount &&
+      input.netAmount > 0 &&
+      input.netAmount < input.totalAmount &&
+      input.netAmount + input.taxAmount === input.totalAmount;
 
     let unitPrice: number;
     if (hasNetContract || treatment === "exempt") {
@@ -261,6 +289,9 @@ export function buildProductionLinesFromMoneySnapshot(input: {
       }
       unitGrossAmount = snapshotLineGross / quantity;
     }
+    if (usesHistoricalFrozenGrossContract) {
+      unitGrossAmount = input.totalAmount;
+    }
     if (!Number.isSafeInteger(unitGrossAmount) || unitGrossAmount <= 0) {
       throw new Error("DTE_LINES_INVALID");
     }
@@ -280,7 +311,9 @@ export function buildProductionLinesFromMoneySnapshot(input: {
       unitGrossAmount,
       lineGrossAmount: snapshotLineGross,
       pricingMode:
-        usesModernGrossContract || usesLegacyAutomaticGrossContract
+        usesModernGrossContract ||
+          usesLegacyUnitPriceGrossContract ||
+          usesHistoricalFrozenGrossContract
           ? "gross"
           : "net",
       exempt: treatment === "exempt",
@@ -609,6 +642,7 @@ export async function processClaimedDteItem(
       rawLines,
       netAmount: snapshotNetAmount,
       exemptAmount: snapshotExemptAmount,
+      taxAmount: snapshotTaxAmount,
       totalAmount: snapshotGrossAmount,
     });
     let references: Array<{ code: string; reason: string; documentType: string; folio: string; date: string }> | undefined;

@@ -48,6 +48,11 @@ const automaticWorkerHardeningMigration = readFileSync(
   "utf8",
 );
 
+const cit35CatalogGrossMigration = readFileSync(
+  "migrations/202608250001_cit35_preserve_catalog_gross_snapshot.sql",
+  "utf8",
+);
+
 const schemaAugment = String.raw`
 alter table public.payment_intents
   add column idempotency_key text;
@@ -124,6 +129,22 @@ create table public.billing_sale_item_document_coverage(
     int8range(amount_from,amount_to,'[)')
   ) stored
 );
+
+alter table public.billing_sale_items
+  add column service_id uuid,
+  add column appointment_id uuid,
+  add column position integer,
+  add column description text,
+  add column quantity integer,
+  add column unit_net_amount bigint,
+  add column discount_basis_points integer,
+  add column discount_amount bigint,
+  add column net_amount bigint,
+  add column tax_amount bigint,
+  add column total_amount bigint,
+  add column pricing_mode text,
+  add column catalog_unit_gross_amount bigint,
+  add column tax_treatment_snapshot text;
 
 create or replace function public.dte_payment_document_policy_decision(
   p_tenant_id uuid,
@@ -353,6 +374,76 @@ create trigger a_tenant_mode_dte_outbox
 before insert on public.dte_issuance_outbox
 for each row
 execute function public.assert_tenant_operational_trigger();
+`;
+
+const cit35CatalogGrossAssertions = String.raw`
+begin;
+
+do $$
+declare
+  tenant_id_value constant uuid :=
+    'c3500000-0000-4000-8000-000000000001';
+  sale_id_value constant uuid :=
+    'c3500000-0000-4000-8000-000000000002';
+  appointment_id_value constant uuid :=
+    'c3500000-0000-4000-8000-000000000003';
+  payment_intent_id_value constant uuid :=
+    'c3500000-0000-4000-8000-000000000004';
+  frozen_line jsonb;
+begin
+  insert into public.tenants(id,lifecycle_status,operational_mode)
+  values(tenant_id_value,'active','internal');
+
+  insert into public.billing_sale_items(
+    tenant_id,sale_id,service_id,appointment_id,position,description,
+    quantity,unit_net_amount,discount_basis_points,discount_amount,
+    net_amount,tax_amount,total_amount,pricing_mode,
+    catalog_unit_gross_amount,tax_treatment_snapshot,
+    payment_policy_snapshot,deposit_tax_document_policy_status_snapshot
+  ) values (
+    tenant_id_value,sale_id_value,null,appointment_id_value,1,
+    'Servicios de app minimarket',1,49950,0,0,49950,9490,59440,
+    'catalog_gross',59440,'affected','full_payment','enabled'
+  );
+
+  perform pg_catalog.set_config(
+    'citaya.manual_transfer_tenant_id',
+    tenant_id_value::text,
+    true
+  );
+
+  insert into public.billing_sale_payments(
+    tenant_id,sale_id,appointment_id,payment_intent_id,
+    external_payment_reference,provider,amount,currency,status,
+    validation_result,reconciliation_status
+  ) values (
+    tenant_id_value,sale_id_value,appointment_id_value,
+    payment_intent_id_value,'manual:cit35','manual',59440,'CLP','VERIFIED',
+    'provider_verified','NOT_REQUIRED'
+  );
+
+  insert into public.dte_payment_document_intents(
+    tenant_id,appointment_id,payment_intent_id,payment_key,trigger_source,
+    idempotency_key,requested_document,resolved_dte_type,amount_snapshot,
+    currency,appointment_snapshot,status,origin
+  ) values (
+    tenant_id_value,appointment_id_value,payment_intent_id_value,
+    'manual_verified:cit35','manual_verified','cit35-catalog-gross',
+    'invoice',33,59440,'CLP','{}'::jsonb,'PENDING','automatic_payment'
+  ) returning immutable_snapshot#>'{lines,0}' into frozen_line;
+
+  if frozen_line->>'pricingMode' <> 'catalog_gross'
+     or (frozen_line->>'catalogUnitGrossAmount')::bigint <> 59440
+     or (frozen_line->>'unitNetAmount')::bigint <> 49950
+     or (frozen_line->>'taxAmount')::bigint <> 9490
+     or (frozen_line->>'totalAmount')::bigint <> 59440 then
+    raise exception 'CIT35_CATALOG_GROSS_SNAPSHOT_NOT_PRESERVED';
+  end if;
+end
+$$;
+
+rollback;
+select 'CIT35_CATALOG_GROSS_PRODUCER_PASSED=1';
 `;
 
 const assertions = String.raw`
@@ -1331,10 +1422,12 @@ test(
             manualClaim,
             automaticMigration,
             schemaAugment,
+            cit35CatalogGrossMigration,
             manualVerifiedMigration,
             noDuplicateDraftMigration,
             automaticWorkerHardeningMigration,
             triggerSetup,
+            cit35CatalogGrossAssertions,
             assertions,
             policyRegressionAssertions,
             providerRegressionAssertions,
@@ -1349,6 +1442,10 @@ test(
         `${run.stdout}\n${run.stderr}`,
       );
 
+      assert.match(
+        run.stdout,
+        /CIT35_CATALOG_GROSS_PRODUCER_PASSED=1/,
+      );
       assert.match(
         run.stdout,
         /DTE_MANUAL_VERIFIED_SQL_ASSERTIONS_PASSED=10/,
