@@ -78,10 +78,19 @@ export type ProductionDraftInput = {
     unitPrice: number;
     unitGrossAmount?: number | null;
     lineGrossAmount?: number | null;
+    pricingMode?: "net" | "gross";
     exempt?: boolean;
     discountPercent?: number | null;
   }>;
   references?: TaxDocumentDraft["references"];
+  frozenMoneySnapshot?: {
+    source: "automatic_intent_immutable_snapshot";
+    amountSnapshot: number;
+    netAmount: number;
+    exemptAmount: number;
+    taxAmount: number;
+    totalAmount: number;
+  };
 };
 
 export type ProductionDocument = {

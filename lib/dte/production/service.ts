@@ -31,6 +31,13 @@ import type {
   ProductionTenantSettings,
 } from "./types";
 
+type ProductionDraftTaxTotals = {
+  netAmount: number;
+  exemptAmount: number;
+  vatAmount: number;
+  totalAmount: number;
+};
+
 export type ProductionCafLoader = (input: {
   settings: ProductionTenantSettings;
   dteType: ProductionDteType;
@@ -144,6 +151,9 @@ function safeDocument(document: ProductionDocument) {
     businessOperationId: document.businessOperationId,
     status: document.status,
     folio: document.folio,
+    netAmount: document.netAmount,
+    exemptAmount: document.exemptAmount,
+    taxAmount: document.taxAmount,
     totalAmount: document.totalAmount,
     issueDate: document.issueDate,
     siiStatus: document.siiStatus,
@@ -152,6 +162,139 @@ function safeDocument(document: ProductionDocument) {
       ? sha256(document.trackId).slice(0, 12)
       : null,
     updatedAt: document.updatedAt,
+  };
+}
+
+function roundDiv(numerator: bigint, denominator: bigint): number {
+  const value = Number((numerator + denominator / BigInt(2)) / denominator);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error("DTE_FROZEN_MONEY_SNAPSHOT_INVALID");
+  }
+  return value;
+}
+
+function assertFrozenClp(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("DTE_FROZEN_MONEY_SNAPSHOT_INVALID");
+  }
+}
+
+function calculateGrossDraftTaxTotals(
+  input: ProductionDraftInput,
+): ProductionDraftTaxTotals {
+  let affectedGross = 0;
+  let exemptAmount = 0;
+  for (const line of input.lines) {
+    const lineGrossAmount = Number(line.lineGrossAmount);
+    const unitGrossAmount = Number(line.unitGrossAmount);
+    if (
+      !Number.isSafeInteger(lineGrossAmount) ||
+      lineGrossAmount < 0 ||
+      !Number.isSafeInteger(unitGrossAmount) ||
+      unitGrossAmount <= 0 ||
+      line.discountPercent != null && line.discountPercent !== 0 ||
+      line.quantity * unitGrossAmount !== lineGrossAmount
+    ) {
+      throw new Error("DTE_GROSS_AMOUNTS_LINES_INVALID");
+    }
+    if (line.exempt === true) exemptAmount += lineGrossAmount;
+    else affectedGross += lineGrossAmount;
+  }
+  if (
+    !Number.isSafeInteger(affectedGross) ||
+    !Number.isSafeInteger(exemptAmount) ||
+    affectedGross + exemptAmount <= 0
+  ) {
+    throw new Error("DTE_GROSS_AMOUNTS_LINES_INVALID");
+  }
+
+  // SII formato DTE: con MntBruto=1, MntNeto es la suma bruta afecta
+  // dividida por (1 + TasaIVA). Neto e IVA se redondean desde esa misma base
+  // bruta exacta, no recalculando IVA desde el MntNeto ya redondeado a CLP.
+  const netAmount = roundDiv(
+    BigInt(affectedGross) * BigInt(100),
+    BigInt(119),
+  );
+  const vatAmount = roundDiv(
+    BigInt(affectedGross) * BigInt(19),
+    BigInt(119),
+  );
+  if (netAmount + vatAmount !== affectedGross) {
+    throw new Error("DTE_GROSS_AMOUNTS_TOTALS_INVALID");
+  }
+  return {
+    netAmount,
+    exemptAmount,
+    vatAmount,
+    totalAmount: affectedGross + exemptAmount,
+  };
+}
+
+export function resolveProductionDraftTaxTotals(
+  input: ProductionDraftInput,
+): ProductionDraftTaxTotals {
+  const facturaUsesGrossAmounts =
+    input.dteType === 33 &&
+    input.lines.some((line) => line.pricingMode === "gross");
+  if (
+    facturaUsesGrossAmounts &&
+    input.lines.some((line) => line.pricingMode !== "gross")
+  ) {
+    throw new Error("DTE_GROSS_AMOUNTS_LINES_INVALID");
+  }
+  const calculated = facturaUsesGrossAmounts
+    ? null
+    : calculateDteTaxTotals({
+        lines: input.lines.map((line) => ({
+          name: line.name,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          exempt: line.exempt,
+          discountPercent: line.discountPercent,
+        })),
+      });
+  const grossCalculated = facturaUsesGrossAmounts
+    ? calculateGrossDraftTaxTotals(input)
+    : null;
+  const frozen = input.frozenMoneySnapshot;
+  if (!frozen) return grossCalculated ?? calculated!;
+
+  if (
+    frozen.source !== "automatic_intent_immutable_snapshot" ||
+    ![33, 39].includes(input.dteType)
+  ) {
+    throw new Error("DTE_FROZEN_MONEY_SNAPSHOT_INVALID");
+  }
+  [
+    frozen.amountSnapshot,
+    frozen.netAmount,
+    frozen.exemptAmount,
+    frozen.taxAmount,
+    frozen.totalAmount,
+  ].forEach(assertFrozenClp);
+  const composedTotal =
+    frozen.netAmount + frozen.exemptAmount + frozen.taxAmount;
+  const expected = input.dteType === 39
+    ? calculateGrossDraftTaxTotals(input)
+    : grossCalculated ?? calculated!;
+  if (
+    !Number.isSafeInteger(composedTotal) ||
+    frozen.totalAmount <= 0 ||
+    composedTotal !== frozen.totalAmount ||
+    frozen.totalAmount !== frozen.amountSnapshot ||
+    frozen.netAmount !== expected.netAmount ||
+    frozen.exemptAmount !== expected.exemptAmount ||
+    frozen.taxAmount !== expected.vatAmount ||
+    frozen.totalAmount !== expected.totalAmount
+  ) {
+    throw new Error("DTE_FROZEN_MONEY_SNAPSHOT_INVALID");
+  }
+
+  return {
+    netAmount: frozen.netAmount,
+    exemptAmount: frozen.exemptAmount,
+    vatAmount: frozen.taxAmount,
+    totalAmount: frozen.totalAmount,
   };
 }
 
@@ -202,15 +345,7 @@ export class ProductionDteService {
     validateReferences(input);
     safeBusinessOperationId(input.businessOperationId);
     const settings = await this.requireTenantSettings(input.tenantId, false);
-    const tax = calculateDteTaxTotals({
-      lines: input.lines.map((line) => ({
-        name: line.name,
-        quantity: line.quantity,
-        unitPrice: line.unitPrice,
-        exempt: line.exempt,
-        discountPercent: line.discountPercent,
-      })),
-    });
+    const tax = resolveProductionDraftTaxTotals(input);
     await assertMutationLease?.();
     const draft = await this.repository.createDraft({
       ...input,

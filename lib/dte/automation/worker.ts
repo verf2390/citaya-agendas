@@ -2,6 +2,7 @@ import { expectedProductionConfirmation } from "@/lib/dte/production/config";
 import { createServerProductionDteService } from "@/lib/dte/production/server";
 import { ProductionPreparationError } from "@/lib/dte/production/service";
 import type { ProductionDteService } from "@/lib/dte/production/service";
+import type { ProductionDraftInput } from "@/lib/dte/production/types";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertTenantCanRunDteWorker } from "@/lib/tenant/operational-server";
 import { randomUUID } from "node:crypto";
@@ -155,6 +156,146 @@ function affectedNetFromGross(gross: number) {
     if (candidate + Math.round(candidate * 0.19) === gross) return candidate;
   }
   throw new Error("DTE_AMOUNT_TAX_RECONCILIATION_FAILED");
+}
+
+export function buildProductionLinesFromMoneySnapshot(input: {
+  automatic: boolean;
+  dteType: 33 | 39 | 56 | 61;
+  rawLines: unknown[];
+  netAmount: number;
+  exemptAmount: number;
+  totalAmount: number;
+}): ProductionDraftInput["lines"] {
+  const defaultTreatment = input.exemptAmount === input.totalAmount
+    ? "exempt"
+    : "affected";
+  const lines: ProductionDraftInput["lines"] = input.rawLines.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw new Error("DTE_LINES_INVALID");
+    }
+    const line = candidate as Record<string, unknown>;
+    const quantity = Number(line.quantity);
+    const hasNetContract = line.unitNetAmount !== undefined;
+    const rawUnitAmount = Number(
+      hasNetContract
+        ? line.unitNetAmount
+        : line.unitGrossAmount ?? line.catalogUnitGrossAmount ?? line.unitPrice,
+    );
+    const name = value(line, "description") || value(line, "name");
+    const discountBasisPoints = Number(line.discountBasisPoints ?? 0);
+    const treatment = line.taxTreatment === "exempt" || line.exempt === true
+      ? "exempt"
+      : defaultTreatment;
+    const snapshotLineGross = Number(
+      line.grossAmount ?? line.totalAmount ?? quantity * rawUnitAmount,
+    );
+    if (
+      !name ||
+      !Number.isInteger(quantity) ||
+      quantity < 1 ||
+      !Number.isSafeInteger(rawUnitAmount) ||
+      rawUnitAmount <= 0 ||
+      !Number.isSafeInteger(snapshotLineGross) ||
+      snapshotLineGross <= 0 ||
+      !Number.isSafeInteger(discountBasisPoints) ||
+      discountBasisPoints < 0 ||
+      discountBasisPoints > 10_000 ||
+      (!input.automatic &&
+        !hasNetContract &&
+        snapshotLineGross !== quantity * rawUnitAmount)
+    ) {
+      throw new Error("DTE_LINES_INVALID");
+    }
+
+    // Compatibility boundary for the historical automatic snapshot produced by
+    // dte_enqueue_payment_snapshot: its single affected line only persisted the
+    // paid catalog amount as unitPrice. Keep every other legacy shape fail-closed.
+    const usesLegacyAutomaticGrossContract =
+      input.automatic &&
+      input.dteType === 33 &&
+      treatment === "affected" &&
+      input.exemptAmount === 0 &&
+      input.rawLines.length === 1 &&
+      quantity === 1 &&
+      discountBasisPoints === 0 &&
+      !hasNetContract &&
+      line.pricingMode === undefined &&
+      line.capturedAs === undefined &&
+      line.unitPrice !== undefined &&
+      line.unitGrossAmount === undefined &&
+      line.catalogUnitGrossAmount === undefined &&
+      line.grossAmount === undefined &&
+      line.totalAmount === undefined &&
+      rawUnitAmount === input.totalAmount &&
+      snapshotLineGross === input.totalAmount &&
+      input.netAmount > 0 &&
+      input.netAmount < input.totalAmount;
+
+    let unitPrice: number;
+    if (hasNetContract || treatment === "exempt") {
+      unitPrice = rawUnitAmount;
+    } else if (input.automatic) {
+      if (
+        input.rawLines.length !== 1 ||
+        quantity !== 1 ||
+        discountBasisPoints !== 0
+      ) {
+        throw new Error("DTE_LINES_MONEY_SNAPSHOT_INVALID");
+      }
+      unitPrice = input.netAmount;
+    } else {
+      unitPrice = affectedNetFromGross(rawUnitAmount);
+    }
+
+    let unitGrossAmount = Number(
+      line.unitGrossAmount ??
+        line.catalogUnitGrossAmount ??
+        (hasNetContract ? Math.round(rawUnitAmount * 1.19) : rawUnitAmount),
+    );
+    if (input.dteType === 39 && input.automatic) {
+      if (
+        discountBasisPoints !== 0 ||
+        snapshotLineGross % quantity !== 0
+      ) {
+        throw new Error("DTE_LINES_MONEY_SNAPSHOT_INVALID");
+      }
+      unitGrossAmount = snapshotLineGross / quantity;
+    }
+    if (!Number.isSafeInteger(unitGrossAmount) || unitGrossAmount <= 0) {
+      throw new Error("DTE_LINES_INVALID");
+    }
+
+    const usesModernGrossContract =
+      input.automatic &&
+      input.dteType === 33 &&
+      (line.pricingMode === "catalog_gross" ||
+        line.capturedAs === "catalog_gross" ||
+        line.catalogUnitGrossAmount !== undefined ||
+        (!hasNetContract && line.unitGrossAmount !== undefined));
+
+    return {
+      name,
+      quantity,
+      unitPrice,
+      unitGrossAmount,
+      lineGrossAmount: snapshotLineGross,
+      pricingMode:
+        usesModernGrossContract || usesLegacyAutomaticGrossContract
+          ? "gross"
+          : "net",
+      exempt: treatment === "exempt",
+      discountPercent: discountBasisPoints / 100,
+    };
+  });
+
+  if (
+    input.automatic &&
+    lines.reduce((sum, line) => sum + Number(line.lineGrossAmount), 0) !==
+      input.totalAmount
+  ) {
+    throw new Error("DTE_LINES_MONEY_SNAPSHOT_INVALID");
+  }
+  return lines;
 }
 
 function isAutomaticClaim(item: ClaimedOutbox) {
@@ -460,49 +601,15 @@ export async function processClaimedDteItem(
     ) {
       throw new Error("DTE_AMOUNT_SNAPSHOT_INVALID");
     }
-    const treatment = snapshotExemptAmount === grossAmount ? "exempt" : "affected";
-
     const rawLines = Array.isArray(immutable.lines) ? immutable.lines : [];
     if (!rawLines.length) throw new Error("DTE_TAX_DESCRIPTION_SNAPSHOT_REQUIRED");
-    const sourceLines = rawLines;
-    const productionLines = sourceLines.map((candidate) => {
-      if (!candidate || typeof candidate !== "object") throw new Error("DTE_LINES_INVALID");
-      const line = candidate as Record<string, unknown>;
-      const quantity = Number(line.quantity);
-      const hasNetContract = line.unitNetAmount !== undefined;
-      const sourceUnitAmount = Number(
-        hasNetContract ? line.unitNetAmount : line.unitGrossAmount ?? line.unitPrice,
-      );
-      const lineGrossAmount = Number(
-        line.grossAmount ?? quantity * sourceUnitAmount,
-      );
-      const name = value(line, "description") || value(line, "name");
-      const discountBasisPoints = Number(line.discountBasisPoints ?? 0);
-      if (
-        !name || !Number.isInteger(quantity) || quantity < 1 ||
-        !Number.isSafeInteger(sourceUnitAmount) || sourceUnitAmount <= 0 ||
-        !Number.isSafeInteger(lineGrossAmount) ||
-        !Number.isSafeInteger(discountBasisPoints) ||
-        discountBasisPoints < 0 ||
-        discountBasisPoints > 10_000 ||
-        (!hasNetContract && lineGrossAmount !== quantity * sourceUnitAmount)
-      ) {
-        throw new Error("DTE_LINES_INVALID");
-      }
-      const unitGross = Number(
-        line.unitGrossAmount ?? (hasNetContract ? Math.round(sourceUnitAmount * 1.19) : sourceUnitAmount),
-      );
-      return {
-        name, quantity,
-        unitPrice: hasNetContract
-          ? sourceUnitAmount
-          : treatment === "exempt"
-            ? sourceUnitAmount
-            : affectedNetFromGross(sourceUnitAmount),
-        unitGrossAmount: unitGross,
-        exempt: treatment === "exempt",
-        discountPercent: discountBasisPoints / 100,
-      };
+    const productionLines = buildProductionLinesFromMoneySnapshot({
+      automatic,
+      dteType,
+      rawLines,
+      netAmount: snapshotNetAmount,
+      exemptAmount: snapshotExemptAmount,
+      totalAmount: snapshotGrossAmount,
     });
     let references: Array<{ code: string; reason: string; documentType: string; folio: string; date: string }> | undefined;
     if ([56, 61].includes(dteType)) {
@@ -562,9 +669,25 @@ export async function processClaimedDteItem(
           },
           lines: productionLines,
           references,
+          frozenMoneySnapshot: automatic
+            ? {
+                source: "automatic_intent_immutable_snapshot",
+                amountSnapshot: grossAmount,
+                netAmount: snapshotNetAmount,
+                exemptAmount: snapshotExemptAmount,
+                taxAmount: snapshotTaxAmount,
+                totalAmount: snapshotGrossAmount,
+              }
+            : undefined,
         }, actorId, assertAutomaticMutationLease);
 
-    if ("totalAmount" in draft && Number(draft.totalAmount) !== grossAmount) {
+    if (
+      "totalAmount" in draft &&
+      (Number(draft.netAmount) !== snapshotNetAmount ||
+        Number(draft.exemptAmount) !== snapshotExemptAmount ||
+        Number(draft.taxAmount) !== snapshotTaxAmount ||
+        Number(draft.totalAmount) !== grossAmount)
+    ) {
       throw new Error("DTE_AMOUNT_TAX_RECONCILIATION_FAILED");
     }
     intent.production_document_id = draft.id;

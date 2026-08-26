@@ -56,10 +56,27 @@ function documentType(type: number): TaxDocumentDraft["documentType"] {
   throw new Error("DTE_PRODUCTION_TYPE_UNSUPPORTED");
 }
 
-function buildDraft(document: ProductionDocument): TaxDocumentDraft {
+export function buildProductionTaxDocumentDraft(
+  document: ProductionDocument,
+): TaxDocumentDraft {
   if (document.folio === null) throw new Error("DTE_FOLIO_NOT_RESERVED");
   if (!document.issuerSnapshot) throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
   const issuer = document.issuerSnapshot;
+  const amountsAreGross = document.dteType === 33 &&
+    document.lines.some((line) => line.pricingMode === "gross");
+  if (
+    amountsAreGross &&
+    document.lines.some(
+      (line) =>
+        line.pricingMode !== "gross" ||
+        !Number.isSafeInteger(line.unitGrossAmount) ||
+        !Number.isSafeInteger(line.lineGrossAmount) ||
+        line.discountPercent != null && line.discountPercent !== 0 ||
+        line.quantity * Number(line.unitGrossAmount) !== line.lineGrossAmount,
+    )
+  ) {
+    throw new Error("DTE_GROSS_AMOUNTS_LINES_INVALID");
+  }
   return {
     tenantId: document.tenantId,
     issueMode: "citaya_own_dte",
@@ -93,11 +110,16 @@ function buildDraft(document: ProductionDocument): TaxDocumentDraft {
       name: line.name,
       description: line.description ?? "",
       quantity: line.quantity,
-      unitPrice: line.unitPrice,
-      amount: line.quantity * line.unitPrice,
+      unitPrice: amountsAreGross
+        ? Number(line.unitGrossAmount)
+        : line.unitPrice,
+      amount: amountsAreGross
+        ? Number(line.lineGrossAmount)
+        : line.quantity * line.unitPrice,
       exempt: line.exempt === true,
       discountPercent: line.discountPercent ?? undefined,
     })),
+    amountsAreGross,
     references: document.references,
     netAmount: document.netAmount,
     exemptAmount: document.exemptAmount,
@@ -208,7 +230,7 @@ export class CertifiedProductionDteGenerator
           privateKeyPath: input.settings.privateKeyPath,
           certificatePath: input.settings.certificatePath,
         },
-        drafts: [buildDraft(input.document)],
+        drafts: [buildProductionTaxDocumentDraft(input.document)],
         caseIds: [caseId],
         rutEnvia: input.settings.senderRut,
         importedCafs: [

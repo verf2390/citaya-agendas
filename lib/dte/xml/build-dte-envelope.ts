@@ -139,6 +139,7 @@ function buildDocumentoXml(
             <TipoDTE>${documentTypeCode}</TipoDTE>
             <Folio>${draft.folio}</Folio>
             <FchEmis>${escapeXml(issueDate)}</FchEmis>
+            ${draft.amountsAreGross ? "<MntBruto>1</MntBruto>" : ""}
           </IdDoc>
           <Emisor>
             <RUTEmisor>${escapeXml(issuerRut)}</RUTEmisor>

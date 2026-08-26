@@ -32,6 +32,10 @@ function validateLine(line: TaxDocumentLine, index: number): void {
   assertNonNegativeNumber(line.amount, `${prefix}.amount`);
 }
 
+function roundDiv(numerator: bigint, denominator: bigint): number {
+  return Number((numerator + denominator / BigInt(2)) / denominator);
+}
+
 // LAB / NO PRODUCTIVO: validaciones mínimas antes de generar XML estilo SII.
 export function validateDteDraftForXmlLab(draft: TaxDocumentDraft): void {
   if (!validateRut(draft.issuer.rut)) {
@@ -70,4 +74,33 @@ export function validateDteDraftForXmlLab(draft: TaxDocumentDraft): void {
   }
 
   draft.lines.forEach(validateLine);
+
+  if (draft.amountsAreGross) {
+    if (draft.documentType !== "factura_afecta") {
+      throw new Error("DTE_MNT_BRUTO_DOCUMENT_TYPE_INVALID");
+    }
+    const affectedGross = draft.lines
+      .filter((line) => line.exempt !== true)
+      .reduce((sum, line) => sum + line.amount, 0);
+    const exemptAmount = draft.lines
+      .filter((line) => line.exempt === true)
+      .reduce((sum, line) => sum + line.amount, 0);
+    const netAmount = affectedGross === 0
+      ? 0
+      : roundDiv(BigInt(affectedGross) * BigInt(100), BigInt(119));
+    const taxAmount = affectedGross === 0
+      ? 0
+      : roundDiv(BigInt(affectedGross) * BigInt(19), BigInt(119));
+    if (
+      ![affectedGross, exemptAmount, netAmount, taxAmount]
+        .every(Number.isSafeInteger) ||
+      draft.netAmount !== netAmount ||
+      (draft.exemptAmount ?? 0) !== exemptAmount ||
+      draft.taxAmount !== taxAmount ||
+      netAmount + taxAmount !== affectedGross ||
+      draft.totalAmount !== affectedGross + exemptAmount
+    ) {
+      throw new Error("DTE_MNT_BRUTO_TOTALS_INVALID");
+    }
+  }
 }

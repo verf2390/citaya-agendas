@@ -149,6 +149,7 @@ export type TaxDocumentDraft = {
   issuer: TenantTaxProfile;
   recipient: TaxDocumentRecipient;
   lines: TaxDocumentLine[];
+  amountsAreGross?: boolean;
   references?: TaxDocumentReference[];
   globalDiscount?: { discountType: "D" | "R"; valueType: "%" | "$"; value: number; appliesTo: "affected" | "exempt" } | null;
   netAmount?: number | null;

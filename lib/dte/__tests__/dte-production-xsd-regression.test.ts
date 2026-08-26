@@ -54,7 +54,7 @@ function fixtureCaf() {
   };
 }
 
-test("anonymized folio 8 candidate requires Acteco and passes every offline gate", () => {
+test("net and MntBruto type 33 candidates require Acteco and pass every offline gate", () => {
   const root = mkdtempSync(join(tmpdir(), "citaya-folio8-regression-"));
   const cert = join(root, "certificate.pem");
   const key = join(root, "private-key.pem");
@@ -114,7 +114,24 @@ test("anonymized folio 8 candidate requires Acteco and passes every offline gate
       }),
       /DTE_ISSUER_ACTIVITY_CODE_REQUIRED/,
     );
+    const grossDraft: TaxDocumentDraft = {
+      ...draft,
+      folio: 9,
+      lines: [{
+        name: "SERVICIO CATALOGO BRUTO",
+        quantity: 1,
+        unitPrice: 59_440,
+        amount: 59_440,
+        exempt: false,
+      }],
+      amountsAreGross: true,
+      netAmount: 49_950,
+      exemptAmount: 0,
+      taxAmount: 9_490,
+      totalAmount: 59_440,
+    };
     const caseId = "anonymous-folio8";
+    const grossCaseId = "anonymous-gross-folio9";
     const result = runControlledCertificationSet({
       env: {
         NODE_ENV: "test",
@@ -126,8 +143,8 @@ test("anonymized folio 8 candidate requires Acteco and passes every offline gate
       },
       outputDir: root,
       signingMaterial: { privateKeyPath: key, certificatePath: cert },
-      drafts: [draft],
-      caseIds: [caseId],
+      drafts: [draft, grossDraft],
+      caseIds: [caseId, grossCaseId],
       rutEnvia: ISSUER_RUT,
       importedCafs: [fixtureCaf()],
       setDteId: "CitayaAnonymousFolio8",
@@ -136,30 +153,37 @@ test("anonymized folio 8 candidate requires Acteco and passes every offline gate
       generationTimestamp: "2026-07-29T00:00:00",
     });
     const dtePath = join(root, `${caseId}-DTE-CERTIFICATION.xml`);
+    const grossDtePath = join(root, `${grossCaseId}-DTE-CERTIFICATION.xml`);
     const dte = readFileSync(dtePath);
+    const grossDte = readFileSync(grossDtePath);
     const envio = readFileSync(result.envelopePath);
     const dteText = dte.toString("latin1");
+    const grossDteText = grossDte.toString("latin1");
     const envioText = envio.toString("latin1");
-    assert.equal(result.dteXsd, "1/1");
+    assert.equal(result.dteXsd, "2/2");
     assert.equal(result.envioDteXsd, "valid");
-    assert.equal(result.tedFrmt, "1/1");
-    assert.equal(result.dteSignatures, "1/1");
+    assert.equal(result.tedFrmt, "2/2");
+    assert.equal(result.dteSignatures, "2/2");
     assert.equal(result.envelopeSignature, "valid");
     assert.match(dteText, /<Acteco>620900<\/Acteco>/);
     for (const expected of ["<Folio>8</Folio>", "<MntNeto>4202</MntNeto>", "<IVA>798</IVA>", "<MntTotal>5000</MntTotal>"])
       assert.match(dteText, new RegExp(expected));
+    for (const expected of ["<Folio>9</Folio>", "<MntBruto>1</MntBruto>", "<MntNeto>49950</MntNeto>", "<IVA>9490</IVA>", "<MntTotal>59440</MntTotal>", "<PrcItem>59440</PrcItem>", "<MontoItem>59440</MontoItem>"])
+      assert.match(grossDteText, new RegExp(expected));
     assert.match(envioText, /<FchResol>2014-08-22<\/FchResol>/);
     assert.match(envioText, /<NroResol>80<\/NroResol>/);
     assert.equal(dte.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])), false);
     assert.equal(Buffer.from(dteText, "latin1").equals(dte), true);
+    assert.equal(Buffer.from(grossDteText, "latin1").equals(grossDte), true);
     assert.equal(spawnSync("xmlsec1", ["--verify", "--id-attr:ID", "Documento", "--pubkey-cert-pem", cert, dtePath]).status, 0);
+    assert.equal(spawnSync("xmlsec1", ["--verify", "--id-attr:ID", "Documento", "--pubkey-cert-pem", cert, grossDtePath]).status, 0);
     const xmlsec = verifyPersistedXmlsecSignatures({
       envelopePath: result.envelopePath,
       bytes: envio,
       expectedSha256: result.envelopeSha256,
       certificatePath: cert,
     });
-    assert.equal(xmlsec.individualValid, 1);
+    assert.equal(xmlsec.individualValid, 2);
     assert.equal(xmlsec.outerValid, true);
     assert.equal(xmlsec.persistedBytesValid, true);
     assert.equal(result.siiContacted, false);
