@@ -16,6 +16,9 @@ const ownedLastFolio = readFileSync(ownedLastFolioPath, "utf8");
 const ownedFolioResumePath =
   "migrations/202608260002_cit33_claim_owned_folio_resume.sql";
 const ownedFolioResume = readFileSync(ownedFolioResumePath, "utf8");
+const quarantinePath =
+  "migrations/202608270001_dte_quarantine_automatic_issuance_exact.sql";
+const quarantine = readFileSync(quarantinePath, "utf8");
 const bookingRoute = readFileSync("app/api/appointments/create/route.ts", "utf8");
 const cutover = readFileSync("lib/dte/cutover.ts", "utf8");
 const manualClaim = readFileSync(
@@ -133,6 +136,31 @@ test("CIT-33 owned-folio resume claim is exact, atomic, and least-privilege", ()
   assert.doesNotMatch(
     ownedFolioResume,
     /(?:net\.http|http_(?:get|post)|dblink|pg_net)/i,
+  );
+});
+
+test("automatic quarantine is exact, pre-network, and least-privilege", () => {
+  assert.match(quarantine, /dte_quarantine_automatic_issuance_exact/);
+  assert.match(quarantine, /returns setof public\.dte_issuance_outbox/);
+  assert.match(quarantine, /security definer[\s\S]*set search_path = ''/);
+  assert.match(quarantine, /pg_advisory_xact_lock/);
+  assert.equal((quarantine.match(/for update/g) ?? []).length, 2);
+  assert.match(quarantine, /POSSIBLE_DUPLICATE_DOCUMENT_REVIEW_REQUIRED/);
+  assert.match(quarantine, /AUTOMATIC_ISSUANCE_QUARANTINED/);
+  assert.match(quarantine, /business_operation_id = expected_business_operation_id/);
+  assert.match(quarantine, /event\.event_type like '%NETWORK_BOUNDARY%'/);
+  assert.match(quarantine, /active\.status = 'PROCESSING'/);
+  assert.match(
+    quarantine,
+    /revoke all on function public\.dte_quarantine_automatic_issuance_exact\([\s\S]*from public, anon, authenticated, service_role;[\s\S]*grant execute[\s\S]*to service_role/,
+  );
+  assert.doesNotMatch(quarantine, /set\s+network_attempts\s*=\s*[1-9]/i);
+  assert.doesNotMatch(quarantine, /set\s+network_attempt_count\s*=\s*[1-9]/i);
+  assert.doesNotMatch(quarantine, /set\s+deterministic_(?:attempts|retry_count)\s*=/i);
+  assert.doesNotMatch(quarantine, /insert into public\.dte_production_/i);
+  assert.doesNotMatch(
+    quarantine,
+    /(?:reserve_folio|net\.http|http_(?:get|post)|dblink|pg_net)/i,
   );
 });
 
@@ -1996,6 +2024,434 @@ select 'CIT33_OWNED_FOLIO_RESUME_SQL_ASSERTIONS_PASSED=28';
 rollback;
 `;
 
+const quarantineAssertions = String.raw`
+begin;
+
+create or replace function public.test_expect_automatic_quarantine_failure(
+  p_tenant_id uuid,
+  p_outbox_id uuid,
+  p_intent_id uuid,
+  p_dte_type integer,
+  p_reason text,
+  p_expected_error text default 'DTE_AUTOMATIC_QUARANTINE_NOT_ELIGIBLE'
+) returns void
+language plpgsql
+set search_path = ''
+as $$
+begin
+  begin
+    perform public.dte_quarantine_automatic_issuance_exact(
+      p_tenant_id,
+      p_outbox_id,
+      p_intent_id,
+      p_dte_type,
+      p_reason
+    );
+    raise exception 'DTE_QUARANTINE_TEST_UNEXPECTED_SUCCESS';
+  exception when others then
+    if sqlerrm not like '%' || p_expected_error || '%' then
+      raise;
+    end if;
+  end;
+end;
+$$;
+
+do $$
+declare
+  tenant_id_value constant uuid := '91000000-0000-4000-8000-000000000001';
+  other_tenant_id constant uuid := '91000000-0000-4000-8000-000000000002';
+  intent_id_value constant uuid := '92000000-0000-4000-8000-000000000001';
+  outbox_id_value constant uuid := '93000000-0000-4000-8000-000000000001';
+  processing_intent constant uuid := '92000000-0000-4000-8000-000000000002';
+  processing_outbox constant uuid := '93000000-0000-4000-8000-000000000002';
+  document_id_value constant uuid := '94000000-0000-4000-8000-000000000001';
+  submission_id_value constant uuid := '95000000-0000-4000-8000-000000000001';
+  reason_value constant text := 'POSSIBLE_DUPLICATE_DOCUMENT_REVIEW_REQUIRED';
+  quarantined public.dte_issuance_outbox%rowtype;
+  row_count_value bigint;
+  ledger_count_before bigint;
+  document_count_before bigint;
+  submission_count_before bigint;
+begin
+  insert into public.tenants(id,lifecycle_status,operational_mode)
+  values
+    (tenant_id_value,'active','live'),
+    (other_tenant_id,'active','live');
+  insert into public.dte_tenant_issuance_settings values(
+    tenant_id_value,'automatic_on_verified_payment','39',true,true,'approved',
+    true,pg_catalog.now()+interval '30 days',true,true,true,true,true,true,'enabled'
+  );
+  insert into public.dte_production_tenant_settings
+  values(tenant_id_value,true,'automatic','approved',array[33,39]);
+  insert into public.dte_legal_activation values(tenant_id_value,33,'active');
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,
+    origin,deterministic_retry_count,network_attempt_count
+  ) values(
+    intent_id_value,tenant_id_value,'quarantine-payment','webpay',
+    'quarantine-intent','invoice',33,59440,'CLP','{}','PENDING',
+    'automatic_payment',2,0
+  );
+  insert into public.dte_issuance_outbox(
+    id,tenant_id,intent_id,status,issuance_origin,deterministic_attempts,
+    network_attempts
+  ) values(
+    outbox_id_value,tenant_id_value,intent_id_value,'PENDING',
+    'automatic_system',2,0
+  );
+  insert into public.dte_document_events(
+    tenant_id,intent_id,event_type,safe_metadata
+  ) values(
+    tenant_id_value,intent_id_value,'ISSUANCE_QUEUED',
+    pg_catalog.jsonb_build_object('dteType',33)
+  );
+
+  -- Exact identifiers, type and allowlisted reason.
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,'93000000-0000-4000-8000-000000000099',
+    intent_id_value,33,reason_value
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,
+    '92000000-0000-4000-8000-000000000099',33,reason_value
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    other_tenant_id,outbox_id_value,intent_id_value,33,reason_value
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,39,reason_value
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,'ARBITRARY_REASON',
+    'DTE_AUTOMATIC_QUARANTINE_REASON_INVALID'
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,null,reason_value,
+    'DTE_AUTOMATIC_QUARANTINE_INPUT_INVALID'
+  );
+
+  -- Every mutable eligibility field fails closed without changing attempts.
+  update public.dte_issuance_outbox set status='BLOCKED' where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set status='PENDING' where id=outbox_id_value;
+
+  update public.dte_payment_document_intents set status='BLOCKED' where id=intent_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_payment_document_intents set status='PENDING' where id=intent_id_value;
+
+  update public.dte_issuance_outbox set issuance_origin='manual_admin' where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set issuance_origin='automatic_system' where id=outbox_id_value;
+
+  update public.dte_payment_document_intents set origin='manual_payment' where id=intent_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_payment_document_intents set origin='automatic_payment' where id=intent_id_value;
+
+  update public.dte_payment_document_intents set trigger_source='manual_admin' where id=intent_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_payment_document_intents set trigger_source='webpay' where id=intent_id_value;
+
+  update public.dte_issuance_outbox set network_attempts=1 where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set network_attempts=0 where id=outbox_id_value;
+
+  update public.dte_payment_document_intents set network_attempt_count=1 where id=intent_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_payment_document_intents set network_attempt_count=0 where id=intent_id_value;
+
+  insert into public.dte_production_documents(
+    id,tenant_id,dte_type,business_operation_id,status
+  ) values(document_id_value,tenant_id_value,33,'unrelated:document','draft');
+  update public.dte_payment_document_intents
+     set production_document_id=document_id_value where id=intent_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_payment_document_intents
+     set production_document_id=null where id=intent_id_value;
+  delete from public.dte_production_documents where id=document_id_value;
+
+  update public.dte_issuance_outbox set locked_at=pg_catalog.now() where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set locked_at=null where id=outbox_id_value;
+
+  update public.dte_issuance_outbox set locked_by='unexpected-lock' where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set locked_by=null where id=outbox_id_value;
+
+  update public.dte_issuance_outbox
+     set claim_token='96000000-0000-4000-8000-000000000001' where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set claim_token=null where id=outbox_id_value;
+
+  update public.dte_issuance_outbox
+     set lease_expires_at=pg_catalog.now()+interval '15 minutes' where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set lease_expires_at=null where id=outbox_id_value;
+
+  update public.dte_issuance_outbox set deterministic_attempts=3 where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set deterministic_attempts=2 where id=outbox_id_value;
+
+  update public.dte_payment_document_intents
+     set deterministic_retry_count=3 where id=intent_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_payment_document_intents
+     set deterministic_retry_count=2 where id=intent_id_value;
+
+  update public.dte_issuance_outbox
+     set last_safe_error='EXISTING_ERROR' where id=outbox_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_issuance_outbox set last_safe_error=null where id=outbox_id_value;
+
+  update public.dte_payment_document_intents
+     set safe_blocking_reason='EXISTING_REASON' where id=intent_id_value;
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  update public.dte_payment_document_intents
+     set safe_blocking_reason=null where id=intent_id_value;
+
+  -- Tenant concurrency is a distinct conflict and never touches the target.
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,origin
+  ) values(
+    processing_intent,tenant_id_value,'processing-payment','webpay',
+    'processing-intent','invoice',33,1000,'CLP','{}','PREPARING',
+    'automatic_payment'
+  );
+  insert into public.dte_issuance_outbox(
+    id,tenant_id,intent_id,status,issuance_origin,locked_at,locked_by,
+    claim_token,lease_expires_at
+  ) values(
+    processing_outbox,tenant_id_value,processing_intent,'PROCESSING',
+    'automatic_system',pg_catalog.now(),'other-worker',
+    '96000000-0000-4000-8000-000000000002',
+    pg_catalog.now()+interval '15 minutes'
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value,
+    'DTE_AUTOMATIC_QUARANTINE_CONFLICT'
+  );
+  delete from public.dte_issuance_outbox where id=processing_outbox;
+  delete from public.dte_payment_document_intents where id=processing_intent;
+
+  -- Persisted advancement/network evidence fails closed.
+  insert into public.dte_document_events(
+    tenant_id,intent_id,event_type,safe_metadata
+  ) values(
+    tenant_id_value,intent_id_value,'UPLOAD_NETWORK_BOUNDARY',
+    '{"networkBoundaryCrossed":true}'::jsonb
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  delete from public.dte_document_events
+   where tenant_id=tenant_id_value and intent_id=intent_id_value
+     and event_type='UPLOAD_NETWORK_BOUNDARY';
+
+  insert into public.dte_production_documents(
+    id,tenant_id,dte_type,business_operation_id,status
+  ) values(
+    document_id_value,tenant_id_value,33,
+    'intent:'||intent_id_value::text,'draft'
+  );
+  insert into public.dte_production_submission_attempts(
+    id,tenant_id,document_id,before_fetch_at,status
+  ) values(
+    submission_id_value,tenant_id_value,document_id_value,null,'persisted'
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  delete from public.dte_production_submission_attempts where id=submission_id_value;
+  delete from public.dte_production_documents where id=document_id_value;
+
+  insert into public.dte_production_folio_ledger(
+    tenant_id,dte_type,folio,caf_id,state,business_operation_id
+  ) values(
+    tenant_id_value,33,101,'97000000-0000-4000-8000-000000000001',
+    'reserved','intent:'||intent_id_value::text
+  );
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  delete from public.dte_production_folio_ledger
+   where tenant_id=tenant_id_value and dte_type=33 and folio=101;
+
+  -- Unrelated production state is preserved by the successful exact target.
+  insert into public.dte_production_folio_ledger(
+    tenant_id,dte_type,folio,caf_id,state,business_operation_id
+  ) values(
+    tenant_id_value,33,102,'97000000-0000-4000-8000-000000000002',
+    'available',null
+  );
+  select pg_catalog.count(*) into ledger_count_before
+    from public.dte_production_folio_ledger;
+  select pg_catalog.count(*) into document_count_before
+    from public.dte_production_documents;
+  select pg_catalog.count(*) into submission_count_before
+    from public.dte_production_submission_attempts;
+
+  select * into quarantined
+    from public.dte_quarantine_automatic_issuance_exact(
+      tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+    );
+  if quarantined.id <> outbox_id_value or quarantined.status <> 'BLOCKED' then
+    raise exception 'DTE_QUARANTINE_RETURN_ROW_INVALID';
+  end if;
+
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_payment_document_intents intent
+    join public.dte_issuance_outbox outbox
+      on outbox.tenant_id=intent.tenant_id and outbox.intent_id=intent.id
+   where intent.id=intent_id_value
+     and intent.tenant_id=tenant_id_value
+     and intent.status='BLOCKED'
+     and intent.safe_blocking_reason=reason_value
+     and intent.network_attempt_count=0
+     and intent.deterministic_retry_count=2
+     and intent.production_document_id is null
+     and outbox.id=outbox_id_value
+     and outbox.status='BLOCKED'
+     and outbox.last_safe_error=reason_value
+     and outbox.network_attempts=0
+     and outbox.deterministic_attempts=2
+     and outbox.locked_at is null
+     and outbox.locked_by is null
+     and outbox.claim_token is null
+     and outbox.lease_expires_at is null;
+  if row_count_value <> 1 then
+    raise exception 'DTE_QUARANTINE_HAPPY_PATH_STATE_INVALID';
+  end if;
+
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_document_events event
+   where event.tenant_id=tenant_id_value
+     and event.intent_id=intent_id_value
+     and event.production_document_id is null
+     and event.event_type='AUTOMATIC_ISSUANCE_QUARANTINED'
+     and event.safe_metadata = pg_catalog.jsonb_build_object(
+       'reason',reason_value,
+       'exactTarget',true,
+       'automaticRetry',false,
+       'networkBoundaryCrossed',false,
+       'productionDocumentCreated',false,
+       'dteType',33
+     );
+  if row_count_value <> 1 then
+    raise exception 'DTE_QUARANTINE_SAFE_EVENT_INVALID';
+  end if;
+
+  if (select pg_catalog.count(*) from public.dte_production_folio_ledger)
+       <> ledger_count_before
+     or (select pg_catalog.count(*) from public.dte_production_documents)
+       <> document_count_before
+     or (select pg_catalog.count(*) from public.dte_production_submission_attempts)
+       <> submission_count_before then
+    raise exception 'DTE_QUARANTINE_PRODUCTION_STATE_CHANGED';
+  end if;
+  if exists (
+    select 1 from public.dte_document_events event
+     where event.tenant_id=tenant_id_value
+       and event.intent_id=intent_id_value
+       and (
+         event.event_type like '%NETWORK_BOUNDARY%'
+         or event.safe_metadata @> '{"networkBoundaryCrossed":true}'::jsonb
+       )
+  ) then
+    raise exception 'DTE_QUARANTINE_NETWORK_BOUNDARY_CREATED';
+  end if;
+
+  -- Idempotency is fail-closed: the second call changes nothing and emits no event.
+  perform public.test_expect_automatic_quarantine_failure(
+    tenant_id_value,outbox_id_value,intent_id_value,33,reason_value
+  );
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_document_events event
+   where event.tenant_id=tenant_id_value
+     and event.intent_id=intent_id_value
+     and event.event_type='AUTOMATIC_ISSUANCE_QUARANTINED';
+  if row_count_value <> 1 then
+    raise exception 'DTE_QUARANTINE_EVENT_DUPLICATED';
+  end if;
+
+  -- The real normal exact/global claim RPCs cannot select a BLOCKED target.
+  begin
+    perform public.dte_claim_automatic_issuance_outbox_exact(
+      'quarantine-claim-test',outbox_id_value
+    );
+    raise exception 'DTE_QUARANTINE_EXACT_CLAIM_ACCEPTED_BLOCKED';
+  exception when others then
+    if sqlerrm not like '%DTE_AUTOMATIC_TARGET_NOT_ELIGIBLE%' then raise; end if;
+  end;
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_claim_automatic_issuance_outbox('quarantine-global-test');
+  if row_count_value <> 0 then
+    raise exception 'DTE_QUARANTINE_GLOBAL_CLAIM_ACCEPTED_BLOCKED';
+  end if;
+
+  -- New SECURITY DEFINER entrypoint is service-role only.
+  if pg_catalog.has_function_privilege(
+       'public',
+       'public.dte_quarantine_automatic_issuance_exact(uuid,uuid,uuid,integer,text)',
+       'EXECUTE'
+     )
+     or pg_catalog.has_function_privilege(
+       'anon',
+       'public.dte_quarantine_automatic_issuance_exact(uuid,uuid,uuid,integer,text)',
+       'EXECUTE'
+     )
+     or pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.dte_quarantine_automatic_issuance_exact(uuid,uuid,uuid,integer,text)',
+       'EXECUTE'
+     )
+     or not pg_catalog.has_function_privilege(
+       'service_role',
+       'public.dte_quarantine_automatic_issuance_exact(uuid,uuid,uuid,integer,text)',
+       'EXECUTE'
+     ) then
+    raise exception 'DTE_QUARANTINE_FUNCTION_PRIVILEGES_INVALID';
+  end if;
+end;
+$$;
+
+select 'DTE_AUTOMATIC_QUARANTINE_SQL_ASSERTIONS_PASSED=31';
+rollback;
+`;
+
 test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, actor, and idempotency", () => {
   const database = `citaya_auto_${randomUUID().replaceAll("-", "")}`;
   const create = spawnSync(
@@ -2032,7 +2488,7 @@ test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, a
         "ON_ERROR_STOP=1",
       ],
       {
-        input: `${bootstrap}\n${manualClaim}\n${migration}\n${hardening}\n${ownedLastFolio}\n${ownedFolioResume}\n${assertions}\n${hardeningAssertions}\n${ownedLastFolioAssertions}\n${ownedFolioResumeAssertions}`,
+        input: `${bootstrap}\n${manualClaim}\n${migration}\n${hardening}\n${ownedLastFolio}\n${ownedFolioResume}\n${quarantine}\n${assertions}\n${hardeningAssertions}\n${ownedLastFolioAssertions}\n${ownedFolioResumeAssertions}\n${quarantineAssertions}`,
         encoding: "utf8",
       },
     );
@@ -2041,6 +2497,7 @@ test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, a
     assert.match(run.stdout, /DTE_AUTOMATIC_HARDENING_SQL_ASSERTIONS_PASSED=15/);
     assert.match(run.stdout, /CIT33_OWNED_LAST_FOLIO_SQL_ASSERTIONS_PASSED=47/);
     assert.match(run.stdout, /CIT33_OWNED_FOLIO_RESUME_SQL_ASSERTIONS_PASSED=28/);
+    assert.match(run.stdout, /DTE_AUTOMATIC_QUARANTINE_SQL_ASSERTIONS_PASSED=31/);
   } finally {
     const drop = spawnSync(
       "docker",
