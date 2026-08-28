@@ -13,6 +13,9 @@ const hardening = readFileSync(hardeningPath, "utf8");
 const ownedLastFolioPath =
   "migrations/202608260001_cit33_allow_owned_last_folio.sql";
 const ownedLastFolio = readFileSync(ownedLastFolioPath, "utf8");
+const ownedFolioResumePath =
+  "migrations/202608260002_cit33_claim_owned_folio_resume.sql";
+const ownedFolioResume = readFileSync(ownedFolioResumePath, "utf8");
 const bookingRoute = readFileSync("app/api/appointments/create/route.ts", "utf8");
 const cutover = readFileSync("lib/dte/cutover.ts", "utf8");
 const manualClaim = readFileSync(
@@ -106,6 +109,29 @@ test("CIT-33 owned-last-folio exception is narrow, fail-closed, and offline", ()
   assert.doesNotMatch(ownedLastFolio, /document\.dte_type in \(33,39,41/);
   assert.doesNotMatch(
     ownedLastFolio,
+    /(?:net\.http|http_(?:get|post)|dblink|pg_net)/i,
+  );
+});
+
+test("CIT-33 owned-folio resume claim is exact, atomic, and least-privilege", () => {
+  assert.match(ownedFolioResume, /dte_claim_automatic_owned_folio_resume_exact/);
+  assert.match(ownedFolioResume, /returns setof public\.dte_issuance_outbox/);
+  assert.match(ownedFolioResume, /security definer[\s\S]*set search_path = ''/);
+  assert.match(ownedFolioResume, /pg_advisory_xact_lock/);
+  assert.match(ownedFolioResume, /for update/);
+  assert.match(ownedFolioResume, /AUTOMATIC_GATE_CLOSED_PRE_NETWORK/);
+  assert.match(ownedFolioResume, /AUTOMATIC_OWNED_FOLIO_RESUME_CLAIMED/);
+  assert.match(ownedFolioResume, /public\.dte_automatic_issuance_gate_open/);
+  assert.match(ownedFolioResume, /possible_relation_count <> 1/);
+  assert.match(ownedFolioResume, /submission\.document_id = document_row\.id/);
+  assert.match(ownedFolioResume, /claim_token = pg_catalog\.gen_random_uuid\(\)/);
+  assert.match(
+    ownedFolioResume,
+    /revoke all on function public\.dte_claim_automatic_owned_folio_resume_exact\([\s\S]*from public, anon, authenticated, service_role;[\s\S]*grant execute[\s\S]*to service_role/,
+  );
+  assert.doesNotMatch(ownedFolioResume, /skip locked|for stale in/);
+  assert.doesNotMatch(
+    ownedFolioResume,
     /(?:net\.http|http_(?:get|post)|dblink|pg_net)/i,
   );
 });
@@ -1559,6 +1585,417 @@ select 'CIT33_OWNED_LAST_FOLIO_SQL_ASSERTIONS_PASSED=47';
 rollback;
 `;
 
+const ownedFolioResumeAssertions = String.raw`
+begin;
+
+create table public.cit33_resume_activation_controls(
+  tenant_id uuid primary key,
+  certificate_current jsonb not null default 'true'::jsonb
+);
+
+create or replace function public.dte_activation_gate_report(
+  p_tenant_id uuid,
+  p_dte_type integer,
+  p_global_feature_enabled boolean
+) returns jsonb
+language sql
+stable
+set search_path = ''
+as $$
+  with gates as (
+    select pg_catalog.jsonb_build_object(
+      'issuerDataExact', true,
+      'issuerLegalNameMatch', true,
+      'issuerResolutionConfigured', true,
+      'typeAuthorized', true,
+      'certificateCurrent', coalesce(
+        (
+          select controls.certificate_current
+            from public.cit33_resume_activation_controls controls
+           where controls.tenant_id = p_tenant_id
+        ),
+        'true'::jsonb
+      ),
+      'certificateKeyMatch', true,
+      'certificateRutMatch', true,
+      'officialTrustAnchor', true,
+      'authenticTypeCaf', true,
+      'foliosAvailable', exists (
+        select 1
+          from public.dte_production_folio_ledger ledger
+         where ledger.tenant_id = p_tenant_id
+           and ledger.dte_type = p_dte_type
+           and ledger.state = 'available'
+      ),
+      'tenantAwareLedger', true,
+      'privateStorage', true,
+      'productionEndpoints', true,
+      'officialXsd', true,
+      'xmlDsig', true,
+      'workerConfigured', true,
+      'migrationsApplied', true,
+      'offlinePreflightComplete', true,
+      'documentEngineReady', p_dte_type in (33,39),
+      'globalFeatureEnabled', p_global_feature_enabled
+    ) as value
+  )
+  select gates.value || pg_catalog.jsonb_build_object(
+    'ready', not exists (
+      select 1
+        from pg_catalog.jsonb_each(gates.value) entry
+       where entry.value is distinct from 'true'::jsonb
+    )
+  )
+  from gates;
+$$;
+
+create or replace function public.cit33_expect_owned_resume_failure(
+  p_outbox_id uuid
+) returns void
+language plpgsql
+set search_path = ''
+as $$
+begin
+  begin
+    perform public.dte_claim_automatic_owned_folio_resume_exact(
+      'cit33-resume-negative',
+      p_outbox_id
+    );
+    raise exception 'CIT33_EXPECTED_RESUME_FAILURE_NOT_RAISED';
+  exception when others then
+    if sqlerrm not like 'DTE_AUTOMATIC_OWNED_FOLIO_RESUME_%' then
+      raise;
+    end if;
+  end;
+end;
+$$;
+
+do $$
+declare
+  tenant_id_value constant uuid := '13000000-0000-4000-8000-000000000001';
+  other_tenant_id constant uuid := '13000000-0000-4000-8000-000000000002';
+  customer_id_value constant uuid := '23000000-0000-4000-8000-000000000001';
+  actor_id_value constant uuid := '23000000-0000-4000-8000-000000000002';
+  intent_id_value constant uuid := '33000000-0000-4000-8000-000000000001';
+  other_intent_id constant uuid := '33000000-0000-4000-8000-000000000002';
+  outbox_id_value constant uuid := '43000000-0000-4000-8000-000000000001';
+  other_outbox_id constant uuid := '43000000-0000-4000-8000-000000000002';
+  document_id_value constant uuid := '53000000-0000-4000-8000-000000000001';
+  other_document_id constant uuid := '53000000-0000-4000-8000-000000000002';
+  caf_id_value constant uuid := '63000000-0000-4000-8000-000000000001';
+  claimed public.dte_issuance_outbox%rowtype;
+  mutation_ok boolean;
+  row_count_value integer;
+begin
+  insert into public.tenants(id) values(tenant_id_value),(other_tenant_id);
+  insert into public.customers(id,tenant_id,full_name)
+  values(customer_id_value,tenant_id_value,'Cliente Recuperación 39');
+  insert into public.dte_tenant_issuance_settings values(
+    tenant_id_value,'automatic_on_verified_payment','39',true,true,'approved',
+    true,now()+interval '30 days',true,true,true,true,true,true,'enabled'
+  );
+  insert into public.dte_production_tenant_settings
+  values(tenant_id_value,true,'automatic','approved',array[33,39]);
+  insert into public.dte_legal_activation values(tenant_id_value,39,'active');
+  insert into public.cit33_resume_activation_controls
+  values(tenant_id_value,'true'::jsonb);
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,payment_key,trigger_source,idempotency_key,requested_document,
+    resolved_dte_type,amount_snapshot,currency,appointment_snapshot,status,
+    safe_blocking_reason,production_document_id,deterministic_retry_count,
+    network_attempt_count,origin,customer_id
+  ) values(
+    intent_id_value,tenant_id_value,'cit33-resume-39','webpay',
+    'cit33-resume-39','consumer',39,1000,'CLP','{}','BLOCKED',
+    'AUTOMATIC_GATE_CLOSED_PRE_NETWORK',document_id_value,1,0,
+    'automatic_payment',customer_id_value
+  ),(
+    other_intent_id,tenant_id_value,'cit33-resume-other','webpay',
+    'cit33-resume-other','consumer',39,1000,'CLP','{}','PENDING',
+    null,null,0,0,'automatic_payment',customer_id_value
+  );
+  insert into public.dte_issuance_outbox(
+    id,tenant_id,intent_id,status,issuance_origin,deterministic_attempts,
+    network_attempts,last_safe_error
+  ) values(
+    outbox_id_value,tenant_id_value,intent_id_value,'BLOCKED',
+    'automatic_system',1,0,'AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+  ),(
+    other_outbox_id,tenant_id_value,other_intent_id,'PENDING',
+    'automatic_system',0,0,null
+  );
+  insert into public.dte_production_documents(
+    id,tenant_id,dte_type,business_operation_id,status,folio,caf_id
+  ) values(
+    document_id_value,tenant_id_value,39,'intent:cit33-resume-39',
+    'draft',null,null
+  ),(
+    other_document_id,tenant_id_value,39,'intent:cit33-resume-other',
+    'draft',null,null
+  );
+  insert into public.dte_production_folio_ledger(
+    tenant_id,dte_type,folio,caf_id,state,document_id,
+    business_operation_id,reserved_at
+  ) values(
+    tenant_id_value,39,40017,caf_id_value,'reserved',document_id_value,
+    'intent:cit33-resume-39',now()
+  );
+  insert into public.dte_boleta39_commercial_customer_snapshots(
+    intent_id,tenant_id,customer_id,customer_name,customer_email,captured_by
+  ) values(
+    intent_id_value,tenant_id_value,customer_id_value,
+    'Cliente Recuperación 39','resume39@example.test',actor_id_value
+  );
+
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_production_folio_ledger ledger
+   where ledger.tenant_id=tenant_id_value
+     and ledger.dte_type=39
+     and ledger.state='available';
+  if row_count_value <> 0 then
+    raise exception 'CIT33_RESUME_AVAILABLE_FOLIO_PRESENT';
+  end if;
+  if not public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then
+    raise exception 'CIT33_RESUME_OWNED_GATE_CLOSED';
+  end if;
+
+  begin
+    perform public.dte_claim_automatic_issuance_outbox_exact(
+      'cit33-normal-claim',outbox_id_value
+    );
+    raise exception 'CIT33_NORMAL_CLAIM_ACCEPTED_EXISTING_DOCUMENT';
+  exception when others then
+    if sqlerrm not like '%DTE_AUTOMATIC_TARGET_NOT_ELIGIBLE%' then raise; end if;
+  end;
+
+  perform public.cit33_expect_owned_resume_failure(
+    '99999999-9999-4999-8999-999999999999'
+  );
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id in (outbox_id_value,other_outbox_id)
+     and status in ('BLOCKED','PENDING');
+  if row_count_value <> 2 then
+    raise exception 'CIT33_RESUME_WRONG_TARGET_TOUCHED_OUTBOX';
+  end if;
+
+  update public.dte_payment_document_intents
+     set safe_blocking_reason='OTHER_REASON' where id=intent_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_payment_document_intents
+     set safe_blocking_reason='AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+   where id=intent_id_value;
+  update public.dte_issuance_outbox
+     set last_safe_error='OTHER_REASON' where id=outbox_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_issuance_outbox
+     set last_safe_error='AUTOMATIC_GATE_CLOSED_PRE_NETWORK'
+   where id=outbox_id_value;
+
+  update public.dte_payment_document_intents
+     set network_attempt_count=1 where id=intent_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_payment_document_intents
+     set network_attempt_count=0 where id=intent_id_value;
+  update public.dte_issuance_outbox
+     set network_attempts=1 where id=outbox_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_issuance_outbox
+     set network_attempts=0 where id=outbox_id_value;
+  update public.dte_issuance_outbox
+     set deterministic_attempts=3 where id=outbox_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_issuance_outbox
+     set deterministic_attempts=1 where id=outbox_id_value;
+
+  insert into public.dte_production_submission_attempts(
+    tenant_id,document_id,before_fetch_at,status
+  ) values(tenant_id_value,document_id_value,null,'persisted');
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  delete from public.dte_production_submission_attempts
+   where tenant_id=tenant_id_value and document_id=document_id_value;
+
+  update public.dte_production_documents
+     set tenant_id=other_tenant_id where id=document_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_production_documents
+     set tenant_id=tenant_id_value where id=document_id_value;
+  update public.dte_production_documents
+     set dte_type=33 where id=document_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_production_documents
+     set dte_type=39 where id=document_id_value;
+  update public.dte_payment_document_intents
+     set production_document_id=other_document_id where id=intent_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_payment_document_intents
+     set production_document_id=document_id_value where id=intent_id_value;
+
+  update public.dte_production_folio_ledger
+     set document_id=other_document_id
+   where tenant_id=tenant_id_value and dte_type=39 and folio=40017;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_production_folio_ledger
+     set document_id=document_id_value
+   where tenant_id=tenant_id_value and dte_type=39 and folio=40017;
+  update public.dte_production_folio_ledger
+     set business_operation_id='intent:cit33-wrong-operation'
+   where tenant_id=tenant_id_value and dte_type=39 and folio=40017;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_production_folio_ledger
+     set business_operation_id='intent:cit33-resume-39'
+   where tenant_id=tenant_id_value and dte_type=39 and folio=40017;
+
+  update public.dte_production_documents
+     set folio=40018 where id=document_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_production_documents
+     set folio=null where id=document_id_value;
+  update public.dte_production_documents
+     set caf_id='63000000-0000-4000-8000-000000000099'
+   where id=document_id_value;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_production_documents
+     set caf_id=null where id=document_id_value;
+
+  insert into public.dte_production_folio_ledger(
+    tenant_id,dte_type,folio,caf_id,state,document_id,business_operation_id
+  ) values(
+    tenant_id_value,39,40018,caf_id_value,'reserved',document_id_value,
+    'intent:cit33-second-relation'
+  );
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  delete from public.dte_production_folio_ledger
+   where tenant_id=tenant_id_value and dte_type=39 and folio=40018;
+
+  update public.cit33_resume_activation_controls
+     set certificate_current='false'::jsonb where tenant_id=tenant_id_value;
+  if public.dte_automatic_issuance_gate_open(
+    tenant_id_value,intent_id_value
+  ) then raise exception 'CIT33_RESUME_OTHER_FALSE_GATE_OPENED'; end if;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.cit33_resume_activation_controls
+     set certificate_current='true'::jsonb where tenant_id=tenant_id_value;
+
+  update public.dte_issuance_outbox
+     set status='PROCESSING' where id=other_outbox_id;
+  perform public.cit33_expect_owned_resume_failure(outbox_id_value);
+  update public.dte_issuance_outbox
+     set status='PENDING' where id=other_outbox_id;
+
+  select * into claimed
+    from public.dte_claim_automatic_owned_folio_resume_exact(
+      'cit33-owned-resume-worker',outbox_id_value
+    );
+  if claimed.id <> outbox_id_value
+     or claimed.intent_id <> intent_id_value
+     or claimed.status <> 'PROCESSING'
+     or claimed.locked_by <> 'cit33-owned-resume-worker'
+     or claimed.claim_token is null
+     or claimed.locked_at is null
+     or claimed.lease_expires_at not between
+       now()+interval '14 minutes' and now()+interval '16 minutes'
+     or claimed.last_safe_error is not null
+     or claimed.network_attempts <> 0
+     or claimed.deterministic_attempts <> 1 then
+    raise exception 'CIT33_RESUME_CLAIM_RESULT_INVALID';
+  end if;
+
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_payment_document_intents intent
+   where intent.id=intent_id_value
+     and intent.status='PENDING'
+     and intent.safe_blocking_reason is null
+     and intent.production_document_id=document_id_value
+     and intent.network_attempt_count=0
+     and intent.deterministic_retry_count=1;
+  if row_count_value <> 1 then
+    raise exception 'CIT33_RESUME_INTENT_MUTATION_INVALID';
+  end if;
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_production_documents document
+   where document.id=document_id_value
+     and document.tenant_id=tenant_id_value
+     and document.dte_type=39
+     and document.business_operation_id='intent:cit33-resume-39'
+     and document.status='draft'
+     and document.folio is null
+     and document.caf_id is null;
+  if row_count_value <> 1 then
+    raise exception 'CIT33_RESUME_DOCUMENT_CHANGED';
+  end if;
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_production_folio_ledger ledger
+   where ledger.tenant_id=tenant_id_value
+     and ledger.dte_type=39
+     and ledger.folio=40017
+     and ledger.caf_id=caf_id_value
+     and ledger.state='reserved'
+     and ledger.document_id=document_id_value
+     and ledger.business_operation_id='intent:cit33-resume-39';
+  if row_count_value <> 1 then
+    raise exception 'CIT33_RESUME_LEDGER_CHANGED';
+  end if;
+
+  mutation_ok := public.dte_mutate_automatic_issuance_claim(
+    claimed.id,claimed.locked_by,claimed.claim_token,'RENEW'
+  );
+  if not mutation_ok then
+    raise exception 'CIT33_RESUME_INITIAL_RENEW_BLOCKED';
+  end if;
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_issuance_outbox outbox
+    join public.dte_payment_document_intents intent
+      on intent.tenant_id=outbox.tenant_id and intent.id=outbox.intent_id
+   where outbox.id=outbox_id_value
+     and outbox.status='PROCESSING'
+     and outbox.network_attempts=0
+     and intent.status='PENDING'
+     and intent.network_attempt_count=0
+     and not exists (
+       select 1
+         from public.dte_production_submission_attempts submission
+        where submission.tenant_id=intent.tenant_id
+          and submission.document_id=document_id_value
+     )
+     and not exists (
+       select 1
+         from public.dte_document_events event
+        where event.tenant_id=intent.tenant_id
+          and event.intent_id=intent.id
+          and event.event_type like '%NETWORK_BOUNDARY%'
+     );
+  if row_count_value <> 1 then
+    raise exception 'CIT33_RESUME_PRE_NETWORK_STATE_INVALID';
+  end if;
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_document_events event
+   where event.tenant_id=tenant_id_value
+     and event.intent_id=intent_id_value
+     and event.production_document_id=document_id_value
+     and event.event_type='AUTOMATIC_OWNED_FOLIO_RESUME_CLAIMED'
+     and event.safe_metadata @> '{"automaticRetry":false,"exactTarget":true,"ownedFolioResume":true,"folioReused":40017,"additionalFolioReserved":false,"networkBoundaryCrossed":false}'::jsonb
+     and not (event.safe_metadata ? 'claimToken');
+  if row_count_value <> 1 then
+    raise exception 'CIT33_RESUME_SAFE_EVENT_INVALID';
+  end if;
+  select pg_catalog.count(*) into row_count_value
+    from public.dte_issuance_outbox
+   where id=other_outbox_id and status='PENDING'
+     and locked_by is null and claim_token is null;
+  if row_count_value <> 1 then
+    raise exception 'CIT33_RESUME_FELL_BACK_TO_OTHER_OUTBOX';
+  end if;
+end;
+$$;
+
+select 'CIT33_OWNED_FOLIO_RESUME_SQL_ASSERTIONS_PASSED=28';
+rollback;
+`;
+
 test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, actor, and idempotency", () => {
   const database = `citaya_auto_${randomUUID().replaceAll("-", "")}`;
   const create = spawnSync(
@@ -1595,7 +2032,7 @@ test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, a
         "ON_ERROR_STOP=1",
       ],
       {
-        input: `${bootstrap}\n${manualClaim}\n${migration}\n${hardening}\n${ownedLastFolio}\n${assertions}\n${hardeningAssertions}\n${ownedLastFolioAssertions}`,
+        input: `${bootstrap}\n${manualClaim}\n${migration}\n${hardening}\n${ownedLastFolio}\n${ownedFolioResume}\n${assertions}\n${hardeningAssertions}\n${ownedLastFolioAssertions}\n${ownedFolioResumeAssertions}`,
         encoding: "utf8",
       },
     );
@@ -1603,6 +2040,7 @@ test("PostgreSQL transaction validates automatic 33/39 enqueue, claim, leases, a
     assert.match(run.stdout, /DTE_AUTOMATIC_SQL_ASSERTIONS_PASSED=19/);
     assert.match(run.stdout, /DTE_AUTOMATIC_HARDENING_SQL_ASSERTIONS_PASSED=15/);
     assert.match(run.stdout, /CIT33_OWNED_LAST_FOLIO_SQL_ASSERTIONS_PASSED=47/);
+    assert.match(run.stdout, /CIT33_OWNED_FOLIO_RESUME_SQL_ASSERTIONS_PASSED=28/);
   } finally {
     const drop = spawnSync(
       "docker",

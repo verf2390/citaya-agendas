@@ -119,3 +119,61 @@ test("automatic target presence is fail-closed and never degrades to a global cl
     restore();
   }
 });
+
+test("owned-folio recovery requires and preserves one exact automatic target", async () => {
+  const restore = preserveWorkerEnv();
+  const claimedOptions: Array<{
+    automaticTargetOutboxId?: string;
+    automaticOwnedFolioResume?: boolean;
+  }> = [];
+  try {
+    process.env.DTE_PRODUCTION_ENABLED = "true";
+    process.env.DTE_AUTOMATIC_WORKER_ENABLED = "true";
+    const dependencies: DteWorkerDependencies = {
+      claimManual: async () => null,
+      claimAutomatic: async (options) => {
+        claimedOptions.push(options);
+        return automaticItem;
+      },
+      processClaimed: async () => processed,
+    };
+    await assert.rejects(
+      runOneAutomaticIssuanceWorker(
+        { automaticOwnedFolioResume: true },
+        dependencies,
+      ),
+      /DTE_AUTOMATIC_OWNED_FOLIO_RESUME_TARGET_REQUIRED/,
+    );
+    await assert.rejects(
+      runOneAutomaticIssuanceWorker(
+        {
+          automaticTargetOutboxId: automaticItem.id,
+          automaticOwnedFolioResume: "true",
+        } as unknown as {
+          automaticTargetOutboxId: string;
+          automaticOwnedFolioResume: boolean;
+        },
+        dependencies,
+      ),
+      /DTE_AUTOMATIC_OWNED_FOLIO_RESUME_INVALID/,
+    );
+    assert.equal(claimedOptions.length, 0);
+
+    assert.deepEqual(
+      await runOneAutomaticIssuanceWorker(
+        {
+          automaticTargetOutboxId: automaticItem.id,
+          automaticOwnedFolioResume: true,
+        },
+        dependencies,
+      ),
+      processed,
+    );
+    assert.deepEqual(claimedOptions, [{
+      automaticTargetOutboxId: automaticItem.id,
+      automaticOwnedFolioResume: true,
+    }]);
+  } finally {
+    restore();
+  }
+});

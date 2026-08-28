@@ -33,6 +33,7 @@ export type ManualWorkerOptions = {
 
 export type AutomaticWorkerOptions = {
   automaticTargetOutboxId?: string;
+  automaticOwnedFolioResume?: boolean;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -42,6 +43,18 @@ function validateAutomaticWorkerOptions(
 ): AutomaticWorkerOptions {
   const rawTarget = (options as { automaticTargetOutboxId?: unknown })
     .automaticTargetOutboxId;
+  const rawOwnedFolioResume = (options as {
+    automaticOwnedFolioResume?: unknown;
+  }).automaticOwnedFolioResume;
+  if (
+    rawOwnedFolioResume !== undefined &&
+    typeof rawOwnedFolioResume !== "boolean"
+  ) {
+    throw new Error("DTE_AUTOMATIC_OWNED_FOLIO_RESUME_INVALID");
+  }
+  if (rawOwnedFolioResume === true && rawTarget === undefined) {
+    throw new Error("DTE_AUTOMATIC_OWNED_FOLIO_RESUME_TARGET_REQUIRED");
+  }
   if (rawTarget === undefined) return {};
   if (typeof rawTarget !== "string") {
     throw new Error("DTE_AUTOMATIC_TARGET_OUTBOX_INVALID");
@@ -50,7 +63,12 @@ function validateAutomaticWorkerOptions(
   if (!UUID_PATTERN.test(automaticTargetOutboxId)) {
     throw new Error("DTE_AUTOMATIC_TARGET_OUTBOX_INVALID");
   }
-  return { automaticTargetOutboxId };
+  return {
+    automaticTargetOutboxId,
+    ...(rawOwnedFolioResume === true
+      ? { automaticOwnedFolioResume: true }
+      : {}),
+  };
 }
 
 export type DteWorkerResult = {
@@ -440,18 +458,39 @@ async function loadIntent(item: ClaimedOutbox): Promise<IssuanceIntent> {
   return result.data as IssuanceIntent;
 }
 
-async function assertTenantReadyForIssuance(item: ClaimedOutbox, dteType: number) {
+async function assertTenantReadyForIssuance(
+  item: ClaimedOutbox,
+  dteType: number,
+  automaticGateRenewed: boolean,
+) {
+  const activationQuery = supabaseAdmin.from("dte_legal_activation")
+    .select("status")
+    .eq("tenant_id", item.tenant_id)
+    .eq("dte_type", dteType)
+    .maybeSingle();
+  if (automaticGateRenewed) {
+    const activationResult = await activationQuery;
+    if (activationResult.error) throw new Error("DTE_TENANT_READINESS_FAILED");
+    if (activationResult.data?.status !== "active") {
+      throw new Error("DTE_TENANT_NOT_READY_FOR_ISSUANCE");
+    }
+    return;
+  }
   const [gateResult, activationResult] = await Promise.all([
     supabaseAdmin.rpc("dte_activation_gate_report", {
-      p_tenant_id: item.tenant_id, p_dte_type: dteType, p_global_feature_enabled: true,
+      p_tenant_id: item.tenant_id,
+      p_dte_type: dteType,
+      p_global_feature_enabled: true,
     }),
-    supabaseAdmin.from("dte_legal_activation").select("status")
-      .eq("tenant_id", item.tenant_id).eq("dte_type", dteType).maybeSingle(),
+    activationQuery,
   ]);
-  if (gateResult.error || activationResult.error) throw new Error("DTE_TENANT_READINESS_FAILED");
+  if (gateResult.error || activationResult.error) {
+    throw new Error("DTE_TENANT_READINESS_FAILED");
+  }
   const gates = gateResult.data as { ready?: boolean } | null;
-  if (gates?.ready !== true || activationResult.data?.status !== "active")
+  if (gates?.ready !== true || activationResult.data?.status !== "active") {
     throw new Error("DTE_TENANT_NOT_READY_FOR_ISSUANCE");
+  }
 }
 
 async function finishOutbox(item: ClaimedOutbox, status: "COMPLETED" | "BLOCKED", networkAttempts: number, reason: string | null) {
@@ -549,7 +588,12 @@ async function claimAutomaticIssuance(
 ): Promise<ClaimedOutbox | null> {
   const targetOutboxId = options.automaticTargetOutboxId;
   const workerId = `citaya-automatic:${process.pid}:${randomUUID()}`;
-  const claimed = targetOutboxId
+  const claimed = options.automaticOwnedFolioResume === true
+    ? await supabaseAdmin.rpc("dte_claim_automatic_owned_folio_resume_exact", {
+        p_worker_id: workerId,
+        p_outbox_id: targetOutboxId,
+      })
+    : targetOutboxId
     ? await supabaseAdmin.rpc("dte_claim_automatic_issuance_outbox_exact", {
         p_worker_id: workerId,
         p_outbox_id: targetOutboxId,
@@ -594,7 +638,7 @@ export async function processClaimedDteItem(
       throw new Error("DTE_INTENT_STATE_INVALID");
     }
     const dteType = Number(intent.resolved_dte_type) as 33 | 39 | 56 | 61;
-    await assertTenantReadyForIssuance(item, dteType);
+    await assertTenantReadyForIssuance(item, dteType, automatic);
     const receiver = intent.receiver_snapshot ?? {};
     let commercialCustomer: CommercialCustomerSnapshot | null = null;
     if (dteType === 39) {

@@ -385,8 +385,7 @@ export class ProductionDteService {
       this.config();
       failureStage = "document_load";
       const current = await this.requireDocument(tenantId, documentId);
-      if (current.status === "ready") return safeDocument(current);
-      if (!["draft", "prepared"].includes(current.status))
+      if (!["draft", "prepared", "ready"].includes(current.status))
         throw new Error("DTE_PREPARE_STATE_INVALID");
       if (!current.issuerSnapshot || !current.taxSnapshotAt)
         throw new Error("DTE_TAX_SNAPSHOT_REQUIRED");
@@ -397,7 +396,10 @@ export class ProductionDteService {
         true,
       );
       const effectiveIssuer = mergeIssuerSnapshot(current.issuerSnapshot, settings.issuer);
-      current.issuerSnapshot = effectiveIssuer;
+      const preparationDocument = current.status === "ready"
+        ? { ...current, issuerSnapshot: effectiveIssuer }
+        : current;
+      if (current.status !== "ready") current.issuerSnapshot = effectiveIssuer;
       failureStage = "issuer_resolution";
       assertValidProductionIssuerResolution(effectiveIssuer);
       failureStage = "issuer_activity_code";
@@ -410,8 +412,9 @@ export class ProductionDteService {
         tenantId,
         dteType: current.dteType,
         settings,
-        document: current,
+        document: preparationDocument,
       });
+      if (current.status === "ready") return safeDocument(current);
 
       failureStage = "folio_reservation";
       await assertMutationLease?.();

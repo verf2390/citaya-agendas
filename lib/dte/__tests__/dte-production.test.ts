@@ -23,6 +23,10 @@ import {
   InMemoryProductionDteRepository,
 } from "../production/repository";
 import {
+  resolvePreparationFolioPreflight,
+  type PreparationFolioRow,
+} from "../production/server";
+import {
   ProductionDteService,
   type ProductionPreparationPreflight,
 } from "../production/service";
@@ -34,6 +38,7 @@ import {
 } from "../production/sii-client";
 import type {
   ProductionArtifact,
+  ProductionDocument,
   ProductionDteType,
   ProductionTenantSettings,
   RecipientOutboxRecord,
@@ -239,12 +244,19 @@ async function preparedService(input: {
   statusResult?: ProductionStatusResult;
   env?: NodeJS.ProcessEnv;
   preparationPreflight?: ProductionPreparationPreflight;
+  cafRange?: { from: number; to: number };
 }) {
   const tenantId = input.tenantId ?? "tenant-a";
   const repository = new InMemoryProductionDteRepository();
   repository.seedTenantSettings(settings(tenantId));
-  for (const type of input.types ?? [33])
-    await repository.importCaf(caf(tenantId, type, 1, 20));
+  for (const type of input.types ?? [33]) {
+    await repository.importCaf(caf(
+      tenantId,
+      type,
+      input.cafRange?.from ?? 1,
+      input.cafRange?.to ?? 20,
+    ));
+  }
   const artifactStore = new InMemoryPrivateDteArtifactStore();
   const generator = new MockGenerator();
   const client = new MockSiiClient(
@@ -351,6 +363,235 @@ test("material preflight failure happens before production folio reservation", a
   assert.deepEqual(context.repository.folioRows(), before);
 });
 
+test("prepare ready revalidates material preflight exactly once without mutations", async () => {
+  let preflightCalls = 0;
+  const context = await preparedService({
+    preparationPreflight: async () => {
+      preflightCalls += 1;
+    },
+  });
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 33, "ready-material-revalidation"),
+    "admin-user",
+  );
+  const ready = await context.service.prepare(
+    context.tenantId,
+    draft.id,
+    "admin-user",
+  );
+  const readyDocument = await context.repository.getDocument(
+    context.tenantId,
+    draft.id,
+  );
+  assert.ok(readyDocument);
+  assert.equal(readyDocument.status, "ready");
+  assert.equal(preflightCalls, 1);
+
+  const foliosBefore = context.repository.folioRows();
+  const artifactsBefore = await context.repository.listArtifacts(
+    context.tenantId,
+    draft.id,
+  );
+  const auditsBefore = await context.repository.listAudit(
+    context.tenantId,
+    draft.id,
+  );
+  const generatedBefore = [...context.generator.types];
+  let reservations = 0;
+  let transitions = 0;
+  let artifactWrites = 0;
+  let auditWrites = 0;
+  let mutationLeaseChecks = 0;
+  const originalReserve = context.repository.reserveFolio.bind(context.repository);
+  const originalTransition = context.repository.transitionDocument.bind(context.repository);
+  const originalStoreArtifact = context.repository.storeArtifact.bind(context.repository);
+  const originalAppendAudit = context.repository.appendAudit.bind(context.repository);
+  context.repository.reserveFolio = async (input) => {
+    reservations += 1;
+    return originalReserve(input);
+  };
+  context.repository.transitionDocument = async (input) => {
+    transitions += 1;
+    return originalTransition(input);
+  };
+  context.repository.storeArtifact = async (input) => {
+    artifactWrites += 1;
+    return originalStoreArtifact(input);
+  };
+  context.repository.appendAudit = async (input) => {
+    auditWrites += 1;
+    return originalAppendAudit(input);
+  };
+  preflightCalls = 0;
+
+  const resumed = await context.service.prepare(
+    context.tenantId,
+    draft.id,
+    "system",
+    async () => {
+      mutationLeaseChecks += 1;
+    },
+  );
+
+  assert.equal(preflightCalls, 1);
+  assert.equal(reservations, 0);
+  assert.equal(transitions, 0);
+  assert.equal(artifactWrites, 0);
+  assert.equal(auditWrites, 0);
+  assert.equal(mutationLeaseChecks, 0);
+  assert.deepEqual(context.generator.types, generatedBefore);
+  assert.equal(resumed.status, "ready");
+  assert.equal(resumed.folio, ready.folio);
+  const persistedAfter = await context.repository.getDocument(
+    context.tenantId,
+    draft.id,
+  );
+  assert.deepEqual(persistedAfter, readyDocument);
+  assert.equal(persistedAfter?.folio, readyDocument.folio);
+  assert.equal(persistedAfter?.cafId, readyDocument.cafId);
+  assert.deepEqual(context.repository.folioRows(), foliosBefore);
+  assert.deepEqual(
+    await context.repository.listArtifacts(context.tenantId, draft.id),
+    artifactsBefore,
+  );
+  assert.deepEqual(
+    await context.repository.listAudit(context.tenantId, draft.id),
+    auditsBefore,
+  );
+});
+
+test("prepare ready fails closed at material preflight without later mutations", async () => {
+  let rejectReady = false;
+  let preflightCalls = 0;
+  const context = await preparedService({
+    preparationPreflight: async ({ document }) => {
+      preflightCalls += 1;
+      if (rejectReady && document.status === "ready") {
+        throw new Error("DTE_OWNED_FOLIO_PREFLIGHT_FAILED");
+      }
+    },
+  });
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 33, "ready-material-failure"),
+    "admin-user",
+  );
+  await context.service.prepare(context.tenantId, draft.id, "admin-user");
+  const readyBefore = await context.repository.getDocument(context.tenantId, draft.id);
+  const foliosBefore = context.repository.folioRows();
+  const artifactsBefore = await context.repository.listArtifacts(
+    context.tenantId,
+    draft.id,
+  );
+  const generatedBefore = [...context.generator.types];
+  let mutations = 0;
+  let mutationLeaseChecks = 0;
+  const originalReserve = context.repository.reserveFolio.bind(context.repository);
+  const originalTransition = context.repository.transitionDocument.bind(context.repository);
+  const originalStoreArtifact = context.repository.storeArtifact.bind(context.repository);
+  const originalAppendAudit = context.repository.appendAudit.bind(context.repository);
+  context.repository.reserveFolio = async (input) => {
+    mutations += 1;
+    return originalReserve(input);
+  };
+  context.repository.transitionDocument = async (input) => {
+    mutations += 1;
+    return originalTransition(input);
+  };
+  context.repository.storeArtifact = async (input) => {
+    mutations += 1;
+    return originalStoreArtifact(input);
+  };
+  context.repository.appendAudit = async (input) => {
+    mutations += 1;
+    return originalAppendAudit(input);
+  };
+  preflightCalls = 0;
+  rejectReady = true;
+
+  await assert.rejects(
+    context.service.prepare(
+      context.tenantId,
+      draft.id,
+      "system",
+      async () => {
+        mutationLeaseChecks += 1;
+      },
+    ),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message === "DTE_OWNED_FOLIO_PREFLIGHT_FAILED" &&
+      (error as { failureStage?: string }).failureStage === "material_preflight",
+  );
+  assert.equal(preflightCalls, 1);
+  assert.equal(mutations, 0);
+  assert.equal(mutationLeaseChecks, 0);
+  assert.deepEqual(context.generator.types, generatedBefore);
+  assert.deepEqual(
+    await context.repository.getDocument(context.tenantId, draft.id),
+    readyBefore,
+  );
+  assert.deepEqual(context.repository.folioRows(), foliosBefore);
+  assert.deepEqual(
+    await context.repository.listArtifacts(context.tenantId, draft.id),
+    artifactsBefore,
+  );
+});
+
+test("preparation folio fallback is limited to a new clean unrelated draft", () => {
+  const base: ProductionDocument = {
+    id: "document-1",
+    tenantId: "tenant-a",
+    dteType: 33,
+    businessOperationId: "payment:tenant-a:folio-preflight",
+    status: "draft",
+    folio: null,
+    cafId: null,
+    issuerSnapshot: settings("tenant-a").issuer,
+    taxSnapshotAt: "2026-08-27T00:00:00.000Z",
+    recipient: draftInput("tenant-a", 33, "folio-preflight").recipient,
+    lines: draftInput("tenant-a", 33, "folio-preflight").lines,
+    references: [],
+    netAmount: 100,
+    exemptAmount: 0,
+    taxAmount: 19,
+    totalAmount: 119,
+    issueDate: "2026-08-27",
+    trackId: null,
+    siiStatus: null,
+    finalResponseSha256: null,
+    createdBy: "system",
+    createdAt: "2026-08-27T00:00:00.000Z",
+    updatedAt: "2026-08-27T00:00:00.000Z",
+  };
+  assert.equal(resolvePreparationFolioPreflight(base, []), null);
+
+  for (const document of [
+    { ...base, status: "prepared" as const, folio: 7, cafId: "caf-7" },
+    { ...base, status: "ready" as const, folio: 7, cafId: "caf-7" },
+    { ...base, folio: 7 },
+    { ...base, cafId: "caf-7" },
+  ]) {
+    assert.throws(
+      () => resolvePreparationFolioPreflight(document, []),
+      /DTE_OWNED_FOLIO_PREFLIGHT_FAILED/,
+    );
+  }
+
+  const inconsistentRelation: PreparationFolioRow = {
+    tenant_id: base.tenantId,
+    dte_type: base.dteType,
+    folio: 8,
+    caf_id: "caf-8",
+    state: "available",
+    document_id: base.id,
+    business_operation_id: base.businessOperationId,
+  };
+  assert.throws(
+    () => resolvePreparationFolioPreflight(base, [inconsistentRelation]),
+    /DTE_OWNED_FOLIO_PREFLIGHT_FAILED/,
+  );
+});
+
 test("resume after pre-submit XSD failure reuses the same folio without another reservation", async () => {
   const context = await preparedService({});
   context.generator.failuresRemaining = 1;
@@ -382,6 +623,68 @@ test("resume after pre-submit XSD failure reuses the same folio without another 
   assert.equal(afterResume.length, afterFailure.length);
   assert.equal(afterResume.filter((row) => row.state === "reserved").length, 1);
   assert.equal(afterResume.find((row) => row.state === "reserved")?.folio, 1);
+});
+
+test("automatic owned-last-folio preparation reuses type 39 folio 40017", async () => {
+  let preflightDocumentId: string | null = null;
+  const context = await preparedService({
+    types: [39],
+    cafRange: { from: 40017, to: 40017 },
+    preparationPreflight: async ({ tenantId, dteType, document }) => {
+      assert.equal(tenantId, "tenant-a");
+      assert.equal(dteType, 39);
+      assert.equal(document.status, "draft");
+      assert.equal(document.folio, null);
+      assert.equal(document.cafId, null);
+      preflightDocumentId = document.id;
+    },
+  });
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 39, "automatic-owned-40017"),
+    "system",
+  );
+  const initialReservation = await context.repository.reserveFolio({
+    tenantId: context.tenantId,
+    dteType: 39,
+    documentId: draft.id,
+    businessOperationId: draft.businessOperationId,
+  });
+  assert.equal(initialReservation.folio, 40017);
+  assert.equal(initialReservation.reused, false);
+  assert.equal(
+    context.repository.folioRows().filter((row) => row.state === "available").length,
+    0,
+  );
+
+  const originalReserve = context.repository.reserveFolio.bind(context.repository);
+  const prepareReservationReuse: boolean[] = [];
+  context.repository.reserveFolio = async (input) => {
+    const result = await originalReserve(input);
+    prepareReservationReuse.push(result.reused);
+    return result;
+  };
+  const ready = await context.service.prepare(
+    context.tenantId,
+    draft.id,
+    "system",
+  );
+  assert.equal(preflightDocumentId, draft.id);
+  assert.deepEqual(prepareReservationReuse, [true]);
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.folio, 40017);
+  const persistedReady = await context.repository.getDocument(context.tenantId, draft.id);
+  assert.equal(persistedReady?.cafId, initialReservation.cafId);
+  const rows = context.repository.folioRows();
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], {
+    tenantId: context.tenantId,
+    dteType: 39,
+    folio: 40017,
+    cafId: initialReservation.cafId,
+    state: "reserved",
+    documentId: draft.id,
+    businessOperationId: draft.businessOperationId,
+  });
 });
 
 test("CAF metadata rejects duplicate, overlap and cross-tenant selection", async () => {

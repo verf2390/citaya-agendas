@@ -34,10 +34,38 @@ export async function POST(req: Request) {
       const automaticTargetOutboxId = hasAutomaticTarget
         ? body.automaticTargetOutboxId
         : undefined;
-      const result = await runOneAutomaticIssuanceWorker({ automaticTargetOutboxId });
+      const hasOwnedFolioResume = Object.hasOwn(
+        body ?? {},
+        "automaticOwnedFolioResume",
+      );
+      if (
+        hasOwnedFolioResume &&
+        typeof body.automaticOwnedFolioResume !== "boolean"
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "DTE_WORKER_OWNED_FOLIO_RESUME_INVALID" },
+          { status: 400 },
+        );
+      }
+      const automaticOwnedFolioResume = hasOwnedFolioResume
+        ? body.automaticOwnedFolioResume
+        : undefined;
+      if (automaticOwnedFolioResume === true && !hasAutomaticTarget) {
+        return NextResponse.json(
+          { ok: false, error: "DTE_WORKER_OWNED_FOLIO_RESUME_TARGET_REQUIRED" },
+          { status: 400 },
+        );
+      }
+      const result = await runOneAutomaticIssuanceWorker({
+        automaticTargetOutboxId,
+        automaticOwnedFolioResume,
+      });
       return NextResponse.json({ ok: true, result });
     }
-    if (Object.hasOwn(body ?? {}, "automaticTargetOutboxId")) {
+    if (
+      Object.hasOwn(body ?? {}, "automaticTargetOutboxId") ||
+      Object.hasOwn(body ?? {}, "automaticOwnedFolioResume")
+    ) {
       return NextResponse.json({ ok: false, error: "DTE_WORKER_TARGET_DOMAIN_INVALID" }, { status: 400 });
     }
     const targetOutboxId = typeof body?.targetOutboxId === "string"

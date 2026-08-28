@@ -59,3 +59,40 @@ test("DTE production stores no CAF XML, RSASK, certificate or private key column
   );
   assert.match(ddl, /certificate_secret_ref/);
 });
+
+test("production preparation receives the current document and fails closed on owned-folio conflicts", () => {
+  const server = readFileSync(
+    resolve(root, "lib/dte/production/server.ts"),
+    "utf8",
+  );
+  const service = readFileSync(
+    resolve(root, "lib/dte/production/service.ts"),
+    "utf8",
+  );
+  assert.match(
+    service,
+    /this\.preparationPreflight\(\{[\s\S]*document: preparationDocument/,
+  );
+  assert.match(server, /relations\.length !== 1/);
+  assert.match(server, /DTE_OWNED_FOLIO_PREFLIGHT_FAILED/);
+  assert.match(server, /relation\.document_id === document\.id/);
+  assert.match(server, /relation\.business_operation_id === businessOperationId/);
+  assert.match(server, /relation\.state === "reserved"/);
+  assert.match(server, /document\.folio === null \|\| document\.folio === Number\(relation\.folio\)/);
+  assert.match(server, /document\.cafId === null \|\| document\.cafId === relation\.caf_id/);
+  assert.match(server, /document\.status === "draft"/);
+  assert.match(server, /document\.folio === null/);
+  assert.match(server, /document\.cafId === null/);
+  assert.match(server, /relations\.length === 0/);
+  assert.ok(
+    server.indexOf("reusableOwnedPreparationFolio") <
+      server.indexOf('.eq("state", "available")'),
+  );
+  const preflightAt = service.indexOf("await this.preparationPreflight");
+  const readyReturnAt = service.indexOf(
+    'if (current.status === "ready") return safeDocument(current)',
+  );
+  const reservationAt = service.indexOf('failureStage = "folio_reservation"');
+  assert.ok(preflightAt >= 0 && readyReturnAt > preflightAt);
+  assert.ok(reservationAt > readyReturnAt);
+});

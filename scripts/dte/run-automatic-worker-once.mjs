@@ -4,6 +4,10 @@ const secret = String(process.env.DTE_WORKER_SECRET ?? "");
 const automaticTargetOutboxId = String(
   process.env.DTE_AUTOMATIC_TARGET_OUTBOX_ID ?? "",
 ).trim();
+const automaticOwnedFolioResumeValue = String(
+  process.env.DTE_AUTOMATIC_OWNED_FOLIO_RESUME ?? "",
+).trim();
+const automaticOwnedFolioResume = automaticOwnedFolioResumeValue === "true";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 if (!enabled || !productionEnabled) {
@@ -14,8 +18,19 @@ if (secret.length < 32) {
   console.error("automaticDteWorker=misconfigured");
   process.exit(1);
 }
+if (
+  automaticOwnedFolioResumeValue &&
+  !["true", "false"].includes(automaticOwnedFolioResumeValue)
+) {
+  console.error("automaticDteWorker=resume_invalid");
+  process.exit(1);
+}
 if (automaticTargetOutboxId && !uuid.test(automaticTargetOutboxId)) {
   console.error("automaticDteWorker=target_invalid");
+  process.exit(1);
+}
+if (automaticOwnedFolioResume && !automaticTargetOutboxId) {
+  console.error("automaticDteWorker=resume_target_required");
   process.exit(1);
 }
 
@@ -29,6 +44,7 @@ try {
     body: JSON.stringify({
       mode: "automatic",
       ...(automaticTargetOutboxId ? { automaticTargetOutboxId } : {}),
+      ...(automaticOwnedFolioResume ? { automaticOwnedFolioResume: true } : {}),
     }),
     signal: AbortSignal.timeout(12 * 60 * 1000),
   });
