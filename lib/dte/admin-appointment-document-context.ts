@@ -8,7 +8,7 @@ const FINAL_INTENT_STATES = new Set([
   "CANCELED",
 ]);
 
-const ACTIVE_DRAFT_STATES = ["DRAFT", "REVIEW_REQUIRED", "VALIDATED"] as const;
+const ACTIVE_DRAFT_STATES = new Set(["DRAFT", "REVIEW_REQUIRED", "VALIDATED"]);
 
 export type AppointmentDocumentContext = {
   appointmentId: string;
@@ -82,6 +82,7 @@ type ProductionRow = {
 type DraftRow = {
   id: string;
   appointment_id: string | null;
+  intent_id: string | null;
   dte_type: number | null;
   status: string;
   created_at: string;
@@ -193,10 +194,9 @@ export async function loadAdminAppointmentDocumentContexts(
       .in("appointment_id", ids),
     supabaseAdmin
       .from("dte_invoice_drafts")
-      .select("id,appointment_id,dte_type,status,created_at")
+      .select("id,appointment_id,intent_id,dte_type,status,created_at")
       .eq("tenant_id", tenantId)
       .in("appointment_id", ids)
-      .in("status", [...ACTIVE_DRAFT_STATES])
       .order("created_at", { ascending: false }),
   ]);
 
@@ -251,22 +251,50 @@ export async function loadAdminAppointmentDocumentContexts(
         .filter(Boolean),
     ),
   );
+  const draftIntentIds = Array.from(
+    new Set(
+      drafts
+        .map((row) => row.intent_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
 
-  const intentsResult = paymentIntentIds.length
-    ? await supabaseAdmin
-        .from("dte_payment_document_intents")
-        .select(
-          "id,payment_intent_id,resolved_dte_type,status,safe_blocking_reason,production_document_id,created_at",
-        )
-        .eq("tenant_id", tenantId)
-        .in("payment_intent_id", paymentIntentIds)
-        .order("created_at", { ascending: false })
-    : { data: [], error: null };
+  const [paymentIntentsResult, draftIntentsResult] = await Promise.all([
+    paymentIntentIds.length
+      ? supabaseAdmin
+          .from("dte_payment_document_intents")
+          .select(
+            "id,payment_intent_id,resolved_dte_type,status,safe_blocking_reason,production_document_id,created_at",
+          )
+          .eq("tenant_id", tenantId)
+          .in("payment_intent_id", paymentIntentIds)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+    draftIntentIds.length
+      ? supabaseAdmin
+          .from("dte_payment_document_intents")
+          .select(
+            "id,payment_intent_id,resolved_dte_type,status,safe_blocking_reason,production_document_id,created_at",
+          )
+          .eq("tenant_id", tenantId)
+          .in("id", draftIntentIds)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
-  if (intentsResult.error) {
+  if (paymentIntentsResult.error || draftIntentsResult.error) {
     throw new Error("DTE_APPOINTMENT_CONTEXT_UNAVAILABLE");
   }
-  const intents = (intentsResult.data ?? []) as IntentRow[];
+  const intentMap = new Map<string, IntentRow>();
+  for (const row of [
+    ...((paymentIntentsResult.data ?? []) as IntentRow[]),
+    ...((draftIntentsResult.data ?? []) as IntentRow[]),
+  ]) {
+    intentMap.set(row.id, row);
+  }
+  const intents = Array.from(intentMap.values()).sort((left, right) =>
+    right.created_at.localeCompare(left.created_at),
+  );
   const productionIds = Array.from(
     new Set(
       intents
@@ -303,13 +331,25 @@ export async function loadAdminAppointmentDocumentContexts(
         .filter((row) => row.sale_id === saleId && row.status === "VERIFIED")
         .map((row) => row.payment_intent_id),
     );
+    const appointmentDrafts = drafts.filter(
+      (row) => row.appointment_id === appointmentId,
+    );
+    const draftIntentIdSet = new Set(
+      appointmentDrafts
+        .map((row) => row.intent_id)
+        .filter((id): id is string => Boolean(id)),
+    );
     const intent = intents.find(
-      (row) => row.payment_intent_id && paymentIntentIdSet.has(row.payment_intent_id),
+      (row) =>
+        draftIntentIdSet.has(row.id) ||
+        Boolean(row.payment_intent_id && paymentIntentIdSet.has(row.payment_intent_id)),
     ) ?? null;
     const productionDocument = intent?.production_document_id
       ? productionById.get(intent.production_document_id) ?? null
       : null;
-    const activeDraft = drafts.find((row) => row.appointment_id === appointmentId) ?? null;
+    const activeDraft = appointmentDrafts.find((row) =>
+      ACTIVE_DRAFT_STATES.has(row.status),
+    ) ?? null;
     const requestedDocumentType = documentType(sale?.requested_document_type);
     const action = appointmentDocumentActionState({
       requestedDocumentType,
