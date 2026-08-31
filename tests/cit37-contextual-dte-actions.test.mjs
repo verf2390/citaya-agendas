@@ -10,6 +10,20 @@ const routeSource = readFileSync(
   "app/api/admin/dte-context/appointments/route.ts",
   "utf8",
 );
+const paymentsSource = readFileSync("app/admin/pagos/page.tsx", "utf8");
+const paymentCellSource = readFileSync(
+  "components/admin/dte/PaymentDocumentCell.tsx",
+  "utf8",
+);
+const manualFormSource = readFileSync(
+  "components/admin/dte/ManualIssuanceForm.tsx",
+  "utf8",
+);
+const draftRouteSource = readFileSync(
+  "app/api/admin/invoice-drafts/route.ts",
+  "utf8",
+);
+const cutoverSource = readFileSync("lib/dte/cutover.ts", "utf8");
 
 test("CIT-37 resolves appointment DTE context from persisted billing relations", () => {
   assert.match(contextSource, /from\("billing_sale_appointments"\)/);
@@ -20,6 +34,8 @@ test("CIT-37 resolves appointment DTE context from persisted billing relations",
   assert.match(contextSource, /from\("dte_invoice_drafts"\)/);
   assert.match(contextSource, /from\("dte_production_documents"\)/);
   assert.match(contextSource, /\.eq\("tenant_id", tenantId\)/);
+  assert.match(contextSource, /intent_id/);
+  assert.match(contextSource, /draftIntentIdSet/);
 });
 
 test("CIT-37 blocks duplicate contextual issuance paths", () => {
@@ -46,10 +62,17 @@ test("CIT-37 blocks duplicate contextual issuance paths", () => {
 });
 
 test("CIT-37 final intent state wins over an intermediate SII label", () => {
-  assert.match(contextSource, /FINAL_INTENT_STATES/);
+  const acceptedIndex = cutoverSource.indexOf(
+    'if (normalized === "ACCEPTED") return "Aceptada por el SII";',
+  );
+  const intermediateIndex = cutoverSource.indexOf(
+    '["sent", "rec", "processing", "pdr"].includes(normalizedSiiStatus)',
+  );
+  assert.ok(acceptedIndex > -1);
+  assert.ok(intermediateIndex > acceptedIndex);
   assert.match(
-    contextSource,
-    /FINAL_INTENT_STATES\.has\(normalizedIntent\)[\s\S]*friendlyDteStatus\([\s\S]*normalizedIntent,[\s\S]*input\.blockingReason \?\? null,[\s\S]*null/,
+    cutoverSource,
+    /canonicalSiiStatus === "ACCEPTED"[\s\S]*Aceptada por el SII/,
   );
 });
 
@@ -61,7 +84,7 @@ test("CIT-37 context endpoint is host-tenant admin scoped and read-only", () => 
   assert.doesNotMatch(routeSource, /\.insert\(/);
   assert.doesNotMatch(routeSource, /\.update\(/);
   assert.doesNotMatch(routeSource, /\.upsert\(/);
-  assert.doesNotMatch(routeSource, /issue|reserve_folio|submit/i);
+  assert.doesNotMatch(routeSource, /reserve_folio|submit/i);
 });
 
 test("CIT-37 bulk endpoint accepts only UUID appointment ids and caps the batch", () => {
@@ -69,4 +92,69 @@ test("CIT-37 bulk endpoint accepts only UUID appointment ids and caps the batch"
   assert.match(routeSource, /\.slice\(0, 200\)/);
   assert.match(routeSource, /Cache-Control/);
   assert.match(routeSource, /no-store/);
+});
+
+test("CIT-37 payments renders canonical contextual state instead of unconditional actions", () => {
+  assert.match(paymentsSource, /PaymentDocumentCell/);
+  assert.match(paymentsSource, /<PaymentDocumentCell appointmentId=\{row\.id\} \/>/);
+  assert.doesNotMatch(
+    paymentsSource,
+    /<StatusBadge label="Sin documento" tone="slate" \/>[\s\S]*Solicitar boleta[\s\S]*Solicitar factura/,
+  );
+  assert.match(paymentCellSource, /\/api\/admin\/dte-context\/appointments/);
+  assert.match(paymentCellSource, /JSON\.stringify\(\{ appointmentIds \}\)/);
+  assert.match(paymentCellSource, /context\.intent\.displayStatus/);
+  assert.match(paymentCellSource, /context\.canRequestBoleta/);
+  assert.match(paymentCellSource, /context\.canRequestFactura/);
+  assert.match(paymentCellSource, /Consultando documento/);
+  assert.match(paymentCellSource, /Estado no disponible/);
+});
+
+test("CIT-37 contextual editor validates appointment and dte type before prefilling", () => {
+  assert.match(manualFormSource, /params\.get\("appointmentId"\)/);
+  assert.match(manualFormSource, /params\.get\("dteType"\)/);
+  assert.match(manualFormSource, /\/api\/admin\/dte-context\/appointments\?appointmentId=/);
+  assert.match(manualFormSource, /context\.customerId/);
+  assert.match(manualFormSource, /context\.totalAmount/);
+  assert.match(manualFormSource, /context\.canRequestBoleta/);
+  assert.match(manualFormSource, /context\.canRequestFactura/);
+  assert.match(manualFormSource, /setSource\("appointment"\)/);
+  assert.match(manualFormSource, /setAppointmentId\(requestedAppointmentId\)/);
+  assert.match(manualFormSource, /todavía no se emitió ningún documento/);
+  assert.doesNotMatch(
+    manualFormSource,
+    /requestedAppointmentId[\s\S]{0,300}\/issue/,
+  );
+});
+
+test("CIT-37 draft POST rejects browser-mismatched billing data before insert", () => {
+  const contextIndex = draftRouteSource.indexOf(
+    "loadAdminAppointmentDocumentContexts(",
+  );
+  const insertIndex = draftRouteSource.indexOf(
+    '.from("dte_invoice_drafts")',
+    contextIndex,
+  );
+  assert.ok(contextIndex > -1);
+  assert.ok(insertIndex > contextIndex);
+  const guarded = draftRouteSource.slice(contextIndex, insertIndex);
+  assert.match(guarded, /context\.customerId !== customerId/);
+  assert.match(guarded, /if \(context\.intent\)/);
+  assert.match(guarded, /if \(context\.activeDraft\)/);
+  assert.match(guarded, /if \(context\.hasActiveCoverage\)/);
+  assert.match(
+    guarded,
+    /context\.requestedDocumentType !== dteType/,
+  );
+  assert.match(guarded, /context\.paymentState[\s\S]*PAID/);
+  assert.match(
+    guarded,
+    /context\.totalAmount[\s\S]*totals\.totalAmount/,
+  );
+});
+
+test("CIT-37 keeps standalone manual issuance path available", () => {
+  assert.match(draftRouteSource, /source !== "manual"/);
+  assert.match(manualFormSource, /value="manual">Venta manual/);
+  assert.match(manualFormSource, /Concepto manual/);
 });
