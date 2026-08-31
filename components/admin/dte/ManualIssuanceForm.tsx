@@ -40,6 +40,7 @@ type Appointment = {
   start_at: string;
   payment_status: string | null;
   payment_paid_amount: number | null;
+  tax_treatment_snapshot?: string | null;
 };
 type Payment = {
   id: string;
@@ -48,6 +49,28 @@ type Payment = {
   currency: string;
   provider: string;
   processed_at: string;
+};
+type AppointmentDocumentContext = {
+  appointmentId: string;
+  customerId: string | null;
+  saleId: string | null;
+  requestedDocumentType: 33 | 39 | null;
+  paymentState: string | null;
+  totalAmount: number | null;
+  intent: {
+    status: string;
+    resolvedDteType: 33 | 39 | null;
+    displayStatus: string;
+  } | null;
+  activeDraft: {
+    id: string;
+    status: string;
+    dteType: 33 | 39 | null;
+  } | null;
+  hasActiveCoverage: boolean;
+  canRequestBoleta: boolean;
+  canRequestFactura: boolean;
+  actionBlockedReason: string | null;
 };
 type EditorLine = {
   key: string;
@@ -193,6 +216,7 @@ export default function ManualIssuanceForm({
   const [issuing, setIssuing] = useState(false);
   const [showBoletaModal, setShowBoletaModal] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [contextLocked, setContextLocked] = useState(false);
   const [previewData, setPreviewData] = useState<{
     estimatedNextFolio: number | null;
     cafRangeLabel: string | null;
@@ -227,17 +251,20 @@ export default function ManualIssuanceForm({
           throw new Error("No se pudieron cargar los datos del documento.");
         }
         if (!active) return;
-        setCustomers(payload.customers ?? []);
+        const loadedCustomers = (payload.customers ?? []) as Customer[];
+        const loadedAppointments = (payload.appointments ?? []) as Appointment[];
+        setCustomers(loadedCustomers);
         setServices(payload.services ?? []);
-        setAppointments(payload.appointments ?? []);
+        setAppointments(loadedAppointments);
         setPayments(payload.payments ?? []);
         setIssuer(payload.issuer ?? null);
         const draftsResponse = await adminFetch("/api/admin/invoice-drafts", {
           cache: "no-store",
         });
         const draftsPayload = await draftsResponse.json().catch(() => null);
+        let loadedDrafts: DraftRecord[] = [];
         if (draftsResponse.ok && draftsPayload?.ok && active) {
-          const loadedDrafts = (draftsPayload.drafts as DraftRecord[]).filter((draft) =>
+          loadedDrafts = (draftsPayload.drafts as DraftRecord[]).filter((draft) =>
             ["DRAFT", "REVIEW_REQUIRED", "VALIDATED"].includes(draft.status),
           );
           setAvailableDrafts(loadedDrafts);
@@ -288,9 +315,133 @@ export default function ManualIssuanceForm({
             }
           }
         }
+
+        if (initialDraftId) return;
         const params = new URLSearchParams(window.location.search);
+        const requestedAppointmentId = params.get("appointmentId") ?? "";
+        const requestedTypeValue = Number(params.get("dteType"));
+        const requestedType: 33 | 39 | null =
+          requestedTypeValue === 33 || requestedTypeValue === 39
+            ? requestedTypeValue
+            : null;
+
+        if (requestedAppointmentId) {
+          if (!requestedType) {
+            setContextLocked(true);
+            setFeedback("Selecciona el tipo de documento desde Pagos para preparar esta reserva.");
+            return;
+          }
+          const contextResponse = await adminFetch(
+            `/api/admin/dte-context/appointments?appointmentId=${encodeURIComponent(requestedAppointmentId)}`,
+            { cache: "no-store" },
+          );
+          const contextPayload = await contextResponse.json().catch(() => null);
+          if (!active) return;
+          if (!contextResponse.ok || !contextPayload?.ok || !contextPayload.context) {
+            setContextLocked(true);
+            setFeedback("No se pudo validar el contexto tributario de esta reserva.");
+            return;
+          }
+          const context = contextPayload.context as AppointmentDocumentContext;
+          const appointment = loadedAppointments.find(
+            (item) => item.id === requestedAppointmentId,
+          );
+          const customerExists = loadedCustomers.some(
+            (item) => item.id === context.customerId,
+          );
+          if (
+            !appointment ||
+            !context.customerId ||
+            appointment.customer_id !== context.customerId ||
+            !customerExists ||
+            context.totalAmount === null ||
+            context.totalAmount <= 0
+          ) {
+            setContextLocked(true);
+            setFeedback("La reserva no coincide con la venta y cliente persistidos.");
+            return;
+          }
+          if (context.intent) {
+            setContextLocked(true);
+            setCustomerId(context.customerId);
+            setDteType(context.intent.resolvedDteType ?? requestedType);
+            setFeedback(
+              `Esta reserva ya tiene un proceso tributario: ${context.intent.displayStatus}.`,
+            );
+            return;
+          }
+          if (context.activeDraft || context.hasActiveCoverage) {
+            setContextLocked(true);
+            setCustomerId(context.customerId);
+            setDteType(context.activeDraft?.dteType ?? context.requestedDocumentType ?? requestedType);
+            setFeedback(
+              context.activeDraft
+                ? "Esta reserva ya tiene un borrador tributario. Ábrelo desde la lista de borradores."
+                : "Esta venta ya tiene un documento tributario asociado.",
+            );
+            return;
+          }
+          if (
+            context.requestedDocumentType !== null &&
+            context.requestedDocumentType !== requestedType
+          ) {
+            setContextLocked(true);
+            setCustomerId(context.customerId);
+            setDteType(context.requestedDocumentType);
+            setFeedback(
+              context.requestedDocumentType === 33
+                ? "La venta tiene Factura 33 solicitada; no puede abrirse como Boleta 39."
+                : "La venta tiene Boleta 39 solicitada; no puede abrirse como Factura 33.",
+            );
+            return;
+          }
+          const allowed = requestedType === 39
+            ? context.canRequestBoleta
+            : context.canRequestFactura;
+          if (!allowed) {
+            setContextLocked(true);
+            setCustomerId(context.customerId);
+            setDteType(context.requestedDocumentType ?? requestedType);
+            setFeedback(
+              context.actionBlockedReason ??
+                "Esta venta no permite preparar otro documento tributario.",
+            );
+            return;
+          }
+
+          const gross = Number(context.totalAmount);
+          setContextLocked(true);
+          setCustomerId(context.customerId);
+          setDteType(requestedType);
+          setSource("appointment");
+          setAppointmentId(requestedAppointmentId);
+          setPaymentIntentId("");
+          setLines([
+            {
+              key: crypto.randomUUID(),
+              serviceId: null,
+              appointmentId: requestedAppointmentId,
+              description: appointment.service_name || "Servicio reservado",
+              quantity: 1,
+              unitNetAmount:
+                requestedType === 39 ? gross : grossCatalogPriceToNet(gross),
+              discountPercent: 0,
+              pricingMode: "catalog_gross",
+              catalogUnitGrossAmount: gross,
+              taxTreatment:
+                appointment.tax_treatment_snapshot === "exempt"
+                  ? "exempt"
+                  : "affected",
+            },
+          ]);
+          setFeedback(
+            `Reserva cargada desde billing por ${clp(gross)}. Revisa y guarda el borrador; todavía no se emitió ningún documento.`,
+          );
+          return;
+        }
+
         const requestedCustomerId = params.get("customerId") ?? "";
-        if ((payload.customers as Customer[]).some((item) => item.id === requestedCustomerId)) {
+        if (loadedCustomers.some((item) => item.id === requestedCustomerId)) {
           setCustomerId(requestedCustomerId);
         }
       })
@@ -318,18 +469,20 @@ export default function ManualIssuanceForm({
   const paymentMatches =
     !selectedPayment || Number(selectedPayment.amount) === currentTotals.totalAmount;
   const canSave =
-    Boolean(customerId) &&
-    lines.length > 0 &&
-    lines.every(
-      (line) =>
-        line.description.trim() &&
-        Number.isSafeInteger(line.quantity) &&
-        line.quantity > 0 &&
-        Number.isSafeInteger(line.unitNetAmount) &&
-        line.unitNetAmount > 0 &&
-        line.discountPercent >= 0 &&
-        line.discountPercent <= 100,
-    );
+    !contextLocked || Boolean(appointmentId) && source === "appointment"
+      ? Boolean(customerId) &&
+        lines.length > 0 &&
+        lines.every(
+          (line) =>
+            line.description.trim() &&
+            Number.isSafeInteger(line.quantity) &&
+            line.quantity > 0 &&
+            Number.isSafeInteger(line.unitNetAmount) &&
+            line.unitNetAmount > 0 &&
+            line.discountPercent >= 0 &&
+            line.discountPercent <= 100,
+        )
+      : false;
 
   const markChanged = () => {
     setFeedback("");
@@ -343,6 +496,7 @@ export default function ManualIssuanceForm({
       setLines([newLine()]);
       return;
     }
+    setContextLocked(false);
     setSavedDraft({
       id: draft.id,
       status: draft.status,
@@ -454,7 +608,10 @@ export default function ManualIssuanceForm({
           discountPercent: 0,
           pricingMode: "catalog_gross",
           catalogUnitGrossAmount: gross,
-          taxTreatment: "affected",
+          taxTreatment:
+            appointment.tax_treatment_snapshot === "exempt"
+              ? "exempt"
+              : "affected",
         },
       ]);
     }
@@ -574,7 +731,7 @@ export default function ManualIssuanceForm({
   return (
     <div className="grid gap-5">
       <fieldset
-        disabled={Boolean(savedDraft)}
+        disabled={Boolean(savedDraft) || contextLocked}
         className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2"
       >
         <legend className="px-1 text-sm font-black text-slate-900">
@@ -651,7 +808,7 @@ export default function ManualIssuanceForm({
           Cliente receptor
           <select
             value={customerId}
-            disabled={Boolean(savedDraft)}
+            disabled={Boolean(savedDraft) || contextLocked}
             onChange={(event) => {
               setCustomerId(event.target.value);
               setAppointmentId("");
@@ -680,7 +837,7 @@ export default function ManualIssuanceForm({
           Origen
           <select
             value={source}
-            disabled={Boolean(savedDraft)}
+            disabled={Boolean(savedDraft) || contextLocked}
             onChange={(event) => {
               setSource(event.target.value as typeof source);
               setAppointmentId("");
@@ -768,7 +925,7 @@ export default function ManualIssuanceForm({
           Reserva relacionada
           <select
             value={appointmentId}
-            disabled={Boolean(savedDraft)}
+            disabled={Boolean(savedDraft) || contextLocked}
             onChange={(event) => selectAppointment(event.target.value)}
             className="h-11 rounded-xl border border-slate-200 bg-white px-3"
           >
@@ -789,7 +946,7 @@ export default function ManualIssuanceForm({
           Pago confirmado
           <select
             value={paymentIntentId}
-            disabled={Boolean(savedDraft)}
+            disabled={Boolean(savedDraft) || contextLocked}
             onChange={(event) => {
               const payment = payments.find((item) => item.id === event.target.value);
               setPaymentIntentId(event.target.value);
@@ -826,7 +983,7 @@ export default function ManualIssuanceForm({
           <div className="flex flex-wrap gap-2">
             <select
               defaultValue=""
-              disabled={savedDraft?.status === "QUEUED"}
+              disabled={savedDraft?.status === "QUEUED" || contextLocked}
               onChange={(event) => {
                 addService(event.target.value);
                 event.currentTarget.value = "";
@@ -842,7 +999,7 @@ export default function ManualIssuanceForm({
             </select>
             <button
               type="button"
-              disabled={savedDraft?.status === "QUEUED"}
+              disabled={savedDraft?.status === "QUEUED" || contextLocked}
               onClick={() => {
                 setLines((current) => [...current, newLine()]);
                 markChanged();
@@ -866,7 +1023,7 @@ export default function ManualIssuanceForm({
                   Descripción tributaria
                   <input
                     value={line.description}
-                    disabled={savedDraft?.status === "QUEUED"}
+                    disabled={savedDraft?.status === "QUEUED" || contextLocked}
                     onChange={(event) =>
                       updateLine(line.key, { description: event.target.value })
                     }
@@ -881,7 +1038,7 @@ export default function ManualIssuanceForm({
                     min={1}
                     step={1}
                     value={line.quantity}
-                    disabled={savedDraft?.status === "QUEUED"}
+                    disabled={savedDraft?.status === "QUEUED" || contextLocked}
                     onChange={(event) =>
                       updateLine(line.key, { quantity: Number(event.target.value) })
                     }
@@ -897,7 +1054,7 @@ export default function ManualIssuanceForm({
                     min={1}
                     step={1}
                     value={line.unitNetAmount}
-                    disabled={savedDraft?.status === "QUEUED"}
+                    disabled={savedDraft?.status === "QUEUED" || contextLocked}
                     onChange={(event) =>
                       updateLine(line.key, {
                         unitNetAmount: Number(event.target.value),
@@ -920,7 +1077,7 @@ export default function ManualIssuanceForm({
                     max={100}
                     step={0.01}
                     value={line.discountPercent}
-                    disabled={savedDraft?.status === "QUEUED"}
+                    disabled={savedDraft?.status === "QUEUED" || contextLocked}
                     onChange={(event) =>
                       updateLine(line.key, {
                         discountPercent: Number(event.target.value),
@@ -944,7 +1101,11 @@ export default function ManualIssuanceForm({
                 <button
                   type="button"
                   aria-label={`Eliminar línea ${index + 1}`}
-                  disabled={lines.length === 1 || savedDraft?.status === "QUEUED"}
+                  disabled={
+                    lines.length === 1 ||
+                    savedDraft?.status === "QUEUED" ||
+                    contextLocked
+                  }
                   onClick={() => {
                     setLines((current) =>
                       current.filter((candidate) => candidate.key !== line.key),
@@ -969,7 +1130,7 @@ export default function ManualIssuanceForm({
           </span>
           <textarea
             value={operationalReason}
-            disabled={Boolean(savedDraft)}
+            disabled={Boolean(savedDraft) || contextLocked}
             onChange={(event) => {
               setOperationalReason(event.target.value);
               markChanged();
