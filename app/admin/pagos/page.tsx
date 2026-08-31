@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
+import PaymentDocumentCell from "@/components/admin/dte/PaymentDocumentCell";
 import {
   AdminKpiCard,
   AdminPageHeader,
@@ -1088,23 +1089,7 @@ export default function AdminPagosPage() {
                         <div className="text-xs text-slate-500">{row.status}</div>
                       ) : null}
                     </div>
-                    <div className="grid gap-2">
-                      <StatusBadge label="Sin documento" tone="slate" />
-                      <button
-                        type="button"
-                        onClick={() => { window.location.href = "/admin/facturacion?appointmentId=" + encodeURIComponent(row.id) + "&dteType=39"; }}
-                        className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-900"
-                      >
-                        Solicitar boleta
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { window.location.href = "/admin/facturacion?appointmentId=" + encodeURIComponent(row.id) + "&dteType=33"; }}
-                        className="rounded-xl border bg-white px-3 py-2 text-xs font-bold text-slate-900"
-                      >
-                        Solicitar factura
-                      </button>
-                    </div>
+                    <PaymentDocumentCell appointmentId={row.id} />
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
