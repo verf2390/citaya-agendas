@@ -251,14 +251,26 @@ export function friendlyDteStatus(
     .trim()
     .toLowerCase();
   const canonicalSiiStatus = canonicalIntentStatusForSiiStatus(siiStatus);
-  if (["sent", "rec", "processing", "pdr"].includes(normalizedSiiStatus)) {
-    return "Recibido por el SII";
+
+  // Once the canonical intent is terminal, an older/intermediate SII label such
+  // as REC must never visually regress the document back to "Recibido".
+  if (normalized === "ACCEPTED") return "Aceptada por el SII";
+  if (normalized === "ACCEPTED_WITH_OBJECTIONS") {
+    return "Aceptado por el SII con reparos";
   }
+  if (normalized === "REJECTED") return "Rechazada por el SII";
+  if (normalized === "CANCELED") return "Emisión cancelada";
+
+  // A final persisted SII status may still improve a stale non-terminal intent
+  // while reconciliation is pending.
   if (canonicalSiiStatus === "ACCEPTED") return "Aceptada por el SII";
   if (canonicalSiiStatus === "ACCEPTED_WITH_OBJECTIONS") {
     return "Aceptado por el SII con reparos";
   }
   if (canonicalSiiStatus === "REJECTED") return "Rechazada por el SII";
+  if (["sent", "rec", "processing", "pdr"].includes(normalizedSiiStatus)) {
+    return "Recibido por el SII";
+  }
   if (normalized === "DRAFT") return "Borrador";
   if (normalized === "REVIEW_REQUIRED") return "Requiere revisión";
   if (normalized === "VALIDATED") return "Validado";
@@ -278,12 +290,7 @@ export function friendlyDteStatus(
     return "Preparando emisión";
   }
   if (normalized === "SUBMITTED") return "Recibido por el SII";
-  if (normalized === "ACCEPTED") return "Aceptada por el SII";
-  if (normalized === "ACCEPTED_WITH_OBJECTIONS")
-    return "Aceptado por el SII con reparos";
-  if (normalized === "REJECTED") return "Rechazada por el SII";
   if (["AMBIGUOUS", "BLOCKED"].includes(normalized)) return "Error de envío";
-  if (normalized === "CANCELED") return "Emisión cancelada";
   if (normalized === "PAUSED") return "Emisión pausada";
   return "Estado no disponible";
 }

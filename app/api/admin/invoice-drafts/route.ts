@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
+import { loadAdminAppointmentDocumentContexts } from "@/lib/dte/admin-appointment-document-context";
 import { checkManualBoleta39IssuanceReadiness } from "@/lib/dte/boleta39-manual-gate";
 import {
   calculateDocumentDraftTotals,
@@ -205,6 +206,56 @@ export async function POST(req: Request) {
       "Los precios brutos del catálogo no se pueden reconciliar con el total IVA incluido.",
     );
   }
+
+  let canonicalSaleId: string | null = null;
+  if (appointmentId && source !== "manual") {
+    let context;
+    try {
+      [context] = await loadAdminAppointmentDocumentContexts(
+        auth.tenantId,
+        [appointmentId],
+      );
+    } catch {
+      return errorResponse(503, "No se pudo validar el estado tributario de la reserva.");
+    }
+    if (!context?.saleId || !context.customerId || context.customerId !== customerId) {
+      return errorResponse(409, "La reserva no coincide con la venta y cliente persistidos.");
+    }
+    canonicalSaleId = context.saleId;
+    if (context.intent) {
+      return errorResponse(409, "Ya existe un proceso tributario para esta venta.");
+    }
+    if (context.activeDraft) {
+      return errorResponse(409, "Ya existe un borrador tributario para esta reserva.");
+    }
+    if (context.hasActiveCoverage) {
+      return errorResponse(409, "La venta ya tiene cobertura tributaria asociada.");
+    }
+    if (
+      context.requestedDocumentType !== null &&
+      context.requestedDocumentType !== dteType
+    ) {
+      return errorResponse(
+        409,
+        context.requestedDocumentType === 33
+          ? "La venta tiene Factura 33 solicitada; no puede prepararse como Boleta 39."
+          : "La venta tiene Boleta 39 solicitada; no puede prepararse como Factura 33.",
+      );
+    }
+    if (String(context.paymentState ?? "").toUpperCase() !== "PAID") {
+      return errorResponse(409, "La venta debe estar pagada antes de preparar el documento.");
+    }
+    if (
+      context.totalAmount === null ||
+      Number(context.totalAmount) !== Number(totals.totalAmount)
+    ) {
+      return errorResponse(
+        409,
+        "El total del borrador no coincide exactamente con la venta persistida.",
+      );
+    }
+  }
+
   if (
     source === "appointment" &&
     !appointmentsResult.data?.some(
@@ -270,6 +321,7 @@ export async function POST(req: Request) {
     .from("dte_invoice_drafts")
     .insert({
       tenant_id: auth.tenantId,
+      sale_id: canonicalSaleId,
       customer_id: customerId,
       appointment_id: appointmentId,
       payment_intent_id: paymentIntentId,
