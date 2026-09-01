@@ -52,8 +52,8 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => null);
   const rawIds = Array.isArray(body?.appointmentIds) ? body.appointmentIds : [];
-  const appointmentIds = Array.from(
-    new Set(
+  const appointmentIds: string[] = Array.from(
+    new Set<string>(
       rawIds
         .map((value: unknown) => String(value ?? "").trim())
         .filter((value: string) => isUuid(value)),
