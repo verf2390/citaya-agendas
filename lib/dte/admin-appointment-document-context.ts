@@ -150,21 +150,25 @@ export function appointmentDocumentActionState(input: {
       reason: "La venta ya tiene cobertura tributaria asociada.",
     };
   }
-  if (input.requestedDocumentType) {
-    return {
-      canRequestBoleta: false,
-      canRequestFactura: false,
-      reason:
-        input.requestedDocumentType === 33
-          ? "La venta ya tiene Factura 33 solicitada."
-          : "La venta ya tiene Boleta 39 solicitada.",
-    };
-  }
   if (String(input.paymentState ?? "").toUpperCase() !== "PAID") {
     return {
       canRequestBoleta: false,
       canRequestFactura: false,
       reason: "La venta debe estar pagada antes de preparar el documento tributario.",
+    };
+  }
+  if (input.requestedDocumentType === 33) {
+    return {
+      canRequestBoleta: false,
+      canRequestFactura: true,
+      reason: null,
+    };
+  }
+  if (input.requestedDocumentType === 39) {
+    return {
+      canRequestBoleta: true,
+      canRequestFactura: false,
+      reason: null,
     };
   }
   return {
@@ -181,7 +185,7 @@ export async function loadAdminAppointmentDocumentContexts(
   const ids = Array.from(new Set(appointmentIds.filter(Boolean))).slice(0, 200);
   if (ids.length === 0) return [];
 
-  const [appointmentsResult, linksResult, draftsResult] = await Promise.all([
+  const [appointmentsResult, linksResult] = await Promise.all([
     supabaseAdmin
       .from("appointments")
       .select("id,customer_id")
@@ -192,54 +196,81 @@ export async function loadAdminAppointmentDocumentContexts(
       .select("appointment_id,sale_id")
       .eq("tenant_id", tenantId)
       .in("appointment_id", ids),
-    supabaseAdmin
-      .from("dte_invoice_drafts")
-      .select("id,appointment_id,intent_id,dte_type,status,created_at")
-      .eq("tenant_id", tenantId)
-      .in("appointment_id", ids)
-      .order("created_at", { ascending: false }),
   ]);
 
-  if (appointmentsResult.error || linksResult.error || draftsResult.error) {
+  if (appointmentsResult.error || linksResult.error) {
     throw new Error("DTE_APPOINTMENT_CONTEXT_UNAVAILABLE");
   }
 
   const appointments = (appointmentsResult.data ?? []) as AppointmentRow[];
-  const links = (linksResult.data ?? []) as SaleLinkRow[];
-  const drafts = (draftsResult.data ?? []) as DraftRow[];
-  const saleIds = Array.from(new Set(links.map((row) => row.sale_id)));
+  const directLinks = (linksResult.data ?? []) as SaleLinkRow[];
+  const saleIds = Array.from(new Set(directLinks.map((row) => row.sale_id)));
+  const relatedLinksResult = saleIds.length
+    ? await supabaseAdmin
+        .from("billing_sale_appointments")
+        .select("appointment_id,sale_id")
+        .eq("tenant_id", tenantId)
+        .in("sale_id", saleIds)
+    : { data: [], error: null };
+  if (relatedLinksResult.error) {
+    throw new Error("DTE_APPOINTMENT_CONTEXT_UNAVAILABLE");
+  }
+  const relatedLinks = Array.from(
+    new Map(
+      [
+        ...directLinks,
+        ...((relatedLinksResult.data ?? []) as SaleLinkRow[]),
+      ].map((row) => [row.appointment_id, row]),
+    ).values(),
+  );
+  const saleAppointmentIds = Array.from(
+    new Set([...ids, ...relatedLinks.map((row) => row.appointment_id)]),
+  );
 
-  const [salesResult, paymentsResult, coverageResult] = saleIds.length
-    ? await Promise.all([
-        supabaseAdmin
-          .from("billing_sales")
-          .select(
-            "id,requested_document_type,document_status,tax_treatment_status,payment_state,total_amount,documented_amount,pending_documentation_amount",
-          )
-          .eq("tenant_id", tenantId)
-          .in("id", saleIds),
-        supabaseAdmin
-          .from("billing_sale_payments")
-          .select("sale_id,payment_intent_id,status")
-          .eq("tenant_id", tenantId)
-          .in("sale_id", saleIds),
-        supabaseAdmin
-          .from("billing_sale_item_document_coverage")
-          .select("sale_id")
-          .eq("tenant_id", tenantId)
-          .in("sale_id", saleIds)
-          .neq("status", "VOID"),
-      ])
-    : [
-        { data: [], error: null },
-        { data: [], error: null },
-        { data: [], error: null },
-      ];
+  const [draftsResult, salesResult, paymentsResult, coverageResult] =
+    await Promise.all([
+      supabaseAdmin
+        .from("dte_invoice_drafts")
+        .select("id,appointment_id,intent_id,dte_type,status,created_at")
+        .eq("tenant_id", tenantId)
+        .in("appointment_id", saleAppointmentIds)
+        .order("created_at", { ascending: false }),
+      saleIds.length
+        ? supabaseAdmin
+            .from("billing_sales")
+            .select(
+              "id,requested_document_type,document_status,tax_treatment_status,payment_state,total_amount,documented_amount,pending_documentation_amount",
+            )
+            .eq("tenant_id", tenantId)
+            .in("id", saleIds)
+        : Promise.resolve({ data: [], error: null }),
+      saleIds.length
+        ? supabaseAdmin
+            .from("billing_sale_payments")
+            .select("sale_id,payment_intent_id,status")
+            .eq("tenant_id", tenantId)
+            .in("sale_id", saleIds)
+        : Promise.resolve({ data: [], error: null }),
+      saleIds.length
+        ? supabaseAdmin
+            .from("billing_sale_item_document_coverage")
+            .select("sale_id")
+            .eq("tenant_id", tenantId)
+            .in("sale_id", saleIds)
+            .neq("status", "VOID")
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
-  if (salesResult.error || paymentsResult.error || coverageResult.error) {
+  if (
+    draftsResult.error ||
+    salesResult.error ||
+    paymentsResult.error ||
+    coverageResult.error
+  ) {
     throw new Error("DTE_APPOINTMENT_CONTEXT_UNAVAILABLE");
   }
 
+  const drafts = (draftsResult.data ?? []) as DraftRow[];
   const sales = (salesResult.data ?? []) as SaleRow[];
   const salePayments = (paymentsResult.data ?? []) as SalePaymentRow[];
   const coverage = (coverageResult.data ?? []) as CoverageRow[];
@@ -317,10 +348,23 @@ export async function loadAdminAppointmentDocumentContexts(
   const appointmentById = new Map(appointments.map((row) => [row.id, row]));
   const saleById = new Map(sales.map((row) => [row.id, row]));
   const saleIdByAppointment = new Map(
-    links.map((row) => [row.appointment_id, row.sale_id]),
+    relatedLinks.map((row) => [row.appointment_id, row.sale_id]),
   );
   const productionById = new Map(production.map((row) => [row.id, row]));
   const coveredSaleIds = new Set(coverage.map((row) => row.sale_id));
+  const draftsByAppointment = new Map<string, DraftRow[]>();
+  const draftsBySale = new Map<string, DraftRow[]>();
+  for (const draft of drafts) {
+    if (!draft.appointment_id) continue;
+    const appointmentDrafts = draftsByAppointment.get(draft.appointment_id) ?? [];
+    appointmentDrafts.push(draft);
+    draftsByAppointment.set(draft.appointment_id, appointmentDrafts);
+    const draftSaleId = saleIdByAppointment.get(draft.appointment_id);
+    if (!draftSaleId) continue;
+    const saleDrafts = draftsBySale.get(draftSaleId) ?? [];
+    saleDrafts.push(draft);
+    draftsBySale.set(draftSaleId, saleDrafts);
+  }
 
   return ids.map((appointmentId) => {
     const appointment = appointmentById.get(appointmentId) ?? null;
@@ -331,9 +375,9 @@ export async function loadAdminAppointmentDocumentContexts(
         .filter((row) => row.sale_id === saleId && row.status === "VERIFIED")
         .map((row) => row.payment_intent_id),
     );
-    const appointmentDrafts = drafts.filter(
-      (row) => row.appointment_id === appointmentId,
-    );
+    const appointmentDrafts = saleId
+      ? draftsBySale.get(saleId) ?? []
+      : draftsByAppointment.get(appointmentId) ?? [];
     const draftIntentIdSet = new Set(
       appointmentDrafts
         .map((row) => row.intent_id)

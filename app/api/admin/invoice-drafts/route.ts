@@ -207,6 +207,7 @@ export async function POST(req: Request) {
     );
   }
 
+  let canonicalSaleId: string | null = null;
   if (appointmentId && source !== "manual") {
     let context;
     try {
@@ -220,6 +221,7 @@ export async function POST(req: Request) {
     if (!context?.saleId || !context.customerId || context.customerId !== customerId) {
       return errorResponse(409, "La reserva no coincide con la venta y cliente persistidos.");
     }
+    canonicalSaleId = context.saleId;
     if (context.intent) {
       return errorResponse(409, "Ya existe un proceso tributario para esta venta.");
     }
@@ -319,6 +321,7 @@ export async function POST(req: Request) {
     .from("dte_invoice_drafts")
     .insert({
       tenant_id: auth.tenantId,
+      sale_id: canonicalSaleId,
       customer_id: customerId,
       appointment_id: appointmentId,
       payment_intent_id: paymentIntentId,

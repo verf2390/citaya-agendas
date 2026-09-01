@@ -36,6 +36,8 @@ test("CIT-37 resolves appointment DTE context from persisted billing relations",
   assert.match(contextSource, /\.eq\("tenant_id", tenantId\)/);
   assert.match(contextSource, /intent_id/);
   assert.match(contextSource, /draftIntentIdSet/);
+  assert.match(contextSource, /\.in\("sale_id", saleIds\)/);
+  assert.match(contextSource, /draftsBySale/);
 });
 
 test("CIT-37 blocks duplicate contextual issuance paths", () => {
@@ -53,7 +55,11 @@ test("CIT-37 blocks duplicate contextual issuance paths", () => {
   );
   assert.match(
     contextSource,
-    /if \(input\.requestedDocumentType\)[\s\S]*canRequestBoleta: false,[\s\S]*canRequestFactura: false/,
+    /if \(input\.requestedDocumentType === 33\)[\s\S]*canRequestBoleta: false,[\s\S]*canRequestFactura: true/,
+  );
+  assert.match(
+    contextSource,
+    /if \(input\.requestedDocumentType === 39\)[\s\S]*canRequestBoleta: true,[\s\S]*canRequestFactura: false/,
   );
   assert.match(
     contextSource,
@@ -181,6 +187,9 @@ test("CIT-37 draft POST rejects browser-mismatched billing data before insert", 
     guarded,
     /context\.totalAmount[\s\S]*totals\.totalAmount/,
   );
+  assert.match(guarded, /canonicalSaleId = context\.saleId/);
+  assert.match(draftRouteSource, /sale_id: canonicalSaleId/);
+  assert.doesNotMatch(draftRouteSource, /body\?\.saleId|body\.saleId/);
 });
 
 test("CIT-37 keeps standalone manual issuance path available", () => {
