@@ -110,6 +110,36 @@ test("CIT-37 payments renders canonical contextual state instead of unconditiona
   assert.match(paymentCellSource, /Estado no disponible/);
 });
 
+test("CIT-37 refreshes the cached DTE context after a successful manual payment", () => {
+  const markAsPaidStart = paymentsSource.indexOf("const markAsPaid = async");
+  const markAsPaidEnd = paymentsSource.indexOf(
+    "const copyPaymentLink = async",
+    markAsPaidStart,
+  );
+  const markAsPaidSource = paymentsSource.slice(markAsPaidStart, markAsPaidEnd);
+
+  assert.match(
+    paymentsSource,
+    /import PaymentDocumentCell, \{[\s\S]*refreshAppointmentDocumentContext,[\s\S]*\} from "@\/components\/admin\/dte\/PaymentDocumentCell"/,
+  );
+  assert.match(
+    markAsPaidSource,
+    /if \(!res\.ok \|\| !json\?\.ok\)[\s\S]*return;[\s\S]*refreshAppointmentDocumentContext\(appointmentId\);[\s\S]*await loadRows\(\)/,
+  );
+  assert.match(
+    paymentCellSource,
+    /export function refreshAppointmentDocumentContext\(appointmentId: string\)[\s\S]*contextCache\.delete\(appointmentId\)[\s\S]*unavailableIds\.delete\(appointmentId\)[\s\S]*publish\(appointmentId, \{ kind: "loading" \}\)[\s\S]*queueContextLoad\(appointmentId\)/,
+  );
+  assert.match(
+    paymentCellSource,
+    /function subscribe[\s\S]*set\.add\(listener\)[\s\S]*listeners\.set\(appointmentId, set\)/,
+  );
+  assert.match(
+    paymentCellSource,
+    /contextVersions\.get\(context\.appointmentId\)[\s\S]*requestedVersions\.get\(context\.appointmentId\)/,
+  );
+});
+
 test("CIT-37 contextual editor validates appointment and dte type before prefilling", () => {
   assert.match(manualFormSource, /params\.get\("appointmentId"\)/);
   assert.match(manualFormSource, /params\.get\("dteType"\)/);
@@ -157,4 +187,19 @@ test("CIT-37 keeps standalone manual issuance path available", () => {
   assert.match(draftRouteSource, /source !== "manual"/);
   assert.match(manualFormSource, /value="manual">Venta manual/);
   assert.match(manualFormSource, /Concepto manual/);
+});
+
+test("CIT-37 makes the contextual canSave gate explicit", () => {
+  assert.match(
+    manualFormSource,
+    /const contextualSeedReady =\s*!contextLocked \|\| \(Boolean\(appointmentId\) && source === "appointment"\);/,
+  );
+  assert.match(
+    manualFormSource,
+    /const canSave =\s*contextualSeedReady &&\s*Boolean\(customerId\) &&\s*lines\.length > 0 &&\s*lines\.every/,
+  );
+  assert.doesNotMatch(
+    manualFormSource,
+    /!contextLocked \|\| Boolean\(appointmentId\) && source === "appointment"\s*\?/,
+  );
 });

@@ -34,6 +34,7 @@ type ContextState =
 const contextCache = new Map<string, AppointmentDocumentContext>();
 const unavailableIds = new Set<string>();
 const listeners = new Map<string, Set<(state: ContextState) => void>>();
+const contextVersions = new Map<string, number>();
 let queuedIds = new Set<string>();
 let flushScheduled = false;
 
@@ -41,9 +42,23 @@ function publish(appointmentId: string, state: ContextState) {
   for (const listener of listeners.get(appointmentId) ?? []) listener(state);
 }
 
+function queueContextLoad(appointmentId: string) {
+  queuedIds.add(appointmentId);
+  if (!flushScheduled) {
+    flushScheduled = true;
+    queueMicrotask(() => void flushQueue());
+  }
+}
+
 async function flushQueue() {
   flushScheduled = false;
   const appointmentIds = Array.from(queuedIds);
+  const requestedVersions = new Map(
+    appointmentIds.map((appointmentId) => [
+      appointmentId,
+      contextVersions.get(appointmentId) ?? 0,
+    ]),
+  );
   queuedIds = new Set<string>();
   if (appointmentIds.length === 0) return;
 
@@ -61,45 +76,68 @@ async function flushQueue() {
     const returned = new Set<string>();
     for (const context of payload.contexts as AppointmentDocumentContext[]) {
       if (!context?.appointmentId) continue;
+      if (
+        (contextVersions.get(context.appointmentId) ?? 0) !==
+        requestedVersions.get(context.appointmentId)
+      ) {
+        continue;
+      }
       returned.add(context.appointmentId);
       contextCache.set(context.appointmentId, context);
       unavailableIds.delete(context.appointmentId);
       publish(context.appointmentId, { kind: "loaded", context });
     }
     for (const appointmentId of appointmentIds) {
+      if (
+        (contextVersions.get(appointmentId) ?? 0) !==
+        requestedVersions.get(appointmentId)
+      ) {
+        continue;
+      }
       if (returned.has(appointmentId)) continue;
       unavailableIds.add(appointmentId);
       publish(appointmentId, { kind: "unavailable" });
     }
   } catch {
     for (const appointmentId of appointmentIds) {
+      if (
+        (contextVersions.get(appointmentId) ?? 0) !==
+        requestedVersions.get(appointmentId)
+      ) {
+        continue;
+      }
       unavailableIds.add(appointmentId);
       publish(appointmentId, { kind: "unavailable" });
     }
   }
 }
 
+export function refreshAppointmentDocumentContext(appointmentId: string) {
+  contextVersions.set(
+    appointmentId,
+    (contextVersions.get(appointmentId) ?? 0) + 1,
+  );
+  contextCache.delete(appointmentId);
+  unavailableIds.delete(appointmentId);
+  publish(appointmentId, { kind: "loading" });
+  queueContextLoad(appointmentId);
+}
+
 function subscribe(
   appointmentId: string,
   listener: (state: ContextState) => void,
 ) {
-  const cached = contextCache.get(appointmentId);
-  if (cached) {
-    listener({ kind: "loaded", context: cached });
-    return () => undefined;
-  }
-  if (unavailableIds.has(appointmentId)) {
-    listener({ kind: "unavailable" });
-    return () => undefined;
-  }
-
   const set = listeners.get(appointmentId) ?? new Set();
   set.add(listener);
   listeners.set(appointmentId, set);
-  queuedIds.add(appointmentId);
-  if (!flushScheduled) {
-    flushScheduled = true;
-    queueMicrotask(() => void flushQueue());
+
+  const cached = contextCache.get(appointmentId);
+  if (cached) {
+    listener({ kind: "loaded", context: cached });
+  } else if (unavailableIds.has(appointmentId)) {
+    listener({ kind: "unavailable" });
+  } else {
+    queueContextLoad(appointmentId);
   }
 
   return () => {

@@ -468,21 +468,22 @@ export default function ManualIssuanceForm({
   const selectedPayment = payments.find((item) => item.id === paymentIntentId);
   const paymentMatches =
     !selectedPayment || Number(selectedPayment.amount) === currentTotals.totalAmount;
+  const contextualSeedReady =
+    !contextLocked || (Boolean(appointmentId) && source === "appointment");
   const canSave =
-    !contextLocked || Boolean(appointmentId) && source === "appointment"
-      ? Boolean(customerId) &&
-        lines.length > 0 &&
-        lines.every(
-          (line) =>
-            line.description.trim() &&
-            Number.isSafeInteger(line.quantity) &&
-            line.quantity > 0 &&
-            Number.isSafeInteger(line.unitNetAmount) &&
-            line.unitNetAmount > 0 &&
-            line.discountPercent >= 0 &&
-            line.discountPercent <= 100,
-        )
-      : false;
+    contextualSeedReady &&
+    Boolean(customerId) &&
+    lines.length > 0 &&
+    lines.every(
+      (line) =>
+        line.description.trim() &&
+        Number.isSafeInteger(line.quantity) &&
+        line.quantity > 0 &&
+        Number.isSafeInteger(line.unitNetAmount) &&
+        line.unitNetAmount > 0 &&
+        line.discountPercent >= 0 &&
+        line.discountPercent <= 100,
+    );
 
   const markChanged = () => {
     setFeedback("");

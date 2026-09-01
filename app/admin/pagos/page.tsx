@@ -7,7 +7,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import AdminNav from "@/components/admin/AdminNav";
-import PaymentDocumentCell from "@/components/admin/dte/PaymentDocumentCell";
+import PaymentDocumentCell, {
+  refreshAppointmentDocumentContext,
+} from "@/components/admin/dte/PaymentDocumentCell";
 import {
   AdminKpiCard,
   AdminPageHeader,
@@ -540,6 +542,7 @@ export default function AdminPagosPage() {
         return;
       }
       toast({ title: "Transferencia confirmada correctamente" });
+      refreshAppointmentDocumentContext(appointmentId);
       await loadRows();
     } finally {
       setMarkingId(null);
