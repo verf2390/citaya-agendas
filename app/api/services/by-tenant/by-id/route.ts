@@ -1,15 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
-
-  if (!url) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
-  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
-
-  return createClient(url, key, { auth: { persistSession: false } });
-}
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function GET(req: Request) {
   try {
@@ -23,9 +13,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const supabase = getSupabaseAdmin();
-
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from("services")
       .select("id,tenant_id,name,duration_min,is_active,price,currency")
       .eq("id", id)
@@ -55,9 +43,9 @@ export async function GET(req: Request) {
       { ok: true, service },
       { status: 200, headers: { "Cache-Control": "no-store" } },
     );
-  } catch (e: any) {
+  } catch (e: unknown) {
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "Unexpected error" },
+      { ok: false, error: e instanceof Error ? e.message : "Unexpected error" },
       { status: 500 },
     );
   }
