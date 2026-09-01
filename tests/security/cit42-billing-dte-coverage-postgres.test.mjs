@@ -8,6 +8,10 @@ const migrationPath =
   "migrations/202608310001_cit42_reconcile_billing_accepted_dte.sql";
 
 const migration = readFileSync(migrationPath, "utf8");
+const retryRoute = readFileSync(
+  "app/api/admin/dte-intents/[id]/retry-billing-coverage/route.ts",
+  "utf8",
+);
 
 test("CIT-42 migration is local-only, exact and least-privilege", () => {
   assert.match(
@@ -68,6 +72,35 @@ test("CIT-42 migration is local-only, exact and least-privilege", () => {
   assert.match(
     migration,
     /revoke all on function public\.billing_reconcile_accepted_production_dte/,
+  );
+
+  const retryStart = migration.indexOf(
+    "create or replace function public.billing_retry_accepted_dte_coverage",
+  );
+  const retryEnd = migration.indexOf(
+    "create or replace function public.dte_reconcile_intent_status",
+    retryStart,
+  );
+  assert.ok(retryStart > -1 && retryEnd > retryStart);
+  const retrySql = migration.slice(retryStart, retryEnd);
+  assert.match(retrySql, /intent_status not in \('ACCEPTED','ACCEPTED_WITH_OBJECTIONS'\)/);
+  assert.match(retrySql, /intent_origin <> 'automatic_payment'/);
+  assert.match(retrySql, /intent_dte_type not in \(33,39\)/);
+  assert.match(retrySql, /intent_document_id is null/);
+  assert.match(retrySql, /billing_reconcile_accepted_production_dte/);
+  assert.doesNotMatch(
+    retrySql,
+    /(?:net\.http|http_get|http_post|dblink|pg_net|reserve_folio|outbox|submission|production_cafs|folio_ledger)/i,
+  );
+
+  assert.match(retryRoute, /requireHostTenantAdmin\(req\)/);
+  assert.match(retryRoute, /RECONCILIAR COBERTURA/);
+  assert.match(retryRoute, /billing_retry_accepted_dte_coverage/);
+  assert.match(retryRoute, /p_tenant_id: auth\.tenantId/);
+  assert.match(retryRoute, /p_intent_id: id/);
+  assert.doesNotMatch(
+    retryRoute,
+    /(?:runOneAutomaticIssuanceWorker|reserveFolio|outbox|submission|caf|folio|fetch\()/i,
   );
 
   assert.doesNotMatch(
@@ -465,6 +498,12 @@ declare
     '90000000-0000-4000-8000-000000000039';
   appointment39 constant uuid :=
     'a0000000-0000-4000-8000-000000000039';
+  mismatch_intent constant uuid :=
+    '95000000-0000-4000-8000-000000000042';
+  unknown_intent constant uuid :=
+    '96000000-0000-4000-8000-000000000042';
+  wrong_tenant constant uuid :=
+    '97000000-0000-4000-8000-000000000042';
 
   conflict_sale constant uuid :=
     '21000000-0000-4000-8000-000000000001';
@@ -565,6 +604,24 @@ begin
 
   if pg_catalog.has_function_privilege(
        'anon',
+       'public.billing_retry_accepted_dte_coverage(uuid,uuid)',
+       'EXECUTE'
+     )
+     or pg_catalog.has_function_privilege(
+       'authenticated',
+       'public.billing_retry_accepted_dte_coverage(uuid,uuid)',
+       'EXECUTE'
+     )
+     or not pg_catalog.has_function_privilege(
+       'service_role',
+       'public.billing_retry_accepted_dte_coverage(uuid,uuid)',
+       'EXECUTE'
+     ) then
+    raise exception 'CIT42_RETRY_RPC_PERMISSIONS_INVALID';
+  end if;
+
+  if pg_catalog.has_function_privilege(
+       'anon',
        'public.dte_reconcile_intent_status(uuid,uuid,text,text,uuid)',
        'EXECUTE'
      )
@@ -589,6 +646,7 @@ begin
     where namespace.nspname='public'
       and procedure.proname in(
         'billing_reconcile_accepted_production_dte',
+        'billing_retry_accepted_dte_coverage',
         'dte_reconcile_intent_status'
       )
       and not procedure.prosecdef
@@ -600,10 +658,11 @@ begin
     where namespace.nspname='public'
       and procedure.proname in(
         'billing_reconcile_accepted_production_dte',
+        'billing_retry_accepted_dte_coverage',
         'dte_reconcile_intent_status'
       )
       and procedure.proconfig @> array['search_path=""']::text[]
-  ) <> 2 then
+  ) <> 3 then
     raise exception 'CIT42_SECURITY_DEFINER_CONFIGURATION_INVALID';
   end if;
 
@@ -677,12 +736,15 @@ begin
     resolved_dte_type,status,payment_intent_id,amount_snapshot
   ) values(
     intent33,t,document33,'automatic_payment',
-    33,'SUBMITTED',payment_intent33,5000
+    33,'ACCEPTED',payment_intent33,5000
   );
 
-  perform public.dte_reconcile_intent_status(
-    t,document33,'ACCEPTED','accepted',actor
-  );
+  select public.billing_retry_accepted_dte_coverage(t,intent33)
+  into n;
+
+  if n <> 1 then
+    raise exception 'CIT42_FACTURA33_RETRY_DID_NOT_RECONCILE';
+  end if;
 
   select
     document_status,
@@ -717,9 +779,12 @@ begin
     raise exception 'CIT42_FACTURA33_TAX_STATUS_NOT_READY';
   end if;
 
-  perform public.dte_reconcile_intent_status(
-    t,document33,'ACCEPTED','accepted',actor
-  );
+  select public.billing_retry_accepted_dte_coverage(t,intent33)
+  into n;
+
+  if n <> 0 then
+    raise exception 'CIT42_FACTURA33_SECOND_RETRY_NOT_IDEMPOTENT';
+  end if;
 
   select count(*)
   into n
@@ -815,13 +880,15 @@ begin
     resolved_dte_type,status,payment_intent_id,amount_snapshot
   ) values(
     intent39,t,document39,'automatic_payment',
-    39,'SUBMITTED',payment_intent39,5000
+    39,'ACCEPTED_WITH_OBJECTIONS',payment_intent39,5000
   );
 
-  perform public.dte_reconcile_intent_status(
-    t,document39,'ACCEPTED_WITH_OBJECTIONS',
-    'accepted_with_observations',actor
-  );
+  select public.billing_retry_accepted_dte_coverage(t,intent39)
+  into n;
+
+  if n <> 1 then
+    raise exception 'CIT42_BOLETA39_RETRY_DID_NOT_RECONCILE';
+  end if;
 
   select
     document_status,
@@ -861,10 +928,12 @@ begin
     raise exception 'CIT42_BOLETA39_REVIEW_PROVENANCE_NOT_PRESERVED';
   end if;
 
-  perform public.dte_reconcile_intent_status(
-    t,document39,'ACCEPTED_WITH_OBJECTIONS',
-    'accepted_with_observations',actor
-  );
+  select public.billing_retry_accepted_dte_coverage(t,intent39)
+  into n;
+
+  if n <> 0 then
+    raise exception 'CIT42_BOLETA39_SECOND_RETRY_NOT_IDEMPOTENT';
+  end if;
 
   select count(*)
   into n
@@ -889,6 +958,60 @@ begin
   if n <> 1 then
     raise exception 'CIT42_BOLETA39_EVENT_IDEMPOTENCY_FAILED';
   end if;
+
+  ----------------------------------------------------------
+  -- RETRY FAILS CLOSED ON TENANT / INTENT / DOCUMENT MISMATCH
+  ----------------------------------------------------------
+
+  insert into public.dte_payment_document_intents(
+    id,tenant_id,production_document_id,origin,
+    resolved_dte_type,status,payment_intent_id,amount_snapshot
+  ) values(
+    mismatch_intent,t,document39,'automatic_payment',
+    33,'ACCEPTED',payment_intent39,5000
+  );
+
+  begin
+    perform public.billing_retry_accepted_dte_coverage(t,mismatch_intent);
+    raise exception 'CIT42_DOCUMENT_MISMATCH_RETRY_ACCEPTED';
+  exception
+    when others then
+      if sqlerrm = 'CIT42_DOCUMENT_MISMATCH_RETRY_ACCEPTED'
+         or sqlerrm not like '%DTE_BILLING_DOCUMENT_SNAPSHOT_MISMATCH%' then
+        raise;
+      end if;
+  end;
+
+  if not exists(
+    select 1
+    from public.dte_payment_document_intents
+    where id=mismatch_intent
+      and status='ACCEPTED'
+  ) then
+    raise exception 'CIT42_RETRY_FAILURE_CHANGED_ACCEPTED_STATUS';
+  end if;
+
+  begin
+    perform public.billing_retry_accepted_dte_coverage(wrong_tenant,intent33);
+    raise exception 'CIT42_TENANT_MISMATCH_RETRY_ACCEPTED';
+  exception
+    when others then
+      if sqlerrm = 'CIT42_TENANT_MISMATCH_RETRY_ACCEPTED'
+         or sqlerrm not like '%DTE_BILLING_RETRY_INTENT_NOT_FOUND%' then
+        raise;
+      end if;
+  end;
+
+  begin
+    perform public.billing_retry_accepted_dte_coverage(t,unknown_intent);
+    raise exception 'CIT42_UNKNOWN_INTENT_RETRY_ACCEPTED';
+  exception
+    when others then
+      if sqlerrm = 'CIT42_UNKNOWN_INTENT_RETRY_ACCEPTED'
+         or sqlerrm not like '%DTE_BILLING_RETRY_INTENT_NOT_FOUND%' then
+        raise;
+      end if;
+  end;
 
   ----------------------------------------------------------
   -- CONFLICT FAIL-CLOSED
@@ -1325,6 +1448,28 @@ begin
   ) then
     raise exception 'CIT42_SUBMITTED_CREATED_COVERAGE';
   end if;
+
+  foreach v in array array[
+    'AMBIGUOUS',
+    'BLOCKED',
+    'REJECTED',
+    'CANCELED'
+  ] loop
+    update public.dte_payment_document_intents
+    set status=v
+    where id=submitted_intent;
+
+    begin
+      perform public.billing_retry_accepted_dte_coverage(t,submitted_intent);
+      raise exception 'CIT42_NON_ACCEPTED_RETRY_ALLOWED';
+    exception
+      when others then
+        if sqlerrm = 'CIT42_NON_ACCEPTED_RETRY_ALLOWED'
+           or sqlerrm not like '%DTE_BILLING_RETRY_NOT_ALLOWED%' then
+          raise;
+        end if;
+    end;
+  end loop;
 
   ----------------------------------------------------------
   -- REJECTED: NO COVERAGE

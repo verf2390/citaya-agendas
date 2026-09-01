@@ -286,6 +286,59 @@ end;
 $$;
 
 
+create or replace function public.billing_retry_accepted_dte_coverage(
+  p_tenant_id uuid,
+  p_intent_id uuid
+) returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  intent_document_id uuid;
+  intent_origin text;
+  intent_status text;
+  intent_dte_type integer;
+begin
+  if p_tenant_id is null or p_intent_id is null then
+    raise exception 'DTE_BILLING_RETRY_INPUT_INVALID';
+  end if;
+
+  select
+    production_document_id,
+    origin,
+    status,
+    resolved_dte_type
+  into
+    intent_document_id,
+    intent_origin,
+    intent_status,
+    intent_dte_type
+  from public.dte_payment_document_intents
+  where tenant_id = p_tenant_id
+    and id = p_intent_id
+  for update;
+
+  if not found then
+    raise exception 'DTE_BILLING_RETRY_INTENT_NOT_FOUND';
+  end if;
+
+  if intent_origin <> 'automatic_payment'
+     or intent_status not in ('ACCEPTED','ACCEPTED_WITH_OBJECTIONS')
+     or intent_dte_type not in (33,39)
+     or intent_document_id is null then
+    raise exception 'DTE_BILLING_RETRY_NOT_ALLOWED';
+  end if;
+
+  return public.billing_reconcile_accepted_production_dte(
+    p_tenant_id,
+    p_intent_id,
+    intent_document_id
+  );
+end;
+$$;
+
+
 create or replace function public.dte_reconcile_intent_status(
   p_tenant_id uuid,
   p_production_document_id uuid,
@@ -436,6 +489,10 @@ revoke all on function public.billing_reconcile_accepted_production_dte(
   uuid,uuid,uuid
 ) from public,anon,authenticated;
 
+revoke all on function public.billing_retry_accepted_dte_coverage(
+  uuid,uuid
+) from public,anon,authenticated;
+
 revoke all on function public.dte_reconcile_intent_status(
   uuid,uuid,text,text,uuid
 ) from public,anon,authenticated;
@@ -444,9 +501,18 @@ grant execute on function public.dte_reconcile_intent_status(
   uuid,uuid,text,text,uuid
 ) to service_role;
 
+grant execute on function public.billing_retry_accepted_dte_coverage(
+  uuid,uuid
+) to service_role;
+
 comment on function public.billing_reconcile_accepted_production_dte(
   uuid,uuid,uuid
 ) is
   'CIT-42: reconciles an accepted automatic production DTE with exact billing schedule allocations. Local-only and idempotent; never contacts SII.';
+
+comment on function public.billing_retry_accepted_dte_coverage(
+  uuid,uuid
+) is
+  'CIT-42: explicit local retry for billing coverage of an already accepted automatic DTE. It derives the persisted production document and never changes the authoritative DTE status.';
 
 commit;
