@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,12 +13,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: {
-    default: "Citaya | Agenda online",
-    template: "%s",
+    default: "Citaya | Web y automatización para negocios locales",
+    template: "%s | Citaya",
   },
-  description: "Agenda online para negocios. Reservas 24/7.",
+  description:
+    "Páginas web, agenda online y automatizaciones para negocios que quieren ordenar su captación y vender con más claridad.",
 };
 
 export default function RootLayout({
