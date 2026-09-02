@@ -11,9 +11,9 @@ import {
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import {
   getPaymentProvider,
+  getPaymentProviderConfig,
   isPaymentProviderId,
 } from "@/services/payments/provider-factory";
-import type { PaymentProviderConfig } from "@/services/payments/providers/types";
 import { normalizeRut, validateRut } from "@/lib/dte/rut";
 import {
   assertTenantCanCreatePayment,
@@ -22,19 +22,6 @@ import {
 
 function jsonError(status: number, error = "No se pudo iniciar el pago") {
   return NextResponse.json({ ok: false, error }, { status });
-}
-
-function providerConfig(
-  provider: PaymentProviderConfig["id"],
-  paymentConfig: Awaited<ReturnType<typeof getTenantPaymentConfig>>,
-): PaymentProviderConfig {
-  return {
-    id: provider,
-    enabled: paymentConfig.paymentMethodsEnabled.includes(provider),
-    credentials: provider === "mercadopago"
-      ? { accessToken: paymentConfig.accessToken }
-      : undefined,
-  };
 }
 
 export async function POST(req: Request) {
@@ -205,8 +192,12 @@ export async function POST(req: Request) {
     if (!sale || !schedule) return jsonError(409);
     const requiredAmount = Number(schedule.amount) - Number(schedule.paid_amount);
     if (!Number.isSafeInteger(requiredAmount) || requiredAmount <= 0 || sale.payment_state === "PAID") return jsonError(409);
-    const config = providerConfig(providerId, paymentConfig);
-    if (!paymentConfig.enabled || !config.enabled) {
+    const config = getPaymentProviderConfig(
+      providerId,
+      appointment.tenant_id,
+      paymentConfig,
+    );
+    if (!config.enabled || !config.configured) {
       return jsonError(409);
     }
 

@@ -929,7 +929,7 @@ begin
   select * into claimed from public.dte_claim_automatic_issuance_outbox_exact(
     'auto-operational-gate-worker',outbox_operational_gate
   );
-  update public.tenants set operational_mode='demo' where id=tenant_id_value;
+  update public.tenants set operational_mode='internal' where id=tenant_id_value;
   mutation_ok := public.dte_mutate_automatic_issuance_claim(
     claimed.id,claimed.locked_by,claimed.claim_token,'RENEW'
   );

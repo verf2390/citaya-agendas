@@ -144,6 +144,12 @@ export default function AdminPagosPage() {
   const [paymentMethodsEnabled, setPaymentMethodsEnabled] = useState<
     PaymentProviderId[]
   >(["mercadopago"]);
+  const [mercadopagoPublicKey, setMercadopagoPublicKey] = useState("");
+  const [mercadopagoPublicKeyPreview, setMercadopagoPublicKeyPreview] =
+    useState("");
+  const [mercadopagoAccessToken, setMercadopagoAccessToken] = useState("");
+  const [mercadopagoAccessTokenPreview, setMercadopagoAccessTokenPreview] =
+    useState("");
   const [webpayCommerceCode, setWebpayCommerceCode] = useState("");
   const [webpayApiKey, setWebpayApiKey] = useState("");
   const [webpayApiKeyPreview, setWebpayApiKeyPreview] = useState("");
@@ -260,6 +266,14 @@ export default function AdminPagosPage() {
           )
         : [];
       setPaymentMethodsEnabled(methods.length > 0 ? methods : ["mercadopago"]);
+      setMercadopagoPublicKey("");
+      setMercadopagoPublicKeyPreview(
+        json.settings?.mercadopagoPublicKeyPreview ?? "",
+      );
+      setMercadopagoAccessToken("");
+      setMercadopagoAccessTokenPreview(
+        json.settings?.mercadopagoAccessTokenPreview ?? "",
+      );
       setWebpayCommerceCode(json.settings?.webpayCommerceCode ?? "");
       setWebpayApiKey("");
       setWebpayApiKeyPreview(json.settings?.webpayApiKeyPreview ?? "");
@@ -481,6 +495,8 @@ export default function AdminPagosPage() {
           depositValue: nextDepositValue,
           paymentMethodsEnabled,
           paymentCollectionMode,
+          mercadopagoPublicKey,
+          mercadopagoAccessToken,
           webpayCommerceCode,
           webpayApiKey,
           webpayEnvironment,
@@ -503,6 +519,8 @@ export default function AdminPagosPage() {
       }
 
       setTenantPaymentMode(nextPaymentMode);
+      setMercadopagoPublicKey("");
+      setMercadopagoAccessToken("");
       setWebpayApiKey("");
       setKhipuSecret("");
       await loadPaymentSettings();
@@ -795,7 +813,7 @@ export default function AdminPagosPage() {
         <AdminSectionCard
           className="mt-4"
           title="Métodos de pago"
-          description="Activa los métodos disponibles para tus clientes. Puedes guardar aunque algunos datos opcionales estén vacíos."
+          description="Activa los métodos disponibles para tus clientes. Un método incompleto queda bloqueado hasta configurar todos sus datos obligatorios."
         >
           {loadingPaymentSettings || !authChecked ? (
             <div className="text-sm font-medium text-slate-500">Cargando métodos de pago...</div>
@@ -838,6 +856,52 @@ export default function AdminPagosPage() {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">
+                <div
+                  className={`rounded-2xl border p-4 ${
+                    paymentMethodsEnabled.includes("mercadopago")
+                      ? "border-sky-200 bg-sky-50/60"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-black text-slate-950">Mercado Pago</div>
+                      <p className="mt-1 text-sm font-medium text-slate-500">
+                        El access token es obligatorio para crear preferencias.
+                      </p>
+                    </div>
+                    <StatusBadge tone={paymentMethodsEnabled.includes("mercadopago") ? "blue" : "slate"}>
+                      {paymentMethodsEnabled.includes("mercadopago") ? "Activo" : "Inactivo"}
+                    </StatusBadge>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    <input
+                      type="password"
+                      value={mercadopagoAccessToken}
+                      onChange={(event) => setMercadopagoAccessToken(event.target.value)}
+                      placeholder={
+                        mercadopagoAccessTokenPreview
+                          ? `Access token (${mercadopagoAccessTokenPreview})`
+                          : "Access token"
+                      }
+                      autoComplete="new-password"
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none focus:border-slate-400"
+                    />
+                    <input
+                      type="password"
+                      value={mercadopagoPublicKey}
+                      onChange={(event) => setMercadopagoPublicKey(event.target.value)}
+                      placeholder={
+                        mercadopagoPublicKeyPreview
+                          ? `Public key (${mercadopagoPublicKeyPreview})`
+                          : "Public key (opcional para el flujo actual)"
+                      }
+                      autoComplete="new-password"
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium outline-none focus:border-slate-400"
+                    />
+                  </div>
+                </div>
+
                 <div
                   className={`rounded-2xl border p-4 ${
                     paymentMethodsEnabled.includes("webpay")

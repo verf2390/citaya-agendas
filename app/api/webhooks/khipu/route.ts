@@ -6,6 +6,7 @@ import {
   verifyKhipuSignature,
 } from "@/lib/security/payment-verification.mjs";
 import { getKhipuCredentials } from "@/services/payments/provider-credentials";
+import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { enqueueAutomaticDteBestEffort } from "@/services/payments/automatic-dte";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import {
@@ -41,7 +42,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: true }, { status: 202 });
     }
 
-    const credentials = getKhipuCredentials(intent.tenant_id);
+    const paymentConfig = await getTenantPaymentConfig(intent.tenant_id);
+    if (!paymentConfig.settingsFound) return reject(503);
+    const credentials = getKhipuCredentials(intent.tenant_id, {
+      receiverId: paymentConfig.khipuReceiverId,
+      apiKey: paymentConfig.khipuSecret,
+      environment: paymentConfig.khipuEnvironment as
+        | "development"
+        | "production"
+        | undefined,
+    });
     if (!credentials) return reject(503);
     if (
       !verifyKhipuSignature({

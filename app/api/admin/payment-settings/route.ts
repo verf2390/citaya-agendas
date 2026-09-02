@@ -4,12 +4,16 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
+import { tenantCredentialUpdates } from "@/services/payments/payment-settings-credentials";
+import { evaluateTenantPaymentReadiness } from "@/services/payments/provider-readiness";
 
 const PaymentModeSchema = z.enum(["none", "optional", "required"]);
 const DepositTypeSchema = z.enum(["fixed", "percentage"]).nullable();
 const PaymentProviderSchema = z.enum(["mercadopago", "webpay", "khipu", "manual"]);
 const PaymentMethodsSchema = z.array(PaymentProviderSchema).min(1);
 const PaymentCollectionModeSchema = z.enum(["none", "full", "deposit"]);
+const WebpayEnvironmentSchema = z.enum(["integration", "production"]);
+const KhipuEnvironmentSchema = z.enum(["development", "production"]);
 
 function hasOwn(obj: unknown, key: string) {
   return (
@@ -19,10 +23,6 @@ function hasOwn(obj: unknown, key: string) {
   );
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
-}
-
 type SupabaseErrorLike = {
   message?: string;
   details?: string;
@@ -30,16 +30,15 @@ type SupabaseErrorLike = {
   code?: string;
 };
 
-function formatSupabaseError(
-  error: SupabaseErrorLike,
-  fallback: string,
-) {
-  const message = error.message || fallback;
-  const details = error.details ? ` Detalle: ${error.details}` : "";
-  const hint = error.hint ? ` Hint: ${error.hint}` : "";
-  const code = error.code ? ` Código: ${error.code}` : "";
-
-  return `${message}${details}${hint}${code}`;
+function logPaymentSettingsError(context: string, error: unknown) {
+  const safeError = error as { code?: unknown; name?: unknown } | null;
+  console.error(`[admin/payment-settings] ${context}`, {
+    code: String(safeError?.code ?? "unknown"),
+    name:
+      error instanceof Error
+        ? error.name
+        : String(safeError?.name ?? "UnknownError"),
+  });
 }
 
 function schemaHintForPaymentSettings(error: SupabaseErrorLike) {
@@ -48,6 +47,7 @@ function schemaHintForPaymentSettings(error: SupabaseErrorLike) {
   if (
     text.includes("payment_methods_enabled") ||
     text.includes("payment_collection_mode") ||
+    text.includes("mercadopago_") ||
     text.includes("webpay_") ||
     text.includes("khipu_") ||
     text.includes("bank_")
@@ -90,6 +90,7 @@ export async function GET(req: Request) {
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const config = await getTenantPaymentConfig(tenantId);
+    const readiness = evaluateTenantPaymentReadiness(config);
     const bankSettings =
       access.operationalMode === "demo"
         ? DEMO_BANK_SETTINGS
@@ -112,6 +113,13 @@ export async function GET(req: Request) {
         depositValue: config.depositValue ?? null,
         paymentMethodsEnabled: config.paymentMethodsEnabled,
         paymentCollectionMode: config.collectionMode,
+        paymentProviderReady: readiness.ready,
+        paymentMethodReadiness: readiness.methods,
+        mercadopagoPublicKeyConfigured: !!config.publicKey,
+        mercadopagoPublicKeyPreview: maskSecret(config.publicKey),
+        mercadopagoAccessTokenConfigured:
+          readiness.methods.mercadopago.configured,
+        mercadopagoAccessTokenPreview: maskSecret(config.accessToken),
         webpayCommerceCode: config.webpayCommerceCode ?? null,
         webpayApiKeyConfigured: !!config.webpayApiKey,
         webpayApiKeyPreview: maskSecret(config.webpayApiKey),
@@ -124,9 +132,9 @@ export async function GET(req: Request) {
       },
     });
   } catch (error: unknown) {
-    console.error("[admin/payment-settings] GET error:", error);
+    logPaymentSettingsError("GET failed", error);
     return NextResponse.json(
-      { ok: false, error: getErrorMessage(error, "Error cargando configuración") },
+      { ok: false, error: "Error cargando configuración" },
       { status: 500 },
     );
   }
@@ -146,6 +154,12 @@ export async function POST(req: Request) {
       : null;
     const parsedCollectionMode = hasCollectionMode
       ? PaymentCollectionModeSchema.safeParse(body?.paymentCollectionMode)
+      : null;
+    const parsedWebpayEnvironment = hasOwn(body, "webpayEnvironment")
+      ? WebpayEnvironmentSchema.safeParse(body?.webpayEnvironment)
+      : null;
+    const parsedKhipuEnvironment = hasOwn(body, "khipuEnvironment")
+      ? KhipuEnvironmentSchema.safeParse(body?.khipuEnvironment)
       : null;
 
     if (!tenantId || !isUuid(tenantId)) {
@@ -175,6 +189,20 @@ export async function POST(req: Request) {
     if (hasCollectionMode && !parsedCollectionMode?.success) {
       return NextResponse.json(
         { ok: false, error: "paymentCollectionMode inválido" },
+        { status: 400 },
+      );
+    }
+
+    if (parsedWebpayEnvironment && !parsedWebpayEnvironment.success) {
+      return NextResponse.json(
+        { ok: false, error: "webpayEnvironment inválido" },
+        { status: 400 },
+      );
+    }
+
+    if (parsedKhipuEnvironment && !parsedKhipuEnvironment.success) {
+      return NextResponse.json(
+        { ok: false, error: "khipuEnvironment inválido" },
         { status: 400 },
       );
     }
@@ -239,6 +267,8 @@ export async function POST(req: Request) {
       deposit_value?: number | null;
       payment_methods_enabled?: string[];
       payment_collection_mode?: "none" | "full" | "deposit";
+      mercadopago_public_key?: string;
+      mercadopago_access_token?: string;
       webpay_commerce_code?: string | null;
       webpay_api_key?: string | null;
       webpay_environment?: string;
@@ -269,38 +299,14 @@ export async function POST(req: Request) {
       paymentSettingsPayload.payment_collection_mode = parsedCollectionMode!.data;
     }
 
-    if (hasOwn(body, "webpayCommerceCode")) {
-      paymentSettingsPayload.webpay_commerce_code =
-        String(body?.webpayCommerceCode ?? "").trim() || null;
-    }
-
-    if (hasOwn(body, "webpayApiKey")) {
-      const nextSecret = String(body?.webpayApiKey ?? "").trim();
-      if (nextSecret) paymentSettingsPayload.webpay_api_key = nextSecret;
-    }
+    Object.assign(paymentSettingsPayload, tenantCredentialUpdates(body));
 
     if (hasOwn(body, "webpayEnvironment")) {
-      paymentSettingsPayload.webpay_environment =
-        String(body?.webpayEnvironment ?? "integration").trim() === "production"
-          ? "production"
-          : "integration";
-    }
-
-    if (hasOwn(body, "khipuReceiverId")) {
-      paymentSettingsPayload.khipu_receiver_id =
-        String(body?.khipuReceiverId ?? "").trim() || null;
-    }
-
-    if (hasOwn(body, "khipuSecret")) {
-      const nextSecret = String(body?.khipuSecret ?? "").trim();
-      if (nextSecret) paymentSettingsPayload.khipu_secret = nextSecret;
+      paymentSettingsPayload.webpay_environment = parsedWebpayEnvironment!.data;
     }
 
     if (hasOwn(body, "khipuEnvironment")) {
-      paymentSettingsPayload.khipu_environment =
-        String(body?.khipuEnvironment ?? "development").trim() === "production"
-          ? "production"
-          : "development";
+      paymentSettingsPayload.khipu_environment = parsedKhipuEnvironment!.data;
     }
 
     if (hasOwn(body, "bankName")) {
@@ -349,10 +355,7 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (existingError) {
-      console.error(
-        "[admin/payment-settings] error leyendo configuración actual:",
-        existingError,
-      );
+      logPaymentSettingsError("read failed", existingError);
       return NextResponse.json(
         { ok: false, error: "No se pudo leer la configuración actual" },
         { status: 500 },
@@ -369,18 +372,12 @@ export async function POST(req: Request) {
         .eq("tenant_id", tenantId);
 
       if (updateError) {
-        console.error(
-          "[admin/payment-settings] error actualizando configuración:",
-          updateError,
-        );
+        logPaymentSettingsError("update failed", updateError);
         const schemaHint = schemaHintForPaymentSettings(updateError);
         return NextResponse.json(
           {
             ok: false,
-            error: formatSupabaseError(
-              updateError,
-              "No se pudo actualizar la configuración",
-            ),
+            error: "No se pudo actualizar la configuración",
             schemaHint,
           },
           { status: 500 },
@@ -395,18 +392,12 @@ export async function POST(req: Request) {
         });
 
       if (insertError) {
-        console.error(
-          "[admin/payment-settings] error creando configuración:",
-          insertError,
-        );
+        logPaymentSettingsError("insert failed", insertError);
         const schemaHint = schemaHintForPaymentSettings(insertError);
         return NextResponse.json(
           {
             ok: false,
-            error: formatSupabaseError(
-              insertError,
-              "No se pudo crear la configuración",
-            ),
+            error: "No se pudo crear la configuración",
             schemaHint,
           },
           { status: 500 },
@@ -429,9 +420,9 @@ export async function POST(req: Request) {
       },
     });
   } catch (error: unknown) {
-    console.error("[admin/payment-settings] POST error:", error);
+    logPaymentSettingsError("POST failed", error);
     return NextResponse.json(
-      { ok: false, error: getErrorMessage(error, "Error guardando configuración") },
+      { ok: false, error: "Error guardando configuración" },
       { status: 500 },
     );
   }
