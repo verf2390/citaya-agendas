@@ -4,7 +4,7 @@ import {
   safePaymentAuditMetadata,
   verifyWebpayCommit,
 } from "@/lib/security/payment-verification.mjs";
-import { getWebpayCredentials } from "@/services/payments/provider-credentials";
+import { getTenantWebpayCredentials } from "@/services/payments/provider-credentials";
 import { webpayTransaction } from "@/services/payments/webpay-transaction";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { enqueueAutomaticDteBestEffort } from "@/services/payments/automatic-dte";
@@ -65,13 +65,10 @@ async function handleWebpayReturn(req: Request) {
 
     const paymentConfig = await getTenantPaymentConfig(intent.tenant_id);
     if (!paymentConfig.settingsFound) return redirectResult(req, "failure");
-    const credentials = getWebpayCredentials(intent.tenant_id, {
+    const credentials = getTenantWebpayCredentials({
       commerceCode: paymentConfig.webpayCommerceCode,
       apiKey: paymentConfig.webpayApiKey,
-      environment: paymentConfig.webpayEnvironment as
-        | "integration"
-        | "production"
-        | undefined,
+      environment: paymentConfig.webpayEnvironment,
     });
     if (!credentials) return redirectResult(req, "failure");
     const transaction = await webpayTransaction(credentials).commit(token);

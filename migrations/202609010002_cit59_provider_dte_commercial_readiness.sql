@@ -24,23 +24,63 @@ alter table public.tenant_payment_settings
 alter table public.tenant_payment_settings
   alter column payment_methods_enabled set default '[]'::jsonb;
 
-alter table public.tenant_payment_settings
-  drop constraint if exists tenant_payment_settings_payment_collection_mode_check;
-alter table public.tenant_payment_settings
-  add constraint tenant_payment_settings_payment_collection_mode_check
-  check (payment_collection_mode in ('none', 'full', 'deposit')) not valid;
+-- Preserve the validation state of an existing canonical constraint. A
+-- same-named but different constraint is a schema drift error: replacing it
+-- silently could weaken an already-deployed invariant.
+do $cit59_constraints$
+declare
+  constraint_spec record;
+  existing_definition text;
+  existing_expression text;
+  existing_type "char";
+begin
+  for constraint_spec in
+    select *
+    from (
+      values
+        (
+          'tenant_payment_settings_payment_collection_mode_check',
+          'payment_collection_mode = ANY (ARRAY[''none''::text, ''full''::text, ''deposit''::text])',
+          'alter table public.tenant_payment_settings add constraint tenant_payment_settings_payment_collection_mode_check check (payment_collection_mode in (''none'', ''full'', ''deposit'')) not valid'
+        ),
+        (
+          'tenant_payment_settings_webpay_environment_check',
+          'webpay_environment = ANY (ARRAY[''integration''::text, ''production''::text])',
+          'alter table public.tenant_payment_settings add constraint tenant_payment_settings_webpay_environment_check check (webpay_environment in (''integration'', ''production'')) not valid'
+        ),
+        (
+          'tenant_payment_settings_khipu_environment_check',
+          'khipu_environment = ANY (ARRAY[''development''::text, ''production''::text])',
+          'alter table public.tenant_payment_settings add constraint tenant_payment_settings_khipu_environment_check check (khipu_environment in (''development'', ''production'')) not valid'
+        )
+    ) as expected(constraint_name, check_expression, create_statement)
+  loop
+    select
+      pg_catalog.pg_get_constraintdef(constraint_row.oid, true),
+      pg_catalog.pg_get_expr(
+        constraint_row.conbin,
+        constraint_row.conrelid,
+        true
+      ),
+      constraint_row.contype
+    into existing_definition, existing_expression, existing_type
+    from pg_catalog.pg_constraint constraint_row
+    where constraint_row.conrelid =
+        'public.tenant_payment_settings'::pg_catalog.regclass
+      and constraint_row.conname = constraint_spec.constraint_name;
 
-alter table public.tenant_payment_settings
-  drop constraint if exists tenant_payment_settings_webpay_environment_check;
-alter table public.tenant_payment_settings
-  add constraint tenant_payment_settings_webpay_environment_check
-  check (webpay_environment in ('integration', 'production')) not valid;
-
-alter table public.tenant_payment_settings
-  drop constraint if exists tenant_payment_settings_khipu_environment_check;
-alter table public.tenant_payment_settings
-  add constraint tenant_payment_settings_khipu_environment_check
-  check (khipu_environment in ('development', 'production')) not valid;
+    if not found then
+      execute constraint_spec.create_statement;
+    elsif existing_type <> 'c'
+      or existing_expression is distinct from constraint_spec.check_expression
+    then
+      raise exception 'CIT59_CONSTRAINT_DEFINITION_MISMATCH: %',
+        constraint_spec.constraint_name
+        using detail = existing_definition;
+    end if;
+  end loop;
+end;
+$cit59_constraints$;
 
 create or replace function public.tenant_payment_provider_readiness(
   p_tenant_id uuid

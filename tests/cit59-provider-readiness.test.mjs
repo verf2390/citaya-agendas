@@ -4,8 +4,8 @@ import test from "node:test";
 
 import { tenantCredentialUpdates } from "../services/payments/payment-settings-credentials.ts";
 import {
-  getKhipuCredentials,
-  getWebpayCredentials,
+  getTenantKhipuCredentials,
+  getTenantWebpayCredentials,
 } from "../services/payments/provider-credentials.ts";
 import { evaluateTenantPaymentReadiness } from "../services/payments/provider-readiness.ts";
 
@@ -27,12 +27,16 @@ function paymentConfig(overrides = {}) {
 }
 
 test("CIT-59 payment settings and empty or invalid methods fail closed", () => {
-  assert.equal(
-    evaluateTenantPaymentReadiness(
-      paymentConfig({ settingsFound: false, enabled: false }),
-    ).ready,
-    false,
+  const missing = evaluateTenantPaymentReadiness(
+    paymentConfig({
+      settingsFound: false,
+      enabled: false,
+      paymentMethodsEnabled: ["mercadopago"],
+      accessToken: "must-not-count-without-settings",
+    }),
   );
+  assert.equal(missing.ready, false);
+  assert.equal(missing.methods.mercadopago.configured, false);
   assert.equal(evaluateTenantPaymentReadiness(paymentConfig()).ready, false);
   assert.equal(
     evaluateTenantPaymentReadiness(
@@ -59,6 +63,46 @@ test("CIT-59 manual readiness requires the complete persisted bank destination",
     bankEmail: "pagos@example.test",
   });
   assert.equal(evaluateTenantPaymentReadiness(configured).ready, true);
+});
+
+test("CIT-59 readiness uses exact positive mode and collection allowlists", () => {
+  const configured = {
+    paymentMethodsEnabled: ["manual"],
+    bankName: "Banco",
+    bankAccountType: "Corriente",
+    bankAccountNumber: "123456",
+    bankAccountHolder: "Comercio",
+    bankRut: "78195645-7",
+    bankEmail: "pagos@example.test",
+  };
+
+  for (const mode of ["legacy", null, undefined, "none"]) {
+    assert.equal(
+      evaluateTenantPaymentReadiness(paymentConfig({ ...configured, mode })).ready,
+      false,
+    );
+  }
+  for (const collectionMode of ["legacy", null, undefined, "none"]) {
+    assert.equal(
+      evaluateTenantPaymentReadiness(
+        paymentConfig({ ...configured, collectionMode }),
+      ).ready,
+      false,
+    );
+  }
+
+  assert.equal(
+    evaluateTenantPaymentReadiness(
+      paymentConfig({ ...configured, mode: "optional", collectionMode: "full" }),
+    ).ready,
+    true,
+  );
+  assert.equal(
+    evaluateTenantPaymentReadiness(
+      paymentConfig({ ...configured, mode: "required", collectionMode: "deposit" }),
+    ).ready,
+    true,
+  );
 });
 
 test("CIT-59 Mercado Pago requires only the access token used by the current flow", () => {
@@ -94,6 +138,85 @@ test("CIT-59 Webpay and Khipu fail closed when any required credential is absent
   );
 });
 
+test("CIT-59 Webpay and Khipu require exact persisted environments", () => {
+  const webpay = {
+    paymentMethodsEnabled: ["webpay"],
+    webpayCommerceCode: "commerce",
+    webpayApiKey: "api-key",
+  };
+  const khipu = {
+    paymentMethodsEnabled: ["khipu"],
+    khipuReceiverId: "receiver",
+    khipuSecret: "secret",
+  };
+
+  for (const webpayEnvironment of ["legacy", " production ", null, undefined]) {
+    assert.equal(
+      evaluateTenantPaymentReadiness(
+        paymentConfig({ ...webpay, webpayEnvironment }),
+      ).ready,
+      false,
+    );
+  }
+  for (const khipuEnvironment of ["legacy", " production ", null, undefined]) {
+    assert.equal(
+      evaluateTenantPaymentReadiness(
+        paymentConfig({ ...khipu, khipuEnvironment }),
+      ).ready,
+      false,
+    );
+  }
+
+  assert.equal(
+    evaluateTenantPaymentReadiness(
+      paymentConfig({ ...webpay, webpayEnvironment: "production" }),
+    ).ready,
+    true,
+  );
+  assert.equal(
+    evaluateTenantPaymentReadiness(
+      paymentConfig({ ...khipu, khipuEnvironment: "development" }),
+    ).ready,
+    true,
+  );
+});
+
+test("CIT-59 active false and an incomplete enabled peer fail the whole tenant", () => {
+  const manual = {
+    paymentMethodsEnabled: ["manual"],
+    bankName: "Banco",
+    bankAccountType: "Corriente",
+    bankAccountNumber: "123456",
+    bankAccountHolder: "Comercio",
+    bankRut: "78195645-7",
+    bankEmail: "pagos@example.test",
+  };
+  assert.equal(
+    evaluateTenantPaymentReadiness(paymentConfig({ ...manual, enabled: false }))
+      .ready,
+    false,
+  );
+  assert.equal(
+    evaluateTenantPaymentReadiness(
+      paymentConfig({
+        ...manual,
+        paymentMethodsEnabled: ["manual", "mercadopago"],
+      }),
+    ).ready,
+    false,
+  );
+  assert.equal(
+    evaluateTenantPaymentReadiness(
+      paymentConfig({
+        ...manual,
+        paymentMethodsEnabled: ["manual", "mercadopago"],
+        accessToken: "tenant-token",
+      }),
+    ).ready,
+    true,
+  );
+});
+
 test("CIT-59 partial admin payloads preserve every existing provider credential", () => {
   assert.deepEqual(
     tenantCredentialUpdates({
@@ -104,15 +227,32 @@ test("CIT-59 partial admin payloads preserve every existing provider credential"
       khipuReceiverId: "",
       khipuSecret: null,
     }),
-    {},
+    { ok: true, updates: {} },
   );
   assert.deepEqual(
     tenantCredentialUpdates({ mercadopagoAccessToken: "  new-token  " }),
-    { mercadopago_access_token: "new-token" },
+    { ok: true, updates: { mercadopago_access_token: "new-token" } },
   );
+  assert.deepEqual(tenantCredentialUpdates({}), { ok: true, updates: {} });
 });
 
-test("CIT-59 credential sources are complete and tenant maps never cross tenants", () => {
+test("CIT-59 malformed credential values are rejected with HTTP 400 semantics", () => {
+  const malformedPayloads = [
+    { mercadopagoAccessToken: {} },
+    { webpayApiKey: [] },
+    { khipuSecret: 123 },
+    { mercadopagoAccessToken: true },
+  ];
+  for (const payload of malformedPayloads) {
+    assert.deepEqual(tenantCredentialUpdates(payload), {
+      ok: false,
+      status: 400,
+      error: "Credenciales inválidas",
+    });
+  }
+});
+
+test("CIT-59 commercial credentials are tenant-persisted even when legacy env exists", () => {
   const names = [
     "CITAYA_WEBPAY_CREDENTIALS_JSON",
     "CITAYA_KHIPU_CREDENTIALS_JSON",
@@ -140,25 +280,80 @@ test("CIT-59 credential sources are complete and tenant maps never cross tenants
         environment: "development",
       },
     });
-    assert.equal(getWebpayCredentials("tenant-a")?.commerceCode, "commerce-a");
-    assert.equal(getWebpayCredentials("tenant-a")?.source, "tenant-map");
-    assert.equal(getWebpayCredentials("tenant-b"), null);
-    assert.equal(getKhipuCredentials("tenant-a")?.receiverId, "receiver-a");
-    assert.equal(getKhipuCredentials("tenant-a")?.source, "tenant-map");
-    assert.equal(getKhipuCredentials("tenant-b"), null);
-
     process.env.WEBPAY_COMMERCE_CODE = "global-commerce";
     process.env.WEBPAY_API_KEY = "global-key";
     process.env.WEBPAY_ENVIRONMENT = "integration";
-    assert.equal(getWebpayCredentials("tenant-b")?.source, "global-env");
+    process.env.KHIPU_RECEIVER_ID = "global-receiver";
+    process.env.KHIPU_API_KEY = "global-key";
+    process.env.KHIPU_ENVIRONMENT = "production";
+
     assert.equal(
-      getWebpayCredentials("tenant-a", {
-        commerceCode: "tenant-commerce",
+      getTenantWebpayCredentials({
+        commerceCode: "tenant-a-commerce",
+        apiKey: "tenant-a-key",
+        environment: "production",
+      })?.source,
+      "tenant",
+    );
+    assert.equal(
+      getTenantKhipuCredentials({
+        receiverId: "tenant-a-receiver",
+        apiKey: "tenant-a-key",
+        environment: "production",
+      })?.source,
+      "tenant",
+    );
+
+    assert.equal(getTenantWebpayCredentials(), null);
+    assert.equal(getTenantKhipuCredentials(), null);
+    assert.equal(
+      getTenantWebpayCredentials({
+        commerceCode: "tenant-b-commerce",
+        apiKey: "tenant-b-key",
+        environment: " production ",
+      }),
+      null,
+      "persisted Webpay environments must match the SQL allowlist exactly",
+    );
+    assert.equal(
+      getTenantKhipuCredentials({
+        receiverId: "tenant-b-receiver",
+        apiKey: "tenant-b-key",
+        environment: " production ",
+      }),
+      null,
+      "persisted Khipu environments must match the SQL allowlist exactly",
+    );
+    assert.equal(
+      getTenantWebpayCredentials({
+        commerceCode: "tenant-b-commerce",
         apiKey: "",
         environment: "production",
       }),
       null,
-      "partial tenant credentials must not be completed from legacy env",
+      "tenant B must not complete Webpay credentials from legacy env",
+    );
+    assert.equal(
+      getTenantKhipuCredentials({
+        receiverId: "tenant-b-receiver",
+        apiKey: "",
+        environment: "production",
+      }),
+      null,
+      "tenant B must not complete Khipu credentials from legacy env",
+    );
+
+    assert.equal(
+      evaluateTenantPaymentReadiness(
+        paymentConfig({ paymentMethodsEnabled: ["webpay"] }),
+      ).ready,
+      false,
+    );
+    assert.equal(
+      evaluateTenantPaymentReadiness(
+        paymentConfig({ paymentMethodsEnabled: ["khipu"] }),
+      ).ready,
+      false,
     );
   } finally {
     for (const name of names) {
@@ -182,6 +377,14 @@ test("CIT-59 admin GET masks Mercado Pago and DTE stays pre-network", () => {
     "app/api/webhooks/khipu/route.ts",
     "utf8",
   );
+  const providerFactory = readFileSync(
+    "services/payments/provider-factory.ts",
+    "utf8",
+  );
+  const providerCredentials = readFileSync(
+    "services/payments/provider-credentials.ts",
+    "utf8",
+  );
   const finalize = readFileSync(
     "migrations/202608220002_fix_finalize_verified_payment_schedule_event_column.sql",
     "utf8",
@@ -195,6 +398,10 @@ test("CIT-59 admin GET masks Mercado Pago and DTE stays pre-network", () => {
   assert.match(adminRoute, /tenantCredentialUpdates\(body\)/);
   assert.match(
     adminRoute,
+    /if \(!credentialUpdates\.ok\)[\s\S]*status: credentialUpdates\.status/,
+  );
+  assert.match(
+    adminRoute,
     /mercadopagoAccessTokenPreview: maskSecret\(config\.accessToken\)/,
   );
   assert.doesNotMatch(
@@ -204,6 +411,13 @@ test("CIT-59 admin GET masks Mercado Pago and DTE stays pre-network", () => {
   assert.match(createRoute, /!config\.enabled \|\| !config\.configured/);
   assert.match(webpayReturn, /if \(!paymentConfig\.settingsFound\).*failure/);
   assert.match(khipuWebhook, /if \(!paymentConfig\.settingsFound\).*reject\(503\)/);
+  assert.match(
+    providerFactory,
+    /readiness\.ready && readiness\.methods\[providerId\]\.enabled/,
+  );
+  assert.match(providerFactory, /getTenantWebpayCredentials/);
+  assert.match(providerFactory, /getTenantKhipuCredentials/);
+  assert.doesNotMatch(providerCredentials, /process\.env|tenant-map|global-env/);
   assert.match(finalize, /finalize_verified_payment/);
   assert.match(finalize, /dte_enqueue_payment_snapshot/);
   assert.match(finalize, /p_provider in \('khipu','webpay','mercadopago'\)/);

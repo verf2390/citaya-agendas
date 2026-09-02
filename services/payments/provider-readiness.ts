@@ -15,32 +15,41 @@ export type TenantPaymentReadiness = {
 };
 
 function present(value: unknown): boolean {
-  return String(value ?? "").trim().length > 0;
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function validEnvironment(value: unknown, allowed: readonly string[]): boolean {
-  return allowed.includes(String(value ?? "").trim());
+  return typeof value === "string" && allowed.includes(value);
 }
 
 export function evaluateTenantPaymentReadiness(
   config: TenantPaymentConfig,
 ): TenantPaymentReadiness {
-  const enabled = new Set(config.paymentMethodsEnabled);
+  const settingsFound = config.settingsFound === true;
+  const enabled = new Set(
+    Array.isArray(config.paymentMethodsEnabled)
+      ? config.paymentMethodsEnabled
+      : [],
+  );
   const configured: Record<PaymentProviderId, boolean> = {
-    manual: [
-      config.bankName,
-      config.bankAccountType,
-      config.bankAccountNumber,
-      config.bankAccountHolder,
-      config.bankRut,
-      config.bankEmail,
-    ].every(present),
-    mercadopago: present(config.accessToken),
+    manual:
+      settingsFound &&
+      [
+        config.bankName,
+        config.bankAccountType,
+        config.bankAccountNumber,
+        config.bankAccountHolder,
+        config.bankRut,
+        config.bankEmail,
+      ].every(present),
+    mercadopago: settingsFound && present(config.accessToken),
     webpay:
+      settingsFound &&
       present(config.webpayCommerceCode) &&
       present(config.webpayApiKey) &&
       validEnvironment(config.webpayEnvironment, ["integration", "production"]),
     khipu:
+      settingsFound &&
       present(config.khipuReceiverId) &&
       present(config.khipuSecret) &&
       validEnvironment(config.khipuEnvironment, ["development", "production"]),
@@ -61,11 +70,11 @@ export function evaluateTenantPaymentReadiness(
   ) as Record<PaymentProviderId, PaymentMethodReadiness>;
 
   const baseReady =
-    config.settingsFound &&
-    config.paymentMethodsValid &&
-    config.enabled &&
-    config.mode !== "none" &&
-    config.collectionMode !== "none" &&
+    settingsFound &&
+    config.paymentMethodsValid === true &&
+    config.enabled === true &&
+    (config.mode === "optional" || config.mode === "required") &&
+    (config.collectionMode === "full" || config.collectionMode === "deposit") &&
     enabled.size > 0;
 
   return {

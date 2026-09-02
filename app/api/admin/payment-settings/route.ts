@@ -299,7 +299,14 @@ export async function POST(req: Request) {
       paymentSettingsPayload.payment_collection_mode = parsedCollectionMode!.data;
     }
 
-    Object.assign(paymentSettingsPayload, tenantCredentialUpdates(body));
+    const credentialUpdates = tenantCredentialUpdates(body);
+    if (!credentialUpdates.ok) {
+      return NextResponse.json(
+        { ok: false, error: credentialUpdates.error },
+        { status: credentialUpdates.status },
+      );
+    }
+    Object.assign(paymentSettingsPayload, credentialUpdates.updates);
 
     if (hasOwn(body, "webpayEnvironment")) {
       paymentSettingsPayload.webpay_environment = parsedWebpayEnvironment!.data;

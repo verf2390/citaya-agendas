@@ -3,8 +3,8 @@ import { manualProvider } from "@/services/payments/providers/manual";
 import { mercadoPagoProvider } from "@/services/payments/providers/mercadopago";
 import type { TenantPaymentConfig } from "@/services/payments/payment-config";
 import {
-  getKhipuCredentials,
-  getWebpayCredentials,
+  getTenantKhipuCredentials,
+  getTenantWebpayCredentials,
 } from "@/services/payments/provider-credentials";
 import { evaluateTenantPaymentReadiness } from "@/services/payments/provider-readiness";
 import type {
@@ -27,17 +27,11 @@ export function getPaymentProvider(providerId: PaymentProviderId) {
 
 export function getPaymentProviderConfig(
   providerId: PaymentProviderId,
-  tenantId: string,
   paymentConfig: TenantPaymentConfig,
 ): PaymentProviderConfig {
   const readiness = evaluateTenantPaymentReadiness(paymentConfig);
   const baseEnabled =
-    paymentConfig.settingsFound &&
-    paymentConfig.paymentMethodsValid &&
-    paymentConfig.enabled &&
-    paymentConfig.mode !== "none" &&
-    paymentConfig.collectionMode !== "none" &&
-    paymentConfig.paymentMethodsEnabled.includes(providerId);
+    readiness.ready && readiness.methods[providerId].enabled;
 
   if (providerId === "mercadopago") {
     return {
@@ -47,22 +41,21 @@ export function getPaymentProviderConfig(
       credentialSource: readiness.methods.mercadopago.configured
         ? "tenant"
         : undefined,
-      credentials: {
-        accessToken: paymentConfig.accessToken,
-        publicKey: paymentConfig.publicKey,
-      },
+      credentials: readiness.methods.mercadopago.configured
+        ? {
+            accessToken: paymentConfig.accessToken,
+            publicKey: paymentConfig.publicKey,
+          }
+        : undefined,
     };
   }
 
   if (providerId === "webpay") {
     const credentials = paymentConfig.settingsFound
-      ? getWebpayCredentials(tenantId, {
+      ? getTenantWebpayCredentials({
           commerceCode: paymentConfig.webpayCommerceCode,
           apiKey: paymentConfig.webpayApiKey,
-          environment: paymentConfig.webpayEnvironment as
-            | "integration"
-            | "production"
-            | undefined,
+          environment: paymentConfig.webpayEnvironment,
         })
       : null;
     return {
@@ -82,13 +75,10 @@ export function getPaymentProviderConfig(
 
   if (providerId === "khipu") {
     const credentials = paymentConfig.settingsFound
-      ? getKhipuCredentials(tenantId, {
+      ? getTenantKhipuCredentials({
           receiverId: paymentConfig.khipuReceiverId,
           apiKey: paymentConfig.khipuSecret,
-          environment: paymentConfig.khipuEnvironment as
-            | "development"
-            | "production"
-            | undefined,
+          environment: paymentConfig.khipuEnvironment,
         })
       : null;
     return {

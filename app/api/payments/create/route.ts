@@ -194,7 +194,6 @@ export async function POST(req: Request) {
     if (!Number.isSafeInteger(requiredAmount) || requiredAmount <= 0 || sale.payment_state === "PAID") return jsonError(409);
     const config = getPaymentProviderConfig(
       providerId,
-      appointment.tenant_id,
       paymentConfig,
     );
     if (!config.enabled || !config.configured) {

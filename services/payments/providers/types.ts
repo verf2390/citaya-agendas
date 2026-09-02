@@ -4,7 +4,7 @@ export type PaymentProviderConfig = {
   id: PaymentProviderId;
   enabled: boolean;
   configured: boolean;
-  credentialSource?: "tenant" | "tenant-map" | "global-env";
+  credentialSource?: "tenant";
   credentials?: Record<string, string | null | undefined>;
 };
 
