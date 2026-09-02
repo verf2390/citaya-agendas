@@ -172,11 +172,17 @@ test("[structural] central guards cover external effects, platform classificatio
     ["services/automations/notify-waitlist-slot-released.ts", /assertTenantCanSendExternalCommunication/],
     ["app/api/admin/dte-intents/manual/route.ts", /assertTenantCanEnqueueDte/],
     ["lib/dte/automation/worker.ts", /assertTenantCanRunDteWorker/],
-    ["app/api/public/boleta-verification/route.ts", /publicTaxDocument/],
-    ["app/api/public/boleta-verification/pdf/route.ts", /publicTaxDocument/],
   ]);
   for (const [file, pattern] of requiredSources) {
     assert.match(readFileSync(file, "utf8"), pattern, file);
+  }
+
+  for (const file of [
+    "app/api/public/boleta-verification/route.ts",
+    "app/api/public/boleta-verification/pdf/route.ts",
+  ]) {
+    const source = readFileSync(file, "utf8");
+    assert.doesNotMatch(source, /loadTenantOperationalContext|publicTaxDocument/);
   }
 
   const platformApi = readFileSync("app/api/admin/platform/tenants/route.ts", "utf8");

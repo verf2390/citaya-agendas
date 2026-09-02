@@ -1,10 +1,54 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+const DELIVERABLE_SII_STATUSES = new Set([
+  "accepted",
+  "accepted_with_objections",
+  "epr",
+  "eok",
+]);
+
 type VerificationGrant = {
   tenantId: string;
   documentId: string;
   expiresAt: number;
 };
+
+type PublicBoletaVerificationInput = {
+  documentType: 39;
+  folio: number;
+  issueDate: string;
+  totalAmount: number;
+};
+
+type PublicBoletaDocumentSnapshot = {
+  dte_type: unknown;
+  folio: unknown;
+  issue_date: unknown;
+  total_amount: unknown;
+  sii_status: unknown;
+};
+
+export function isPublicBoletaDeliverableSiiStatus(value: unknown): boolean {
+  return DELIVERABLE_SII_STATUSES.has(String(value ?? "").trim().toLowerCase());
+}
+
+export function matchesPublicBoletaVerification(
+  input: PublicBoletaVerificationInput,
+  document: PublicBoletaDocumentSnapshot,
+): boolean {
+  const dteType = Number(document.dte_type);
+  const folio = Number(document.folio);
+  const totalAmount = Number(document.total_amount);
+
+  return (
+    input.documentType === 39 &&
+    dteType === 39 &&
+    folio === input.folio &&
+    String(document.issue_date ?? "") === input.issueDate &&
+    totalAmount === input.totalAmount &&
+    isPublicBoletaDeliverableSiiStatus(document.sii_status)
+  );
+}
 
 function secret(): string {
   const value = process.env.CITAYA_MANAGE_TOKEN_PEPPER?.trim();

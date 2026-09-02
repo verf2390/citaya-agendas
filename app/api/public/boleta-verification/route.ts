@@ -3,7 +3,10 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { createBoletaPdfGrant } from "@/lib/dte/public-boleta-verification";
+import {
+  createBoletaPdfGrant,
+  matchesPublicBoletaVerification,
+} from "@/lib/dte/public-boleta-verification";
 import { normalizeRut, validateRut } from "@/lib/dte/rut";
 import {
   consumeRateLimit,
@@ -11,7 +14,6 @@ import {
   requestIp,
 } from "@/lib/security/request";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { loadTenantOperationalContext } from "@/lib/tenant/operational-server";
 
 const Query = z.object({
   issuerRut: z.string().trim().min(8).max(16),
@@ -55,24 +57,19 @@ export async function POST(req: Request) {
     .eq("issuer_rut", issuerRut)
     .maybeSingle();
   if (issuer.error || !issuer.data) return notFound();
-  try {
-    const operational = await loadTenantOperationalContext(issuer.data.tenant_id);
-    if (!operational.capabilities.publicTaxDocument) return notFound();
-  } catch { return notFound(); }
   const document = await supabaseAdmin
     .from("dte_production_documents")
-    .select("id,dte_type,folio,issue_date,total_amount,status,sii_status")
+    .select("id,dte_type,folio,issue_date,total_amount,sii_status")
     .eq("tenant_id", issuer.data.tenant_id)
     .eq("dte_type", 39)
     .eq("folio", parsed.data.folio)
     .eq("issue_date", parsed.data.issueDate)
     .eq("total_amount", parsed.data.totalAmount)
     .maybeSingle();
-  const deliverable = ["accepted", "accepted_with_objections", "epr", "eok"];
   if (
     document.error ||
     !document.data ||
-    !deliverable.includes(String(document.data.sii_status ?? "").toLowerCase())
+    !matchesPublicBoletaVerification(parsed.data, document.data)
   ) {
     return notFound();
   }
