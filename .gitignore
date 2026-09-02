@@ -23,6 +23,21 @@
 # misc
 .DS_Store
 *.pem
+*.p12
+*.pfx
+*.key
+*.crt
+*.cer
+*.der
+*.csr
+*.jks
+*.keystore
+*.caf.xml
+caf.xml
+certs/
+secrets/
+private/
+tmp/dte-certification/
 
 # debug
 npm-debug.log*
@@ -32,6 +47,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +55,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.vscode
+.env.dte-lab
+
+# DTE/SII local certification artifacts and real secrets
+/tmp/dte-certification/*.xml
+/tmp/dte-certification/*.sha256
+/tmp/dte-certification/*.metadata.json
+/tmp/dte-certification/**
+/secure/
+/dte-lab/
+/dte-secrets/
+/.env.dte-lab
+/.env.dte-lab.*

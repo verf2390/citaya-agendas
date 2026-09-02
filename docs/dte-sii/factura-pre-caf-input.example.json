@@ -1,0 +1,34 @@
+{
+  "issuer": {
+    "rutEmisor": "XXXXXXXX-X",
+    "razonSocial": "RAZON SOCIAL EMISOR PLACEHOLDER",
+    "giroEmisor": "GIRO COMPLETO SIN ABREVIACIONES PLACEHOLDER",
+    "acteco": "000000",
+    "direccionOrigen": "DIRECCION ORIGEN PLACEHOLDER",
+    "comunaOrigen": "COMUNA PLACEHOLDER",
+    "ciudadOrigen": "CIUDAD PLACEHOLDER",
+    "fechaResolucion": "YYYY-MM-DD",
+    "numeroResolucion": 0,
+    "rutEnvia": "XXXXXXXX-X",
+    "periodoTributario": "YYYY-MM"
+  },
+  "receivers": {
+    "receiver1": { "rut": "XXXXXXXX-X", "razonSocial": "RECEPTOR UNO PLACEHOLDER", "giro": "GIRO PLACEHOLDER", "direccion": "DIRECCION PLACEHOLDER", "comuna": "COMUNA PLACEHOLDER", "ciudad": "CIUDAD PLACEHOLDER" },
+    "receiver2": { "rut": "XXXXXXXX-X", "razonSocial": "RECEPTOR DOS PLACEHOLDER", "giro": "GIRO PLACEHOLDER", "direccion": "DIRECCION PLACEHOLDER", "comuna": "COMUNA PLACEHOLDER", "ciudad": "CIUDAD PLACEHOLDER" },
+    "receiver3": { "rut": "XXXXXXXX-X", "razonSocial": "RECEPTOR TRES PLACEHOLDER", "giro": "GIRO PLACEHOLDER", "direccion": "DIRECCION PLACEHOLDER", "comuna": "COMUNA PLACEHOLDER", "ciudad": "CIUDAD PLACEHOLDER" },
+    "receiver4": { "rut": "XXXXXXXX-X", "razonSocial": "RECEPTOR CUATRO PLACEHOLDER", "giro": "GIRO PLACEHOLDER", "direccion": "DIRECCION PLACEHOLDER", "comuna": "COMUNA PLACEHOLDER", "ciudad": "CIUDAD PLACEHOLDER" }
+  },
+  "textCorrection": {
+    "giroAnterior": "GIRO ANTERIOR PLACEHOLDER",
+    "giroCorregido": "GIRO CORREGIDO PLACEHOLDER"
+  },
+  "purchaseProviders": {
+    "4959700-1": { "rut": "XXXXXXXX-X", "razonSocial": "PROVEEDOR 1 PLACEHOLDER" },
+    "4959700-2": { "rut": "XXXXXXXX-X", "razonSocial": "PROVEEDOR 2 PLACEHOLDER" },
+    "4959700-3": { "rut": "XXXXXXXX-X", "razonSocial": "PROVEEDOR 3 PLACEHOLDER" },
+    "4959700-4": { "rut": "XXXXXXXX-X", "razonSocial": "PROVEEDOR 4 PLACEHOLDER" },
+    "4959700-5": { "rut": "XXXXXXXX-X", "razonSocial": "PROVEEDOR 5 PLACEHOLDER" },
+    "4959700-6": { "rut": "XXXXXXXX-X", "razonSocial": "PROVEEDOR 6 PLACEHOLDER" },
+    "4959700-7": { "rut": "XXXXXXXX-X", "razonSocial": "PROVEEDOR 7 PLACEHOLDER" }
+  }
+}

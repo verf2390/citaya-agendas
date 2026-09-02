@@ -16,6 +16,16 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Environment
+
+Payment-confirmed automations use:
+
+```bash
+N8N_PAYMENT_CONFIRMED_WEBHOOK_URL=
+```
+
+When unset, paid payment webhooks continue normally and the n8n notification is skipped.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -1,0 +1,102 @@
+SET VIGENTE CERTIFICACION DTE R&G SPA
+
+obtenido: 2026-07-19
+ambiente: certification
+estado: PRE_CAF_NOT_READY
+
+atenciones:
+- set basico: 4959698
+- libro ventas: 4959699
+- libro compras: 4959700
+
+sets anulados:
+- guia de despacho: anulado
+- factura exenta independiente: anulado
+- libro de guias: anulado
+
+SET BASICO - ATENCION 4959698
+
+Caso 4959698-1
+Tipo 33, Factura Electrónica:
+- Cajón AFECTO: cantidad 118, precio unitario 628
+- Relleno AFECTO: cantidad 51, precio unitario 976
+
+Caso 4959698-2
+Tipo 33:
+- Pañuelo AFECTO: cantidad 175, precio unitario 1473, descuento de línea 3%
+- ITEM 2 AFECTO: cantidad 99, precio unitario 538, descuento de línea 3%
+
+Caso 4959698-3
+Tipo 33, factura mixta:
+- Pintura B&W AFECTO: cantidad 23, precio unitario 1299
+- ITEM 2 AFECTO: cantidad 139, precio unitario 2915
+- ITEM 3 SERVICIO EXENTO: cantidad 1, precio unitario 34637
+
+Caso 4959698-4
+Tipo 33, factura mixta:
+- ITEM 1 AFECTO: cantidad 43, precio unitario 1185
+- ITEM 2 AFECTO: cantidad 19, precio unitario 739
+- ITEM 3 SERVICIO EXENTO: cantidad 2, precio unitario 6760
+- descuento global de 5% aplicado solamente a ítems afectos
+
+Caso 4959698-5
+Tipo 61, Nota de Crédito:
+- referencia a la factura del caso 4959698-1
+- razón: CORRIGE GIRO DEL RECEPTOR
+
+Caso 4959698-6
+Tipo 61:
+- referencia a factura del caso 4959698-2
+- razón: DEVOLUCION DE MERCADERIAS
+- Pañuelo AFECTO: cantidad devuelta 64
+- ITEM 2 AFECTO: cantidad devuelta 67
+- conservar precios unitarios y descuentos correspondientes a la factura original
+
+Caso 4959698-7
+Tipo 61:
+- referencia a factura del caso 4959698-3
+- razón: ANULA FACTURA
+
+Caso 4959698-8
+Tipo 56, Nota de Débito:
+- referencia a la nota de crédito del caso 4959698-5
+- razón: ANULA NOTA DE CREDITO ELECTRONICA
+
+LIBRO DE VENTAS - ATENCION 4959699
+
+Debe construirse usando exclusivamente los ocho documentos del set basico:
+- 4 facturas tipo 33
+- 3 notas de crédito tipo 61
+- 1 nota de débito tipo 56
+
+LIBRO DE COMPRAS - ATENCION 4959700
+
+1. Factura folio 234
+- factura del giro con derecho a crédito
+- monto afecto 5031
+
+2. Factura electrónica folio 32
+- factura del giro con derecho a crédito
+- monto exento 7933
+- monto afecto 4010
+
+3. Factura folio 781
+- factura con IVA de uso común
+- monto afecto 29589
+- factor de proporcionalidad 0.60
+
+4. Nota de crédito folio 451
+- descuento a factura 234
+- monto afecto 2612
+
+5. Factura electrónica folio 67
+- entrega gratuita del proveedor
+- monto afecto 8952
+
+6. Factura de compra electrónica folio 9
+- compra con retención total del IVA
+- monto afecto 9037
+
+7. Nota de crédito folio 211
+- descuento a factura electrónica 32
+- monto afecto 2130

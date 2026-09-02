@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll Citaya manual DTE outbox
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=15s
+AccuracySec=1s
+Persistent=true
+Unit=citaya-dte-manual-worker.service
+
+[Install]
+WantedBy=timers.target

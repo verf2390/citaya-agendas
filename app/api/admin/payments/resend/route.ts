@@ -1,0 +1,258 @@
+export const runtime = "nodejs";
+
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { assertTenantCanSendExternalCommunication } from "@/lib/tenant/operational-server";
+
+type PaymentResendPayload = {
+  appointmentId?: string;
+  tenantSlug?: string;
+};
+
+type TenantBranding = {
+  id: string;
+  name: string | null;
+  logo_url: string | null;
+  phone_display?: string | null;
+  whatsapp?: string | null;
+};
+
+type AppointmentBranding = {
+  id: string;
+  tenant_id: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  service_name: string | null;
+  start_at: string | null;
+  payment_url: string | null;
+  payment_remaining_amount: number | null;
+  payment_required_amount: number | null;
+};
+
+function getBearerToken(req: Request): string {
+  const auth = req.headers.get("authorization") ?? "";
+  if (!auth.toLowerCase().startsWith("bearer ")) return "";
+  return auth.slice(7).trim();
+}
+
+function badRequest(error: string) {
+  return NextResponse.json({ ok: false, error }, { status: 400 });
+}
+
+function isEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isHttpUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+async function fetchTenantBranding(tenantSlug: string): Promise<TenantBranding | null> {
+  const withWhatsapp = await supabaseAdmin
+    .from("tenants")
+    .select("id, name, logo_url, phone_display, whatsapp")
+    .eq("slug", tenantSlug)
+    .maybeSingle();
+
+  if (!withWhatsapp.error && withWhatsapp.data?.id) {
+    return withWhatsapp.data as TenantBranding;
+  }
+
+  const fallback = await supabaseAdmin
+    .from("tenants")
+    .select("id, name, logo_url, phone_display")
+    .eq("slug", tenantSlug)
+    .maybeSingle();
+
+  if (fallback.error || !fallback.data?.id) return null;
+  return fallback.data as TenantBranding;
+}
+
+async function logMessage(
+  req: Request,
+  token: string,
+  body: {
+    tenantSlug: string;
+    type: "payment_resend";
+    recipient: string;
+    subject: string;
+    status: "sent" | "error";
+    errorMessage?: string;
+  },
+) {
+  try {
+    await fetch(new URL("/api/admin/logs/messages", req.url).toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e: unknown) {
+    console.error("[api/admin/payments/resend] log ignored:", e instanceof Error ? e.message : "UnknownError");
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const token = getBearerToken(req);
+    if (!token) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = (await req.json().catch(() => null)) as PaymentResendPayload | null;
+    if (!body || typeof body !== "object") return badRequest("JSON invalido");
+
+    const payload = {
+      appointmentId: String(body.appointmentId ?? "").trim(),
+      tenantSlug: String(body.tenantSlug ?? "").trim(),
+    };
+
+    if (!payload.appointmentId) return badRequest("appointmentId requerido");
+    if (!payload.tenantSlug) return badRequest("tenantSlug requerido");
+
+    const tenant = await fetchTenantBranding(payload.tenantSlug);
+    if (!tenant?.id) return badRequest("tenantSlug invalido");
+
+    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug: payload.tenantSlug });
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    try { await assertTenantCanSendExternalCommunication(tenant.id); }
+    catch { return NextResponse.json({ ok: false, error: "Comunicaciones externas no disponibles para este entorno" }, { status: 409 }); }
+
+    const { data: appointment } = await supabaseAdmin
+      .from("appointments")
+      .select(
+        "id, tenant_id, customer_name, customer_email, service_name, start_at, payment_url, payment_remaining_amount, payment_required_amount",
+      )
+      .eq("id", payload.appointmentId)
+      .eq("tenant_id", tenant.id)
+      .maybeSingle<AppointmentBranding>();
+
+    if (!appointment?.id) return badRequest("Cita no disponible");
+
+    const customerEmail = String(appointment.customer_email ?? "").trim().toLowerCase();
+    const paymentLink = String(appointment.payment_url ?? "").trim();
+    const remainingAmount = Number(appointment.payment_remaining_amount ?? 0);
+    const requiredAmount = Number(appointment.payment_required_amount ?? 0);
+    const amount =
+      Number.isFinite(remainingAmount) && remainingAmount > 0
+        ? remainingAmount
+        : requiredAmount;
+
+    if (!customerEmail || !isEmail(customerEmail)) {
+      return badRequest("La cita no tiene un email válido");
+    }
+    if (!paymentLink || !isHttpUrl(paymentLink)) {
+      return badRequest("La cita no tiene un link de pago válido");
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return badRequest("La cita no tiene un monto pendiente válido");
+    }
+
+    const businessName = tenant.name?.trim() || payload.tenantSlug;
+    const logoUrl = tenant.logo_url?.trim() || "";
+    const whatsapp =
+      tenant.whatsapp?.trim() || tenant.phone_display?.trim() || "";
+    const enrichedPayload = {
+      appointmentId: payload.appointmentId,
+      customerEmail,
+      customerName: String(appointment.customer_name ?? "").trim(),
+      paymentLink,
+      amount,
+      tenantSlug: payload.tenantSlug,
+      businessName,
+      logoUrl,
+      whatsapp,
+      serviceName: appointment?.service_name?.trim() || "",
+      appointmentDate: appointment?.start_at || "",
+      appointmentTime: appointment?.start_at || "",
+      source: "citaya-admin-payment-resend",
+    };
+    const logSubject = `Reenvio de pago - ${businessName}`;
+
+    const webhookUrl = process.env.N8N_PAYMENT_RESEND_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return NextResponse.json({
+        ok: false,
+        placeholder: true,
+        message: "Webhook n8n no configurado",
+      });
+    }
+
+    let n8nRes: Response;
+    try {
+      n8nRes = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(enrichedPayload),
+      });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "No se pudo conectar con n8n";
+      console.error("[api/admin/payments/resend] n8n fetch error:", message);
+      await logMessage(req, token, {
+        tenantSlug: payload.tenantSlug,
+        type: "payment_resend",
+        recipient: customerEmail,
+        subject: logSubject,
+        status: "error",
+        errorMessage: message,
+      });
+      return NextResponse.json(
+        { ok: false, error: "No se pudo conectar con n8n" },
+        { status: 502 },
+      );
+    }
+
+    if (!n8nRes.ok) {
+      const detail = await n8nRes.text().catch(() => "");
+      console.error("[api/admin/payments/resend] n8n error:", {
+        status: n8nRes.status,
+        detail,
+      });
+      await logMessage(req, token, {
+        tenantSlug: payload.tenantSlug,
+        type: "payment_resend",
+        recipient: customerEmail,
+        subject: logSubject,
+        status: "error",
+        errorMessage: `n8n respondio con error (${n8nRes.status})`,
+      });
+      return NextResponse.json(
+        { ok: false, error: `n8n respondio con error (${n8nRes.status})` },
+        { status: 502 },
+      );
+    }
+
+    await logMessage(req, token, {
+      tenantSlug: payload.tenantSlug,
+      type: "payment_resend",
+      recipient: customerEmail,
+      subject: logSubject,
+      status: "sent",
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: "Correo de pago reenviado correctamente",
+    });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : "Error reenviando pago";
+    console.error("[api/admin/payments/resend] error:", message);
+    return NextResponse.json(
+      { ok: false, error: message },
+      { status: 500 },
+    );
+  }
+}
