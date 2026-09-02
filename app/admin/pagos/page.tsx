@@ -21,6 +21,7 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { paymentDisplayTotal } from "@/lib/payments/payment-display-total";
 
 type PaymentFilter = "all" | "paid" | "pending" | "failed";
 type TenantPaymentMode = "none" | "optional" | "required";
@@ -1082,7 +1083,7 @@ export default function AdminPagosPage() {
                       <div className="mt-1 text-xs text-slate-500">{row.payment_provider || "Sin proveedor"}</div>
                     </div>
                     <div>
-                      <div className="font-bold">{formatCLP(row.payment_required_amount)}</div>
+                      <div className="font-bold">{formatCLP(paymentDisplayTotal(row))}</div>
                       <div className="text-xs text-slate-500">Pagado {formatCLP(row.payment_paid_amount)}</div>
                       <div className="text-xs text-slate-500">Saldo {formatCLP(row.payment_remaining_amount)}</div>
                     </div>
