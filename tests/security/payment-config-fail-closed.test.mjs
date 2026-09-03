@@ -10,7 +10,7 @@ const source = readFileSync(
 test("payment config fails closed when provider settings are absent", () => {
   assert.match(
     source,
-    /function parsePaymentMethods\(value: unknown\)[\s\S]*if \(!Array\.isArray\(value\)\) return \[\];/,
+    /function parsePaymentMethods\(value: unknown\):[\s\S]*if \(!Array\.isArray\(value\)\) return \{ methods: \[\], valid: false \};/,
   );
 
   assert.match(
@@ -32,6 +32,7 @@ test("payment config fails closed when provider settings are absent", () => {
 test("explicit persisted provider arrays remain filtered to supported providers", () => {
   assert.match(
     source,
-    /return value\.filter\(\(item\): item is PaymentProviderId =>[\s\S]*PAYMENT_PROVIDERS\.includes/,
+    /const methods = value\.filter\(\(item\): item is PaymentProviderId =>[\s\S]*PAYMENT_PROVIDERS\.includes/,
   );
+  assert.match(source, /valid: methods\.length === value\.length/);
 });

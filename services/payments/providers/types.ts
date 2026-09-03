@@ -3,6 +3,8 @@ export type PaymentProviderId = "mercadopago" | "webpay" | "khipu" | "manual";
 export type PaymentProviderConfig = {
   id: PaymentProviderId;
   enabled: boolean;
+  configured: boolean;
+  credentialSource?: "tenant";
   credentials?: Record<string, string | null | undefined>;
 };
 

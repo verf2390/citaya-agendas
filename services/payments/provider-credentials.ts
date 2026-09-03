@@ -1,69 +1,73 @@
-import {
-  Environment,
-  Options,
-  WebpayPlus,
-} from "transbank-sdk";
-
-type KhipuCredentials = {
+export type KhipuCredentials = {
   apiKey: string;
   receiverId: string;
+  environment: "development" | "production";
+  source: "tenant";
 };
 
-type WebpayCredentials = {
+export type WebpayCredentials = {
   commerceCode: string;
   apiKey: string;
   environment: "integration" | "production";
+  source: "tenant";
 };
 
-function credentialMap(name: string) {
-  const raw = process.env[name]?.trim();
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object"
-      ? (parsed as Record<string, Record<string, unknown>>)
-      : null;
-  } catch {
-    console.error("[payments/credentials] invalid JSON", { name });
+type TenantKhipuCredentials = {
+  apiKey?: unknown;
+  receiverId?: unknown;
+  environment?: unknown;
+};
+
+type TenantWebpayCredentials = {
+  commerceCode?: unknown;
+  apiKey?: unknown;
+  environment?: unknown;
+};
+
+function khipuCredentials(
+  value: TenantKhipuCredentials | undefined,
+): KhipuCredentials | null {
+  const apiKey = typeof value?.apiKey === "string" ? value.apiKey.trim() : "";
+  const receiverId =
+    typeof value?.receiverId === "string" ? value.receiverId.trim() : "";
+  const environment =
+    typeof value?.environment === "string" ? value.environment : "";
+  if (
+    !apiKey ||
+    !receiverId ||
+    (environment !== "development" && environment !== "production")
+  ) {
     return null;
   }
+  return { apiKey, receiverId, environment, source: "tenant" };
 }
 
-export function getKhipuCredentials(tenantId: string): KhipuCredentials | null {
-  const mapped = credentialMap("CITAYA_KHIPU_CREDENTIALS_JSON")?.[tenantId];
-  const apiKey = String(
-    mapped?.apiKey ?? process.env.KHIPU_API_KEY ?? "",
-  ).trim();
-  const receiverId = String(
-    mapped?.receiverId ?? process.env.KHIPU_RECEIVER_ID ?? "",
-  ).trim();
-  return apiKey && receiverId ? { apiKey, receiverId } : null;
-}
-
-export function getWebpayCredentials(tenantId: string): WebpayCredentials | null {
-  const mapped = credentialMap("CITAYA_WEBPAY_CREDENTIALS_JSON")?.[tenantId];
-  const commerceCode = String(
-    mapped?.commerceCode ?? process.env.WEBPAY_COMMERCE_CODE ?? "",
-  ).trim();
-  const apiKey = String(
-    mapped?.apiKey ?? process.env.WEBPAY_API_KEY ?? "",
-  ).trim();
+function webpayCredentials(
+  value: TenantWebpayCredentials | undefined,
+): WebpayCredentials | null {
+  const commerceCode =
+    typeof value?.commerceCode === "string" ? value.commerceCode.trim() : "";
+  const apiKey = typeof value?.apiKey === "string" ? value.apiKey.trim() : "";
   const environment =
-    String(
-      mapped?.environment ?? process.env.WEBPAY_ENVIRONMENT ?? "integration",
-    ).trim() === "production"
-      ? "production"
-      : "integration";
-  return commerceCode && apiKey ? { commerceCode, apiKey, environment } : null;
+    typeof value?.environment === "string" ? value.environment : "";
+  if (
+    !commerceCode ||
+    !apiKey ||
+    (environment !== "integration" && environment !== "production")
+  ) {
+    return null;
+  }
+  return { commerceCode, apiKey, environment, source: "tenant" };
 }
 
-export function webpayTransaction(credentials: WebpayCredentials) {
-  const options = new Options(
-    credentials.commerceCode,
-    credentials.apiKey,
-    credentials.environment === "production"
-      ? Environment.Production
-      : Environment.Integration,
-  );
-  return new WebpayPlus.Transaction(options);
+export function getTenantKhipuCredentials(
+  tenantCredentials?: TenantKhipuCredentials,
+): KhipuCredentials | null {
+  return khipuCredentials(tenantCredentials);
+}
+
+export function getTenantWebpayCredentials(
+  tenantCredentials?: TenantWebpayCredentials,
+): WebpayCredentials | null {
+  return webpayCredentials(tenantCredentials);
 }

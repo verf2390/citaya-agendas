@@ -4,10 +4,9 @@ import {
   safePaymentAuditMetadata,
   verifyWebpayCommit,
 } from "@/lib/security/payment-verification.mjs";
-import {
-  getWebpayCredentials,
-  webpayTransaction,
-} from "@/services/payments/provider-credentials";
+import { getTenantWebpayCredentials } from "@/services/payments/provider-credentials";
+import { webpayTransaction } from "@/services/payments/webpay-transaction";
+import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { enqueueAutomaticDteBestEffort } from "@/services/payments/automatic-dte";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
 import {
@@ -64,7 +63,13 @@ async function handleWebpayReturn(req: Request) {
     }
     if (intent.status !== "pending") return redirectResult(req, "failure");
 
-    const credentials = getWebpayCredentials(intent.tenant_id);
+    const paymentConfig = await getTenantPaymentConfig(intent.tenant_id);
+    if (!paymentConfig.settingsFound) return redirectResult(req, "failure");
+    const credentials = getTenantWebpayCredentials({
+      commerceCode: paymentConfig.webpayCommerceCode,
+      apiKey: paymentConfig.webpayApiKey,
+      environment: paymentConfig.webpayEnvironment,
+    });
     if (!credentials) return redirectResult(req, "failure");
     const transaction = await webpayTransaction(credentials).commit(token);
     const verified = verifyWebpayCommit(intent, transaction, token);

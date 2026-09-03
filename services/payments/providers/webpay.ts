@@ -2,16 +2,23 @@ import type {
   CreateProviderPaymentParams,
   PaymentProvider,
 } from "@/services/payments/providers/types";
-import {
-  getWebpayCredentials,
-  webpayTransaction,
-} from "@/services/payments/provider-credentials";
+import { webpayTransaction } from "@/services/payments/webpay-transaction";
 
 export const webpayProvider: PaymentProvider = {
   id: "webpay",
   async createPayment(args: CreateProviderPaymentParams) {
-    const credentials = getWebpayCredentials(args.tenantId);
-    if (!credentials) {
+    const commerceCode = String(
+      args.config.credentials?.commerceCode ?? "",
+    ).trim();
+    const apiKey = String(args.config.credentials?.apiKey ?? "").trim();
+    const environment = String(
+      args.config.credentials?.environment ?? "",
+    ).trim();
+    if (
+      !commerceCode ||
+      !apiKey ||
+      (environment !== "integration" && environment !== "production")
+    ) {
       throw new Error("Faltan credenciales de Webpay");
     }
     const buyOrder = String(args.buyOrder ?? "").trim();
@@ -19,7 +26,12 @@ export const webpayProvider: PaymentProvider = {
     if (!buyOrder || !sessionId) {
       throw new Error("Falta vínculo interno de Webpay");
     }
-    const response = await webpayTransaction(credentials).create(
+    const response = await webpayTransaction({
+      commerceCode,
+      apiKey,
+      environment,
+      source: args.config.credentialSource ?? "tenant",
+    }).create(
       buyOrder,
       sessionId,
       args.amount,

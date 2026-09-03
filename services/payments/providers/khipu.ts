@@ -2,7 +2,6 @@ import type {
   CreateProviderPaymentParams,
   PaymentProvider,
 } from "@/services/payments/providers/types";
-import { getKhipuCredentials } from "@/services/payments/provider-credentials";
 
 type KhipuCreatePaymentResponse = {
   payment_id?: string;
@@ -14,8 +13,18 @@ type KhipuCreatePaymentResponse = {
 export const khipuProvider: PaymentProvider = {
   id: "khipu",
   async createPayment(args: CreateProviderPaymentParams) {
-    const credentials = getKhipuCredentials(args.tenantId);
-    if (!credentials) {
+    const apiKey = String(args.config.credentials?.apiKey ?? "").trim();
+    const receiverId = String(
+      args.config.credentials?.receiverId ?? "",
+    ).trim();
+    const environment = String(
+      args.config.credentials?.environment ?? "",
+    ).trim();
+    if (
+      !apiKey ||
+      !receiverId ||
+      (environment !== "development" && environment !== "production")
+    ) {
       throw new Error("Falta configuración server-side de Khipu");
     }
 
@@ -23,7 +32,7 @@ export const khipuProvider: PaymentProvider = {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": credentials.apiKey,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify({
         amount: args.amount,

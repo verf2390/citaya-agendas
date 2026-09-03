@@ -6,6 +6,8 @@ export type PaymentCollectionMode = 'none' | 'full' | 'deposit';
 export type PaymentProviderId = 'mercadopago' | 'webpay' | 'khipu' | 'manual';
 
 export interface TenantPaymentConfig {
+  settingsFound: boolean;
+  paymentMethodsValid: boolean;
   enabled: boolean;
   mode: PaymentMode;
   provider: 'mercadopago';
@@ -36,20 +38,41 @@ const PAYMENT_PROVIDERS: PaymentProviderId[] = [
   'manual',
 ];
 
-function parsePaymentMethods(value: unknown): PaymentProviderId[] {
-  if (!Array.isArray(value)) return [];
+function parsePaymentMethods(value: unknown): {
+  methods: PaymentProviderId[];
+  valid: boolean;
+} {
+  if (!Array.isArray(value)) return { methods: [], valid: false };
 
-  return value.filter((item): item is PaymentProviderId =>
+  const methods = value.filter((item): item is PaymentProviderId =>
     PAYMENT_PROVIDERS.includes(item as PaymentProviderId),
   );
+  return {
+    methods: [...new Set(methods)],
+    valid: methods.length === value.length,
+  };
 }
 
-function parseCollectionMode(value: unknown, legacyMode: PaymentMode): PaymentCollectionMode {
+function optionalText(value: unknown): string | undefined {
+  const text = String(value ?? '').trim();
+  return text || undefined;
+}
+
+function optionalPersistedEnum(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function parsePaymentMode(value: unknown): PaymentMode {
+  if (value === 'optional' || value === 'required') return value;
+  return 'none';
+}
+
+function parseCollectionMode(value: unknown): PaymentCollectionMode {
   if (value === 'none' || value === 'full' || value === 'deposit') {
     return value;
   }
 
-  return legacyMode === 'none' ? 'none' : 'full';
+  return 'none';
 }
 
 export async function getTenantPaymentConfig(
@@ -63,6 +86,8 @@ export async function getTenantPaymentConfig(
 
   if (error || !data) {
     return {
+      settingsFound: false,
+      paymentMethodsValid: false,
       enabled: false,
       mode: 'none',
       provider: 'mercadopago',
@@ -74,10 +99,10 @@ export async function getTenantPaymentConfig(
       collectionMode: 'none',
       webpayCommerceCode: undefined,
       webpayApiKey: undefined,
-      webpayEnvironment: 'integration',
+      webpayEnvironment: undefined,
       khipuReceiverId: undefined,
       khipuSecret: undefined,
-      khipuEnvironment: 'development',
+      khipuEnvironment: undefined,
       bankName: undefined,
       bankAccountType: undefined,
       bankAccountNumber: undefined,
@@ -87,32 +112,35 @@ export async function getTenantPaymentConfig(
     };
   }
 
-  const mode = (data.payment_mode ?? 'none') as PaymentMode;
+  const mode = parsePaymentMode(data.payment_mode);
+  const parsedMethods = parsePaymentMethods(data.payment_methods_enabled);
 
   return {
-    enabled: data.active ?? false,
+    settingsFound: true,
+    paymentMethodsValid: parsedMethods.valid,
+    enabled: data.active === true,
     mode,
     provider: 'mercadopago',
-    publicKey: data.mercadopago_public_key ?? undefined,
-    accessToken: data.mercadopago_access_token ?? undefined,
+    publicKey: optionalText(data.mercadopago_public_key),
+    accessToken: optionalText(data.mercadopago_access_token),
     depositType: (data.deposit_type ?? null) as DepositType,
     depositValue:
       data.deposit_value !== null && data.deposit_value !== undefined
         ? Number(data.deposit_value)
         : null,
-    paymentMethodsEnabled: parsePaymentMethods(data.payment_methods_enabled),
-    collectionMode: parseCollectionMode(data.payment_collection_mode, mode),
-    webpayCommerceCode: data.webpay_commerce_code ?? undefined,
-    webpayApiKey: data.webpay_api_key ?? undefined,
-    webpayEnvironment: data.webpay_environment ?? 'integration',
-    khipuReceiverId: data.khipu_receiver_id ?? undefined,
-    khipuSecret: data.khipu_secret ?? undefined,
-    khipuEnvironment: data.khipu_environment ?? 'development',
-    bankName: data.bank_name ?? undefined,
-    bankAccountType: data.bank_account_type ?? undefined,
-    bankAccountNumber: data.bank_account_number ?? undefined,
-    bankAccountHolder: data.bank_account_holder ?? undefined,
-    bankRut: data.bank_rut ?? undefined,
-    bankEmail: data.bank_email ?? undefined,
+    paymentMethodsEnabled: parsedMethods.methods,
+    collectionMode: parseCollectionMode(data.payment_collection_mode),
+    webpayCommerceCode: optionalText(data.webpay_commerce_code),
+    webpayApiKey: optionalText(data.webpay_api_key),
+    webpayEnvironment: optionalPersistedEnum(data.webpay_environment),
+    khipuReceiverId: optionalText(data.khipu_receiver_id),
+    khipuSecret: optionalText(data.khipu_secret),
+    khipuEnvironment: optionalPersistedEnum(data.khipu_environment),
+    bankName: optionalText(data.bank_name),
+    bankAccountType: optionalText(data.bank_account_type),
+    bankAccountNumber: optionalText(data.bank_account_number),
+    bankAccountHolder: optionalText(data.bank_account_holder),
+    bankRut: optionalText(data.bank_rut),
+    bankEmail: optionalText(data.bank_email),
   };
 }
