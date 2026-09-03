@@ -37,6 +37,46 @@ test("CIT-59 PostgreSQL payment and live readiness are tenant-exact and fail clo
       webpay_environment text,
       updated_at timestamptz default now()
     );
+    alter table public.tenant_payment_settings enable row level security;
+    grant select,insert,update,delete on public.tenant_payment_settings
+      to anon,authenticated,service_role;
+    create policy tenant_member_access on public.tenant_payment_settings
+      for all to authenticated using(true) with check(true);
+    create or replace function public.normalize_chilean_rut(p_value text)
+    returns text language plpgsql immutable strict set search_path=pg_catalog
+    as $$
+    declare
+      cleaned text; body text; supplied_dv text; expected_dv text;
+      digit_sum integer := 0; multiplier integer := 2; position integer;
+      remainder integer;
+    begin
+      cleaned := upper(regexp_replace(trim(p_value), '[^0-9K]', '', 'g'));
+      if cleaned !~ '^[0-9]{7,8}[0-9K]$' then raise exception 'RUT_INVALID'; end if;
+      body := substring(cleaned from 1 for length(cleaned) - 1);
+      supplied_dv := right(cleaned, 1);
+      position := length(body);
+      while position > 0 loop
+        digit_sum := digit_sum + substring(body from position for 1)::integer * multiplier;
+        multiplier := case when multiplier = 7 then 2 else multiplier + 1 end;
+        position := position - 1;
+      end loop;
+      remainder := 11 - (digit_sum % 11);
+      expected_dv := case when remainder=11 then '0' when remainder=10 then 'K'
+        else remainder::text end;
+      if supplied_dv <> expected_dv then raise exception 'RUT_INVALID'; end if;
+      return body::bigint::text || '-' || supplied_dv;
+    end;
+    $$;
+    create or replace function public.is_valid_chilean_rut(p_value text)
+    returns boolean language plpgsql immutable strict set search_path=pg_catalog
+    as $$
+    begin
+      perform public.normalize_chilean_rut(p_value);
+      return true;
+    exception when others then
+      return false;
+    end;
+    $$;
     insert into public.tenant_payment_settings(
       tenant_id,active,payment_mode,payment_methods_enabled,
       payment_collection_mode,webpay_commerce_code,webpay_api_key,
@@ -95,6 +135,12 @@ test("CIT-59 PostgreSQL payment and live readiness are tenant-exact and fail clo
       end if;
     end;
     $$;
+  `;
+
+  const historicalColumnGrants = `
+    grant select(mercadopago_access_token),
+      insert(tenant_id,mercadopago_access_token),update(webpay_api_key)
+      on public.tenant_payment_settings to public,authenticated;
   `;
 
   const validateConstraints = `
@@ -224,6 +270,35 @@ test("CIT-59 PostgreSQL payment and live readiness are tenant-exact and fail clo
       if not (report->>'ready')::boolean then
         raise exception 'CONFIGURED_MANUAL_NOT_READY';
       end if;
+
+      update public.tenant_payment_settings set bank_email='invalid'
+       where tenant_id=tenant_id_value;
+      report := public.tenant_payment_provider_readiness(tenant_id_value);
+      if (report->>'ready')::boolean then
+        raise exception 'INVALID_MANUAL_EMAIL_READY';
+      end if;
+      update public.tenant_payment_settings set bank_email='pagos@example.test',
+        bank_rut='78195645-0' where tenant_id=tenant_id_value;
+      report := public.tenant_payment_provider_readiness(tenant_id_value);
+      if (report->>'ready')::boolean then
+        raise exception 'INVALID_MANUAL_RUT_READY';
+      end if;
+      update public.tenant_payment_settings set bank_rut='78195645-7'
+       where tenant_id=tenant_id_value;
+      update public.tenant_payment_settings set bank_rut='78X195Y645-7'
+       where tenant_id=tenant_id_value;
+      report := public.tenant_payment_provider_readiness(tenant_id_value);
+      if (report->>'ready')::boolean then
+        raise exception 'MALFORMED_MANUAL_RUT_READY';
+      end if;
+      update public.tenant_payment_settings set bank_rut='78.195.645-7'
+       where tenant_id=tenant_id_value;
+      report := public.tenant_payment_provider_readiness(tenant_id_value);
+      if not (report->>'ready')::boolean then
+        raise exception 'FORMATTED_MANUAL_RUT_NOT_READY';
+      end if;
+      update public.tenant_payment_settings set bank_rut='78195645-7'
+       where tenant_id=tenant_id_value;
 
       update public.tenant_payment_settings
          set payment_mode='legacy'
@@ -357,6 +432,7 @@ test("CIT-59 PostgreSQL payment and live readiness are tenant-exact and fail clo
         bootstrap,
         migration,
         constraintsNotValidated,
+        historicalColumnGrants,
         migration,
         constraintsNotValidated,
         historicalCompatibility,
@@ -369,6 +445,55 @@ test("CIT-59 PostgreSQL payment and live readiness are tenant-exact and fail clo
       encoding: "utf8",
     });
     assert.equal(run.status, 0, `${run.stdout}\n${run.stderr}`);
+
+    const deniedStatements = [
+      ["authenticated", "select mercadopago_access_token,webpay_api_key,khipu_secret from public.tenant_payment_settings limit 1"],
+      ["authenticated", `update public.tenant_payment_settings set webpay_api_key='acl-test' where tenant_id='${tenantId}'`],
+      ["authenticated", "insert into public.tenant_payment_settings(tenant_id,mercadopago_access_token) values('00000000-0000-4000-8000-00000000005d','acl-test')"],
+      ["authenticated", `delete from public.tenant_payment_settings where tenant_id='${tenantId}'`],
+      ["anon", "select mercadopago_access_token from public.tenant_payment_settings limit 1"],
+    ];
+    for (const [role, statement] of deniedStatements) {
+      const denied = spawnSync("docker", [
+        "exec", "citaya-dte-sqltest", "psql", "-U", "postgres",
+        "-d", database, "-v", "ON_ERROR_STOP=1", "-c",
+        `set role ${role}; ${statement}`,
+      ], { encoding: "utf8" });
+      assert.notEqual(denied.status, 0, `${role} unexpectedly retained table access`);
+      assert.match(denied.stderr, /permission denied for table tenant_payment_settings/i);
+    }
+
+    const serviceRole = spawnSync("docker", [
+      "exec", "citaya-dte-sqltest", "psql", "-U", "postgres",
+      "-d", database, "-v", "ON_ERROR_STOP=1", "-c",
+      `set role service_role;
+       select count(*) from public.tenant_payment_settings;
+       update public.tenant_payment_settings
+          set mercadopago_access_token=mercadopago_access_token
+        where tenant_id='${tenantId}';
+       insert into public.tenant_payment_settings(tenant_id)
+       values('00000000-0000-4000-8000-00000000005e');`,
+    ], { encoding: "utf8" });
+    assert.equal(serviceRole.status, 0, serviceRole.stderr);
+
+    const acl = spawnSync("docker", [
+      "exec", "citaya-dte-sqltest", "psql", "-U", "postgres",
+      "-d", database, "-At", "-v", "ON_ERROR_STOP=1", "-c",
+      `select
+         has_table_privilege('anon','public.tenant_payment_settings','select'),
+         has_table_privilege('authenticated','public.tenant_payment_settings','select'),
+         has_table_privilege('authenticated','public.tenant_payment_settings','insert'),
+         has_table_privilege('authenticated','public.tenant_payment_settings','update'),
+         has_table_privilege('authenticated','public.tenant_payment_settings','delete'),
+         has_any_column_privilege('authenticated','public.tenant_payment_settings','select'),
+         has_any_column_privilege('authenticated','public.tenant_payment_settings','insert'),
+         has_any_column_privilege('authenticated','public.tenant_payment_settings','update'),
+         has_table_privilege('service_role','public.tenant_payment_settings','select'),
+         has_table_privilege('service_role','public.tenant_payment_settings','insert'),
+         has_table_privilege('service_role','public.tenant_payment_settings','update');`,
+    ], { encoding: "utf8" });
+    assert.equal(acl.status, 0, acl.stderr);
+    assert.equal(acl.stdout.trim(), "f|f|f|f|f|f|f|f|t|t|t");
   } finally {
     const drop = spawnSync("docker", [
       "exec", "citaya-dte-sqltest", "psql", "-U", "postgres", "-d", "postgres",
@@ -381,6 +506,18 @@ test("CIT-59 PostgreSQL payment and live readiness are tenant-exact and fail clo
 test("CIT-59 migration cannot classify tenants, emit DTEs, or consume folios", () => {
   assert.match(migration, /tenant_payment_provider_readiness/);
   assert.match(migration, /tenant_live_readiness_report/);
+  assert.match(
+    migration,
+    /revoke all on table public\.tenant_payment_settings[\s\S]*from public, anon, authenticated/i,
+  );
+  assert.match(
+    migration,
+    /grant select, insert, update on table public\.tenant_payment_settings[\s\S]*to service_role/i,
+  );
+  assert.match(
+    migration,
+    /drop policy if exists tenant_member_access[\s\S]*tenant_payment_settings/i,
+  );
   assert.doesNotMatch(
     migration,
     /update\s+public\.tenants|operational_mode\s*=|set_tenant_operational_mode\s*\(/i,

@@ -7,7 +7,10 @@ import {
   getTenantKhipuCredentials,
   getTenantWebpayCredentials,
 } from "../services/payments/provider-credentials.ts";
-import { evaluateTenantPaymentReadiness } from "../services/payments/provider-readiness.ts";
+import {
+  evaluateTenantPaymentReadiness,
+  tenantManualBankUpdates,
+} from "../services/payments/provider-readiness.ts";
 
 function paymentConfig(overrides = {}) {
   return {
@@ -63,6 +66,103 @@ test("CIT-59 manual readiness requires the complete persisted bank destination",
     bankEmail: "pagos@example.test",
   });
   assert.equal(evaluateTenantPaymentReadiness(configured).ready, true);
+  assert.equal(
+    evaluateTenantPaymentReadiness({
+      ...configured,
+      bankRut: " 78.195.645-7 ",
+    }).ready,
+    true,
+  );
+
+  assert.equal(
+    evaluateTenantPaymentReadiness({ ...configured, bankRut: "78195645-0" })
+      .ready,
+    false,
+  );
+  assert.equal(
+    evaluateTenantPaymentReadiness({
+      ...configured,
+      bankRut: "78X195Y645-7",
+    }).ready,
+    false,
+  );
+  assert.equal(
+    evaluateTenantPaymentReadiness({ ...configured, bankEmail: "invalid" })
+      .ready,
+    false,
+  );
+  assert.equal(
+    evaluateTenantPaymentReadiness({ ...configured, bankName: " " }).ready,
+    false,
+  );
+});
+
+test("CIT-59 bank settings reject every non-string JSON representation", () => {
+  const fields = [
+    "bankName",
+    "bankAccountType",
+    "bankAccountNumber",
+    "bankAccountHolder",
+    "bankRut",
+    "bankEmail",
+  ];
+  for (const field of fields) {
+    for (const malformed of [{}, [], 123, true]) {
+      assert.deepEqual(tenantManualBankUpdates({ [field]: malformed }), {
+        ok: false,
+        status: 400,
+        error: "Datos bancarios inválidos",
+      });
+    }
+  }
+});
+
+test("CIT-59 bank settings preserve omission, clear blanks, and validate values", () => {
+  assert.deepEqual(tenantManualBankUpdates({}), { ok: true, updates: {} });
+  assert.deepEqual(
+    tenantManualBankUpdates({ bankName: null, bankEmail: "   " }),
+    { ok: true, updates: { bank_name: null, bank_email: null } },
+  );
+  assert.deepEqual(
+    tenantManualBankUpdates(
+      { bankRut: "00.000.000-0" },
+      { allowDemoPlaceholder: true },
+    ),
+    { ok: true, updates: { bank_rut: "00.000.000-0" } },
+  );
+  assert.deepEqual(
+    tenantManualBankUpdates({
+      bankName: "  Banco Estado  ",
+      bankAccountType: " Corriente ",
+      bankAccountNumber: " CL-123-ABC ",
+      bankAccountHolder: " Empresa de Prueba ",
+      bankRut: " 78.195.645-7 ",
+      bankEmail: " pagos@example.test ",
+    }),
+    {
+      ok: true,
+      updates: {
+        bank_name: "Banco Estado",
+        bank_account_type: "Corriente",
+        bank_account_number: "CL-123-ABC",
+        bank_account_holder: "Empresa de Prueba",
+        bank_rut: "78195645-7",
+        bank_email: "pagos@example.test",
+      },
+    },
+  );
+  for (const payload of [
+    { bankRut: "78195645-0" },
+    { bankEmail: "invalid" },
+    { bankName: "x" },
+    { bankAccountNumber: "1" },
+  ]) {
+    assert.deepEqual(tenantManualBankUpdates(payload), {
+      ok: false,
+      status: 400,
+      error: "Datos bancarios inválidos",
+    });
+  }
 });
 
 test("CIT-59 readiness uses exact positive mode and collection allowlists", () => {
@@ -396,6 +496,15 @@ test("CIT-59 admin GET masks Mercado Pago and DTE stays pre-network", () => {
 
   assert.match(adminRoute, /mercadopagoAccessTokenConfigured/);
   assert.match(adminRoute, /tenantCredentialUpdates\(body\)/);
+  assert.match(adminRoute, /tenantManualBankUpdates\(body,/);
+  assert.match(
+    adminRoute,
+    /if \(!bankUpdates\.ok\)[\s\S]*status: bankUpdates\.status/,
+  );
+  assert.doesNotMatch(
+    adminRoute,
+    /String\(body\?\.bank(?:Name|AccountType|AccountNumber|AccountHolder|Rut|Email)/,
+  );
   assert.match(
     adminRoute,
     /if \(!credentialUpdates\.ok\)[\s\S]*status: credentialUpdates\.status/,

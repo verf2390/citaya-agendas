@@ -24,6 +24,50 @@ alter table public.tenant_payment_settings
 alter table public.tenant_payment_settings
   alter column payment_methods_enabled set default '[]'::jsonb;
 
+-- This table contains provider authentication secrets and has no direct
+-- browser consumer. RLS protects rows, not columns, so remove Data API access
+-- inherited from historical Supabase defaults and keep only the server role.
+alter table public.tenant_payment_settings enable row level security;
+revoke all on table public.tenant_payment_settings
+  from public, anon, authenticated;
+
+-- Table-level revokes do not remove column-level grants. Clear any historical
+-- per-column exposure too so a drifted grant cannot bypass the Data API block.
+do $cit59_payment_settings_acl$
+declare
+  column_name name;
+begin
+  for column_name in
+    select attribute.attname
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid =
+        'public.tenant_payment_settings'::pg_catalog.regclass
+      and attribute.attnum > 0
+      and not attribute.attisdropped
+  loop
+    execute pg_catalog.format(
+      'revoke all privileges (%I) on table public.tenant_payment_settings '
+        || 'from public, anon, authenticated',
+      column_name
+    );
+  end loop;
+end;
+$cit59_payment_settings_acl$;
+
+grant select, insert, update on table public.tenant_payment_settings
+  to service_role;
+
+drop policy if exists tenant_member_access
+  on public.tenant_payment_settings;
+drop policy if exists tenant_payment_settings_service_role_access
+  on public.tenant_payment_settings;
+create policy tenant_payment_settings_service_role_access
+  on public.tenant_payment_settings
+  for all
+  to service_role
+  using (true)
+  with check (true);
+
 -- Preserve the validation state of an existing canonical constraint. A
 -- same-named but different constraint is a schema drift error: replacing it
 -- silently could weaken an already-deployed invariant.
@@ -167,15 +211,30 @@ as $$
         false
       ) as khipu_configured,
       coalesce(
-        nullif(pg_catalog.btrim(raw_settings.bank_name), '') is not null
-          and nullif(pg_catalog.btrim(raw_settings.bank_account_type), '')
-            is not null
-          and nullif(pg_catalog.btrim(raw_settings.bank_account_number), '')
-            is not null
-          and nullif(pg_catalog.btrim(raw_settings.bank_account_holder), '')
-            is not null
-          and nullif(pg_catalog.btrim(raw_settings.bank_rut), '') is not null
-          and nullif(pg_catalog.btrim(raw_settings.bank_email), '') is not null,
+        pg_catalog.length(pg_catalog.btrim(raw_settings.bank_name))
+            between 2 and 120
+          and pg_catalog.length(
+            pg_catalog.btrim(raw_settings.bank_account_type)
+          ) between 2 and 80
+          and pg_catalog.length(
+            pg_catalog.btrim(raw_settings.bank_account_number)
+          ) between 3 and 80
+          and pg_catalog.length(
+            pg_catalog.btrim(raw_settings.bank_account_holder)
+          ) between 2 and 180
+          and pg_catalog.upper(
+            pg_catalog.regexp_replace(
+              pg_catalog.btrim(raw_settings.bank_rut),
+              '[.[:space:]]',
+              '',
+              'g'
+            )
+          ) ~ '^[0-9]{7,8}-?[0-9K]$'
+          and public.is_valid_chilean_rut(raw_settings.bank_rut)
+          and pg_catalog.length(pg_catalog.btrim(raw_settings.bank_email))
+            between 3 and 254
+          and pg_catalog.btrim(raw_settings.bank_email)
+            ~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$',
         false
       ) as manual_configured
     from raw_settings

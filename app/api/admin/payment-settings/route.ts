@@ -5,7 +5,10 @@ import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { tenantCredentialUpdates } from "@/services/payments/payment-settings-credentials";
-import { evaluateTenantPaymentReadiness } from "@/services/payments/provider-readiness";
+import {
+  evaluateTenantPaymentReadiness,
+  tenantManualBankUpdates,
+} from "@/services/payments/provider-readiness";
 
 const PaymentModeSchema = z.enum(["none", "optional", "required"]);
 const DepositTypeSchema = z.enum(["fixed", "percentage"]).nullable();
@@ -308,42 +311,23 @@ export async function POST(req: Request) {
     }
     Object.assign(paymentSettingsPayload, credentialUpdates.updates);
 
+    const bankUpdates = tenantManualBankUpdates(body, {
+      allowDemoPlaceholder: access.operationalMode === "demo",
+    });
+    if (!bankUpdates.ok) {
+      return NextResponse.json(
+        { ok: false, error: bankUpdates.error },
+        { status: bankUpdates.status },
+      );
+    }
+    Object.assign(paymentSettingsPayload, bankUpdates.updates);
+
     if (hasOwn(body, "webpayEnvironment")) {
       paymentSettingsPayload.webpay_environment = parsedWebpayEnvironment!.data;
     }
 
     if (hasOwn(body, "khipuEnvironment")) {
       paymentSettingsPayload.khipu_environment = parsedKhipuEnvironment!.data;
-    }
-
-    if (hasOwn(body, "bankName")) {
-      paymentSettingsPayload.bank_name =
-        String(body?.bankName ?? "").trim() || null;
-    }
-
-    if (hasOwn(body, "bankAccountType")) {
-      paymentSettingsPayload.bank_account_type =
-        String(body?.bankAccountType ?? "").trim() || null;
-    }
-
-    if (hasOwn(body, "bankAccountNumber")) {
-      paymentSettingsPayload.bank_account_number =
-        String(body?.bankAccountNumber ?? "").trim() || null;
-    }
-
-    if (hasOwn(body, "bankAccountHolder")) {
-      paymentSettingsPayload.bank_account_holder =
-        String(body?.bankAccountHolder ?? "").trim() || null;
-    }
-
-    if (hasOwn(body, "bankRut")) {
-      paymentSettingsPayload.bank_rut =
-        String(body?.bankRut ?? "").trim() || null;
-    }
-
-    if (hasOwn(body, "bankEmail")) {
-      paymentSettingsPayload.bank_email =
-        String(body?.bankEmail ?? "").trim() || null;
     }
 
     if (access.operationalMode === "demo") {

@@ -41,28 +41,19 @@ const fmtDateTimeShort = (iso: string) =>
     hour12: false,
   }).format(parseTimestamptz(iso));
 
-type BankDetails = {
-  bank_name?: string | null;
-  bank_account_type?: string | null;
-  bank_account_number?: string | null;
-  bank_account_holder?: string | null;
-  bank_rut?: string | null;
-  bank_email?: string | null;
+type ManualPaymentInstructions = {
+  bankName: string;
+  bankAccountType: string;
+  bankAccountNumber: string;
+  bankAccountHolder: string;
+  bankRut: string;
+  bankEmail: string;
 };
 
 type AppointmentResult = {
   id?: string;
   payment_provider?: string | null;
-  tenants?: {
-    tenant_payment_settings?: BankDetails | BankDetails[] | null;
-  } | null;
 };
-
-function getBankDetails(appointment: AppointmentResult | null): BankDetails | null {
-  const settings = appointment?.tenants?.tenant_payment_settings ?? null;
-  if (Array.isArray(settings)) return settings[0] ?? null;
-  return settings;
-}
 
 function StatusPill({ status }: { status: string }) {
   const s = (status || "").toLowerCase();
@@ -101,6 +92,10 @@ function ResultInner() {
   const start = sp.get("start");
   const end = sp.get("end");
   const [appointment, setAppointment] = useState<AppointmentResult | null>(null);
+  const [manualInstructions, setManualInstructions] = useState<{
+    appointmentId: string;
+    details: ManualPaymentInstructions;
+  } | null>(null);
   const [copyStatus, setCopyStatus] = useState<
     "idle" | "copied" | "error"
   >("idle");
@@ -114,7 +109,10 @@ function ResultInner() {
     appointment?.payment_provider ?? sp.get("provider") ?? "",
   ).toLowerCase();
   const isManualPayment = paymentProvider === "manual";
-  const bankDetails = useMemo(() => getBankDetails(appointment), [appointment]);
+  const bankDetails =
+    isManualPayment && manualInstructions?.appointmentId === appointmentId
+      ? manualInstructions.details
+      : null;
 
   useEffect(() => {
     if (!appointmentId) return;
@@ -141,6 +139,40 @@ function ResultInner() {
       cancelled = true;
     };
   }, [appointmentId]);
+
+  useEffect(() => {
+    if (!appointmentId || !isManualPayment) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const manageToken =
+          sessionStorage.getItem("citaya_manage_token:" + appointmentId) ?? "";
+        if (!manageToken) return;
+        const res = await fetch(
+          `/api/appointments/payment-instructions?appointmentId=${encodeURIComponent(appointmentId)}`,
+          {
+            cache: "no-store",
+            headers: { "x-manage-token": manageToken },
+          },
+        );
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.instructions) return;
+        if (!cancelled) {
+          setManualInstructions({
+            appointmentId,
+            details: json.instructions,
+          });
+        }
+      } catch {
+        // The endpoint is intentionally fail-closed and returns no partial data.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appointmentId, isManualPayment]);
 
   const title = isRescheduled
     ? "¡Listo! Tu cita ha sido reagendada"
@@ -183,12 +215,12 @@ function ResultInner() {
     () =>
       [
         "Datos para transferencia:",
-        `Banco: ${bankDetails?.bank_name ?? "No configurado"}`,
-        `Tipo de cuenta: ${bankDetails?.bank_account_type ?? "No configurado"}`,
-        `Número de cuenta: ${bankDetails?.bank_account_number ?? "No configurado"}`,
-        `Titular: ${bankDetails?.bank_account_holder ?? "No configurado"}`,
-        `RUT: ${bankDetails?.bank_rut ?? "No configurado"}`,
-        `Email: ${bankDetails?.bank_email ?? "No configurado"}`,
+        `Banco: ${bankDetails?.bankName ?? "No disponible"}`,
+        `Tipo de cuenta: ${bankDetails?.bankAccountType ?? "No disponible"}`,
+        `Número de cuenta: ${bankDetails?.bankAccountNumber ?? "No disponible"}`,
+        `Titular: ${bankDetails?.bankAccountHolder ?? "No disponible"}`,
+        `RUT: ${bankDetails?.bankRut ?? "No disponible"}`,
+        `Email: ${bankDetails?.bankEmail ?? "No disponible"}`,
         "",
         "Envía el comprobante al negocio para validar tu reserva.",
       ].join("\n"),
@@ -289,7 +321,7 @@ function ResultInner() {
           </div>
         ) : null}
 
-        {isManualPayment ? (
+        {isManualPayment && bankDetails ? (
           <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
             <div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -318,12 +350,12 @@ function ResultInner() {
 
             <div className="grid gap-2 text-sm">
               {[
-                ["Banco", bankDetails?.bank_name],
-                ["Tipo", bankDetails?.bank_account_type],
-                ["Número", bankDetails?.bank_account_number],
-                ["Titular", bankDetails?.bank_account_holder],
-                ["RUT", bankDetails?.bank_rut],
-                ["Email", bankDetails?.bank_email],
+                ["Banco", bankDetails.bankName],
+                ["Tipo", bankDetails.bankAccountType],
+                ["Número", bankDetails.bankAccountNumber],
+                ["Titular", bankDetails.bankAccountHolder],
+                ["RUT", bankDetails.bankRut],
+                ["Email", bankDetails.bankEmail],
               ].map(([label, value]) => (
                 <div
                   key={label}
@@ -331,11 +363,16 @@ function ResultInner() {
                 >
                   <span className="text-gray-500">{label}</span>
                   <span className="font-semibold text-gray-900">
-                    {value || "No configurado"}
+                    {value}
                   </span>
                 </div>
               ))}
             </div>
+          </div>
+        ) : isManualPayment ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-900">
+            Las instrucciones de transferencia no están disponibles. Contacta al
+            negocio antes de realizar el pago.
           </div>
         ) : null}
 
