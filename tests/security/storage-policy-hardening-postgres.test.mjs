@@ -7,6 +7,9 @@ import test from "node:test";
 const migrationPath =
   "migrations/202609050001_cit65_storage_policy_hardening.sql";
 const migration = readFileSync(migrationPath, "utf8");
+const migrationBody = migration
+  .replace(/^begin;\s*/i, "")
+  .replace(/\s*commit;\s*$/i, "");
 
 test("CIT-65 migration validates policies before making changes", () => {
   const publicReadValidationIndex = migration.indexOf(
@@ -22,6 +25,8 @@ test("CIT-65 migration validates policies before making changes", () => {
   assert.ok(publicReadValidationIndex >= 0);
   assert.ok(unknownPolicyValidationIndex > publicReadValidationIndex);
   assert.ok(publicReadDropIndex > unknownPolicyValidationIndex);
+  assert.match(migration, /^begin;/i);
+  assert.match(migration, /commit;\s*$/i);
   assert.match(
     migration,
     /drop policy if exists "Public read" on storage\.objects/i,
@@ -199,7 +204,7 @@ test("PostgreSQL removes the expected historical Public read policy", () => {
         "-d", database, "-v", "ON_ERROR_STOP=1",
       ],
       {
-        input: `${bootstrap}\n${migration}\n${assertions}`,
+        input: `${bootstrap}\n${migrationBody}\n${assertions}`,
         encoding: "utf8",
       },
     );

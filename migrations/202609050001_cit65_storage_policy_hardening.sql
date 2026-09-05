@@ -1,3 +1,5 @@
+begin;
+
 -- CIT-65: replace the known historical deny-one-bucket storage policy with an
 -- explicit, fail-closed policy set. Validate the identity of the policy before
 -- trusting its historical name. This validation must precede every change.
@@ -86,3 +88,5 @@ create policy dte_production_service_role_only on storage.objects
   for all to service_role
   using (bucket_id = 'dte-production-private')
   with check (bucket_id = 'dte-production-private');
+
+commit;
