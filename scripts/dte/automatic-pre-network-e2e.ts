@@ -187,12 +187,17 @@ async function seedTenant(
   tenantId: string,
   cafs: Map<33 | 39, FixtureCaf>,
 ) {
+  await ok(client.from("platform_admins").upsert({
+    user_id: ACTOR_ID,
+    role: "super_admin",
+    is_active: true,
+  }) as never);
   await insert(client, "tenants", {
     id: tenantId,
     slug: `dte-auto-offline-${tenantId.slice(0, 8)}`,
     name: "DTE Automatic Offline Fixture",
     lifecycle_status: "active",
-    operational_mode: "live",
+    operational_mode: "internal",
   });
   await insert(client, "tenant_billing_settings", {
     tenant_id: tenantId,
@@ -259,12 +264,6 @@ async function seedTenant(
       title: "Política de cancelación ficticia",
       content: "Política ficticia de cancelación y reembolso para validar exclusivamente el gate local.",
     },
-    {
-      id: randomUUID(),
-      document_type: "dte_mandate",
-      title: "Mandato DTE ficticio",
-      content: "Mandato tributario ficticio para generar, firmar y simular el envío DTE solo en este E2E local.",
-    },
   ];
   await insert(client, "legal_documents", legalDocuments.map((document) => ({
     ...document,
@@ -278,21 +277,12 @@ async function seedTenant(
     created_by: ACTOR_ID,
     published_by: ACTOR_ID,
   })));
-  const mandateDocument = legalDocuments.find(
-    (document) => document.document_type === "dte_mandate",
-  );
-  assert.ok(mandateDocument);
-  await ok(client.rpc("accept_tenant_dte_mandate", {
+  await ok(client.rpc("register_tenant_self_issuer_authority", {
     p_tenant_id: tenantId,
-    p_document_id: mandateDocument.id,
-    p_actor_id: ACTOR_ID,
-    p_signer_full_name: "Representante Legal Ficticio",
-    p_signer_rut: issuerRut,
-    p_signer_capacity: "Representante ficticio del fixture",
-    p_authority_confirmed: true,
-    p_declaration: "Acepto el mandato tributario ficticio únicamente para esta prueba E2E local aislada.",
-    p_source_ip: "127.0.0.1",
-    p_user_agent: "citaya-automatic-pre-network-e2e",
+    p_actor_user_id: ACTOR_ID,
+    p_issuer_rut_snapshot: issuerRut,
+    p_reason: "Concesión self-issued ficticia para el E2E local aislado CIT-60",
+    p_administrative_reference: `CIT60-E2E-${tenantId}`,
   }) as never);
   await insert(client, "dte_tenant_issuance_settings", {
     tenant_id: tenantId,
@@ -317,6 +307,62 @@ async function seedTenant(
     boleta_model_verified_by: ACTOR_ID,
     boleta_model_evidence_reference: "offline-disposable-fixture",
   });
+  await insert(client, "services", {
+    id: randomUUID(),
+    tenant_id: tenantId,
+    name: "Servicio de readiness ficticio",
+    duration_min: 30,
+    price: TOTAL,
+    currency: "CLP",
+    is_active: true,
+    tax_treatment: "affected",
+    public_description: "Servicio ficticio de readiness",
+    tax_description: "Servicio digital ficticio",
+    tax_description_review_status: "approved",
+    payment_policy: "full_payment",
+    payment_configuration_complete: true,
+  });
+  await insert(client, "tenant_payment_settings", {
+    tenant_id: tenantId,
+    active: true,
+    payment_mode: "optional",
+    payment_methods_enabled: ["webpay"],
+    payment_collection_mode: "full",
+    webpay_commerce_code: "offline-commerce-code",
+    webpay_api_key: "offline-api-key",
+    webpay_environment: "integration",
+  });
+
+  const preReadiness = await ok(client.rpc("tenant_live_readiness_report", {
+    p_tenant_id: tenantId,
+  }) as never) as unknown as Record<string, unknown>;
+  assert.equal(preReadiness.ready, true);
+  await ok(client.rpc("set_tenant_operational_mode", {
+    p_tenant_id: tenantId,
+    p_new_mode: "live",
+    p_actor_id: ACTOR_ID,
+    p_reason: "Promoción ficticia internal a live para el E2E aislado CIT-60",
+  }) as never);
+  const [selfAuthority, dteAuthority, legalGate, postReadiness] = await Promise.all([
+    ok(client.rpc("tenant_self_issuer_authority_report", {
+      p_tenant_id: tenantId,
+    }) as never),
+    ok(client.rpc("tenant_dte_authority_report", {
+      p_tenant_id: tenantId,
+    }) as never),
+    ok(client.rpc("tenant_legal_gate_report", {
+      p_tenant_id: tenantId,
+    }) as never),
+    ok(client.rpc("tenant_live_readiness_report", {
+      p_tenant_id: tenantId,
+    }) as never),
+  ]) as unknown as Record<string, unknown>[];
+  assert.equal(selfAuthority.valid, true);
+  assert.equal(selfAuthority.operationalMode, "live");
+  assert.equal(dteAuthority.kind, "self_issued");
+  assert.equal(dteAuthority.ready, true);
+  assert.equal(legalGate.ready, true);
+  assert.equal(postReadiness.ready, true);
   await insert(client, "dte_tenant_readiness_evidence", {
     tenant_id: tenantId,
     issuer_profile_complete: true,
@@ -590,6 +636,60 @@ async function finalizePayment(client: SupabaseClient, payment: PaymentFixture) 
   const replay = await ok(client.rpc("finalize_verified_payment", args) as never);
   assert.equal(first, true);
   assert.equal(replay, false);
+}
+
+async function validateAutomaticLegalClosure(
+  client: SupabaseClient,
+  tenantId: string,
+  payment: PaymentFixture,
+  expectedCause: string,
+) {
+  const externalBefore = externalFetchAttempts;
+  await finalizePayment(client, payment);
+  const intents = await rows(client, "dte_payment_document_intents", {
+    tenant_id: tenantId,
+    payment_intent_id: payment.paymentIntentId,
+  });
+  assert.equal(intents.length, 1, `${expectedCause}: intent count`);
+  const intent = intents[0];
+  const outboxes = await rows(client, "dte_issuance_outbox", {
+    tenant_id: tenantId,
+    intent_id: intent.id,
+  });
+  assert.equal(outboxes.length, 1, `${expectedCause}: outbox count`);
+  const outbox = outboxes[0];
+  const gate = await ok(client.rpc("dte_automatic_issuance_gate_report", {
+    p_tenant_id: tenantId,
+    p_intent_id: intent.id,
+  }) as never) as unknown as Record<string, unknown>;
+  assert.equal(gate.legalReady, false, `${expectedCause}: legal gate`);
+  assert.equal(gate.dteAuthorityReady, false, `${expectedCause}: authority gate`);
+  assert.equal(gate.ready, false, `${expectedCause}: automatic gate`);
+  assert.ok(
+    Array.isArray(gate.blockingReasons)
+      && gate.blockingReasons.includes("legal_ready_false")
+      && gate.blockingReasons.includes("dte_authority_ready_false"),
+    `${expectedCause}: blocking reasons`,
+  );
+  assert.equal(intent.status, "BLOCKED", `${expectedCause}: intent status`);
+  assert.equal(
+    intent.safe_blocking_reason,
+    "AUTOMATIC_LEGAL_GATE_CLOSED_PRE_NETWORK",
+    `${expectedCause}: intent reason`,
+  );
+  assert.equal(intent.network_attempt_count, 0, `${expectedCause}: intent attempts`);
+  assert.equal(outbox.status, "BLOCKED", `${expectedCause}: outbox status`);
+  assert.equal(
+    outbox.last_safe_error,
+    "AUTOMATIC_LEGAL_GATE_CLOSED_PRE_NETWORK",
+    `${expectedCause}: outbox reason`,
+  );
+  assert.equal(outbox.network_attempts, 0, `${expectedCause}: outbox attempts`);
+  assert.equal((await rows(client, "dte_production_documents", {
+    tenant_id: tenantId,
+    business_operation_id: `intent:${intent.id}`,
+  })).length, 0, `${expectedCause}: production document`);
+  assert.equal(externalFetchAttempts, externalBefore, `${expectedCause}: external fetch`);
 }
 
 async function claim(client: SupabaseClient, tenantId: string): Promise<ClaimedOutbox> {
@@ -897,6 +997,59 @@ async function main() {
   const stale = await seedPayment(client, tenantId, 33, "stale");
   await validateStaleWorker(client, tenantId, stale, cafs);
 
+  const rutDrift = await seedPayment(client, tenantId, 33, "cit60-rut-drift");
+  const driftedRut = fixtureRut(randomUUID());
+  assert.notEqual(driftedRut, issuerRut);
+  await ok(client.from("dte_production_tenant_settings")
+    .update({ issuer_rut: driftedRut })
+    .eq("tenant_id", tenantId) as never);
+  await validateAutomaticLegalClosure(client, tenantId, rutDrift, "rut-drift");
+  await ok(client.from("dte_production_tenant_settings")
+    .update({ issuer_rut: issuerRut })
+    .eq("tenant_id", tenantId) as never);
+
+  const fingerprintDrift = await seedPayment(
+    client,
+    tenantId,
+    33,
+    "cit60-fingerprint-drift",
+  );
+  await ok(client.from("dte_production_tenant_settings")
+    .update({ issuer_address: "DIRECCION OFFLINE FINGERPRINT DRIFT" })
+    .eq("tenant_id", tenantId) as never);
+  await validateAutomaticLegalClosure(
+    client,
+    tenantId,
+    fingerprintDrift,
+    "fingerprint-drift",
+  );
+  await ok(client.from("dte_production_tenant_settings")
+    .update({ issuer_address: "DIRECCION OFFLINE 100" })
+    .eq("tenant_id", tenantId) as never);
+
+  const profileDrift = await seedPayment(client, tenantId, 39, "cit60-profile-drift");
+  await ok(client.from("tenant_legal_profiles")
+    .update({ administrative_review_status: "draft" })
+    .eq("tenant_id", tenantId) as never);
+  await validateAutomaticLegalClosure(
+    client,
+    tenantId,
+    profileDrift,
+    "legal-profile-drift",
+  );
+  await ok(client.from("tenant_legal_profiles")
+    .update({ administrative_review_status: "complete" })
+    .eq("tenant_id", tenantId) as never);
+
+  const revoked = await seedPayment(client, tenantId, 39, "cit60-revoked");
+  await ok(client.rpc("revoke_tenant_self_issuer_authority", {
+    p_tenant_id: tenantId,
+    p_actor_user_id: ACTOR_ID,
+    p_reason: "Revocación self-issued ficticia para cierre pre-network CIT-60",
+    p_administrative_reference: `CIT60-E2E-REVOKE-${tenantId}`,
+  }) as never);
+  await validateAutomaticLegalClosure(client, tenantId, revoked, "revoked");
+
   assert.equal(externalFetchAttempts, 0);
   const storageObjects = await rows(client, "dte_production_artifacts", {
     tenant_id: tenantId,
@@ -913,6 +1066,8 @@ async function main() {
     ONE_LOGICAL_FOLIO: "PASS",
     STALE_WORKER_FENCED: "PASS",
     NETWORK_UNKNOWN_SAFE: "PASS",
+    CIT60_SELF_ISSUER_LIVE: "PASS",
+    CIT60_DERIVED_LEGAL_CLOSURES: "PASS",
     AUTOMATIC_DEFAULT_OFF: "PASS",
     externalFetchAttempts,
     tenantId,

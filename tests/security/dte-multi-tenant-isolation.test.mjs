@@ -22,11 +22,22 @@ test("FASE A: Multi-tenant isolation - production gate requires explicit tenantI
   assert.match(gateCode, /eq\("environment", "production"\)/);
 });
 
-test("FASE A 4: Emisor propio section visibility rules", () => {
+test("FASE A 4: self-issued evidence stays visible in live but registration stays internal", () => {
   const page = readFileSync("app/admin/plataforma/tenants/page.tsx", "utf8");
-  assert.match(page, /tenant\.operational_mode === "internal"/);
   assert.match(page, /tenant\.lifecycle_status === "active"/);
   assert.match(page, /Boolean\(tenant\.selfIssuerAuthority\)/);
+  assert.match(
+    page,
+    /tenant\.operational_mode === "internal" \|\| tenant\.selfIssuerAuthority\.evidenceExists/,
+  );
+  assert.match(
+    page,
+    /tenant\.selfIssuerAuthority\.evidenceExists && !tenant\.selfIssuerAuthority\.revoked[\s\S]*"revokeSelfIssuer"/,
+  );
+  assert.match(
+    page,
+    /tenant\.operational_mode === "internal"[\s\S]*"registerSelfIssuer"/,
+  );
 });
 
 test("FASE A 4: Hostname demo does not change tax ownership of rg-spa", () => {
