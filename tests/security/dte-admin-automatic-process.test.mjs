@@ -52,7 +52,7 @@ test("DTE39 requires its tenant snapshot before the exact automatic worker call"
   assert.doesNotMatch(route, /\/api\/internal\/dte-worker/);
 });
 
-test("automatic admin UI confirms the exact intent without worker secrets or double submit", () => {
+test("automatic recovery component confirms the exact intent without worker secrets or double submit", () => {
   assert.match(action, /Ejecutar DTE automático/);
   assert.match(action, /procesará exactamente esta/);
   assert.match(action, /puede consumir un folio tributario y enviar el documento al SII/);
@@ -64,20 +64,27 @@ test("automatic admin UI confirms the exact intent without worker secrets or dou
   assert.doesNotMatch(`${action}\n${page}`, /DTE_WORKER_SECRET/);
 });
 
-test("automatic pending rows stay distinct from manual rows in mobile and desktop", () => {
+test("normal automatic pending rows show processing state without a manual CTA", () => {
   const automaticBlock = rows.match(
-    /canProcessAutomatic:[\s\S]*?\[33, 39\]\.includes\(Number\(row\.resolved_dte_type\)\)/,
+    /const isAutomaticProcessing =[\s\S]*?\[33, 39\]\.includes\(Number\(row\.resolved_dte_type\)\)/,
   )?.[0] ?? "";
   const manualBlock = rows.match(
     /canProcessManual:[\s\S]*?\[33, 39\]\.includes\(Number\(row\.resolved_dte_type\)\)/,
   )?.[0] ?? "";
+  assert.match(automaticBlock, /!row\.production_document_id/);
+  assert.match(automaticBlock, /row\.status === "PENDING"/);
   assert.match(automaticBlock, /row\.origin === "automatic_payment"/);
-  assert.match(automaticBlock, /"manual_verified"/);
+  for (const trigger of ["khipu", "webpay", "mercadopago", "manual_verified"]) {
+    assert.match(automaticBlock, new RegExp(`"${trigger}"`));
+  }
   assert.doesNotMatch(automaticBlock, /manual_admin/);
   assert.match(manualBlock, /row\.trigger_source === "manual_admin"/);
   assert.doesNotMatch(manualBlock, /automatic_payment/);
   assert.match(rows, /origin,receiver_snapshot/);
-  assert.match(rows, /canProcessAutomatic: false/);
-  assert.equal((page.match(/document\.canProcessAutomatic/g) ?? []).length, 2);
-  assert.equal((page.match(/<AutomaticPendingDteAction/g) ?? []).length, 2);
+  assert.equal((rows.match(/canProcessAutomatic: false/g) ?? []).length, 2);
+  assert.equal((page.match(/document\.isAutomaticProcessing/g) ?? []).length, 2);
+  assert.equal((page.match(/Procesando automáticamente…/g) ?? []).length, 2);
+  assert.doesNotMatch(page, /AutomaticPendingDteAction/);
+  assert.doesNotMatch(page, /document\.canProcessAutomatic/);
+  assert.doesNotMatch(page, /Ejecutar DTE automático/);
 });

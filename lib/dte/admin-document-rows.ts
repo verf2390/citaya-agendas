@@ -193,6 +193,12 @@ export async function loadAdminDocumentRows(tenantId: string) {
       status: row.status,
       currentUploadTrackVerified,
     });
+    const isAutomaticProcessing = !row.production_document_id &&
+      row.status === "PENDING" &&
+      row.origin === "automatic_payment" &&
+      ["khipu", "webpay", "mercadopago", "manual_verified"]
+        .includes(row.trigger_source) &&
+      [33, 39].includes(Number(row.resolved_dte_type));
     return {
       id: row.id,
       productionDocumentId: row.production_document_id,
@@ -230,12 +236,8 @@ export async function loadAdminDocumentRows(tenantId: string) {
         row.status === "PENDING" &&
         row.trigger_source === "manual_admin" &&
         [33, 39].includes(Number(row.resolved_dte_type)),
-      canProcessAutomatic: !row.production_document_id &&
-        row.status === "PENDING" &&
-        row.origin === "automatic_payment" &&
-        ["khipu", "webpay", "mercadopago", "manual_verified"]
-          .includes(row.trigger_source) &&
-        [33, 39].includes(Number(row.resolved_dte_type)),
+      isAutomaticProcessing,
+      canProcessAutomatic: false,
     };
   });
   const draftRows = rawDrafts.map((row) => ({
@@ -257,6 +259,7 @@ export async function loadAdminDocumentRows(tenantId: string) {
     canCreateNote: false,
     canEmail: false,
     canProcessManual: false,
+    isAutomaticProcessing: false,
     canProcessAutomatic: false,
   }));
   return [...draftRows, ...intentRows]
