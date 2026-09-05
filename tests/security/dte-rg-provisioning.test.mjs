@@ -9,6 +9,13 @@ const migration = readFileSync(
   ),
   "utf8",
 );
+const storageHardening = readFileSync(
+  new URL(
+    "../../migrations/202609050001_cit65_storage_policy_hardening.sql",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const worker = readFileSync(
   new URL("../../lib/dte/automation/worker.ts", import.meta.url),
   "utf8",
@@ -36,16 +43,23 @@ test("pre-declaration profile contains no invented SII resolution", () => {
   assert.match(migration, /issuance_mode[\s\S]*'manual'/);
 });
 
-test("private DTE bucket is excluded from every public read", () => {
+test("private DTE bucket is protected by the forward-only storage hardening", () => {
   assert.match(
     migration,
     /values \('dte-production-private', 'dte-production-private', false\)/,
   );
-  assert.match(
-    migration,
-    /using \(bucket_id <> 'dte-production-private'\)/,
+  assert.match(storageHardening, /drop policy if exists "Public read" on storage\.objects/i);
+  assert.doesNotMatch(
+    storageHardening,
+    /create\s+policy[\s\S]*?using\s*\(\s*bucket_id\s*(?:<>|!=)/i,
   );
-  assert.match(migration, /for all to service_role/);
+  assert.match(storageHardening, /for all to service_role/i);
+  assert.match(
+    storageHardening,
+    /using \(bucket_id = 'dte-production-private'\)/,
+  );
+  assert.match(storageHardening, /service_role normally has BYPASSRLS/i);
+  assert.doesNotMatch(storageHardening, /service-role-only/i);
 });
 
 test("readiness and deterministic retry remain tenant scoped", () => {
