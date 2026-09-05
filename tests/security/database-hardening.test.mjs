@@ -13,7 +13,7 @@ test("booking concurrency is guaranteed by PostgreSQL and public creation RPC", 
 });
 
 test("duration, price, service and professional are server-controlled", () => {
-  assert.match(createRoute, /select\("id, tenant_id, duration_min, price, currency, is_active, tax_treatment"\)/);
+  assert.match(createRoute, /select\("id,\s*tenant_id,\s*duration_min,\s*price,\s*currency,\s*is_active,\s*tax_treatment(?:,[^"]+)*"\)/);
   assert.match(createRoute, /p_start_at:/);
   assert.doesNotMatch(createRoute, /p_end_at:/);
   assert.match(migration, /v_end_at := p_start_at \+ make_interval\(mins => v_service\.duration_min\)/);
