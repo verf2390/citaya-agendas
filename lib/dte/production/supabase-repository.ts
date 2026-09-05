@@ -336,6 +336,15 @@ export class SupabaseProductionDteRepository
       p_document_id: input.documentId,
       p_business_operation_id: input.businessOperationId,
     });
+    if (result.error?.code === "P6101") {
+      throw new Error("DTE_AUTOMATIC_LEGAL_GATE_CLOSED_PRE_NETWORK");
+    }
+    if (result.error?.code === "P6102") {
+      throw new Error("DTE_AUTOMATIC_GATE_CLOSED_PRE_NETWORK");
+    }
+    if (result.error?.code === "P6103") {
+      throw new Error("DTE_AUTOMATIC_FOLIO_RELATION_INVALID");
+    }
     if (result.error || result.data?.length !== 1) fail(result.error);
     const row = result.data[0];
     return {

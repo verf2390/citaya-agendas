@@ -225,6 +225,75 @@ async function seedTenant(
     sii_authorization_status: "approved",
     issuance_mode: "automatic",
   });
+  await insert(client, "tenant_legal_profiles", {
+    tenant_id: tenantId,
+    trade_name: "Emisor Offline Ficticio",
+    contact_address: "Dirección ficticia offline 100",
+    support_email: "soporte@example.test",
+    privacy_contact_name: "Contacto Privacidad Ficticio",
+    privacy_contact_email: "privacidad@example.test",
+    tenant_is_service_provider: true,
+    handles_sensitive_data: false,
+    sensitive_data_review_status: "confirmed_no",
+    sensitive_data_purpose: null,
+    administrative_review_status: "complete",
+    created_by: ACTOR_ID,
+    updated_by: ACTOR_ID,
+  });
+  const legalDocuments = [
+    {
+      id: randomUUID(),
+      document_type: "consumer_terms",
+      title: "Términos de consumo ficticios",
+      content: "Términos ficticios para el E2E local aislado, sin efecto legal ni uso productivo.",
+    },
+    {
+      id: randomUUID(),
+      document_type: "privacy_notice",
+      title: "Aviso de privacidad ficticio",
+      content: "Aviso ficticio de privacidad para el E2E local aislado, sin datos personales reales.",
+    },
+    {
+      id: randomUUID(),
+      document_type: "cancellation_refund_policy",
+      title: "Política de cancelación ficticia",
+      content: "Política ficticia de cancelación y reembolso para validar exclusivamente el gate local.",
+    },
+    {
+      id: randomUUID(),
+      document_type: "dte_mandate",
+      title: "Mandato DTE ficticio",
+      content: "Mandato tributario ficticio para generar, firmar y simular el envío DTE solo en este E2E local.",
+    },
+  ];
+  await insert(client, "legal_documents", legalDocuments.map((document) => ({
+    ...document,
+    owner_kind: "tenant",
+    tenant_id: tenantId,
+    version: 1,
+    content_sha256: sha256(document.content),
+    status: "published",
+    effective_at: new Date().toISOString(),
+    published_at: new Date().toISOString(),
+    created_by: ACTOR_ID,
+    published_by: ACTOR_ID,
+  })));
+  const mandateDocument = legalDocuments.find(
+    (document) => document.document_type === "dte_mandate",
+  );
+  assert.ok(mandateDocument);
+  await ok(client.rpc("accept_tenant_dte_mandate", {
+    p_tenant_id: tenantId,
+    p_document_id: mandateDocument.id,
+    p_actor_id: ACTOR_ID,
+    p_signer_full_name: "Representante Legal Ficticio",
+    p_signer_rut: issuerRut,
+    p_signer_capacity: "Representante ficticio del fixture",
+    p_authority_confirmed: true,
+    p_declaration: "Acepto el mandato tributario ficticio únicamente para esta prueba E2E local aislada.",
+    p_source_ip: "127.0.0.1",
+    p_user_agent: "citaya-automatic-pre-network-e2e",
+  }) as never);
   await insert(client, "dte_tenant_issuance_settings", {
     tenant_id: tenantId,
     issuance_mode: "automatic_on_verified_payment",
@@ -338,6 +407,7 @@ async function seedPayment(
   const serviceId = randomUUID();
   const appointmentId = randomUUID();
   const saleId = randomUUID();
+  const saleItemId = randomUUID();
   const scheduleId = randomUUID();
   const paymentIntentId = randomUUID();
   const providerPaymentId = `offline-${label}-${randomUUID()}`;
@@ -431,6 +501,32 @@ async function seedPayment(
     documented_amount: 0,
     pending_documentation_amount: TOTAL,
   });
+  await insert(client, "billing_sale_items", {
+    id: saleItemId,
+    tenant_id: tenantId,
+    sale_id: saleId,
+    service_id: serviceId,
+    appointment_id: appointmentId,
+    position: 1,
+    description: `Servicio offline ${label}`,
+    quantity: 1,
+    unit_net_amount: NET,
+    discount_basis_points: 0,
+    discount_amount: 0,
+    net_amount: NET,
+    tax_amount: TAX,
+    total_amount: TOTAL,
+    pricing_mode: "manual_net",
+    public_description_snapshot: "Servicio offline",
+    tax_description_snapshot: "Servicio digital offline",
+    tax_description_review_status_snapshot: "approved",
+    contains_sensitive_information_snapshot: false,
+    payment_policy_snapshot: "full_payment",
+    deposit_tax_document_policy_status_snapshot: "unconfigured",
+    initial_payment_due: TOTAL,
+    balance_due: TOTAL,
+    tax_treatment_snapshot: "affected",
+  });
   await insert(client, "billing_sale_appointments", {
     tenant_id: tenantId,
     sale_id: saleId,
@@ -445,6 +541,15 @@ async function seedPayment(
     amount: TOTAL,
     status: "PENDING",
     paid_amount: 0,
+  });
+  await insert(client, "billing_payment_schedule_allocations", {
+    tenant_id: tenantId,
+    schedule_id: scheduleId,
+    sale_id: saleId,
+    sale_item_id: saleItemId,
+    position: 1,
+    amount_from: 0,
+    amount_to: TOTAL,
   });
   await insert(client, "payment_intents", {
     id: paymentIntentId,

@@ -8,6 +8,10 @@ const automaticOwnedFolioResumeValue = String(
   process.env.DTE_AUTOMATIC_OWNED_FOLIO_RESUME ?? "",
 ).trim();
 const automaticOwnedFolioResume = automaticOwnedFolioResumeValue === "true";
+const automaticPreNetworkResumeValue = String(
+  process.env.DTE_AUTOMATIC_PRE_NETWORK_RESUME ?? "",
+).trim();
+const automaticPreNetworkResume = automaticPreNetworkResumeValue === "true";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 if (!enabled || !productionEnabled) {
@@ -25,12 +29,27 @@ if (
   console.error("automaticDteWorker=resume_invalid");
   process.exit(1);
 }
+if (
+  automaticPreNetworkResumeValue &&
+  !["true", "false"].includes(automaticPreNetworkResumeValue)
+) {
+  console.error("automaticDteWorker=pre_network_resume_invalid");
+  process.exit(1);
+}
 if (automaticTargetOutboxId && !uuid.test(automaticTargetOutboxId)) {
   console.error("automaticDteWorker=target_invalid");
   process.exit(1);
 }
 if (automaticOwnedFolioResume && !automaticTargetOutboxId) {
   console.error("automaticDteWorker=resume_target_required");
+  process.exit(1);
+}
+if (automaticPreNetworkResume && !automaticTargetOutboxId) {
+  console.error("automaticDteWorker=pre_network_resume_target_required");
+  process.exit(1);
+}
+if (automaticPreNetworkResume && automaticOwnedFolioResume) {
+  console.error("automaticDteWorker=resume_mode_conflict");
   process.exit(1);
 }
 
@@ -45,6 +64,7 @@ try {
       mode: "automatic",
       ...(automaticTargetOutboxId ? { automaticTargetOutboxId } : {}),
       ...(automaticOwnedFolioResume ? { automaticOwnedFolioResume: true } : {}),
+      ...(automaticPreNetworkResume ? { automaticPreNetworkResume: true } : {}),
     }),
     signal: AbortSignal.timeout(12 * 60 * 1000),
   });

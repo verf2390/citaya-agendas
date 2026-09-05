@@ -10,7 +10,7 @@ Object.assign(process.env, {
   NODE_ENV: "test",
   NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:55436",
   SUPABASE_SERVICE_ROLE_KEY:
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.LT8oiAB38Zgu24uVYFbqgdLjGycLdr_I2BTT0nHyMbY",
+    process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.LT8oiAB38Zgu24uVYFbqgdLjGycLdr_I2BTT0nHyMbY",
   DTE_PRODUCTION_ENABLED: "true",
   DTE_MODE: "production",
   DTE_SII_ENV: "production",

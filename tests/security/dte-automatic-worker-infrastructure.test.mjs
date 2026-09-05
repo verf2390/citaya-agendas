@@ -52,7 +52,7 @@ test("automatic target is propagated only through automatic dispatch", () => {
 
 test("owned-folio resume is explicit, exact, and has no normal-claim fallback", () => {
   const recoveryBranch = worker.match(
-    /const claimed = options\.automaticOwnedFolioResume === true[\s\S]*?: targetOutboxId/,
+    /: options\.automaticOwnedFolioResume === true[\s\S]*?: targetOutboxId/,
   )?.[0] ?? "";
   assert.match(recoveryBranch, /dte_claim_automatic_owned_folio_resume_exact/);
   assert.doesNotMatch(recoveryBranch, /dte_claim_automatic_issuance_outbox_exact/);
@@ -66,6 +66,17 @@ test("owned-folio resume is explicit, exact, and has no normal-claim fallback", 
     resumeMigration,
     /revoke all on function public\.dte_claim_automatic_owned_folio_resume_exact\([\s\S]*from public, anon, authenticated, service_role;[\s\S]*grant execute[\s\S]*to service_role/,
   );
+});
+
+test("CIT-61 pre-network recovery is explicit, exact, and precedes every fallback", () => {
+  const recoveryBranch = worker.match(
+    /const claimed = options\.automaticPreNetworkResume === true[\s\S]*?: options\.automaticOwnedFolioResume === true/,
+  )?.[0] ?? "";
+  assert.match(recoveryBranch, /dte_claim_automatic_pre_network_resume_exact/);
+  assert.doesNotMatch(recoveryBranch, /dte_claim_automatic_issuance_outbox_exact/);
+  assert.match(runner, /DTE_AUTOMATIC_PRE_NETWORK_RESUME/);
+  assert.match(route, /automaticPreNetworkResume/);
+  assert.match(worker, /dte_begin_automatic_network_attempt/);
 });
 
 test("automatic post-RENEW readiness keeps legal activation without reopening the raw report", () => {

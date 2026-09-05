@@ -802,7 +802,7 @@ test("emit performs one upload, persists Track ID safely and enqueues delivery o
   assert.equal(context.repository.outboxRecords().length, 0);
 });
 
-test("BEHAVIORAL: automatic lease fence is checked before the first SII network boundary", async () => {
+test("BEHAVIORAL: automatic SQL boundary can fence before the first SII fetch", async () => {
   const context = await preparedService({});
   const draft = await context.service.createDraft(
     draftInput(context.tenantId, 33, "fenced-before-network"),
@@ -816,6 +816,64 @@ test("BEHAVIORAL: automatic lease fence is checked before the first SII network 
       documentId: draft.id,
       confirmation: `EMITIR DTE PRODUCCION ${draft.id}`,
       actorId: "system",
+      beginAutomaticNetworkAttempt: async () => {
+        boundaries.push("seed_before_fetch");
+        throw new Error("DTE_AUTOMATIC_CLAIM_FENCED");
+      },
+      beforeNetworkAttempt: async ({ milestone }) => {
+        boundaries.push(milestone);
+      },
+    }),
+    /DTE_AUTOMATIC_CLAIM_FENCED/,
+  );
+  assert.deepEqual(boundaries, ["seed_before_fetch"]);
+  assert.equal(context.client.uploads, 0);
+  assert.equal(
+    await context.repository.getSubmissionAttempt(context.tenantId, draft.id),
+    null,
+  );
+  assert.equal(
+    (await context.repository.getDocument(context.tenantId, draft.id))?.status,
+    "ready",
+  );
+});
+
+test("BEHAVIORAL: automatic gate closing after seed prevents token and upload fetches", async () => {
+  const context = await preparedService({});
+  const draft = await context.service.createDraft(
+    draftInput(context.tenantId, 33, "fenced-after-seed"),
+    "admin-user",
+  );
+  await context.service.prepare(context.tenantId, draft.id, "admin-user");
+  const boundaries: string[] = [];
+  await assert.rejects(
+    context.service.emitOnce({
+      tenantId: context.tenantId,
+      documentId: draft.id,
+      confirmation: `EMITIR DTE PRODUCCION ${draft.id}`,
+      actorId: "system",
+      beginAutomaticNetworkAttempt: async ({ requestSha256 }) => {
+        boundaries.push("seed_before_fetch");
+        const attempt = await context.repository.createSubmissionAttempt({
+          tenantId: context.tenantId,
+          documentId: draft.id,
+          attemptNumber: 1,
+          status: "uploading",
+          requestSha256,
+          responseSha256: null,
+          responseSafe: null,
+          trackId: null,
+          beforeFetchAt: new Date().toISOString(),
+          afterFetchAt: null,
+        });
+        await context.repository.transitionDocument({
+          tenantId: context.tenantId,
+          documentId: draft.id,
+          from: ["ready"],
+          to: "submitting",
+        });
+        return attempt.id;
+      },
       beforeNetworkAttempt: async ({ milestone }) => {
         boundaries.push(milestone);
         throw new Error("DTE_AUTOMATIC_CLAIM_FENCED");
@@ -823,8 +881,12 @@ test("BEHAVIORAL: automatic lease fence is checked before the first SII network 
     }),
     /DTE_AUTOMATIC_CLAIM_FENCED/,
   );
-  assert.deepEqual(boundaries, ["seed_before_fetch"]);
+  assert.deepEqual(boundaries, ["seed_before_fetch", "token_before_fetch"]);
   assert.equal(context.client.uploads, 0);
+  assert.ok(
+    (await context.repository.getSubmissionAttempt(context.tenantId, draft.id))
+      ?.beforeFetchAt,
+  );
 });
 
 test("SII rejection and ambiguous response are terminal for automatic emission", async () => {

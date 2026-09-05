@@ -539,6 +539,9 @@ export class ProductionDteService {
       milestone: "seed_before_fetch" | "token_before_fetch" | "upload_before_fetch";
       submissionAttemptId: string;
     }) => Promise<void>;
+    beginAutomaticNetworkAttempt?: (input: {
+      requestSha256: string;
+    }) => Promise<string>;
   }): Promise<ReturnType<typeof safeDocument>> {
     const config = this.config();
     assertExactProductionConfirmation(input.documentId, input.confirmation);
@@ -560,10 +563,14 @@ export class ProductionDteService {
       input.tenantId,
       input.documentId,
     );
-    if (
+    const automaticAttemptEvidence = input.beginAutomaticNetworkAttempt
+      ? Boolean(existingAttempt || document.trackId)
+      : false;
+    const manualTerminalAttempt = !input.beginAutomaticNetworkAttempt && Boolean(
       existingAttempt &&
-      (existingAttempt.status === "submitted" || Boolean(document.trackId))
-    ) {
+      (existingAttempt.status === "submitted" || document.trackId),
+    );
+    if (automaticAttemptEvidence || manualTerminalAttempt) {
       throw new Error("DTE_UPLOAD_ALREADY_ATTEMPTED");
     }
     const envelopeArtifact = await this.repository.getCurrentArtifact(
@@ -578,36 +585,48 @@ export class ProductionDteService {
     );
     if (sha256(envelope.bytes) !== envelopeArtifact.sha256)
       throw new Error("DTE_ARTIFACT_HASH_MISMATCH");
-    await input.assertMutationLease?.();
-    const attempt = await this.repository.createSubmissionAttempt({
-      tenantId: input.tenantId,
-      documentId: input.documentId,
-      attemptNumber: 1,
-      status: "persisted",
-      requestSha256: envelopeArtifact.sha256,
-      responseSha256: null,
-      responseSafe: null,
-      trackId: null,
-      beforeFetchAt: null,
-      afterFetchAt: null,
-    });
-    await input.assertMutationLease?.();
-    await this.repository.transitionDocument({
-      tenantId: input.tenantId,
-      documentId: input.documentId,
-      from: ["ready"],
-      to: "submitting",
-    });
+    let submissionAttemptId: string | null = null;
+    if (!input.beginAutomaticNetworkAttempt) {
+      await input.assertMutationLease?.();
+      const attempt = await this.repository.createSubmissionAttempt({
+        tenantId: input.tenantId,
+        documentId: input.documentId,
+        attemptNumber: 1,
+        status: "persisted",
+        requestSha256: envelopeArtifact.sha256,
+        responseSha256: null,
+        responseSafe: null,
+        trackId: null,
+        beforeFetchAt: null,
+        afterFetchAt: null,
+      });
+      submissionAttemptId = attempt.id;
+      await input.assertMutationLease?.();
+      await this.repository.transitionDocument({
+        tenantId: input.tenantId,
+        documentId: input.documentId,
+        from: ["ready"],
+        to: "submitting",
+      });
+    }
     const milestone = async (event: ProductionSiiMilestone) => {
       if (
         event === "seed_before_fetch" ||
         event === "token_before_fetch" ||
         event === "upload_before_fetch"
       ) {
-        await input.beforeNetworkAttempt?.({
-          milestone: event,
-          submissionAttemptId: attempt.id,
-        });
+        if (event === "seed_before_fetch" && input.beginAutomaticNetworkAttempt) {
+          submissionAttemptId = await input.beginAutomaticNetworkAttempt({
+            requestSha256: envelopeArtifact.sha256,
+          });
+          if (!submissionAttemptId) throw new Error("DTE_AUTOMATIC_CLAIM_FENCED");
+        } else {
+          if (!submissionAttemptId) throw new Error("DTE_SUBMISSION_ATTEMPT_NOT_PERSISTED");
+          await input.beforeNetworkAttempt?.({
+            milestone: event,
+            submissionAttemptId,
+          });
+        }
       }
       const now = new Date().toISOString();
       await this.repository.appendAudit({
@@ -617,16 +636,20 @@ export class ProductionDteService {
         actorId: input.actorId,
         metadata: { attempt: 1 },
       });
-      if (event === "upload_before_fetch" && !input.beforeNetworkAttempt)
+      if (
+        event === "upload_before_fetch" &&
+        !input.beforeNetworkAttempt &&
+        submissionAttemptId
+      )
         await this.repository.updateSubmissionAttempt(
           input.tenantId,
-          attempt.id,
+          submissionAttemptId,
           { status: "uploading", beforeFetchAt: now },
         );
       if (event === "upload_after_fetch")
         await this.repository.updateSubmissionAttempt(
           input.tenantId,
-          attempt.id,
+          String(submissionAttemptId),
           { afterFetchAt: now },
         );
     };
@@ -648,10 +671,11 @@ export class ProductionDteService {
       if (error instanceof Error && error.message === "DTE_AUTOMATIC_CLAIM_FENCED") {
         throw error;
       }
+      if (!submissionAttemptId) throw error;
       await input.assertMutationLease?.();
       await this.repository.updateSubmissionAttempt(
         input.tenantId,
-        attempt.id,
+        submissionAttemptId,
         {
           status: "rejected",
           responseSafe: { category: "auth_or_configuration" },
@@ -675,7 +699,7 @@ export class ProductionDteService {
     await input.assertMutationLease?.();
     await this.repository.updateSubmissionAttempt(
       input.tenantId,
-      attempt.id,
+      String(submissionAttemptId),
       {
         status: result.status,
         responseSha256: result.responseSha256,
