@@ -34,6 +34,7 @@ export type ManualWorkerOptions = {
 export type AutomaticWorkerOptions = {
   automaticTargetOutboxId?: string;
   automaticOwnedFolioResume?: boolean;
+  automaticPreNetworkResume?: boolean;
 };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -46,6 +47,9 @@ function validateAutomaticWorkerOptions(
   const rawOwnedFolioResume = (options as {
     automaticOwnedFolioResume?: unknown;
   }).automaticOwnedFolioResume;
+  const rawPreNetworkResume = (options as {
+    automaticPreNetworkResume?: unknown;
+  }).automaticPreNetworkResume;
   if (
     rawOwnedFolioResume !== undefined &&
     typeof rawOwnedFolioResume !== "boolean"
@@ -54,6 +58,18 @@ function validateAutomaticWorkerOptions(
   }
   if (rawOwnedFolioResume === true && rawTarget === undefined) {
     throw new Error("DTE_AUTOMATIC_OWNED_FOLIO_RESUME_TARGET_REQUIRED");
+  }
+  if (
+    rawPreNetworkResume !== undefined &&
+    typeof rawPreNetworkResume !== "boolean"
+  ) {
+    throw new Error("DTE_AUTOMATIC_PRE_NETWORK_RESUME_INVALID");
+  }
+  if (rawPreNetworkResume === true && rawTarget === undefined) {
+    throw new Error("DTE_AUTOMATIC_PRE_NETWORK_RESUME_TARGET_REQUIRED");
+  }
+  if (rawPreNetworkResume === true && rawOwnedFolioResume === true) {
+    throw new Error("DTE_AUTOMATIC_RESUME_MODE_CONFLICT");
   }
   if (rawTarget === undefined) return {};
   if (typeof rawTarget !== "string") {
@@ -67,6 +83,9 @@ function validateAutomaticWorkerOptions(
     automaticTargetOutboxId,
     ...(rawOwnedFolioResume === true
       ? { automaticOwnedFolioResume: true }
+      : {}),
+    ...(rawPreNetworkResume === true
+      ? { automaticPreNetworkResume: true }
       : {}),
   };
 }
@@ -588,7 +607,12 @@ async function claimAutomaticIssuance(
 ): Promise<ClaimedOutbox | null> {
   const targetOutboxId = options.automaticTargetOutboxId;
   const workerId = `citaya-automatic:${process.pid}:${randomUUID()}`;
-  const claimed = options.automaticOwnedFolioResume === true
+  const claimed = options.automaticPreNetworkResume === true
+    ? await supabaseAdmin.rpc("dte_claim_automatic_pre_network_resume_exact", {
+        p_worker_id: workerId,
+        p_outbox_id: targetOutboxId,
+      })
+    : options.automaticOwnedFolioResume === true
     ? await supabaseAdmin.rpc("dte_claim_automatic_owned_folio_resume_exact", {
         p_worker_id: workerId,
         p_outbox_id: targetOutboxId,
@@ -821,6 +845,26 @@ export async function processClaimedDteItem(
       confirmation: expectedProductionConfirmation(draft.id),
       actorId,
       assertMutationLease: assertAutomaticMutationLease,
+      beginAutomaticNetworkAttempt: automatic
+        ? async ({ requestSha256 }) => {
+            const identity = automaticClaimIdentity(item);
+            const boundary = await supabaseAdmin.rpc(
+              "dte_begin_automatic_network_attempt",
+              {
+                p_outbox_id: item.id,
+                p_worker_id: identity.workerId,
+                p_claim_token: identity.claimToken,
+                p_production_document_id: draft.id,
+                p_request_sha256: requestSha256,
+              },
+            );
+            const attemptId = String(boundary.data ?? "");
+            if (boundary.error || !UUID_PATTERN.test(attemptId)) {
+              throw new Error("DTE_AUTOMATIC_CLAIM_FENCED");
+            }
+            return attemptId;
+          }
+        : undefined,
       beforeNetworkAttempt: automatic
         ? async ({ milestone, submissionAttemptId }) => {
             await mutateAutomaticClaim(item, {
@@ -871,7 +915,7 @@ export async function processClaimedDteItem(
       }
       return {
         processed: true,
-        status: "FENCED",
+        status: siiContacted ? "AMBIGUOUS" : "FENCED",
         siiContacted,
         networkAttempts: siiContacted ? 1 : 0,
       };

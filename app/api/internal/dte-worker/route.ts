@@ -50,21 +50,54 @@ export async function POST(req: Request) {
       const automaticOwnedFolioResume = hasOwnedFolioResume
         ? body.automaticOwnedFolioResume
         : undefined;
+      const hasPreNetworkResume = Object.hasOwn(
+        body ?? {},
+        "automaticPreNetworkResume",
+      );
+      if (
+        hasPreNetworkResume &&
+        typeof body.automaticPreNetworkResume !== "boolean"
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "DTE_WORKER_PRE_NETWORK_RESUME_INVALID" },
+          { status: 400 },
+        );
+      }
+      const automaticPreNetworkResume = hasPreNetworkResume
+        ? body.automaticPreNetworkResume
+        : undefined;
       if (automaticOwnedFolioResume === true && !hasAutomaticTarget) {
         return NextResponse.json(
           { ok: false, error: "DTE_WORKER_OWNED_FOLIO_RESUME_TARGET_REQUIRED" },
           { status: 400 },
         );
       }
+      if (automaticPreNetworkResume === true && !hasAutomaticTarget) {
+        return NextResponse.json(
+          { ok: false, error: "DTE_WORKER_PRE_NETWORK_RESUME_TARGET_REQUIRED" },
+          { status: 400 },
+        );
+      }
+      if (
+        automaticPreNetworkResume === true &&
+        automaticOwnedFolioResume === true
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "DTE_WORKER_RESUME_MODE_CONFLICT" },
+          { status: 400 },
+        );
+      }
       const result = await runOneAutomaticIssuanceWorker({
         automaticTargetOutboxId,
         automaticOwnedFolioResume,
+        automaticPreNetworkResume,
       });
       return NextResponse.json({ ok: true, result });
     }
     if (
       Object.hasOwn(body ?? {}, "automaticTargetOutboxId") ||
-      Object.hasOwn(body ?? {}, "automaticOwnedFolioResume")
+      Object.hasOwn(body ?? {}, "automaticOwnedFolioResume") ||
+      Object.hasOwn(body ?? {}, "automaticPreNetworkResume")
     ) {
       return NextResponse.json({ ok: false, error: "DTE_WORKER_TARGET_DOMAIN_INVALID" }, { status: 400 });
     }

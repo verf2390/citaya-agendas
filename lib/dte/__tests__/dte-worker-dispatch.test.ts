@@ -177,3 +177,60 @@ test("owned-folio recovery requires and preserves one exact automatic target", a
     restore();
   }
 });
+
+test("pre-network legal recovery is exact and cannot combine with owned-folio recovery", async () => {
+  const restore = preserveWorkerEnv();
+  const claimedOptions: Array<{
+    automaticTargetOutboxId?: string;
+    automaticOwnedFolioResume?: boolean;
+    automaticPreNetworkResume?: boolean;
+  }> = [];
+  try {
+    process.env.DTE_PRODUCTION_ENABLED = "true";
+    process.env.DTE_AUTOMATIC_WORKER_ENABLED = "true";
+    const dependencies: DteWorkerDependencies = {
+      claimManual: async () => null,
+      claimAutomatic: async (options) => {
+        claimedOptions.push(options);
+        return automaticItem;
+      },
+      processClaimed: async () => processed,
+    };
+    await assert.rejects(
+      runOneAutomaticIssuanceWorker(
+        { automaticPreNetworkResume: true },
+        dependencies,
+      ),
+      /DTE_AUTOMATIC_PRE_NETWORK_RESUME_TARGET_REQUIRED/,
+    );
+    await assert.rejects(
+      runOneAutomaticIssuanceWorker(
+        {
+          automaticTargetOutboxId: automaticItem.id,
+          automaticPreNetworkResume: true,
+          automaticOwnedFolioResume: true,
+        },
+        dependencies,
+      ),
+      /DTE_AUTOMATIC_RESUME_MODE_CONFLICT/,
+    );
+    assert.equal(claimedOptions.length, 0);
+
+    assert.deepEqual(
+      await runOneAutomaticIssuanceWorker(
+        {
+          automaticTargetOutboxId: automaticItem.id,
+          automaticPreNetworkResume: true,
+        },
+        dependencies,
+      ),
+      processed,
+    );
+    assert.deepEqual(claimedOptions, [{
+      automaticTargetOutboxId: automaticItem.id,
+      automaticPreNetworkResume: true,
+    }]);
+  } finally {
+    restore();
+  }
+});
