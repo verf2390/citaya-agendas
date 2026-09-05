@@ -15,7 +15,8 @@ type TenantRow = {
   liveReadiness: Record<string, boolean>;
   selfIssuerAuthority: {
     status: "none" | "active" | "revoked" | "invalidated";
-    valid: boolean; rutMatches?: boolean; identityMatches?: boolean;
+    valid: boolean; evidenceExists?: boolean; revoked?: boolean;
+    rutMatches?: boolean; identityMatches?: boolean;
   };
 };
 
@@ -94,7 +95,8 @@ export default function PlatformTenantModesPage() {
             <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
               <strong>Checklist live:</strong> {tenant.liveReadiness?.ready ? "completo" : "incompleto"}. Cambiar a live falla cerrado si falta cualquier gate.
             </div>
-            {tenant.operational_mode === "internal" && tenant.lifecycle_status === "active" && Boolean(tenant.selfIssuerAuthority) ? <div className="mt-3 rounded-xl border border-slate-200 p-3">
+            {tenant.lifecycle_status === "active" && Boolean(tenant.selfIssuerAuthority)
+              && (tenant.operational_mode === "internal" || tenant.selfIssuerAuthority.evidenceExists) ? <div className="mt-3 rounded-xl border border-slate-200 p-3">
               <div className="text-sm font-black">Emisor propio</div>
               <div className="mt-1 text-xs text-slate-600">
                 Estado: {tenant.selfIssuerAuthority.status}. RUT coincidente: {tenant.selfIssuerAuthority.rutMatches ? "sí" : "no"}. Esta evidencia no activa emisión, CAF ni folios.
@@ -102,9 +104,11 @@ export default function PlatformTenantModesPage() {
               <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto]">
                 <input className="rounded-xl border px-3 py-2 text-sm" placeholder="Referencia administrativa verificable"
                   value={administrativeReference[tenant.id] ?? ""} onChange={(event) => setAdministrativeReference((current) => ({ ...current, [tenant.id]: event.target.value }))} />
-                {tenant.selfIssuerAuthority.valid
+                {tenant.selfIssuerAuthority.evidenceExists && !tenant.selfIssuerAuthority.revoked
                   ? <Button variant="destructive" onClick={() => void updateSelfIssuer(tenant, "revokeSelfIssuer")}>Revocar emisor propio</Button>
-                  : <Button onClick={() => void updateSelfIssuer(tenant, "registerSelfIssuer")}>Registrar emisor propio</Button>}
+                  : tenant.operational_mode === "internal"
+                    ? <Button onClick={() => void updateSelfIssuer(tenant, "registerSelfIssuer")}>Registrar emisor propio</Button>
+                    : null}
               </div>
             </div> : null}
           </AdminSectionCard>
