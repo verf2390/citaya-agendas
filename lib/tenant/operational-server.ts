@@ -84,6 +84,14 @@ export async function assertTenantCanConfirmTransfer(tenantId: string) {
   );
 }
 
+export async function assertTenantCanVerifyProviderPayment(tenantId: string) {
+  return requireCapability(
+    await loadTenantOperationalContext(tenantId),
+    "acceptPaymentWebhook",
+    "TENANT_MODE_PROVIDER_PAYMENT_VERIFICATION_BLOCKED",
+  );
+}
+
 export async function assertTenantCanEnqueueDte(
   tenantId: string,
   options?: { dteType?: number; issuanceOrigin?: string },

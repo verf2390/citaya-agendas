@@ -64,6 +64,7 @@ type AppointmentPayment = {
   payment_reference: string | null;
   payment_url: string | null;
   manage_token: string | null;
+  hasConfirmableMercadoPagoIntent: boolean;
 };
 
 function formatCLP(value: number | null | undefined) {
@@ -120,6 +121,13 @@ function isPendingPayment(row: AppointmentPayment) {
   );
 }
 
+function isPendingMercadoPagoPayment(row: AppointmentPayment) {
+  return (
+    row.hasConfirmableMercadoPagoIntent === true &&
+    normalizedStatus(row.payment_status) !== "paid"
+  );
+}
+
 export default function AdminPagosPage() {
   const router = useRouter();
   const [tenantId, setTenantId] = useState("");
@@ -130,6 +138,8 @@ export default function AdminPagosPage() {
   const [rows, setRows] = useState<AppointmentPayment[]>([]);
   const [filter, setFilter] = useState<PaymentFilter>("all");
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [verifyingMercadoPagoId, setVerifyingMercadoPagoId] =
+    useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [resendMessage, setResendMessage] = useState<{
     type: "success" | "placeholder" | "error";
@@ -565,6 +575,57 @@ export default function AdminPagosPage() {
       await loadRows();
     } finally {
       setMarkingId(null);
+    }
+  };
+
+  const verifyMercadoPagoPayment = async (appointmentId: string) => {
+    const paymentId = window.prompt(
+      "Ingresa el ID real del pago de Mercado Pago.",
+    )?.trim();
+    if (!paymentId) return;
+    if (!/^\d{1,32}$/.test(paymentId)) {
+      toast({
+        title: "ID de pago inválido",
+        description: "Usa el identificador numérico del Payment de Mercado Pago.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!window.confirm("Citaya consultará Mercado Pago antes de confirmar el pago.")) {
+      return;
+    }
+
+    setVerifyingMercadoPagoId(appointmentId);
+    try {
+      const res = await adminFetch("/api/admin/payments/mercadopago/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointmentId, paymentId }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        toast({
+          title: "No se pudo verificar el pago",
+          description: json?.error ?? "Revisa el ID e intenta nuevamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: json.replay
+          ? "El pago ya estaba confirmado"
+          : "Pago verificado en Mercado Pago",
+      });
+      refreshAppointmentDocumentContext(appointmentId);
+      await loadRows();
+    } catch {
+      toast({
+        title: "No se pudo verificar el pago",
+        description: "No fue posible consultar Mercado Pago. Intenta nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setVerifyingMercadoPagoId(null);
     }
   };
 
@@ -1159,14 +1220,33 @@ export default function AdminPagosPage() {
                     </div>
                     <PaymentDocumentCell appointmentId={row.id} />
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={markingId === row.id || normalizedStatus(row.payment_status) === "paid"}
-                        onClick={() => void markAsPaid(row.id)}
-                        className="rounded-xl border bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {markingId === row.id ? "Confirmando..." : "Confirmar transferencia recibida"}
-                      </button>
+                      {normalizedStatus(row.payment_provider) === "manual" && isPendingPayment(row) ? (
+                        <button
+                          type="button"
+                          disabled={markingId === row.id}
+                          onClick={() => void markAsPaid(row.id)}
+                          className="rounded-xl border bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {markingId === row.id ? "Confirmando..." : "Confirmar transferencia recibida"}
+                        </button>
+                      ) : null}
+                      {isPendingMercadoPagoPayment(row) ? (
+                        <div className="max-w-52">
+                          <button
+                            type="button"
+                            disabled={verifyingMercadoPagoId === row.id}
+                            onClick={() => void verifyMercadoPagoPayment(row.id)}
+                            className="rounded-xl border border-sky-700 bg-sky-700 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {verifyingMercadoPagoId === row.id
+                              ? "Verificando en Mercado Pago..."
+                              : "Verificar pago en Mercado Pago"}
+                          </button>
+                          <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                            Citaya consultará Mercado Pago antes de confirmar el pago.
+                          </p>
+                        </div>
+                      ) : null}
                       <button
                         type="button"
                         disabled={!row.payment_url}

@@ -164,6 +164,7 @@ test("[structural] central guards cover external effects, platform classificatio
   const requiredSources = new Map([
     ["app/api/payments/create/route.ts", /assertTenantCanCreatePayment/],
     ["app/api/admin/appointments/mark-paid/route.ts", /assertTenantCanConfirmTransfer/],
+    ["app/api/admin/payments/mercadopago/confirm/route.ts", /assertTenantCanVerifyProviderPayment/],
     ["app/api/webhooks/mercadopago/route.ts", /acceptPaymentWebhook/],
     ["app/api/webhooks/khipu/route.ts", /acceptPaymentWebhook/],
     ["app/api/payments/webpay/return/route.ts", /acceptPaymentWebhook/],

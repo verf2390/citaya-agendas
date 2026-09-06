@@ -23,7 +23,7 @@ require.extensions[".ts"] = (module, filename) => {
   module._compile(output.outputText, filename);
 };
 
-const state = { user: { id: "user-a" }, tenant: { id: "11111111-1111-4111-8111-111111111111", slug: "tenant-a" }, member: null, platform: null, errors: {} };
+const state = { user: { id: "user-a" }, tenant: { id: "11111111-1111-4111-8111-111111111111", slug: "tenant-a", lifecycle_status: "active", operational_mode: "live" }, member: null, platform: null, errors: {} };
 const query = (table) => {
   const filters = {};
   const builder = {
@@ -48,7 +48,7 @@ require.cache[supabasePath] = { id: supabasePath, filename: supabasePath, loaded
 const { requireTenantAdmin, requireHostTenantAdmin } = require(resolve(repoRoot, "lib/api/requireTenantAdmin.ts"));
 const tenantId = state.tenant.id;
 const req = (token = "valid", slug = "tenant-a") => new Request("https://admin.example/api", { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), host: "admin.example", ...(slug ? { "x-forwarded-host": `${slug}.citaya.online` } : {}) } });
-const reset = () => { state.user = { id: "user-a" }; state.tenant = { id: tenantId, slug: "tenant-a" }; state.member = null; state.platform = null; state.errors = {}; };
+const reset = () => { state.user = { id: "user-a" }; state.tenant = { id: tenantId, slug: "tenant-a", lifecycle_status: "active", operational_mode: "live" }; state.member = null; state.platform = null; state.errors = {}; };
 
 test.beforeEach(reset);
 test("hostname deriva tenant correcto", async () => { state.member = { role: "owner", is_active: true }; const result = await requireHostTenantAdmin(req()); assert.equal(result.ok, true); assert.equal(result.tenantId, tenantId); });
@@ -62,7 +62,7 @@ test("platform admin inactivo rechaza", async () => { state.platform = { role: "
 for (const role of ["owner", "admin"]) test(`tenant member ${role} activo autoriza`, async () => { state.member = { role, is_active: true }; assert.equal((await requireTenantAdmin({ req: req(), tenantId })).authMode, "tenant_members"); });
 test("member e inactivo rechazan", async () => { state.member = { role: "member", is_active: true }; assert.equal((await requireTenantAdmin({ req: req(), tenantId })).status, 403); state.member = { role: "owner", is_active: false }; assert.equal((await requireTenantAdmin({ req: req(), tenantId })).status, 403); });
 test("UUID ajeno queda filtrado por tenant antes de mutar", () => {
-  for (const file of ["app/api/appointments/cancel-by-id/route.ts", "app/api/appointments/reschedule-by-id/route.ts", "app/api/admin/appointments/mark-paid/route.ts"]) {
+  for (const file of ["app/api/appointments/cancel-by-id/route.ts", "app/api/appointments/reschedule-by-id/route.ts", "app/api/admin/appointments/mark-paid/route.ts", "app/api/admin/payments/mercadopago/confirm/route.ts"]) {
     const source = readFileSync(resolve(repoRoot, file), "utf8");
     assert.match(source, /require(?:Host)?TenantAdmin/);
     assert.match(source, /(?:\.eq\("tenant_id",|p_tenant_id: access\.tenantId)/);

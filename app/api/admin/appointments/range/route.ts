@@ -26,6 +26,8 @@ const NO_STORE_HEADERS = {
   Expires: "0",
 } as const;
 
+const PAYMENT_INTENT_APPOINTMENT_CHUNK_SIZE = 100;
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -105,7 +107,7 @@ export async function GET(req: Request) {
         payment_url
       `,
       )
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", access.tenantId)
       .order("start_at", { ascending: true })
       .limit(2000);
 
@@ -131,10 +133,53 @@ export async function GET(req: Request) {
       );
     }
 
+    const appointments = data ?? [];
+    const appointmentIds = appointments.map((appointment) => appointment.id);
+    const confirmableMercadoPagoAppointmentIds = new Set<string>();
+    for (
+      let offset = 0;
+      offset < appointmentIds.length;
+      offset += PAYMENT_INTENT_APPOINTMENT_CHUNK_SIZE
+    ) {
+      const appointmentIdChunk = appointmentIds.slice(
+        offset,
+        offset + PAYMENT_INTENT_APPOINTMENT_CHUNK_SIZE,
+      );
+      const { data: confirmableIntents, error: confirmableIntentsError } =
+        await supabaseAdmin
+          .from("payment_intents")
+          .select("appointment_id")
+          .eq("tenant_id", access.tenantId)
+          .in("appointment_id", appointmentIdChunk)
+          .eq("provider", "mercadopago")
+          .in("status", ["pending", "processing"]);
+
+      if (confirmableIntentsError) {
+        console.error("[admin/appointments/range] payment intent lookup failed", {
+          code: confirmableIntentsError.code ?? null,
+        });
+        return NextResponse.json(
+          { error: "No se pudo revisar el estado de los pagos" },
+          { status: 500, headers: NO_STORE_HEADERS },
+        );
+      }
+
+      for (const intent of confirmableIntents ?? []) {
+        confirmableMercadoPagoAppointmentIds.add(intent.appointment_id);
+      }
+    }
+
+    const items = appointments.map((appointment) => ({
+      ...appointment,
+      hasConfirmableMercadoPagoIntent:
+        String(appointment.payment_status ?? "").toLowerCase() !== "paid" &&
+        confirmableMercadoPagoAppointmentIds.has(appointment.id),
+    }));
+
     return NextResponse.json(
       {
-        count: data?.length ?? 0,
-        items: data ?? [],
+        count: items.length,
+        items,
       },
       { headers: NO_STORE_HEADERS },
     );

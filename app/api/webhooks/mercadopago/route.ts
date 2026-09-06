@@ -5,7 +5,10 @@ import { fetchMercadoPagoPayment } from "@/services/payments/mercadopago";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { enqueueAutomaticDteBestEffort } from "@/services/payments/automatic-dte";
 import { notifyPaymentConfirmed } from "@/services/automations/notify-payment-confirmed";
-import { safePaymentAuditMetadata } from "@/lib/security/payment-verification.mjs";
+import {
+  safePaymentAuditMetadata,
+  verifyMercadoPagoPayment,
+} from "@/lib/security/payment-verification.mjs";
 import {
   loadTenantOperationalContext,
   recordTenantOperationalRejection,
@@ -49,11 +52,8 @@ export async function POST(req: Request) {
       accessToken: config.accessToken,
       paymentId,
     });
-    const amountMatches = Math.abs(Number(payment.transaction_amount) - Number(intent.amount)) < 0.0001;
-    const currencyMatches = String(payment.currency_id ?? "").toUpperCase() === String(intent.currency).toUpperCase();
-    const referenceMatches = String(payment.external_reference ?? "") === intent.id;
-    const approved = String(payment.status ?? "").toLowerCase() === "approved";
-    if (!amountMatches && currencyMatches && referenceMatches && approved) {
+    const verification = verifyMercadoPagoPayment(intent, payment, paymentId);
+    if (verification.reason === "amount_mismatch") {
       await supabaseAdmin.rpc("billing_record_unapplied_provider_payment", {
         p_intent_id: intent.id,
         p_provider: "mercadopago",
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       });
       return reject(409);
     }
-    if (!amountMatches || !currencyMatches || !referenceMatches || !approved) {
+    if (!verification.ok) {
       console.warn("[webhooks/mercadopago] verification rejected", { paymentIntentId: intent.id });
       return reject(409);
     }
