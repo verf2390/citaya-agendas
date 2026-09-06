@@ -53,9 +53,13 @@ test("mixed sale sums line requirements and snapshots do not depend on catalog m
 test("webhook audit allowlist excludes full payload and secrets", () => {
   const safe = safePaymentAuditMetadata("mercadopago", {
     id: "123", status: "approved", date_approved: "2026-08-02T00:00:00Z",
+    transaction_amount: 15000, currency_id: "CLP", external_reference: "intent-id",
     card_number: "4111111111111111", cvv: "999", payer: { email: "person@example.invalid" },
   });
-  assert.deepEqual(Object.keys(safe).sort(), ["date_approved", "payment_id", "status"]);
+  assert.deepEqual(Object.keys(safe).sort(), [
+    "currency_id", "date_approved", "external_reference", "payment_id",
+    "status", "transaction_amount",
+  ]);
   assert.doesNotMatch(JSON.stringify(safe), /4111|999|example\.invalid/);
 });
 
