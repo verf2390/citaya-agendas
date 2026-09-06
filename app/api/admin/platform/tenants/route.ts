@@ -1,11 +1,60 @@
 import { NextResponse } from "next/server";
 
 import { requirePlatformAdmin } from "@/lib/api/requireTenantAdmin";
+import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 function error(status: number, message: string) {
   return NextResponse.json({ ok: false, error: message }, { status });
+}
+
+type ProvisioningError = {
+  status: number;
+  message: string;
+};
+
+const PROVISIONING_ERRORS: Record<string, ProvisioningError> = {
+  TENANT_SLUG_INVALID: { status: 400, message: "Slug inválido" },
+  TENANT_SLUG_RESERVED: { status: 400, message: "Slug reservado" },
+  TENANT_NAME_REQUIRED: { status: 400, message: "Nombre requerido" },
+  PROVISIONING_REQUEST_ID_REQUIRED: {
+    status: 400,
+    message: "requestId requerido",
+  },
+  PROVISIONING_OWNER_REQUIRED: {
+    status: 400,
+    message: "ownerUserId requerido",
+  },
+  PLATFORM_SUPER_ADMIN_REQUIRED: {
+    status: 403,
+    message: "Platform super admin requerido",
+  },
+  OWNER_USER_NOT_FOUND: { status: 404, message: "Owner no encontrado" },
+  OWNER_EMAIL_REQUIRED: {
+    status: 409,
+    message: "El owner no tiene email",
+  },
+  TENANT_SLUG_ALREADY_EXISTS: {
+    status: 409,
+    message: "El slug ya está registrado",
+  },
+  PROVISIONING_REQUEST_PAYLOAD_MISMATCH: {
+    status: 409,
+    message: "El requestId ya fue usado con otros datos",
+  },
+};
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function provisioningError(message: unknown): ProvisioningError | null {
+  if (typeof message !== "string") return null;
+  for (const [code, mapped] of Object.entries(PROVISIONING_ERRORS)) {
+    if (message.includes(code)) return mapped;
+  }
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -34,6 +83,83 @@ export async function GET(req: Request) {
     .select("id,tenant_id,previous_mode,new_mode,actor_user_id,reason,readiness_snapshot,changed_at")
     .order("changed_at", { ascending: false }).limit(100);
   return NextResponse.json({ ok: true, tenants: rows, audit: audit ?? [] });
+}
+
+export async function POST(req: Request) {
+  const auth = await requirePlatformAdmin(req);
+  if (!auth.ok) return error(auth.status, auth.error);
+
+  const body: unknown = await req.json().catch(() => null);
+  if (!isJsonObject(body)) return error(400, "Solicitud inválida");
+
+  const requestId = typeof body.requestId === "string"
+    ? body.requestId.trim()
+    : "";
+  const ownerUserId = typeof body.ownerUserId === "string"
+    ? body.ownerUserId.trim()
+    : "";
+  const slug = typeof body.slug === "string" ? body.slug.trim() : "";
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!isUuid(requestId) || !isUuid(ownerUserId) || !slug || !name) {
+    return error(400, "Solicitud inválida");
+  }
+
+  const optionalFields = [
+    "contactEmail",
+    "phoneDisplay",
+    "whatsapp",
+    "address",
+    "city",
+  ] as const;
+  if (optionalFields.some((field) =>
+    body[field] !== undefined &&
+    body[field] !== null &&
+    typeof body[field] !== "string"
+  )) {
+    return error(400, "Solicitud inválida");
+  }
+  const optional = (field: typeof optionalFields[number]) =>
+    typeof body[field] === "string" ? body[field].trim() : null;
+
+  const result = await supabaseAdmin.rpc("provision_tenant", {
+    p_request_id: requestId,
+    p_actor_user_id: auth.userId,
+    p_owner_user_id: ownerUserId,
+    p_slug: slug,
+    p_name: name,
+    p_contact_email: optional("contactEmail"),
+    p_phone_display: optional("phoneDisplay"),
+    p_whatsapp: optional("whatsapp"),
+    p_address: optional("address"),
+    p_city: optional("city"),
+  });
+
+  if (result.error) {
+    const mapped = provisioningError(result.error.message);
+    return mapped
+      ? error(mapped.status, mapped.message)
+      : error(503, "No se pudo crear el tenant");
+  }
+
+  const data: unknown = result.data;
+  if (
+    !isJsonObject(data) ||
+    typeof data.tenantId !== "string" ||
+    !isUuid(data.tenantId) ||
+    typeof data.requestId !== "string" ||
+    !isUuid(data.requestId) ||
+    data.requestId.toLowerCase() !== requestId.toLowerCase() ||
+    typeof data.created !== "boolean"
+  ) {
+    return error(503, "No se pudo crear el tenant");
+  }
+
+  return NextResponse.json({
+    ok: true,
+    tenantId: data.tenantId,
+    requestId: data.requestId,
+    created: data.created,
+  }, { status: data.created ? 201 : 200 });
 }
 
 export async function PATCH(req: Request) {
