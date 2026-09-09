@@ -32,10 +32,10 @@ begin
       'CIT67_LEGAL_PENDING_FIX_PREFLIGHT_FAILED: canonical sensitive review constraint is not validated';
   end if;
 
-  if pg_catalog.position('sensitive_data_review_status' in shape_definition) = 0
-     or pg_catalog.position('pending' in shape_definition) = 0
-     or pg_catalog.position('confirmed_no' in shape_definition) = 0
-     or pg_catalog.position('confirmed_yes' in shape_definition) = 0 then
+  if pg_catalog.strpos(shape_definition, 'sensitive_data_review_status') = 0
+     or pg_catalog.strpos(shape_definition, 'pending') = 0
+     or pg_catalog.strpos(shape_definition, 'confirmed_no') = 0
+     or pg_catalog.strpos(shape_definition, 'confirmed_yes') = 0 then
     raise exception
       'CIT67_LEGAL_PENDING_FIX_PREFLIGHT_FAILED: canonical sensitive review constraint has unexpected definition: %',
       shape_definition;
@@ -50,9 +50,9 @@ begin
 
   if legacy_definition is not null
      and (
-       pg_catalog.position('handles_sensitive_data' in legacy_definition) = 0
-       or pg_catalog.position('sensitive_data_purpose' in legacy_definition) = 0
-       or pg_catalog.position('sensitive_data_review_status' in legacy_definition) > 0
+       pg_catalog.strpos(legacy_definition, 'handles_sensitive_data') = 0
+       or pg_catalog.strpos(legacy_definition, 'sensitive_data_purpose') = 0
+       or pg_catalog.strpos(legacy_definition, 'sensitive_data_review_status') > 0
      ) then
     raise exception
       'CIT67_LEGAL_PENDING_FIX_PREFLIGHT_FAILED: legacy constraint has unexpected definition: %',
