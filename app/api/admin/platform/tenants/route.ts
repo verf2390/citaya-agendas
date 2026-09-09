@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/api/requireTenantAdmin";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { resolveTenantOperationalCapabilities } from "@/lib/tenant/operational-mode.mjs";
 
 function error(status: number, message: string) {
   return NextResponse.json({ ok: false, error: message }, { status });
@@ -64,21 +63,48 @@ export async function GET(req: Request) {
     .select("id,name,slug,lifecycle_status,operational_mode,operational_mode_changed_at,operational_mode_changed_by,operational_mode_change_reason")
     .order("created_at", { ascending: true });
   if (tenantError) return error(503, "No se pudo cargar la clasificación");
+
   const rows = await Promise.all((tenants ?? []).map(async (tenant) => {
-    const [{ data: readiness }, { data: selfIssuerAuthority }] = await Promise.all([
+    const [
+      readiness,
+      selfIssuerAuthority,
+      capabilities,
+      featureProfile,
+      taxDocument,
+    ] = await Promise.all([
       supabaseAdmin.rpc("tenant_live_readiness_report", { p_tenant_id: tenant.id }),
       supabaseAdmin.rpc("tenant_self_issuer_authority_report", { p_tenant_id: tenant.id }),
+      supabaseAdmin.rpc("resolve_tenant_operational_capabilities", { p_tenant_id: tenant.id }),
+      supabaseAdmin
+        .from("tenant_operational_features")
+        .select("tenant_id,appointments_enabled,appointment_communications_enabled,external_communications_enabled,campaigns_enabled,payments_enabled,dte_enabled,tax_document_mode,tax_mode_verified_at,tax_mode_evidence_reference,updated_at,updated_by")
+        .eq("tenant_id", tenant.id)
+        .maybeSingle(),
+      supabaseAdmin.rpc("tenant_tax_document_readiness", { p_tenant_id: tenant.id }),
     ]);
+
+    if (
+      readiness.error ||
+      selfIssuerAuthority.error ||
+      capabilities.error ||
+      featureProfile.error ||
+      taxDocument.error
+    ) {
+      throw new Error(`TENANT_PLATFORM_CONTEXT_UNAVAILABLE:${tenant.id}`);
+    }
+
     return {
       ...tenant,
-      capabilities: resolveTenantOperationalCapabilities({
-        lifecycleStatus: tenant.lifecycle_status,
-        operationalMode: tenant.operational_mode,
-      }),
-      liveReadiness: readiness ?? { ready: false },
-      selfIssuerAuthority: selfIssuerAuthority ?? { status: "none", valid: false },
+      capabilities: capabilities.data ?? { exists: false, allowed: false },
+      featureProfile: featureProfile.data ?? null,
+      liveReadiness: readiness.data ?? { ready: false },
+      taxDocumentReadiness: taxDocument.data ?? { ready: false, mode: "unconfigured" },
+      selfIssuerAuthority: selfIssuerAuthority.data ?? { status: "none", valid: false },
     };
-  }));
+  })).catch(() => null);
+
+  if (!rows) return error(503, "No se pudo cargar el contexto operativo");
+
   const { data: audit } = await supabaseAdmin.from("tenant_operational_mode_audit")
     .select("id,tenant_id,previous_mode,new_mode,actor_user_id,reason,readiness_snapshot,changed_at")
     .order("changed_at", { ascending: false }).limit(100);
