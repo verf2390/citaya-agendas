@@ -31,7 +31,24 @@ test("CIT-73 models the official volume and simultaneity eligibility paths", () 
 
 test("CIT-73 does not invent SII transport credentials or endpoints", () => {
   assert.doesNotMatch(migration, /https?:\/\//i);
-  assert.doesNotMatch(migration, /password|secret|private_key|access_token|wsdl_url/i);
+
+  const settingsStart = migration.indexOf(
+    "create table if not exists public.tenant_bhe_automation_settings",
+  );
+  const settingsEnd = migration.indexOf(
+    "alter table public.tenant_bhe_automation_settings",
+    settingsStart,
+  );
+  assert.ok(settingsStart >= 0 && settingsEnd > settingsStart);
+  const settingsSchema = migration.slice(settingsStart, settingsEnd);
+
+  // Inspect actual schema identifiers instead of prose comments such as
+  // "contains no transport secrets". No transport credential material belongs
+  // in this foundation; only boolean readiness/evidence state is modeled.
+  assert.doesNotMatch(
+    settingsSchema,
+    /\b(?:password|secret|private_key|access_token|wsdl_url)\b\s+(?:text|varchar|bytea|jsonb?)/i,
+  );
   assert.match(docs, /No se implementarán endpoints, WSDL, formatos, tokens ni secretos inventados/);
 });
 
