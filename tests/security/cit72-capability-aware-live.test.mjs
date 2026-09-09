@@ -18,6 +18,18 @@ const platformApi = readFileSync(
   "app/api/admin/platform/tenant-features/route.ts",
   "utf8",
 );
+const platformTenantsApi = readFileSync(
+  "app/api/admin/platform/tenants/route.ts",
+  "utf8",
+);
+const platformPage = readFileSync(
+  "app/admin/plataforma/tenants/page.tsx",
+  "utf8",
+);
+const transitionPreflight = readFileSync(
+  "scripts/cit72/live-transition-preflight.sql",
+  "utf8",
+);
 
 test("CIT-72 stores an explicit fail-closed per-tenant feature profile", () => {
   assert.match(migration, /create table if not exists public\.tenant_operational_features/);
@@ -102,6 +114,13 @@ test("privileged server gates use the authoritative DB capability resolver", () 
   assert.match(operationalServer, /assertTenantCanEnqueueDte/);
 });
 
+test("platform tenant inventory also uses authoritative DB capabilities", () => {
+  assert.match(platformTenantsApi, /rpc\("resolve_tenant_operational_capabilities"/);
+  assert.match(platformTenantsApi, /from\("tenant_operational_features"\)/);
+  assert.match(platformTenantsApi, /rpc\("tenant_tax_document_readiness"/);
+  assert.doesNotMatch(platformTenantsApi, /resolveTenantOperationalCapabilities/);
+});
+
 test("feature changes have a platform-only audited API and canonical RPC", () => {
   assert.match(platformApi, /requirePlatformAdmin/);
   assert.match(platformApi, /set_tenant_operational_features/);
@@ -109,4 +128,30 @@ test("feature changes have a platform-only audited API and canonical RPC", () =>
   assert.match(migration, /tenant_operational_features_audit/);
   assert.match(migration, /LIVE_TENANT_FEATURE_CHANGE_NOT_READY/);
   assert.match(migration, /public\.is_platform_admin\(p_actor_id\)/);
+});
+
+test("platform UI makes live and feature activation visibly independent", () => {
+  assert.match(platformPage, /Live significa operación real/);
+  assert.match(platformPage, /Capacidades productivas/);
+  assert.match(platformPage, /Agenda real/);
+  assert.match(platformPage, /Campañas/);
+  assert.match(platformPage, /Pagos Citaya/);
+  assert.match(platformPage, /DTE Citaya/);
+  assert.match(platformPage, /BHE externa\/manual/);
+  assert.match(platformPage, /\/api\/admin\/platform\/tenant-features/);
+  assert.doesNotMatch(
+    platformPage,
+    /identidad, documentos legales, privacidad, servicios, pagos y tributación fueron revisados/,
+  );
+});
+
+test("deployment preflight is read-only and blocks legacy live tenants that are not ready", () => {
+  assert.match(transitionPreflight, /CIT72_LIVE_TRANSITION_BLOCKED/);
+  assert.match(transitionPreflight, /tenant_live_readiness_report/);
+  assert.match(transitionPreflight, /operational_mode='live'/);
+  assert.match(transitionPreflight, /CIT72_LIVE_TRANSITION_PREFLIGHT_OK/);
+  assert.doesNotMatch(
+    transitionPreflight,
+    /\b(?:insert|update|delete|alter|create|drop|truncate)\b/i,
+  );
 });
