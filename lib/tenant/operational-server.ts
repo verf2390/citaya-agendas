@@ -7,6 +7,11 @@ import type {
   TenantOperationalMode,
 } from "@/lib/tenant/operational-types";
 
+export type TenantTaxDocumentMode =
+  | "unconfigured"
+  | "citaya_dte"
+  | "external_bhe";
+
 export class TenantOperationalError extends Error {
   constructor(public readonly code: string) {
     super(code);
@@ -19,6 +24,7 @@ export type TenantOperationalContext = {
   tenantSlug: string;
   lifecycleStatus: TenantOperationalCapabilities["lifecycleStatus"];
   operationalMode: TenantOperationalMode;
+  taxDocumentMode: TenantTaxDocumentMode;
   capabilities: TenantOperationalCapabilities;
 };
 
@@ -33,18 +39,34 @@ function isCapabilities(value: unknown): value is TenantOperationalCapabilities 
     && typeof row.enqueueDte === "boolean";
 }
 
+function isTaxDocumentMode(value: unknown): value is TenantTaxDocumentMode {
+  return value === "unconfigured" || value === "citaya_dte" || value === "external_bhe";
+}
+
 export async function loadTenantOperationalContext(tenantId: string): Promise<TenantOperationalContext> {
-  const [tenantResult, capabilityResult] = await Promise.all([
+  const [tenantResult, capabilityResult, featureResult] = await Promise.all([
     supabaseAdmin.from("tenants")
       .select("id,slug,lifecycle_status,operational_mode")
       .eq("id", tenantId).maybeSingle(),
     supabaseAdmin.rpc("resolve_tenant_operational_capabilities", {
       p_tenant_id: tenantId,
     }),
+    supabaseAdmin.from("tenant_operational_features")
+      .select("tax_document_mode")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
   ]);
 
   const data = tenantResult.data;
-  if (tenantResult.error || !data?.id || capabilityResult.error || !isCapabilities(capabilityResult.data)) {
+  const taxDocumentMode = featureResult.data?.tax_document_mode;
+  if (
+    tenantResult.error ||
+    !data?.id ||
+    capabilityResult.error ||
+    !isCapabilities(capabilityResult.data) ||
+    featureResult.error ||
+    !isTaxDocumentMode(taxDocumentMode)
+  ) {
     throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
   }
 
@@ -54,6 +76,7 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
     tenantSlug: String(data.slug ?? "").trim().toLowerCase(),
     lifecycleStatus: capabilities.lifecycleStatus,
     operationalMode: capabilities.operationalMode,
+    taxDocumentMode,
     capabilities,
   };
 }
