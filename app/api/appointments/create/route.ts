@@ -17,9 +17,9 @@ import {
 import { normalizeRut } from "@/lib/dte/rut";
 import {
   type CustomerTaxProfileInput,
-  resolveBookingTaxDocumentType,
   validateBookingTaxInput,
 } from "@/lib/dte/cutover";
+import { resolveBookingCommercialPolicy } from "@/lib/tenant/booking-commercial-policy.mjs";
 import { validatePublicLegalConsent } from "@/lib/legal/consent.mjs";
 import {
   getPublicLegalBundleByTenantId,
@@ -174,12 +174,29 @@ export async function POST(req: Request) {
         legalConsent = validation.value;
       }
     }
-    const requestedDocumentType = resolveBookingTaxDocumentType({
-      isAdminRequest,
-      isDemoAppointment,
-      taxDocumentType: input.taxDocumentType,
-      invoiceRequested: input.invoiceRequested,
-    });
+    const initialCommercialPolicy = (() => {
+      try {
+        return resolveBookingCommercialPolicy({
+          isAdminRequest,
+          isDemoAppointment,
+          paymentsEnabled: operational.paymentsEnabled,
+          dteEnabled: operational.dteEnabled,
+          taxDocumentMode: operational.taxDocumentMode,
+          taxDocumentType: input.taxDocumentType,
+          invoiceRequested: input.invoiceRequested,
+          servicePaymentPolicy: "no_advance",
+        });
+      } catch {
+        return null;
+      }
+    })();
+    if (!initialCommercialPolicy) {
+      return publicError(
+        409,
+        "La configuración tributaria del prestador no permite esta reserva.",
+      );
+    }
+    const requestedDocumentType = initialCommercialPolicy.requestedDocumentType;
     let adminInvoiceTaxProfile: CustomerTaxProfileInput | null = null;
     if (!isDemoAppointment && isAdminRequest && requestedDocumentType === 33) {
       if (!input.customerId) return incompleteAdminInvoiceProfileError();
@@ -339,24 +356,53 @@ export async function POST(req: Request) {
           .select("id, tenant_id, active")
           .eq("id", input.professionalId).eq("tenant_id", input.tenantId)
           .eq("active", true).maybeSingle(),
-        isDemoAppointment
-          ? Promise.resolve({ data: null })
-          : supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment,deposit_tax_document_policy_status").eq("tenant_id", input.tenantId).maybeSingle(),
+        initialCommercialPolicy.loadDteIssuanceConfig
+          ? supabaseAdmin.from("dte_tenant_issuance_settings").select("tax_treatment,deposit_tax_document_policy_status").eq("tenant_id", input.tenantId).maybeSingle()
+          : Promise.resolve({ data: null }),
       ]);
     const duration = Number(service?.duration_min);
     const price = Number(service?.price);
     if (
       serviceError || professionalError || !service || !professional ||
       !Number.isInteger(duration) || duration < 5 || duration > 480 ||
-      !Number.isSafeInteger(price) || price < 0 ||
-      (!isDemoAppointment && (
-        service.payment_configuration_complete !== true ||
-        service.tax_description_review_status !== "approved"
-      ))
+      !Number.isSafeInteger(price) || price < 0
     ) {
       return publicError(409);
     }
-    if (!isDemoAppointment && service.payment_policy === "deposit" && (
+
+    const commercialPolicy = (() => {
+      try {
+        return resolveBookingCommercialPolicy({
+          isAdminRequest,
+          isDemoAppointment,
+          paymentsEnabled: operational.paymentsEnabled,
+          dteEnabled: operational.dteEnabled,
+          taxDocumentMode: operational.taxDocumentMode,
+          taxDocumentType: input.taxDocumentType,
+          invoiceRequested: input.invoiceRequested,
+          servicePaymentPolicy: service.payment_policy,
+        });
+      } catch {
+        return null;
+      }
+    })();
+    if (!commercialPolicy) {
+      return publicError(
+        409,
+        "La configuración tributaria del prestador no permite esta reserva.",
+      );
+    }
+
+    if (
+      (commercialPolicy.requirePaymentConfiguration &&
+        service.payment_configuration_complete !== true) ||
+      (commercialPolicy.requireDteServiceConfiguration &&
+        service.tax_description_review_status !== "approved")
+    ) {
+      return publicError(409);
+    }
+
+    if (commercialPolicy.requireDepositTaxPolicy && (
       service.deposit_tax_document_policy_status !== "enabled" ||
       issuanceConfig?.deposit_tax_document_policy_status !== "enabled"
     )) {
@@ -381,7 +427,7 @@ export async function POST(req: Request) {
       }, { onConflict: "tenant_id,customer_id" });
       if (taxProfileError) return publicError(409, "Perfil tributario duplicado o inválido");
     }
-    const paymentRequired = !isDemoAppointment && service.payment_policy !== "no_advance";
+    const paymentRequired = commercialPolicy.paymentRequired;
     const manageToken = deriveManageToken(input.tenantId, key, pepper);
     const rpcName = isAdminRequest
       ? "create_admin_appointment"
@@ -399,7 +445,7 @@ export async function POST(req: Request) {
       p_customer_email: input.customerEmail ?? "",
       p_notes: input.notes ?? "",
       p_payment_required: paymentRequired,
-      p_payment_status: isDemoAppointment
+      p_payment_status: isDemoAppointment || !operational.paymentsEnabled
         ? "not_required"
         : isAdminRequest
           ? input.paymentStatus ?? "not_required"
@@ -421,7 +467,7 @@ export async function POST(req: Request) {
     }
     const row = Array.isArray(data) ? data[0] : data;
     if (!row?.appointment_id) return publicError(500);
-    if (!isDemoAppointment) {
+    if (commercialPolicy.persistDteSnapshot) {
       const taxTreatmentSnapshot = service.tax_treatment ??
         (["affected", "exempt"].includes(String(issuanceConfig?.tax_treatment)) ? issuanceConfig?.tax_treatment : null);
       const invoiceReceiver = bookingTax.taxProfile;

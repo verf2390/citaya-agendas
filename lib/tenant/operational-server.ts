@@ -25,6 +25,8 @@ export type TenantOperationalContext = {
   lifecycleStatus: TenantOperationalCapabilities["lifecycleStatus"];
   operationalMode: TenantOperationalMode;
   taxDocumentMode: TenantTaxDocumentMode;
+  paymentsEnabled: boolean;
+  dteEnabled: boolean;
   capabilities: TenantOperationalCapabilities;
 };
 
@@ -52,7 +54,7 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
       p_tenant_id: tenantId,
     }),
     supabaseAdmin.from("tenant_operational_features")
-      .select("tax_document_mode")
+      .select("tax_document_mode,payments_enabled,dte_enabled")
       .eq("tenant_id", tenantId)
       .maybeSingle(),
   ]);
@@ -65,7 +67,9 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
     capabilityResult.error ||
     !isCapabilities(capabilityResult.data) ||
     featureResult.error ||
-    !isTaxDocumentMode(taxDocumentMode)
+    !isTaxDocumentMode(taxDocumentMode) ||
+    typeof featureResult.data?.payments_enabled !== "boolean" ||
+    typeof featureResult.data?.dte_enabled !== "boolean"
   ) {
     throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
   }
@@ -77,6 +81,8 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
     lifecycleStatus: capabilities.lifecycleStatus,
     operationalMode: capabilities.operationalMode,
     taxDocumentMode,
+    paymentsEnabled: featureResult.data.payments_enabled,
+    dteEnabled: featureResult.data.dte_enabled,
     capabilities,
   };
 }
