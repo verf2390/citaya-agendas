@@ -235,6 +235,14 @@ export const privilegedRouteInventory = Object.freeze([
     rationale: "Resolved tenant membership is checked and appointment id is queried with tenant_id.",
   },
   {
+    route: "app/api/admin/platform/tenant-features/route.ts",
+    boundary: "platform_admin",
+    status: "OK",
+    severity: "none",
+    markers: ["set_tenant_operational_features", "p_actor_id: auth.userId"],
+    rationale: "Platform-admin authentication precedes privileged feature reads and mutations; changes use the audited tenant-scoped RPC.",
+  },
+  {
     route: "app/api/admin/platform/tenants/route.ts",
     boundary: "platform_admin",
     status: "OK",
