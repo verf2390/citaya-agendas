@@ -29,6 +29,17 @@ type Appt = {
   customer_email?: string | null;
   professional_id: string;
   tenant_id: string;
+  tenant?: {
+    id: string;
+    slug: string;
+    name: string;
+    logo_url?: string | null;
+    address?: string | null;
+    city?: string | null;
+    phone_display?: string | null;
+    show_address_after_booking?: boolean | null;
+    show_phone_after_booking?: boolean | null;
+  } | null;
   service_name?: string | null; // ✅ viene desde DB
   description?: string | null;  // ✅ NUEVO: viene desde DB (text)
 };
@@ -37,13 +48,9 @@ type Tenant = {
   id: string;
   slug: string;
   name: string;
-  phone_display: string | null;
 
   logo_url?: string | null;
-  address_display?: string | null;
 
-  show_address_after_booking?: boolean | null;
-  show_phone_after_booking?: boolean | null;
   operational_capabilities?: TenantOperationalCapabilities | null;
 };
 
@@ -193,6 +200,8 @@ function ConfirmacionInner() {
   const [error, setError] = useState<string>("");
 
   const [appt, setAppt] = useState<Appt | null>(null);
+  const appointmentTenant = appt?.id === id ? appt.tenant : null;
+  const tenantSlug = appointmentTenant?.slug || tenantSlugInitial;
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -215,6 +224,7 @@ function ConfirmacionInner() {
       try {
         setLoading(true);
         setError("");
+        setAppt(null);
 
         const manageToken = sessionStorage.getItem("citaya_manage_token:" + id) ?? "";
         if (!manageToken) throw new Error("Enlace de gestión requerido");
@@ -262,34 +272,15 @@ function ConfirmacionInner() {
       return json?.tenant ?? null;
     }
 
-    async function loadTenantById(tenantId: string) {
-      const res = await fetch(
-        `/api/tenants/by-id?id=${encodeURIComponent(tenantId)}`,
-        { cache: "no-store" },
-      );
-      const json = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(json?.error ?? "No se pudo cargar tenant");
-      return json?.tenant ?? null;
-    }
-
     (async () => {
       try {
         setLoadingTenant(true);
 
-        if (tenantSlugInitial) {
-          const t = await loadTenantBySlug(tenantSlugInitial);
+        if (tenantSlug) {
+          const t = await loadTenantBySlug(tenantSlug);
           if (!cancelled) setTenant(t);
-          return;
-        }
-
-        const tid = appt?.tenant_id;
-        if (tid) {
-          try {
-            const t = await loadTenantById(tid);
-            if (!cancelled) setTenant(t);
-          } catch {
-            if (!cancelled) setTenant(null);
-          }
+        } else if (!cancelled) {
+          setTenant(null);
         }
       } catch {
         if (!cancelled) setTenant(null);
@@ -301,11 +292,10 @@ function ConfirmacionInner() {
     return () => {
       cancelled = true;
     };
-  }, [tenantSlugInitial, appt?.tenant_id]);
+  }, [tenantSlug]);
 
   // 3) Cargar profesionales por tenantSlug (si existe)
   useEffect(() => {
-    const tenantSlug = tenantSlugInitial || tenant?.slug || "";
     if (!tenantSlug) return;
 
     let cancelled = false;
@@ -333,7 +323,7 @@ function ConfirmacionInner() {
     return () => {
       cancelled = true;
     };
-  }, [tenantSlugInitial, tenant?.slug]);
+  }, [tenantSlug]);
 
   const startLabel = useMemo(
     () => formatStartCL(appt?.start_at ?? ""),
@@ -367,11 +357,13 @@ function ConfirmacionInner() {
 
   const businessName = tenant?.name ?? (loadingTenant ? "Cargando…" : "—");
 
-  const showAddrAfter = tenant?.show_address_after_booking ?? true;
-  const showPhoneAfter = tenant?.show_phone_after_booking ?? true;
+  const showAddrAfter = appointmentTenant?.show_address_after_booking ?? true;
+  const showPhoneAfter = appointmentTenant?.show_phone_after_booking ?? true;
 
-  const businessAddress = showAddrAfter ? safeText(tenant?.address_display) : "";
-  const businessPhone = showPhoneAfter ? (tenant?.phone_display ?? "") : "";
+  const businessAddress = showAddrAfter
+    ? [appointmentTenant?.address, appointmentTenant?.city].map(safeText).filter(Boolean).join(" · ")
+    : "";
+  const businessPhone = showPhoneAfter ? (appointmentTenant?.phone_display ?? "") : "";
   const businessPhoneE164 = normalizeCLPhoneToE164(businessPhone);
 
   const waUrl = useMemo(() => {

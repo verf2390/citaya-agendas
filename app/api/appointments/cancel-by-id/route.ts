@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import {
   assertTenantCanCreateAppointment,
   assertTenantCanRunAppointmentOperationalEffects,
@@ -24,28 +24,20 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = 5000) {
 
 export async function POST(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) return NextResponse.json({ ok: false, error: access.status === 401 ? "Unauthorized" : "Forbidden" }, { status: access.status });
+
     const body = await req.json().catch(() => null);
 
     const appointment_id = String(body?.appointment_id ?? "").trim();
-    const tenant_id = String(body?.tenant_id ?? "").trim();
 
     if (!appointment_id) {
       return NextResponse.json({ ok: false, error: "Missing appointment_id" }, { status: 400 });
     }
-    if (!tenant_id) {
-      return NextResponse.json({ ok: false, error: "Missing tenant_id" }, { status: 400 });
-    }
-
     if (!isUuid(appointment_id)) {
       return NextResponse.json({ ok: false, error: "Invalid appointment_id" }, { status: 400 });
     }
-    if (!isUuid(tenant_id)) {
-      return NextResponse.json({ ok: false, error: "Invalid tenant_id" }, { status: 400 });
-    }
-
-    const access = await requireTenantAdmin({ req, tenantId: tenant_id });
-    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
-    try { await assertTenantCanCreateAppointment(tenant_id); }
+    try { await assertTenantCanCreateAppointment(access.tenantId); }
     catch { return NextResponse.json({ ok: false, error: "Operación no disponible para este entorno" }, { status: 409 }); }
 
     // 0) Verificar que la cita exista y pertenezca al tenant
@@ -53,6 +45,7 @@ export async function POST(req: Request) {
       .from("appointments")
       .select("id, tenant_id, status, booking_status, customer_email, professional_id, service_id, start_at, end_at")
       .eq("id", appointment_id)
+      .eq("tenant_id", access.tenantId)
       .maybeSingle();
 
     if (apptErr) {
@@ -64,14 +57,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Appointment not found" }, { status: 404 });
     }
 
-    if (appt.tenant_id !== tenant_id) {
-      // 🔒 multi-tenant guard
-      return NextResponse.json({ ok: false, error: "Forbidden: tenant mismatch" }, { status: 403 });
-    }
-
     let appointmentCommunicationAllowed = false;
     try {
-      await assertTenantCanRunAppointmentOperationalEffects(tenant_id);
+      await assertTenantCanRunAppointmentOperationalEffects(access.tenantId);
       appointmentCommunicationAllowed = true;
     } catch {
       // The appointment operation remains available; only its external effect is skipped.
@@ -107,7 +95,7 @@ export async function POST(req: Request) {
         canceled_at: nowIso,
       })
       .eq("id", appointment_id)
-      .eq("tenant_id", tenant_id)
+      .eq("tenant_id", access.tenantId)
       .select("id, tenant_id, customer_email, canceled_at, status, booking_status, professional_id, service_id, start_at, end_at")
       .maybeSingle();
 
@@ -122,7 +110,7 @@ export async function POST(req: Request) {
 
     if (appt.booking_status === "confirmed") {
       await notifyWaitlistSlotReleased({
-        tenantId: appt.tenant_id,
+        tenantId: access.tenantId,
         serviceId: appt.service_id,
         startAt: appt.start_at,
       });
@@ -152,7 +140,7 @@ export async function POST(req: Request) {
               "x-citaya-secret": secret,
             },
             body: JSON.stringify({
-              tenant_id,
+              tenant_id: access.tenantId,
               appointment_id: updated.id,
               reason: "admin_action",
               source: "admin_panel",
@@ -167,18 +155,22 @@ export async function POST(req: Request) {
 
         n8nOk = r.ok;
 
-        // Intentar json, fallback texto
-        const text = await r.text().catch(() => "");
-        try {
-          n8nResult = text ? JSON.parse(text) : { ok: r.ok };
-        } catch {
-          n8nResult = text || { ok: r.ok };
+        if (!r.ok) {
+          n8nResult = { ok: false, error: "notification_failed" };
+        } else {
+          // Intentar json, fallback texto
+          const text = await r.text().catch(() => "");
+          try {
+            n8nResult = text ? JSON.parse(text) : { ok: r.ok };
+          } catch {
+            n8nResult = text || { ok: r.ok };
+          }
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "n8n fetch failed";
         console.error("[cancel-by-id] n8n call failed:", message);
         n8nOk = false;
-        n8nResult = { ok: false, error: message };
+        n8nResult = { ok: false, error: "notification_failed" };
       }
     }
 
@@ -191,7 +183,7 @@ export async function POST(req: Request) {
         result: n8nResult,
       },
     });
-  } catch (e: unknown) {
-    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "Unexpected error" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 }

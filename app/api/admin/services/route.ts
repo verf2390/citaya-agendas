@@ -3,25 +3,12 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
-
-type TenantResolution = {
-  tenantId: string;
-  error: string;
-  status: number;
-};
+import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 const SERVICE_SELECT =
   "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,tax_treatment,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active,created_at";
 const SERVICE_SELECT_NO_CREATED =
   "id,tenant_id,name,description,public_description,internal_description,tax_description,tax_description_review_status,tax_treatment,contains_potentially_sensitive_information,payment_policy,deposit_type,deposit_value,deposit_min_amount,deposit_max_amount,deposit_tax_document_policy_status,provisional_expiry_minutes,payment_configuration_complete,duration_min,price,currency,is_active";
-
-function getHostnameFromReq(req: Request) {
-  const host =
-    req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-  return host.split(",")[0]?.trim().split(":")[0] ?? "";
-}
 
 function cleanText(value: unknown) {
   if (typeof value !== "string") return "";
@@ -104,47 +91,6 @@ function jsonError(error: string, status: number) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-async function resolveTenantId(
-  req: Request,
-  body?: Record<string, unknown> | null,
-): Promise<TenantResolution> {
-  const url = new URL(req.url);
-  const slug =
-    cleanText(url.searchParams.get("tenant")) ||
-    getTenantSlugFromHostname(getHostnameFromReq(req));
-
-  if (slug) {
-    const { data, error } = await supabaseAdmin
-      .from("tenants")
-      .select("id")
-      .eq("slug", slug)
-      .maybeSingle();
-
-    if (error) return { tenantId: "", error: error.message, status: 500 };
-    if (!data?.id) {
-      return {
-        tenantId: "",
-        error: `Tenant no encontrado para ${slug}`,
-        status: 404,
-      };
-    }
-
-    return { tenantId: data.id as string, error: "", status: 200 };
-  }
-
-  const tenantIdFromBody =
-    cleanText(body?.tenantId) || cleanText(url.searchParams.get("tenantId"));
-  if (tenantIdFromBody && isUuid(tenantIdFromBody)) {
-    return { tenantId: tenantIdFromBody, error: "", status: 200 };
-  }
-
-  return {
-    tenantId: "",
-    error: "No se pudo resolver tenant actual",
-    status: 400,
-  };
-}
-
 async function fetchServiceById(id: string, tenantId: string) {
   const withCreated = await supabaseAdmin
     .from("services")
@@ -171,28 +117,26 @@ async function selectChangedService(id: string, tenantId: string) {
 
 export async function GET(req: Request) {
   try {
-    const tenant = await resolveTenantId(req);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
-    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
-    if (!access.ok) return jsonError(access.error, access.status);
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) return jsonError(access.status === 401 ? "Unauthorized" : "Forbidden", access.status);
 
     const withCreated = await supabaseAdmin
       .from("services")
       .select(SERVICE_SELECT)
-      .eq("tenant_id", tenant.tenantId)
+      .eq("tenant_id", access.tenantId)
       .order("created_at", { ascending: false });
 
     const result = withCreated.error
       ? await supabaseAdmin
           .from("services")
           .select(SERVICE_SELECT_NO_CREATED)
-          .eq("tenant_id", tenant.tenantId)
+          .eq("tenant_id", access.tenantId)
           .order("name", { ascending: true })
       : withCreated;
 
     if (result.error) {
       console.error("[api/admin/services] list error:", result.error);
-      return jsonError(result.error.message, 500);
+      return jsonError("Error interno", 500);
     }
 
     const services = (result.data ?? []).map((row) => normalizeService(row));
@@ -200,18 +144,17 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Error listando servicios";
     console.error("[api/admin/services] list unexpected:", message);
-    return jsonError(message, 500);
+    return jsonError("Error interno", 500);
   }
 }
 
 export async function POST(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) return jsonError(access.status === 401 ? "Unauthorized" : "Forbidden", access.status);
+
     const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     if (!body) return jsonError("JSON inválido", 400);
-    const tenant = await resolveTenantId(req, body);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
-    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
-    if (!access.ok) return jsonError(access.error, access.status);
 
     const name = cleanText(body?.name);
     const description = cleanText(body?.description);
@@ -255,7 +198,7 @@ export async function POST(req: Request) {
     }
 
     const payload = {
-      tenant_id: tenant.tenantId,
+      tenant_id: access.tenantId,
       name,
       description: description || null,
       public_description: publicDescription || null,
@@ -279,35 +222,34 @@ export async function POST(req: Request) {
 
     if (error) {
       console.error("[api/admin/services] create error:", error);
-      return jsonError(error.message, 500);
+      return jsonError("Error interno", 500);
     }
 
     return NextResponse.json({ ok: true, service: normalizeService(data) });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Error creando servicio";
     console.error("[api/admin/services] create unexpected:", message);
-    return jsonError(message, 500);
+    return jsonError("Error interno", 500);
   }
 }
 
 export async function PATCH(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) return jsonError(access.status === 401 ? "Unauthorized" : "Forbidden", access.status);
+
     const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     if (!body) return jsonError("JSON inválido", 400);
-    const tenant = await resolveTenantId(req, body);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
-    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
-    if (!access.ok) return jsonError(access.error, access.status);
 
     const serviceId = cleanText(body?.id ?? body?.serviceId);
     if (!serviceId || !isUuid(serviceId)) {
       return jsonError("id de servicio inválido", 400);
     }
 
-    const existing = await fetchServiceById(serviceId, tenant.tenantId);
+    const existing = await fetchServiceById(serviceId, access.tenantId);
     if (existing.error) {
       console.error("[api/admin/services] lookup error:", existing.error);
-      return jsonError(existing.error.message, 500);
+      return jsonError("Error interno", 500);
     }
     if (!existing.data) {
       return jsonError("Servicio no encontrado para este tenant", 404);
@@ -427,37 +369,36 @@ export async function PATCH(req: Request) {
       .from("services")
       .update(update)
       .eq("id", serviceId)
-      .eq("tenant_id", tenant.tenantId);
+      .eq("tenant_id", access.tenantId);
 
     if (error) {
       console.error("[api/admin/services] update error:", error);
-      return jsonError(error.message, 500);
+      return jsonError("Error interno", 500);
     }
 
     const { service, error: selectError } = await selectChangedService(
       serviceId,
-      tenant.tenantId,
+      access.tenantId,
     );
-    if (selectError) return jsonError(selectError.message, 500);
+    if (selectError) return jsonError("Error interno", 500);
     if (!service) return jsonError("Servicio no encontrado para este tenant", 404);
 
     return NextResponse.json({ ok: true, service });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Error actualizando servicio";
     console.error("[api/admin/services] update unexpected:", message);
-    return jsonError(message, 500);
+    return jsonError("Error interno", 500);
   }
 }
 
 export async function DELETE(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) return jsonError(access.status === 401 ? "Unauthorized" : "Forbidden", access.status);
+
     const url = new URL(req.url);
     const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     if (!body) return jsonError("JSON inválido", 400);
-    const tenant = await resolveTenantId(req, body);
-    if (!tenant.tenantId) return jsonError(tenant.error, tenant.status);
-    const access = await requireTenantAdmin({ req, tenantId: tenant.tenantId });
-    if (!access.ok) return jsonError(access.error, access.status);
 
     const serviceId =
       cleanText(body?.id ?? body?.serviceId) || cleanText(url.searchParams.get("id"));
@@ -465,8 +406,8 @@ export async function DELETE(req: Request) {
       return jsonError("id de servicio inválido", 400);
     }
 
-    const existing = await fetchServiceById(serviceId, tenant.tenantId);
-    if (existing.error) return jsonError(existing.error.message, 500);
+    const existing = await fetchServiceById(serviceId, access.tenantId);
+    if (existing.error) return jsonError("Error interno", 500);
     if (!existing.data) {
       return jsonError("Servicio no encontrado para este tenant", 404);
     }
@@ -475,11 +416,11 @@ export async function DELETE(req: Request) {
       .from("services")
       .update({ is_active: false })
       .eq("id", serviceId)
-      .eq("tenant_id", tenant.tenantId);
+      .eq("tenant_id", access.tenantId);
 
     if (error) {
       console.error("[api/admin/services] deactivate error:", error);
-      return jsonError(error.message, 500);
+      return jsonError("Error interno", 500);
     }
 
     return NextResponse.json({ ok: true });
@@ -489,6 +430,6 @@ export async function DELETE(req: Request) {
       "[api/admin/services] deactivate unexpected:",
       message,
     );
-    return jsonError(message, 500);
+    return jsonError("Error interno", 500);
   }
 }

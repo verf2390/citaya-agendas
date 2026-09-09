@@ -98,8 +98,10 @@ export async function GET(req: Request) {
     );
   }
 
+  const address = data.show_address_home === true ? data.address : null;
+  const phone_display = data.show_phone_home === true ? data.phone_display : null;
   const address_display =
-    [data.address, data.city].filter(Boolean).join(" · ").trim() || null;
+    [address, data.city].filter(Boolean).join(" · ").trim() || null;
   const operationalCapabilities = resolveTenantOperationalCapabilities({
     lifecycleStatus: data.lifecycle_status,
     operationalMode: data.operational_mode,
@@ -164,10 +166,10 @@ export async function GET(req: Request) {
     // ✅ NUEVO
     min_lead_time_min: data.min_lead_time_min,
 
-    phone_display: data.phone_display,
+    phone_display,
     logo_url: data.logo_url,
     description: data.description,
-    address: data.address,
+    address,
     city: data.city,
 
     show_address_home: data.show_address_home,

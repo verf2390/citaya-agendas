@@ -90,6 +90,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "phone o email requerido" }, { status: 400 });
     }
 
+    if (professionalId) {
+      const { data: professional, error: professionalErr } = await supabaseAdmin
+        .from("professionals")
+        .select("id")
+        .eq("id", professionalId)
+        .eq("tenant_id", access.tenantId)
+        .maybeSingle();
+
+      if (professionalErr) throw professionalErr;
+      if (!professional) {
+        return NextResponse.json({ ok: false, error: "professionalId inválido" }, { status: 400 });
+      }
+    }
+
     // ✅ UPDATE directo por ID (edición desde modal)
     if (customerId) {
       if (!isUuid(customerId)) {
@@ -109,7 +123,7 @@ export async function POST(req: Request) {
         .from("customers")
         .update(patch)
         .eq("id", customerId)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", access.tenantId);
 
       if (upErr) throw upErr;
 
@@ -123,7 +137,7 @@ export async function POST(req: Request) {
       const { data, error } = await supabaseAdmin
         .from("customers")
         .select("id, phone, email, rut_normalized")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", access.tenantId)
         .eq("rut_normalized", customerRut)
         .maybeSingle();
       if (error) throw error;
@@ -134,7 +148,7 @@ export async function POST(req: Request) {
       const { data, error } = await supabaseAdmin
         .from("customers")
         .select("id, phone, email, rut_normalized")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", access.tenantId)
         .eq("phone", phone)
         .maybeSingle();
 
@@ -146,7 +160,7 @@ export async function POST(req: Request) {
       const { data, error } = await supabaseAdmin
         .from("customers")
         .select("id, phone, email, rut_normalized")
-        .eq("tenant_id", tenantId)
+        .eq("tenant_id", access.tenantId)
         .eq("email", email)
         .maybeSingle();
 
@@ -170,7 +184,7 @@ export async function POST(req: Request) {
         .from("customers")
         .update(patch)
         .eq("id", existing.id)
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", access.tenantId);
 
       if (upErr) throw upErr;
 
@@ -181,7 +195,8 @@ export async function POST(req: Request) {
     const { data: created, error: insErr } = await supabaseAdmin
       .from("customers")
       .insert({
-        tenant_id: tenantId,
+        tenant_id: access.tenantId,
+        ...(professionalId ? { professional_id: professionalId } : {}),
         full_name,
         phone,
         email,
