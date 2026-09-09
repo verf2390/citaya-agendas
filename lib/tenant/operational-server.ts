@@ -1,10 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  canRunAppointmentOperationalEffects,
-  resolveTenantOperationalCapabilities,
-} from "@/lib/tenant/operational-mode.mjs";
+import { canRunAppointmentOperationalEffects } from "@/lib/tenant/operational-mode.mjs";
 import type {
   TenantOperationalCapabilities,
   TenantOperationalMode,
@@ -25,15 +22,33 @@ export type TenantOperationalContext = {
   capabilities: TenantOperationalCapabilities;
 };
 
+function isCapabilities(value: unknown): value is TenantOperationalCapabilities {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.lifecycleStatus === "string"
+    && typeof row.operationalMode === "string"
+    && typeof row.createAppointment === "boolean"
+    && typeof row.createPayment === "boolean"
+    && typeof row.sendCampaign === "boolean"
+    && typeof row.enqueueDte === "boolean";
+}
+
 export async function loadTenantOperationalContext(tenantId: string): Promise<TenantOperationalContext> {
-  const { data, error } = await supabaseAdmin.from("tenants")
-    .select("id,slug,lifecycle_status,operational_mode")
-    .eq("id", tenantId).maybeSingle();
-  if (error || !data?.id) throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
-  const capabilities = resolveTenantOperationalCapabilities({
-    lifecycleStatus: data.lifecycle_status,
-    operationalMode: data.operational_mode,
-  });
+  const [tenantResult, capabilityResult] = await Promise.all([
+    supabaseAdmin.from("tenants")
+      .select("id,slug,lifecycle_status,operational_mode")
+      .eq("id", tenantId).maybeSingle(),
+    supabaseAdmin.rpc("resolve_tenant_operational_capabilities", {
+      p_tenant_id: tenantId,
+    }),
+  ]);
+
+  const data = tenantResult.data;
+  if (tenantResult.error || !data?.id || capabilityResult.error || !isCapabilities(capabilityResult.data)) {
+    throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
+  }
+
+  const capabilities = capabilityResult.data;
   return {
     tenantId: data.id,
     tenantSlug: String(data.slug ?? "").trim().toLowerCase(),
