@@ -49,6 +49,20 @@ test("external BHE rejects an explicit invoice or DTE selection", () => {
   );
 });
 
+test("external BHE fails closed while Citaya payment billing still requires DTE 33/39", () => {
+  assert.throws(
+    () => resolveBookingCommercialPolicy({
+      isDemoAppointment: false,
+      isAdminRequest: false,
+      paymentsEnabled: true,
+      dteEnabled: false,
+      taxDocumentMode: "external_bhe",
+      servicePaymentPolicy: "full_payment",
+    }),
+    /BOOKING_EXTERNAL_BHE_PAYMENTS_UNSUPPORTED/,
+  );
+});
+
 test("payments OFF means a live appointment does not require payment configuration", () => {
   const policy = resolveBookingCommercialPolicy({
     isDemoAppointment: false,
