@@ -10,6 +10,10 @@ const operationalServer = readFileSync(
   "lib/tenant/operational-server.ts",
   "utf8",
 );
+const publicLegalServer = readFileSync(
+  "lib/legal/server.ts",
+  "utf8",
+);
 const platformApi = readFileSync(
   "app/api/admin/platform/tenant-features/route.ts",
   "utf8",
@@ -54,6 +58,16 @@ test("CIT-72 separates core legal readiness from DTE legal readiness", () => {
   assert.match(core, /consumer_terms/);
   assert.match(core, /privacy_notice/);
   assert.match(core, /cancellation_refund_policy/);
+});
+
+test("CIT-72 public booking identity no longer requires DTE issuer identity", () => {
+  assert.match(publicLegalServer, /tenant_core_legal_gate_report/);
+  assert.match(publicLegalServer, /identityLegalComplete === true/);
+  const identitySection = publicLegalServer.slice(
+    publicLegalServer.indexOf("const identityComplete"),
+    publicLegalServer.indexOf("return {", publicLegalServer.indexOf("const identityComplete")),
+  );
+  assert.doesNotMatch(identitySection, /issuer_legal_name|issuer_rut|issuer_address/);
 });
 
 test("CIT-72 live readiness conditionally requires payments and DTE", () => {
