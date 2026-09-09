@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type IncomingBlock = {
   id?: string | null; // uuid si existe
@@ -34,8 +33,13 @@ function overlaps(a: { start: string; end: string }, b: { start: string; end: st
 
 export async function POST(req: Request) {
   try {
-    const host = req.headers.get("host") || "";
-    const tenantSlug = getTenantSlugFromHostname(host);
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) {
+      return NextResponse.json(
+        { error: access.status === 401 ? "Unauthorized" : "Forbidden" },
+        { status: access.status, headers: NO_STORE_HEADERS },
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
 
@@ -63,26 +67,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // tenant por slug (hostname)
-    const { data: tenant, error: tenantErr } = await supabaseAdmin
-      .from("tenants")
-      .select("id, slug")
-      .eq("slug", tenantSlug)
-      .single();
-
-    if (tenantErr || !tenant?.id) {
-      return NextResponse.json({ error: "tenant no encontrado" }, { status: 404, headers: NO_STORE_HEADERS });
-    }
-
-    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
-    if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status, headers: NO_STORE_HEADERS });
-
     // profesional pertenece al tenant
     const { data: prof, error: profErr } = await supabaseAdmin
       .from("professionals")
       .select("id")
       .eq("id", professionalId)
-      .eq("tenant_id", tenant.id)
+      .eq("tenant_id", access.tenantId)
       .single();
 
     if (profErr || !prof?.id) {
@@ -159,11 +149,11 @@ export async function POST(req: Request) {
     const { data: existing, error: exErr } = await supabaseAdmin
       .from("availability")
       .select("id")
-      .eq("tenant_id", tenant.id)
+      .eq("tenant_id", access.tenantId)
       .eq("professional_id", professionalId);
 
     if (exErr) {
-      return NextResponse.json({ error: exErr.message }, { status: 500, headers: NO_STORE_HEADERS });
+      return NextResponse.json({ error: "Error interno" }, { status: 500, headers: NO_STORE_HEADERS });
     }
 
     const existingIds = new Set((existing ?? []).map((r) => r.id));
@@ -208,11 +198,11 @@ export async function POST(req: Request) {
         .from("availability")
         .delete()
         .in("id", toDelete)
-        .eq("tenant_id", tenant.id)
+        .eq("tenant_id", access.tenantId)
         .eq("professional_id", professionalId);
 
       if (del.error) {
-        return NextResponse.json({ error: del.error.message }, { status: 500, headers: NO_STORE_HEADERS });
+        return NextResponse.json({ error: "Error interno" }, { status: 500, headers: NO_STORE_HEADERS });
       }
       deleted = toDelete.length;
     }
@@ -221,7 +211,7 @@ export async function POST(req: Request) {
     if (toUpdate.length > 0) {
       const rows = toUpdate.map((b) => ({
         id: b.id,
-        tenant_id: tenant.id,
+        tenant_id: access.tenantId,
         professional_id: professionalId,
         day_of_week: b.day_of_week,
         start_time: b.start_time,
@@ -233,7 +223,7 @@ export async function POST(req: Request) {
       const up = await supabaseAdmin.from("availability").upsert(rows as any, { onConflict: "id" });
 
       if (up.error) {
-        return NextResponse.json({ error: up.error.message }, { status: 500, headers: NO_STORE_HEADERS });
+        return NextResponse.json({ error: "Error interno" }, { status: 500, headers: NO_STORE_HEADERS });
       }
       updated = rows.length;
     }
@@ -241,7 +231,7 @@ export async function POST(req: Request) {
     // INSERT — solo activos
     if (toInsert.length > 0) {
       const rows = toInsert.map((b) => ({
-        tenant_id: tenant.id,
+        tenant_id: access.tenantId,
         professional_id: professionalId,
         day_of_week: b.day_of_week,
         start_time: b.start_time,
@@ -251,7 +241,7 @@ export async function POST(req: Request) {
 
       const ins = await supabaseAdmin.from("availability").insert(rows as any);
       if (ins.error) {
-        return NextResponse.json({ error: ins.error.message }, { status: 500, headers: NO_STORE_HEADERS });
+        return NextResponse.json({ error: "Error interno" }, { status: 500, headers: NO_STORE_HEADERS });
       }
       inserted = rows.length;
     }
@@ -260,13 +250,13 @@ export async function POST(req: Request) {
     const { data: items, error: readErr } = await supabaseAdmin
       .from("availability")
       .select("id, day_of_week, start_time, end_time")
-      .eq("tenant_id", tenant.id)
+      .eq("tenant_id", access.tenantId)
       .eq("professional_id", professionalId)
       .order("day_of_week", { ascending: true })
       .order("start_time", { ascending: true });
 
     if (readErr) {
-      return NextResponse.json({ error: readErr.message }, { status: 500, headers: NO_STORE_HEADERS });
+      return NextResponse.json({ error: "Error interno" }, { status: 500, headers: NO_STORE_HEADERS });
     }
 
     return NextResponse.json(
@@ -279,7 +269,7 @@ export async function POST(req: Request) {
       },
       { headers: NO_STORE_HEADERS },
     );
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "error" }, { status: 500, headers: NO_STORE_HEADERS });
+  } catch {
+    return NextResponse.json({ error: "Error interno" }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }

@@ -360,7 +360,7 @@ export default async function TenantHome({
   const { data: tenant, error: tenantErr } = await supabase
     .from("tenants")
     .select(
-      "id, slug, name, logo_url, address, city, phone_display, description, show_address, show_phone, lifecycle_status, operational_mode",
+      "id, slug, name, logo_url, address, city, phone_display, description, show_address, show_phone, show_address_home, show_phone_home, lifecycle_status, operational_mode",
     )
     .eq("slug", slug)
     .single();
@@ -385,8 +385,8 @@ export default async function TenantHome({
     );
   }
 
-  const showAddress = tenant.show_address ?? true;
-  const showPhone = tenant.show_phone ?? true;
+  const showAddress = tenant.show_address_home === true && tenant.show_address !== false;
+  const showPhone = tenant.show_phone_home === true && tenant.show_phone !== false;
 
   const { data: services } = operational.createAppointment || operational.demoSimulation
     ? await supabase

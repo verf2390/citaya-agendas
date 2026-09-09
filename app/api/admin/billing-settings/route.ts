@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { isUuid } from "@/lib/api/validators";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 const DocumentTypeSchema = z.enum(["boleta", "factura", "exenta"]);
 const ProviderSchema = z.enum(["none", "manual_sii", "api_provider"]);
@@ -15,8 +14,6 @@ const ProviderStatusSchema = z.enum([
 ]);
 
 const BillingSettingsSchema = z.object({
-  tenantId: z.string().uuid(),
-  tenantSlug: z.string().trim().optional().nullable(),
   legalName: z.string().trim().optional().nullable(),
   taxId: z.string().trim().optional().nullable(),
   businessActivity: z.string().trim().optional().nullable(),
@@ -80,60 +77,38 @@ function rowToSettings(row: any, tenantId: string) {
   };
 }
 
-function schemaHint(error: { message?: string }) {
-  const message = error.message ?? "";
-  if (
-    message.includes("tenant_billing_settings") ||
-    message.includes("default_document_type") ||
-    message.includes("provider_status")
-  ) {
-    return "Ejecuta docs/BILLING_SETTINGS_SCHEMA.sql en Supabase.";
-  }
-  return null;
-}
-
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const tenantId = String(searchParams.get("tenantId") ?? "").trim();
-    const tenantSlug = String(searchParams.get("tenantSlug") ?? "").trim();
-
-    if (!tenantId || !isUuid(tenantId)) {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) {
       return NextResponse.json(
-        { ok: false, error: "tenantId requerido o invalido" },
-        { status: 400 },
+        { ok: false, error: access.status === 500 ? "Error cargando facturación" : access.error },
+        { status: access.status },
       );
     }
-
-    const access = await requireTenantAdmin({ req, tenantId, tenantSlug });
-    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const { data, error } = await supabaseAdmin
       .from("tenant_billing_settings")
       .select(SELECT_COLUMNS)
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", access.tenantId)
       .maybeSingle();
 
     if (error) {
       console.error("[admin/billing-settings] GET error:", error);
       return NextResponse.json(
-        {
-          ok: false,
-          error: error.message,
-          schemaHint: schemaHint(error),
-        },
+        { ok: false, error: "Error cargando facturación" },
         { status: 500 },
       );
     }
 
     return NextResponse.json({
       ok: true,
-      settings: rowToSettings(data, tenantId),
+      settings: rowToSettings(data, access.tenantId),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("[admin/billing-settings] GET unexpected:", error);
     return NextResponse.json(
-      { ok: false, error: error?.message ?? "Error cargando facturacion" },
+      { ok: false, error: "Error cargando facturación" },
       { status: 500 },
     );
   }
@@ -141,6 +116,14 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) {
+      return NextResponse.json(
+        { ok: false, error: access.status === 500 ? "Error guardando facturación" : access.error },
+        { status: access.status },
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const parsed = BillingSettingsSchema.safeParse(body);
 
@@ -152,8 +135,6 @@ export async function PUT(req: Request) {
     }
 
     const settings = parsed.data;
-    const access = await requireTenantAdmin({ req, tenantId: settings.tenantId, tenantSlug: settings.tenantSlug });
-    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     const taxEmail = emptyToNull(settings.taxEmail);
     const taxId = emptyToNull(settings.taxId);
@@ -177,7 +158,7 @@ export async function PUT(req: Request) {
     }
 
     const payload = {
-      tenant_id: settings.tenantId,
+      tenant_id: access.tenantId,
       legal_name: emptyToNull(settings.legalName),
       tax_id: taxId,
       business_activity: emptyToNull(settings.businessActivity),
@@ -203,23 +184,19 @@ export async function PUT(req: Request) {
     if (error) {
       console.error("[admin/billing-settings] PUT error:", error);
       return NextResponse.json(
-        {
-          ok: false,
-          error: error.message,
-          schemaHint: schemaHint(error),
-        },
+        { ok: false, error: "Error guardando facturación" },
         { status: 500 },
       );
     }
 
     return NextResponse.json({
       ok: true,
-      settings: rowToSettings(data, settings.tenantId),
+      settings: rowToSettings(data, access.tenantId),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("[admin/billing-settings] PUT unexpected:", error);
     return NextResponse.json(
-      { ok: false, error: error?.message ?? "Error guardando facturacion" },
+      { ok: false, error: "Error guardando facturación" },
       { status: 500 },
     );
   }

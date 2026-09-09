@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
-import { isUuid } from "@/lib/api/validators";
+import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
 import { tenantCredentialUpdates } from "@/services/payments/payment-settings-credentials";
 import {
@@ -26,13 +25,6 @@ function hasOwn(obj: unknown, key: string) {
   );
 }
 
-type SupabaseErrorLike = {
-  message?: string;
-  details?: string;
-  hint?: string;
-  code?: string;
-};
-
 function logPaymentSettingsError(context: string, error: unknown) {
   const safeError = error as { code?: unknown; name?: unknown } | null;
   console.error(`[admin/payment-settings] ${context}`, {
@@ -42,23 +34,6 @@ function logPaymentSettingsError(context: string, error: unknown) {
         ? error.name
         : String(safeError?.name ?? "UnknownError"),
   });
-}
-
-function schemaHintForPaymentSettings(error: SupabaseErrorLike) {
-  const text = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`;
-
-  if (
-    text.includes("payment_methods_enabled") ||
-    text.includes("payment_collection_mode") ||
-    text.includes("mercadopago_") ||
-    text.includes("webpay_") ||
-    text.includes("khipu_") ||
-    text.includes("bank_")
-  ) {
-    return "Faltan columnas de pagos flexibles en tenant_payment_settings. Ejecuta docs/FLEXIBLE_PAYMENTS_SCHEMA.sql en Supabase.";
-  }
-
-  return null;
 }
 
 function maskSecret(value: string | null | undefined) {
@@ -79,20 +54,15 @@ const DEMO_BANK_SETTINGS = {
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const tenantId = String(searchParams.get("tenantId") ?? "").trim();
-
-    if (!tenantId || !isUuid(tenantId)) {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) {
       return NextResponse.json(
-        { ok: false, error: "tenantId requerido o inválido" },
-        { status: 400 },
+        { ok: false, error: access.status === 500 ? "Error cargando configuración" : access.error },
+        { status: access.status },
       );
     }
 
-    const access = await requireTenantAdmin({ req, tenantId });
-    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
-
-    const config = await getTenantPaymentConfig(tenantId);
+    const config = await getTenantPaymentConfig(access.tenantId);
     const readiness = evaluateTenantPaymentReadiness(config);
     const bankSettings =
       access.operationalMode === "demo"
@@ -109,7 +79,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       settings: {
-        tenantId,
+        tenantId: access.tenantId,
         enabled: config.enabled,
         paymentMode: config.mode,
         depositType: config.depositType ?? null,
@@ -145,8 +115,15 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) {
+      return NextResponse.json(
+        { ok: false, error: access.status === 500 ? "Error guardando configuración" : access.error },
+        { status: access.status },
+      );
+    }
+
     const body = await req.json().catch(() => null);
-    const tenantId = String(body?.tenantId ?? "").trim();
     const parsedMode = PaymentModeSchema.safeParse(body?.paymentMode);
     const hasDepositType = hasOwn(body, "depositType");
     const hasDepositValue = hasOwn(body, "depositValue");
@@ -164,16 +141,6 @@ export async function POST(req: Request) {
     const parsedKhipuEnvironment = hasOwn(body, "khipuEnvironment")
       ? KhipuEnvironmentSchema.safeParse(body?.khipuEnvironment)
       : null;
-
-    if (!tenantId || !isUuid(tenantId)) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId requerido o inválido" },
-        { status: 400 },
-      );
-    }
-
-    const access = await requireTenantAdmin({ req, tenantId });
-    if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     if (!parsedMode.success) {
       return NextResponse.json(
@@ -342,7 +309,7 @@ export async function POST(req: Request) {
     const { data: existing, error: existingError } = await supabaseAdmin
       .from("tenant_payment_settings")
       .select("tenant_id")
-      .eq("tenant_id", tenantId)
+      .eq("tenant_id", access.tenantId)
       .maybeSingle();
 
     if (existingError) {
@@ -360,16 +327,14 @@ export async function POST(req: Request) {
           ...paymentSettingsPayload,
           updated_at: new Date().toISOString(),
         })
-        .eq("tenant_id", tenantId);
+        .eq("tenant_id", access.tenantId);
 
       if (updateError) {
         logPaymentSettingsError("update failed", updateError);
-        const schemaHint = schemaHintForPaymentSettings(updateError);
         return NextResponse.json(
           {
             ok: false,
             error: "No se pudo actualizar la configuración",
-            schemaHint,
           },
           { status: 500 },
         );
@@ -378,18 +343,16 @@ export async function POST(req: Request) {
       const { error: insertError } = await supabaseAdmin
         .from("tenant_payment_settings")
         .insert({
-          tenant_id: tenantId,
+          tenant_id: access.tenantId,
           ...paymentSettingsPayload,
         });
 
       if (insertError) {
         logPaymentSettingsError("insert failed", insertError);
-        const schemaHint = schemaHintForPaymentSettings(insertError);
         return NextResponse.json(
           {
             ok: false,
             error: "No se pudo crear la configuración",
-            schemaHint,
           },
           { status: 500 },
         );
@@ -399,7 +362,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       settings: {
-        tenantId,
+        tenantId: access.tenantId,
         enabled: active,
         paymentMode,
         depositType: depositType ?? null,

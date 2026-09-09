@@ -3,11 +3,9 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireTenantAdmin } from "@/lib/api/requireTenantAdmin";
-import { getTenantSlugFromHostname } from "@/lib/tenant";
+import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 
 type TenantUpdatePayload = {
-  tenantSlug?: string;
   name?: unknown;
   phone_display?: unknown;
   whatsapp?: unknown;
@@ -39,43 +37,25 @@ function countDigits(value: string) {
   return value.replace(/\D/g, "").length;
 }
 
-function getTenantSlug(req: Request, body: TenantUpdatePayload) {
-  const forwardedHost = req.headers.get("x-forwarded-host");
-  const host = forwardedHost || req.headers.get("host");
-  const fromHost = getTenantSlugFromHostname(host);
-  if (fromHost) return fromHost;
-
-  return String(body.tenantSlug ?? "").trim();
-}
-
 export async function GET(req: Request) {
   try {
-    const url = new URL(req.url);
-    const forwardedHost = req.headers.get("x-forwarded-host");
-    const host = forwardedHost || req.headers.get("host");
-    const fromHost = getTenantSlugFromHostname(host);
-    const tenantSlug = fromHost || String(url.searchParams.get("tenantSlug") ?? "").trim();
-
-    if (!tenantSlug) return jsonError("No se pudo detectar el tenant actual.");
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) return jsonError(access.status === 401 ? "Unauthorized" : "Forbidden", access.status);
 
     const { data: tenant, error } = await supabaseAdmin
       .from("tenants")
       .select(TENANT_PUBLIC_CONFIG_SELECT)
-      .eq("slug", tenantSlug)
+      .eq("id", access.tenantId)
       .maybeSingle();
 
-    if (error || !tenant?.id) {
-      return jsonError(error?.message ?? "No se pudo cargar el negocio actual.", 404);
-    }
-
-    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
-    if (!access.ok) return jsonError(access.error, access.status);
+    if (error) return jsonError("Error interno", 500);
+    if (!tenant?.id) return jsonError("No se pudo cargar el negocio actual.", 404);
 
     return NextResponse.json({ ok: true, tenant });
   } catch (e: any) {
     console.error("[api/admin/tenant] get error:", e?.message || e);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "No se pudo cargar la configuración" },
+      { ok: false, error: "Error interno" },
       { status: 500 },
     );
   }
@@ -83,11 +63,11 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) return jsonError(access.status === 401 ? "Unauthorized" : "Forbidden", access.status);
+
     const body = (await req.json().catch(() => null)) as TenantUpdatePayload | null;
     if (!body || typeof body !== "object") return jsonError("JSON inválido");
-
-    const tenantSlug = getTenantSlug(req, body);
-    if (!tenantSlug) return jsonError("No se pudo detectar el tenant actual.");
 
     const name = optionalText(body.name);
     const phoneDisplay = optionalText(body.phone_display);
@@ -102,19 +82,6 @@ export async function PATCH(req: Request) {
       return jsonError("Ingresa un email válido para el contacto del negocio.");
     }
 
-    const { data: tenant, error: tenantError } = await supabaseAdmin
-      .from("tenants")
-      .select("id, slug")
-      .eq("slug", tenantSlug)
-      .maybeSingle();
-
-    if (tenantError || !tenant?.id) {
-      return jsonError("No se pudo validar el negocio actual.", 404);
-    }
-
-    const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
-    if (!access.ok) return jsonError(access.error, access.status);
-
     const { data: updatedTenant, error: updateError } = await supabaseAdmin
       .from("tenants")
       .update({
@@ -127,20 +94,20 @@ export async function PATCH(req: Request) {
         description: optionalText(body.description),
         logo_url: optionalText(body.logo_url),
       })
-      .eq("id", tenant.id)
+      .eq("id", access.tenantId)
       .select(TENANT_PUBLIC_CONFIG_SELECT)
       .single();
 
     if (updateError) {
       console.error("[api/admin/tenant] update error:", updateError);
-      return jsonError(updateError.message, 500);
+      return jsonError("Error interno", 500);
     }
 
     return NextResponse.json({ ok: true, tenant: updatedTenant });
   } catch (e: any) {
     console.error("[api/admin/tenant] error:", e?.message || e);
     return NextResponse.json(
-      { ok: false, error: e?.message ?? "No se pudo guardar la configuración" },
+      { ok: false, error: "Error interno" },
       { status: 500 },
     );
   }

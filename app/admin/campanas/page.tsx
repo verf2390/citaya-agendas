@@ -488,7 +488,6 @@ export default function AdminCampanasPage() {
 
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("tenantSlug", tenantSlug);
 
       const res = await adminFetch("/api/admin/campaigns/upload-media", {
         method: "POST",

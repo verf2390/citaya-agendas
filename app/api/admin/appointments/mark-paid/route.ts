@@ -9,16 +9,17 @@ import {
 } from "@/lib/tenant/operational-server";
 export async function POST(req: Request) {
   try {
+    const access = await requireHostTenantAdmin(req);
+    if (!access.ok) {
+      return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
+    }
+
     const input = await req.json().catch(() => null);
     const appointmentId = String(input?.appointmentId ?? "").trim();
     if (!isUuid(appointmentId)) {
       return NextResponse.json({ ok: false, error: "appointmentId inválido" }, { status: 400 });
     }
 
-    const access = await requireHostTenantAdmin(req);
-    if (!access.ok) {
-      return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
-    }
     const operational = await assertTenantCanConfirmTransfer(access.tenantId);
 
     const { data: paymentIntentId, error } = await supabaseAdmin.rpc(

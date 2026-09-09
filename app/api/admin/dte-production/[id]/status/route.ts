@@ -15,15 +15,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> },
 ) {
   try {
-    const body = (await req.json()) as {
-      tenantId?: string;
-      tenantSlug?: string;
-    };
-    const auth = await requireProductionAdmin(
-      req,
-      body.tenantId,
-      body.tenantSlug,
-    );
+    const auth = await requireProductionAdmin(req);
     if (!auth.ok)
       return NextResponse.json(
         { ok: false, error: auth.error },
