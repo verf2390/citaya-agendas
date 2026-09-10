@@ -118,7 +118,7 @@ test("demo shows separate simulated boleta and factura choices", () => {
 test("safe demo never sends a real 33 or 39 tax document selection", () => {
   assert.match(
     bookingUi,
-    /const productiveTaxDocumentType = isSafeDemoAppointment\s*\?\s*null\s*:\s*taxDocumentType/,
+    /const productiveTaxDocumentType =\s*!isSafeDemoAppointment && taxDocumentMode === "citaya_dte"\s*\?\s*taxDocumentType\s*:\s*null/,
   );
 
   assert.match(

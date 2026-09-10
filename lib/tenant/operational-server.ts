@@ -1,14 +1,16 @@
 import { createHash } from "node:crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import {
-  canRunAppointmentOperationalEffects,
-  resolveTenantOperationalCapabilities,
-} from "@/lib/tenant/operational-mode.mjs";
+import { canRunAppointmentOperationalEffects } from "@/lib/tenant/operational-mode.mjs";
 import type {
   TenantOperationalCapabilities,
   TenantOperationalMode,
 } from "@/lib/tenant/operational-types";
+
+export type TenantTaxDocumentMode =
+  | "unconfigured"
+  | "citaya_dte"
+  | "external_bhe";
 
 export class TenantOperationalError extends Error {
   constructor(public readonly code: string) {
@@ -22,23 +24,65 @@ export type TenantOperationalContext = {
   tenantSlug: string;
   lifecycleStatus: TenantOperationalCapabilities["lifecycleStatus"];
   operationalMode: TenantOperationalMode;
+  taxDocumentMode: TenantTaxDocumentMode;
+  paymentsEnabled: boolean;
+  dteEnabled: boolean;
   capabilities: TenantOperationalCapabilities;
 };
 
+function isCapabilities(value: unknown): value is TenantOperationalCapabilities {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.lifecycleStatus === "string"
+    && typeof row.operationalMode === "string"
+    && typeof row.createAppointment === "boolean"
+    && typeof row.createPayment === "boolean"
+    && typeof row.sendCampaign === "boolean"
+    && typeof row.enqueueDte === "boolean";
+}
+
+function isTaxDocumentMode(value: unknown): value is TenantTaxDocumentMode {
+  return value === "unconfigured" || value === "citaya_dte" || value === "external_bhe";
+}
+
 export async function loadTenantOperationalContext(tenantId: string): Promise<TenantOperationalContext> {
-  const { data, error } = await supabaseAdmin.from("tenants")
-    .select("id,slug,lifecycle_status,operational_mode")
-    .eq("id", tenantId).maybeSingle();
-  if (error || !data?.id) throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
-  const capabilities = resolveTenantOperationalCapabilities({
-    lifecycleStatus: data.lifecycle_status,
-    operationalMode: data.operational_mode,
-  });
+  const [tenantResult, capabilityResult, featureResult] = await Promise.all([
+    supabaseAdmin.from("tenants")
+      .select("id,slug,lifecycle_status,operational_mode")
+      .eq("id", tenantId).maybeSingle(),
+    supabaseAdmin.rpc("resolve_tenant_operational_capabilities", {
+      p_tenant_id: tenantId,
+    }),
+    supabaseAdmin.from("tenant_operational_features")
+      .select("tax_document_mode,payments_enabled,dte_enabled")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
+  ]);
+
+  const data = tenantResult.data;
+  const taxDocumentMode = featureResult.data?.tax_document_mode;
+  if (
+    tenantResult.error ||
+    !data?.id ||
+    capabilityResult.error ||
+    !isCapabilities(capabilityResult.data) ||
+    featureResult.error ||
+    !isTaxDocumentMode(taxDocumentMode) ||
+    typeof featureResult.data?.payments_enabled !== "boolean" ||
+    typeof featureResult.data?.dte_enabled !== "boolean"
+  ) {
+    throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
+  }
+
+  const capabilities = capabilityResult.data;
   return {
     tenantId: data.id,
     tenantSlug: String(data.slug ?? "").trim().toLowerCase(),
     lifecycleStatus: capabilities.lifecycleStatus,
     operationalMode: capabilities.operationalMode,
+    taxDocumentMode,
+    paymentsEnabled: featureResult.data.payments_enabled,
+    dteEnabled: featureResult.data.dte_enabled,
     capabilities,
   };
 }

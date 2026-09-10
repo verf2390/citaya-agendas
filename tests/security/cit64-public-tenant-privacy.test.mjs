@@ -47,6 +47,11 @@ class Query {
     }
     assert.ok(this.filters.some(([key, value]) => key === "tenant_id" && value === ID));
     const results = {
+      tenant_operational_features: {
+        tax_document_mode: state.features.tax_document_mode,
+        payments_enabled: state.features.payments_enabled,
+        dte_enabled: state.features.dte_enabled,
+      },
       dte_tenant_document_capabilities: { customer_selection_enabled: true, issuance_enabled: true, certification_status: "production_authorized" },
       dte_sii_authorization_evidence: { authorized_types: [33] },
       dte_legal_activation: { status: "active" },
@@ -58,11 +63,42 @@ class Query {
 globalThis.__cit64PublicTenant = {
   supabaseAdmin: {
     from(table) { return new Query(table); },
-    async rpc(name, args) { state.rpcs.push({ name, args }); return { data: { ready: true }, error: null }; },
+    async rpc(name, args) {
+      state.rpcs.push({ name, args });
+      if (name === "resolve_tenant_operational_capabilities") {
+        return {
+          data: resolveTenantOperationalCapabilities({
+            lifecycleStatus: state.tenant?.lifecycle_status ?? "active",
+            operationalMode: state.tenant?.operational_mode ?? "unclassified",
+          }),
+          error: null,
+        };
+      }
+      if (name === "dte_activation_gate_report") {
+        return { data: { ready: true }, error: null };
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
   },
   async getTenantPaymentConfig(tenantId) {
     state.payments.push(tenantId);
     return { enabled: true, mode: "required", paymentMethodsEnabled: ["manual"], collectionMode: "deposit", depositType: "percentage", depositValue: 25 };
+  },
+  async loadTenantOperationalContext(tenantId) {
+    const capabilities = resolveTenantOperationalCapabilities({
+      lifecycleStatus: state.tenant?.lifecycle_status ?? "active",
+      operationalMode: state.tenant?.operational_mode ?? "unclassified",
+    });
+    return {
+      tenantId,
+      tenantSlug: state.tenant?.slug ?? "",
+      lifecycleStatus: capabilities.lifecycleStatus,
+      operationalMode: capabilities.operationalMode,
+      taxDocumentMode: state.features.tax_document_mode,
+      paymentsEnabled: state.features.payments_enabled,
+      dteEnabled: state.features.dte_enabled,
+      capabilities,
+    };
   },
 };
 registerHooks({
@@ -70,6 +106,8 @@ registerHooks({
     const map = { "next/server": "next", "@/lib/supabaseAdmin": "supabaseAdmin", "@/services/payments/payment-config": "getTenantPaymentConfig" };
     if (map[specifier]) return { url: `cit64-public-tenant:${map[specifier]}`, shortCircuit: true };
     if (specifier === "@/lib/tenant/operational-mode.mjs") return { url: pathToFileURL(resolve("lib/tenant/operational-mode.mjs")).href, shortCircuit: true };
+    if (specifier === "@/lib/tenant/operational-server") return { url: "cit64-public-tenant:loadTenantOperationalContext", shortCircuit: true };
+    if (specifier === "@/lib/tenant/operational-types") return { url: pathToFileURL(resolve("lib/tenant/operational-types.ts")).href, shortCircuit: true };
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
@@ -83,7 +121,18 @@ registerHooks({
 });
 const { GET } = await import(pathToFileURL(resolve("app/api/tenants/by-slug/route.ts")).href);
 test.beforeEach(() => {
-  Object.assign(state, { queries: [], payments: [], rpcs: [], error: false, tenant: { id: ID, slug: "tenant-a", name: "Tenant A", min_lead_time_min: 30, phone_display: hiddenPhone, address: hiddenAddress, city: "Santiago", logo_url: null, description: "Public description", show_address_home: false, show_phone_home: false, show_address_after_booking: true, show_phone_after_booking: true, lifecycle_status: "active", operational_mode: "live" } });
+  Object.assign(state, {
+    queries: [],
+    payments: [],
+    rpcs: [],
+    error: false,
+    features: {
+      tax_document_mode: "citaya_dte",
+      payments_enabled: true,
+      dte_enabled: true,
+    },
+    tenant: { id: ID, slug: "tenant-a", name: "Tenant A", min_lead_time_min: 30, phone_display: hiddenPhone, address: hiddenAddress, city: "Santiago", logo_url: null, description: "Public description", show_address_home: false, show_phone_home: false, show_address_after_booking: true, show_phone_after_booking: true, lifecycle_status: "active", operational_mode: "live" },
+  });
 });
 async function request(query = "?slug=tenant-a") {
   const response = await GET(new Request(`https://tenant-a.example.test/api/tenants/by-slug${query}`));
@@ -128,8 +177,13 @@ test("slug resolution, live capabilities, payment and DTE readiness remain tenan
   assert.equal(body.tenant.invoice_document_selection_enabled, true);
   assert.equal(body.tenant.boleta_document_selection_enabled, true);
   assert.deepEqual(state.payments, [ID]);
-  assert.equal(state.rpcs[0].name, "dte_activation_gate_report");
-  assert.equal(state.rpcs[0].args.p_tenant_id, ID);
+  const dteGateCall = state.rpcs.find((call) => call.name === "dte_activation_gate_report");
+  assert.ok(dteGateCall);
+  assert.equal(dteGateCall.args.p_tenant_id, ID);
+  assert.deepEqual(
+    state.rpcs.map((call) => call.name),
+    ["dte_activation_gate_report"],
+  );
 });
 test("demo keeps public resolution and suppresses payment/DTE effects", async () => {
   state.tenant.operational_mode = "demo";
@@ -142,6 +196,10 @@ test("demo keeps public resolution and suppresses payment/DTE effects", async ()
   assert.deepEqual(state.payments, []);
   assert.deepEqual(state.rpcs, []);
   assert.equal(state.queries.length, 1);
+  assert.equal(
+    state.queries.some((query) => query.table.startsWith("dte_")),
+    false,
+  );
 });
 for (const mode of ["missing", "archived"]) {
   test(`${mode} tenant still returns 404`, async () => {

@@ -16,21 +16,27 @@ export async function getPublicLegalBundleByTenantId(
   tenantId: string,
   tenantSlug?: string,
 ) {
-  const [{ data: tenant }, { data: profile }, { data: tax }, { data: docs }] =
-    await Promise.all([
-      supabaseAdmin.from("tenants")
-        .select("id,slug,name,address,city,contact_email,phone_display,lifecycle_status,operational_mode")
-        .eq("id", tenantId).eq("lifecycle_status", "active").maybeSingle(),
-      supabaseAdmin.from("tenant_legal_profiles").select("*")
-        .eq("tenant_id", tenantId).maybeSingle(),
-      supabaseAdmin.from("dte_production_tenant_settings")
-        .select("issuer_legal_name,issuer_rut,issuer_address,issuer_commune,issuer_city")
-        .eq("tenant_id", tenantId).maybeSingle(),
-      supabaseAdmin.from("legal_documents")
-        .select("id,document_type,version,title,content_sha256,effective_at")
-        .eq("owner_kind", "tenant").eq("tenant_id", tenantId)
-        .eq("status", "published").lte("effective_at", new Date().toISOString()),
-    ]);
+  const [
+    { data: tenant },
+    { data: profile },
+    { data: tax },
+    { data: docs },
+    { data: coreLegal },
+  ] = await Promise.all([
+    supabaseAdmin.from("tenants")
+      .select("id,slug,name,address,city,contact_email,phone_display,lifecycle_status,operational_mode")
+      .eq("id", tenantId).eq("lifecycle_status", "active").maybeSingle(),
+    supabaseAdmin.from("tenant_legal_profiles").select("*")
+      .eq("tenant_id", tenantId).maybeSingle(),
+    supabaseAdmin.from("dte_production_tenant_settings")
+      .select("issuer_legal_name,issuer_rut,issuer_address,issuer_commune,issuer_city")
+      .eq("tenant_id", tenantId).maybeSingle(),
+    supabaseAdmin.from("legal_documents")
+      .select("id,document_type,version,title,content_sha256,effective_at")
+      .eq("owner_kind", "tenant").eq("tenant_id", tenantId)
+      .eq("status", "published").lte("effective_at", new Date().toISOString()),
+    supabaseAdmin.rpc("tenant_core_legal_gate_report", { p_tenant_id: tenantId }),
+  ]);
 
   const operational = tenant ? resolveTenantOperationalCapabilities({
     lifecycleStatus: tenant.lifecycle_status, operationalMode: tenant.operational_mode,
@@ -48,14 +54,14 @@ export async function getPublicLegalBundleByTenantId(
       href: `/legal/${encodeURIComponent(tenant.slug)}/${encodeURIComponent(doc.document_type)}`,
     } satisfies PublicLegalDocument,
   ]));
+
+  // Public booking identity is a consumer/legal concern. DTE identity is a
+  // separate capability and may legitimately be absent for external BHE tenants.
   const identityComplete = Boolean(
-    profile?.administrative_review_status === "complete" &&
-    profile?.tenant_is_service_provider === true &&
-    (profile?.trade_name || tenant.name) &&
-    (profile?.contact_address || tenant.address) &&
-    (profile?.support_email || tenant.contact_email) &&
-    profile?.privacy_contact_name && profile?.privacy_contact_email &&
-    tax?.issuer_legal_name && tax?.issuer_rut && tax?.issuer_address,
+    coreLegal &&
+    typeof coreLegal === "object" &&
+    !Array.isArray(coreLegal) &&
+    (coreLegal as Record<string, unknown>).identityLegalComplete === true
   );
 
   return {

@@ -17,13 +17,25 @@ export type CustomerTaxProfileInput = {
   taxEmail: string;
 };
 
+export type BookingTaxDocumentMode =
+  | "unconfigured"
+  | "citaya_dte"
+  | "external_bhe";
+
 export function resolveBookingTaxDocumentType(input: {
   isAdminRequest: boolean;
   isDemoAppointment: boolean;
+  taxDocumentMode?: BookingTaxDocumentMode | null;
   taxDocumentType?: 33 | 39 | null;
   invoiceRequested?: boolean;
 }): 33 | 39 | null {
   if (input.isDemoAppointment) return null;
+
+  // Backward-compatible default for legacy DTE callers/tests. Runtime booking
+  // paths pass the authoritative tenant mode explicitly.
+  const taxDocumentMode = input.taxDocumentMode ?? "citaya_dte";
+  if (taxDocumentMode !== "citaya_dte") return null;
+
   if (input.taxDocumentType === 33 || input.taxDocumentType === 39) {
     return input.taxDocumentType;
   }

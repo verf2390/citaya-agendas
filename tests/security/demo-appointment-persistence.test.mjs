@@ -11,7 +11,7 @@ test("[structural] safe demo uses the persisted RPC without productive legal or 
   assert.match(createRoute, /const isDemoAppointment = isSafeDemoAppointmentMode\(/);
   assert.match(
     createRoute,
-    /resolveBookingTaxDocumentType\(\{[\s\S]*isDemoAppointment,[\s\S]*taxDocumentType: input\.taxDocumentType/,
+    /resolveBookingCommercialPolicy\(\{[\s\S]*isDemoAppointment,[\s\S]*taxDocumentType: input\.taxDocumentType/,
   );
   assert.match(
     createRoute,
@@ -30,16 +30,16 @@ test("[structural] safe demo uses the persisted RPC without productive legal or 
 test("[structural] safe demo forces no payment and bypasses billing initialization", () => {
   assert.match(
     createRoute,
-    /const paymentRequired = !isDemoAppointment && service\.payment_policy !== "no_advance"/,
+    /const paymentRequired = commercialPolicy\.paymentRequired/,
   );
   assert.match(
     createRoute,
-    /p_payment_status: isDemoAppointment\s*\? "not_required"/,
+    /p_payment_status: isDemoAppointment \|\| !operational\.paymentsEnabled\s*\? "not_required"/,
   );
   const productiveEffects = createRoute.match(
-    /if \(!isDemoAppointment\) \{[\s\S]*?billing_initialize_appointment_sale[\s\S]*?\n    \}/,
+    /if \(commercialPolicy\.persistDteSnapshot\) \{[\s\S]*?billing_initialize_appointment_sale[\s\S]*?\n    \}/,
   );
-  assert.ok(productiveEffects, "billing must remain inside the productive-only branch");
+  assert.ok(productiveEffects, "billing must remain behind the explicit DTE snapshot policy");
   assert.match(productiveEffects[0], /customer_rut_snapshot/);
   assert.match(productiveEffects[0], /tax_document_selection/);
 });
@@ -77,11 +77,19 @@ test("[structural] demo document choice is separate from productive Boleta 39 ca
   );
   assert.match(
     bookingPage,
-    /const productiveTaxDocumentType = isSafeDemoAppointment\s*\? null/,
+    /const productiveTaxDocumentType =\s*!isSafeDemoAppointment && taxDocumentMode === "citaya_dte"\s*\? taxDocumentType\s*:\s*null/,
   );
   assert.match(
     bookingPage,
     /customerRut: !isSafeDemoAppointment && taxDocumentType === 33/,
+  );
+  assert.match(
+    bookingPage,
+    /taxDocumentMode === "external_bhe"[\s\S]*?\? true/,
+  );
+  assert.match(
+    bookingPage,
+    /No necesitas elegir boleta o factura para reservar/,
   );
 });
 
