@@ -6,6 +6,10 @@ const migration = readFileSync(
   "migrations/202609090002_cit72_capability_aware_live.sql",
   "utf8",
 );
+const bookingCoreLegalMigration = readFileSync(
+  "migrations/202609090006_cit72_public_booking_core_legal_identity.sql",
+  "utf8",
+);
 const operationalServer = readFileSync(
   "lib/tenant/operational-server.ts",
   "utf8",
@@ -80,6 +84,23 @@ test("CIT-72 public booking identity no longer requires DTE issuer identity", ()
     publicLegalServer.indexOf("return {", publicLegalServer.indexOf("const identityComplete")),
   );
   assert.doesNotMatch(identitySection, /issuer_legal_name|issuer_rut|issuer_address/);
+
+  assert.match(
+    bookingCoreLegalMigration,
+    /create or replace function public\.create_public_appointment_with_legal_acceptance/,
+  );
+  assert.match(
+    bookingCoreLegalMigration,
+    /tenant_core_legal_gate_report\(p_tenant_id\)/,
+  );
+  assert.match(
+    bookingCoreLegalMigration,
+    /identityLegalComplete/,
+  );
+  assert.doesNotMatch(
+    bookingCoreLegalMigration,
+    /public\.legal_identity_complete\(p_tenant_id\)/,
+  );
 });
 
 test("CIT-72 live readiness conditionally requires payments and DTE", () => {
