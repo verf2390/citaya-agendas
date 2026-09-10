@@ -77,11 +77,19 @@ test("[structural] demo document choice is separate from productive Boleta 39 ca
   );
   assert.match(
     bookingPage,
-    /const productiveTaxDocumentType = isSafeDemoAppointment\s*\? null/,
+    /const productiveTaxDocumentType =\s*!isSafeDemoAppointment && taxDocumentMode === "citaya_dte"\s*\? taxDocumentType\s*:\s*null/,
   );
   assert.match(
     bookingPage,
     /customerRut: !isSafeDemoAppointment && taxDocumentType === 33/,
+  );
+  assert.match(
+    bookingPage,
+    /taxDocumentMode === "external_bhe"[\s\S]*?\? true/,
+  );
+  assert.match(
+    bookingPage,
+    /No necesitas elegir boleta o factura para reservar/,
   );
 });
 

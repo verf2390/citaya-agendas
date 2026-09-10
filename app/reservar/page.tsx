@@ -72,6 +72,7 @@ type Service = {
   provisional_expiry_minutes: number;
 };
 
+type TenantTaxDocumentMode = "unconfigured" | "citaya_dte" | "external_bhe";
 type TenantPaymentMode = "none" | "optional" | "required";
 type PaymentChoice = "pay_now" | "pay_later";
 type PaymentProviderId = "mercadopago" | "webpay" | "khipu" | "manual";
@@ -456,6 +457,8 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [taxDocumentType, setTaxDocumentType] = useState<33 | 39 | null>(null);
+  const [taxDocumentMode, setTaxDocumentMode] =
+    useState<TenantTaxDocumentMode>("unconfigured");
   const [boletaSelectionEnabled, setBoletaSelectionEnabled] = useState(false);
   const [invoiceSelectionEnabled, setInvoiceSelectionEnabled] = useState(false);
   const [demoDocumentSelectionEnabled, setDemoDocumentSelectionEnabled] =
@@ -463,7 +466,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const [demoTaxDocumentType, setDemoTaxDocumentType] = useState<33 | 39 | null>(null);
   const isSafeDemoAppointment = tenantOperationalCapabilities !== null &&
     isSafeDemoAppointmentMode(tenantOperationalCapabilities);
-  const invoiceRequested = !isSafeDemoAppointment && taxDocumentType === 33;
+  const invoiceRequested =
+    !isSafeDemoAppointment &&
+    taxDocumentMode === "citaya_dte" &&
+    taxDocumentType === 33;
   const [invoiceRut, setInvoiceRut] = useState("");
   const [invoiceLegalName, setInvoiceLegalName] = useState("");
   const [invoiceActivity, setInvoiceActivity] = useState("");
@@ -528,6 +534,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
       setTenantId("");
       setTenantName("");
       setTenantOperationalCapabilities(null);
+      setTaxDocumentMode("unconfigured");
       setBoletaSelectionEnabled(false);
       setInvoiceSelectionEnabled(false);
       setDemoDocumentSelectionEnabled(false);
@@ -590,6 +597,15 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
           setTenantOperationalCapabilities(
             (tenant.operational_capabilities as TenantOperationalCapabilities | undefined) ?? null,
           );
+          const nextTaxDocumentMode: TenantTaxDocumentMode =
+            tenant.tax_document_mode === "citaya_dte" ||
+            tenant.tax_document_mode === "external_bhe"
+              ? tenant.tax_document_mode
+              : "unconfigured";
+          setTaxDocumentMode(nextTaxDocumentMode);
+          if (nextTaxDocumentMode !== "citaya_dte") {
+            setTaxDocumentType(null);
+          }
           setBoletaSelectionEnabled(
             tenant.boleta_document_selection_enabled === true,
           );
@@ -915,7 +931,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
   const documentSelectionComplete = isSafeDemoAppointment
     ? demoDocumentSelectionEnabled &&
       (demoTaxDocumentType === 33 || demoTaxDocumentType === 39)
-    : taxDocumentType === 33 || taxDocumentType === 39;
+    : taxDocumentMode === "external_bhe"
+      ? true
+      : taxDocumentMode === "citaya_dte" &&
+        (taxDocumentType === 33 || taxDocumentType === 39);
   const legalRequirementsComplete = isSafeDemoAppointment || (
     legalBundle?.identity.complete === true &&
     !!legalBundle.documents.consumer_terms &&
@@ -1041,9 +1060,10 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
     try {
       const appointmentIdempotencyKey = crypto.randomUUID();
       const acceptedLegalBundle = isSafeDemoAppointment ? null : legalBundle;
-      const productiveTaxDocumentType = isSafeDemoAppointment
-        ? null
-        : taxDocumentType;
+      const productiveTaxDocumentType =
+        !isSafeDemoAppointment && taxDocumentMode === "citaya_dte"
+          ? taxDocumentType
+          : null;
       const payload = {
         tenantId,
         tenantSlug,
@@ -2367,7 +2387,9 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                   <p className="text-[11px] font-extrabold sm:text-sm">
                     {isSafeDemoAppointment
                       ? "Selección demostrativa"
-                      : "¿Qué documento necesitas?"}
+                      : taxDocumentMode === "external_bhe"
+                        ? "Documento tributario"
+                        : "¿Qué documento necesitas?"}
                   </p>
                   {isSafeDemoAppointment ? (
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -2410,6 +2432,16 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                           Compra empresa. No solicita ni emite datos tributarios reales.
                         </span>
                       </button>
+                    </div>
+                  ) : taxDocumentMode === "external_bhe" ? (
+                    <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600">
+                      <span className="block font-extrabold text-slate-800">
+                        Boleta de Honorarios Electrónica (BHE)
+                      </span>
+                      <span className="mt-1 block">
+                        El prestador gestiona su BHE fuera de Citaya cuando corresponda.
+                        No necesitas elegir boleta o factura para reservar.
+                      </span>
                     </div>
                   ) : (
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">

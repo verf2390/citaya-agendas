@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getTenantPaymentConfig } from "@/services/payments/payment-config";
-import {
-  isSafeDemoAppointmentMode,
-  resolveTenantOperationalCapabilities,
-} from "@/lib/tenant/operational-mode.mjs";
+import { isSafeDemoAppointmentMode } from "@/lib/tenant/operational-mode.mjs";
+import { loadTenantOperationalContext } from "@/lib/tenant/operational-server";
 
 type TenantRow = {
   id: string;
@@ -102,10 +100,14 @@ export async function GET(req: Request) {
   const phone_display = data.show_phone_home === true ? data.phone_display : null;
   const address_display =
     [address, data.city].filter(Boolean).join(" · ").trim() || null;
-  const operationalCapabilities = resolveTenantOperationalCapabilities({
-    lifecycleStatus: data.lifecycle_status,
-    operationalMode: data.operational_mode,
-  });
+  const operationalContext = await loadTenantOperationalContext(data.id).catch(() => null);
+  if (!operationalContext) {
+    return NextResponse.json(
+      { error: "Tenant operational context unavailable" },
+      { status: 503 },
+    );
+  }
+  const operationalCapabilities = operationalContext.capabilities;
   if (!operationalCapabilities.informationalPage) {
     return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
   }
@@ -179,6 +181,7 @@ export async function GET(req: Request) {
 
     address_display,
     operational_mode: operationalCapabilities.operationalMode,
+    tax_document_mode: operationalContext.taxDocumentMode,
     operational_capabilities: operationalCapabilities,
     demo_banner: operationalCapabilities.demoSimulation
       ? "Entorno de demostración. No ingrese información personal, clínica o financiera real"

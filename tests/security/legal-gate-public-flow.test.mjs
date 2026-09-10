@@ -31,4 +31,24 @@ test("public booking requires exact tenant terms and conditional sensitive conse
   assert.match(page, /useState\(false\)/);
   assert.match(route, /resolveTenantForPublicRequest/);
   assert.match(route, /create_public_appointment_with_legal_acceptance/);
+
+  const marketingMigration = await readFile(
+    new URL("../../migrations/202609090005_cit72_booking_marketing_optout.sql", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(marketingMigration, /marketing_suppressions/);
+  assert.match(marketingMigration, /event_type[\s\S]*?'revoked'/);
+  assert.match(
+    marketingMigration,
+    /delete from public\.marketing_suppressions/,
+  );
+  assert.match(
+    marketingMigration,
+    /on conflict \(tenant_id,channel,destination_hash\)[\s\S]*do update/,
+  );
+  assert.match(
+    marketingMigration,
+    /Cliente no autorizó promociones durante la reserva/,
+  );
 });
