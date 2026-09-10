@@ -40,6 +40,7 @@ test("[behavioral] appointment operational effects allow live and fail-closed sa
     "sendExternalEmail",
     "sendCampaign",
     "callExternalAutomation",
+    "bheAutomation",
     "enqueueDte",
     "manualDteEnqueue",
     "runDteWorker",

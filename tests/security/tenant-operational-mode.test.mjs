@@ -42,7 +42,7 @@ const matrix = [
 const booleanCapabilities = [
   "informationalPage", "demoSimulation", "createAppointment", "createPayment",
   "confirmTransfer", "acceptPaymentWebhook", "appointmentOperationalCommunication",
-  "sendExternalEmail", "sendCampaign", "callExternalAutomation", "enqueueDte",
+  "sendExternalEmail", "sendCampaign", "callExternalAutomation", "bheAutomation", "enqueueDte",
   "manualDteEnqueue", "runDteWorker", "publicTaxDocument", "taxAdministration",
   "dteCertification", "ordinaryAdmin",
   "exceptionalPlatformAccess", "classificationAdmin",
@@ -86,6 +86,7 @@ test("[behavioral] tenant operational matrix is explicit and archived always win
     assert.equal(capabilities.informationalPage, false);
     assert.equal(capabilities.createAppointment, false);
     assert.equal(capabilities.classificationAdmin, true);
+    assert.equal(capabilities.bheAutomation, false);
   }
 });
 
@@ -102,7 +103,7 @@ test("[behavioral] safe demo appointment mode requires the complete fail-closed 
 
   const dangerousCapabilities = [
     "createPayment", "confirmTransfer", "acceptPaymentWebhook",
-    "sendExternalEmail", "sendCampaign", "callExternalAutomation",
+    "sendExternalEmail", "sendCampaign", "callExternalAutomation", "bheAutomation",
     "enqueueDte", "manualDteEnqueue", "runDteWorker",
     "publicTaxDocument", "taxAdministration", "dteCertification",
   ];
@@ -142,6 +143,9 @@ test("[behavioral] safe demo appointment mode requires the complete fail-closed 
   assert.equal(isSafeDemoAppointmentMode({}), false);
   assert.equal(isSafeDemoAppointmentMode(null), false);
   assert.equal(isSafeDemoAppointmentMode(undefined), false);
+  const missingBhe = { ...safe };
+  delete missingBhe.bheAutomation;
+  assert.equal(isSafeDemoAppointmentMode(missingBhe), false);
   assert.equal(canRunAppointmentOperationalEffects({}), false);
   assert.equal(canRunAppointmentOperationalEffects(null), false);
   assert.equal(canRunAppointmentOperationalEffects(undefined), false);
@@ -151,6 +155,8 @@ test("[behavioral] safe demo appointment mode requires the complete fail-closed 
     operationalMode: "live",
   });
   assert.equal(canRunAppointmentOperationalEffects(live), true);
+  assert.equal(live.callExternalAutomation, true);
+  assert.equal(live.bheAutomation, false);
   assert.equal(
     canRunAppointmentOperationalEffects({
       ...live,

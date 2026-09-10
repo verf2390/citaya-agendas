@@ -43,6 +43,7 @@ import type {
 
 import { supabase } from "@/lib/supabaseClient";
 import { resolveTenantFromHostname } from "@/lib/client/tenant-resolution";
+import type { TenantTaxDocumentMode } from "@/lib/tenant/operational-types";
 import { toast } from "@/components/ui/use-toast";
 import { normalizePhoneToWhatsApp } from "@/app/lib/phone";
 
@@ -416,6 +417,7 @@ export default function AgendaPage() {
   const [loadingTenant, setLoadingTenant] = useState(true);
   const [tenantLogoUrl, setTenantLogoUrl] = useState("");
   const [tenantName, setTenantName] = useState("");
+  const [taxDocumentMode, setTaxDocumentMode] = useState<TenantTaxDocumentMode>("unconfigured");
   // auth
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -497,6 +499,7 @@ export default function AgendaPage() {
       setTenantError("");
       setTenantSlug("");
       setTenantId("");
+      setTaxDocumentMode("unconfigured");
 
       const result = await resolveTenantFromHostname(window.location.host);
       if (!result.ok) {
@@ -510,6 +513,12 @@ export default function AgendaPage() {
       setTenantId(result.tenant.id);
       setTenantLogoUrl(result.tenant.logo_url ?? "");
       setTenantName(result.tenant.name);
+      const resolvedTaxMode = result.tenant.tax_document_mode;
+      setTaxDocumentMode(
+        resolvedTaxMode === "citaya_dte" || resolvedTaxMode === "external_bhe"
+          ? resolvedTaxMode
+          : "unconfigured",
+      );
       setLoadingTenant(false);
     };
 
@@ -1104,7 +1113,7 @@ export default function AgendaPage() {
     customerEmail?: string | null;
 
     serviceId?: string | null;
-    taxDocumentType: AdminAppointmentTaxDocumentType;
+    taxDocumentType: AdminAppointmentTaxDocumentType | null;
     invoiceRequested: boolean;
   }) {
     const idempotencyKey = crypto.randomUUID();
@@ -1125,7 +1134,7 @@ export default function AgendaPage() {
   async function createAppointmentWithCustomer(args: {
     customerId: string;
     serviceId: string;
-    taxDocumentType: AdminAppointmentTaxDocumentType;
+    taxDocumentType: AdminAppointmentTaxDocumentType | null;
   }) {
     if (!slot) return false;
 
@@ -1965,6 +1974,7 @@ export default function AgendaPage() {
           endISO={slot?.endISO ?? ""}
           customers={customers}
           tenantId={tenantId}
+          taxDocumentMode={taxDocumentMode}
           services={services.map((s) => ({ id: s.id, name: s.name }))}
           onCreatedCustomer={(c) => {
             setCustomers((prev) => {

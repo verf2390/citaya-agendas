@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
+import { resolveBookingCommercialPolicy } from "../lib/tenant/booking-commercial-policy.mjs";
 
 const modal = readFileSync(
   "app/admin/agenda/components/AppointmentCreateModal.tsx",
@@ -12,6 +14,133 @@ const createRoute = readFileSync(
   "utf8",
 );
 
+const ts = createRequire(import.meta.url)("typescript");
+const compiledModal = ts.transpileModule(modal, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+}).outputText;
+
+function modalHarness(taxDocumentMode) {
+  const states = [];
+  let cursor = 0;
+  const submissions = [];
+  const props = {
+    open: true, tenantId: "tenant-a", taxDocumentMode,
+    startISO: "2026-09-09T12:00:00Z", endISO: "2026-09-09T13:00:00Z",
+    customers: [{ id: "customer-a", name: "Cliente A", phone: null, email: "a@example.test" }],
+    services: [{ id: "service-a", name: "Servicio A" }],
+    onConfirm: async (payload) => { submissions.push(payload); },
+    onClose() {},
+  };
+  const module = { exports: {} };
+  const mockRequire = (name) => {
+    if (name === "react/jsx-runtime") return {
+      jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }),
+    };
+    if (name === "react") return {
+      useState(initial) {
+        const index = cursor++;
+        if (!(index in states)) states[index] = initial;
+        return [states[index], (value) => { states[index] = value; }];
+      },
+      useMemo: (fn) => fn(),
+      // These tests exercise selection/confirmation, not modal mount effects.
+      useEffect() {},
+    };
+    if (name === "@/components/ui/use-toast") return { toast() { assert.fail("unexpected toast"); } };
+    if (name === "@/lib/supabaseClient") return { supabase: new Proxy({}, {
+      get() { assert.fail("document selection must not contact Supabase"); },
+    }) };
+    throw new Error(`Unexpected import: ${name}`);
+  };
+  new Function("require", "module", "exports", compiledModal)(mockRequire, module, module.exports);
+  function render() {
+    cursor = 0;
+    return module.exports.default(props);
+  }
+  function nodes(tree) {
+    if (Array.isArray(tree)) return tree.flatMap(nodes);
+    if (!tree || typeof tree !== "object") return [];
+    return [tree, ...nodes(tree.props?.children)];
+  }
+  function find(predicate) {
+    const node = nodes(render()).find(predicate);
+    assert.ok(node, "expected UI element");
+    return node;
+  }
+  function selectBookingInputs() {
+    find((node) => node.type === "select").props.onChange({ target: { value: "service-a" } });
+    find((node) => node.props?.placeholder?.startsWith("Escribe al menos")).props.onChange({ target: { value: "Cliente" } });
+    find((node) => node.type === "button" && JSON.stringify(node.props.children).includes("Cliente A")).props.onClick();
+  }
+  return {
+    props, submissions, render, find, selectBookingInputs,
+    radios: () => nodes(render()).filter((node) => node.props?.name === "taxDocumentType"),
+    async confirm() {
+      const button = find((node) => node.type === "button" && node.props.children === "Confirmar cita");
+      assert.equal(button.props.disabled, false);
+      await button.props.onClick();
+      return submissions.at(-1);
+    },
+  };
+}
+
+test("external BHE admin modal hides DTE selection and submits null without DTE/payment effects", async () => {
+  const ui = modalHarness("external_bhe");
+  assert.equal(ui.radios().length, 0);
+  assert.match(JSON.stringify(ui.render()), /se gestiona externamente por el prestador/);
+  ui.selectBookingInputs();
+  const selection = await ui.confirm();
+  assert.deepEqual(selection, { customerId: "customer-a", serviceId: "service-a", taxDocumentType: null });
+  const policy = resolveBookingCommercialPolicy({
+    ...selection, invoiceRequested: selection.taxDocumentType === 33,
+    isAdminRequest: true, taxDocumentMode: "external_bhe", paymentsEnabled: false, dteEnabled: false,
+    servicePaymentPolicy: "deposit",
+  });
+  assert.equal(policy.requestedDocumentType, null);
+  for (const field of ["persistDteSnapshot", "initializeDteBilling", "loadDteIssuanceConfig", "requireDteServiceConfiguration", "requirePaymentConfiguration", "paymentRequired"]) {
+    assert.equal(policy[field], false, field);
+  }
+});
+
+test("Citaya DTE admin modal preserves default 39 and explicit 33 selection", async () => {
+  const ui = modalHarness("citaya_dte");
+  assert.deepEqual(ui.radios().map((node) => [node.props.value, node.props.checked]), [[39, true], [33, false]]);
+  ui.selectBookingInputs();
+  assert.equal((await ui.confirm()).taxDocumentType, 39);
+  ui.radios().find((node) => node.props.value === 33).props.onChange();
+  assert.equal((await ui.confirm()).taxDocumentType, 33);
+});
+
+test("switching the modal to external BHE cannot submit a stale DTE choice", async () => {
+  const ui = modalHarness("citaya_dte");
+  ui.selectBookingInputs();
+  ui.radios().find((node) => node.props.value === 33).props.onChange();
+  ui.props.taxDocumentMode = "external_bhe";
+  assert.equal(ui.radios().length, 0);
+  assert.equal((await ui.confirm()).taxDocumentType, null);
+});
+
+test("unconfigured admin modal retains its existing selection and backend remains fail-closed", async () => {
+  const ui = modalHarness("unconfigured");
+  assert.equal(ui.radios().length, 2);
+  ui.selectBookingInputs();
+  const selection = await ui.confirm();
+  assert.equal(selection.taxDocumentType, 39);
+  assert.throws(() => resolveBookingCommercialPolicy({ ...selection, isAdminRequest: true, taxDocumentMode: "unconfigured" }),
+    /BOOKING_TAX_DOCUMENT_MODE_UNCONFIGURED/);
+});
+
+test("admin agenda passes the resolved tenant tax mode into the modal without changing backend rules", () => {
+  assert.match(agenda, /const resolvedTaxMode = result\.tenant\.tax_document_mode/);
+  assert.match(agenda, /setTaxDocumentMode\([\s\S]*resolvedTaxMode === "citaya_dte" \|\| resolvedTaxMode === "external_bhe"/);
+  assert.match(agenda, /<AppointmentCreateModal[\s\S]*taxDocumentMode=\{taxDocumentMode\}/);
+  assert.match(createRoute, /if \(commercialPolicy\.persistDteSnapshot\) \{[\s\S]*"billing_initialize_appointment_sale"/);
+  for (const taxDocumentType of [33, 39]) {
+    assert.throws(() => resolveBookingCommercialPolicy({ taxDocumentMode: "external_bhe", taxDocumentType }),
+      /BOOKING_DTE_SELECTION_NOT_AVAILABLE/);
+  }
+});
+
 test("admin agenda modal defaults to boleta 39 and returns the explicit selection", () => {
   assert.match(modal, /useState<AdminAppointmentTaxDocumentType>\(39\)/);
   assert.match(modal, /setSelectedTaxDocumentType\(39\)/);
@@ -20,7 +149,7 @@ test("admin agenda modal defaults to boleta 39 and returns the explicit selectio
   assert.match(modal, /Factura electrónica \(33\)/);
   assert.match(
     modal,
-    /onConfirm\(\{[\s\S]*customerId: selected\.id,[\s\S]*serviceId: selectedServiceId,[\s\S]*taxDocumentType: selectedTaxDocumentType/,
+    /onConfirm\(\{[\s\S]*customerId: selected\.id,[\s\S]*serviceId: selectedServiceId,[\s\S]*taxDocumentType: externalBhe \? null : selectedTaxDocumentType/,
   );
 });
 

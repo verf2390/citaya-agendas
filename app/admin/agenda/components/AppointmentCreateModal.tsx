@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import type { TenantTaxDocumentMode } from "@/lib/tenant/operational-types";
 
 export type CustomerLite = {
   id: string;
@@ -34,10 +35,11 @@ type Props = {
   onConfirm: (args: {
     customerId: string;
     serviceId: string;
-    taxDocumentType: AdminAppointmentTaxDocumentType;
+    taxDocumentType: AdminAppointmentTaxDocumentType | null;
   }) => Promise<boolean | void> | boolean | void;
 
   tenantId: string;
+  taxDocumentMode: TenantTaxDocumentMode;
 
   onCreatedCustomer?: (c: CustomerLite) => void;
 
@@ -82,9 +84,11 @@ export default function AppointmentCreateModal({
   customers,
   onConfirm,
   tenantId,
+  taxDocumentMode,
   onCreatedCustomer,
   services,
 }: Props) {
+  const externalBhe = taxDocumentMode === "external_bhe";
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<CustomerLite | null>(null);
   const [saving, setSaving] = useState(false);
@@ -243,7 +247,7 @@ export default function AppointmentCreateModal({
       const confirmed = await onConfirm({
         customerId: selected.id,
         serviceId: selectedServiceId,
-        taxDocumentType: selectedTaxDocumentType,
+        taxDocumentType: externalBhe ? null : selectedTaxDocumentType,
       });
       if (confirmed === false) return;
       onClose();
@@ -339,47 +343,53 @@ export default function AppointmentCreateModal({
             ) : null}
           </div>
 
-          <fieldset
-            style={{
-              marginTop: 12,
-              marginBottom: 12,
-              padding: 0,
-              border: 0,
-            }}
-          >
-            <legend style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-              Documento tributario
-            </legend>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {TAX_DOCUMENT_OPTIONS.map((option) => {
-                const active = selectedTaxDocumentType === option.value;
-                return (
-                  <label
-                    key={option.value}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "9px 12px",
-                      borderRadius: 10,
-                      border: active ? "1px solid #111" : "1px solid #ddd",
-                      background: active ? "rgba(0,0,0,0.04)" : "white",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="taxDocumentType"
-                      value={option.value}
-                      checked={active}
-                      onChange={() => setSelectedTaxDocumentType(option.value)}
-                    />
-                    <span style={{ fontSize: 13 }}>{option.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
+          {externalBhe ? (
+            <p style={{ marginTop: 12, marginBottom: 12, fontSize: 13 }}>
+              La boleta de honorarios se gestiona externamente por el prestador.
+            </p>
+          ) : (
+            <fieldset
+              style={{
+                marginTop: 12,
+                marginBottom: 12,
+                padding: 0,
+                border: 0,
+              }}
+            >
+              <legend style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+                Documento tributario
+              </legend>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {TAX_DOCUMENT_OPTIONS.map((option) => {
+                  const active = selectedTaxDocumentType === option.value;
+                  return (
+                    <label
+                      key={option.value}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: active ? "1px solid #111" : "1px solid #ddd",
+                        background: active ? "rgba(0,0,0,0.04)" : "white",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="taxDocumentType"
+                        value={option.value}
+                        checked={active}
+                        onChange={() => setSelectedTaxDocumentType(option.value)}
+                      />
+                      <span style={{ fontSize: 13 }}>{option.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
 
           <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
             Buscar cliente

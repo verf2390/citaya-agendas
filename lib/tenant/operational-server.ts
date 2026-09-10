@@ -5,12 +5,10 @@ import { canRunAppointmentOperationalEffects } from "@/lib/tenant/operational-mo
 import type {
   TenantOperationalCapabilities,
   TenantOperationalMode,
+  TenantTaxDocumentMode,
 } from "@/lib/tenant/operational-types";
 
-export type TenantTaxDocumentMode =
-  | "unconfigured"
-  | "citaya_dte"
-  | "external_bhe";
+export type { TenantTaxDocumentMode } from "@/lib/tenant/operational-types";
 
 export class TenantOperationalError extends Error {
   constructor(public readonly code: string) {
@@ -35,10 +33,36 @@ function isCapabilities(value: unknown): value is TenantOperationalCapabilities 
   const row = value as Record<string, unknown>;
   return typeof row.lifecycleStatus === "string"
     && typeof row.operationalMode === "string"
+    && typeof row.informationalPage === "boolean"
+    && typeof row.demoSimulation === "boolean"
     && typeof row.createAppointment === "boolean"
     && typeof row.createPayment === "boolean"
+    && typeof row.confirmTransfer === "boolean"
+    && typeof row.acceptPaymentWebhook === "boolean"
+    && typeof row.appointmentOperationalCommunication === "boolean"
+    && typeof row.sendExternalEmail === "boolean"
     && typeof row.sendCampaign === "boolean"
-    && typeof row.enqueueDte === "boolean";
+    && typeof row.callExternalAutomation === "boolean"
+    && typeof row.bheAutomation === "boolean"
+    && typeof row.enqueueDte === "boolean"
+    && typeof row.manualDteEnqueue === "boolean"
+    && typeof row.runDteWorker === "boolean"
+    && typeof row.publicTaxDocument === "boolean"
+    && typeof row.taxAdministration === "boolean"
+    && typeof row.dteCertification === "boolean"
+    && typeof row.ordinaryAdmin === "boolean"
+    && typeof row.exceptionalPlatformAccess === "boolean"
+    && typeof row.classificationAdmin === "boolean";
+}
+
+function normalizeCapabilities(value: unknown): TenantOperationalCapabilities | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  // A pre-CIT-73 resolver omits BHE. Only that absence is compatible:
+  // present values (including null/undefined) must pass strict validation.
+  const normalized = Object.hasOwn(value, "bheAutomation")
+    ? value
+    : { ...value, bheAutomation: false };
+  return isCapabilities(normalized) ? normalized : null;
 }
 
 function isTaxDocumentMode(value: unknown): value is TenantTaxDocumentMode {
@@ -61,11 +85,12 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
 
   const data = tenantResult.data;
   const taxDocumentMode = featureResult.data?.tax_document_mode;
+  const capabilities = normalizeCapabilities(capabilityResult.data);
   if (
     tenantResult.error ||
     !data?.id ||
     capabilityResult.error ||
-    !isCapabilities(capabilityResult.data) ||
+    !capabilities ||
     featureResult.error ||
     !isTaxDocumentMode(taxDocumentMode) ||
     typeof featureResult.data?.payments_enabled !== "boolean" ||
@@ -74,7 +99,6 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
     throw new TenantOperationalError("TENANT_OPERATIONAL_CONTEXT_UNAVAILABLE");
   }
 
-  const capabilities = capabilityResult.data;
   return {
     tenantId: data.id,
     tenantSlug: String(data.slug ?? "").trim().toLowerCase(),
@@ -164,6 +188,14 @@ export async function assertTenantCanRunAppointmentOperationalEffects(tenantId: 
 
 export async function assertTenantCanSendCampaign(tenantId: string) {
   return requireCapability(await loadTenantOperationalContext(tenantId), "sendCampaign", "TENANT_MODE_CAMPAIGN_BLOCKED");
+}
+
+export async function assertTenantCanAutomateBhe(tenantId: string) {
+  return requireCapability(
+    await loadTenantOperationalContext(tenantId),
+    "bheAutomation",
+    "TENANT_MODE_BHE_AUTOMATION_BLOCKED",
+  );
 }
 
 export async function assertTenantCanRunDteWorker(

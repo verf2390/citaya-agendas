@@ -2,6 +2,8 @@ export type TenantLifecycleStatus = "active" | "archived" | "suspended" | "unkno
 
 export type TenantOperationalMode = "unclassified" | "demo" | "live" | "internal";
 
+export type TenantTaxDocumentMode = "unconfigured" | "citaya_dte" | "external_bhe";
+
 export type TenantOperationalCapabilities = {
   lifecycleStatus: TenantLifecycleStatus;
   operationalMode: TenantOperationalMode;
@@ -15,6 +17,7 @@ export type TenantOperationalCapabilities = {
   sendExternalEmail: boolean;
   sendCampaign: boolean;
   callExternalAutomation: boolean;
+  bheAutomation: boolean;
   enqueueDte: boolean;
   manualDteEnqueue: boolean;
   runDteWorker: boolean;

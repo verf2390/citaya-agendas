@@ -7,6 +7,18 @@ const migration = readFileSync(
   "utf8",
 );
 const docs = readFileSync("docs/bhe/automatic-emission.md", "utf8");
+const capabilityMigration = readFileSync(
+  "migrations/202609090007_cit73_bhe_automation_capability.sql",
+  "utf8",
+);
+const operationalTypes = readFileSync(
+  "lib/tenant/operational-types.ts",
+  "utf8",
+);
+const operationalServer = readFileSync(
+  "lib/tenant/operational-server.ts",
+  "utf8",
+);
 
 test("CIT-73 BHE automation is explicit and fail closed", () => {
   assert.match(migration, /tenant_bhe_automation_settings/);
@@ -73,4 +85,45 @@ test("CIT-73 readiness requires every automatic gate", () => {
   ]) {
     assert.match(readiness, new RegExp(gate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+});
+
+
+test("CIT-73 exposes a dedicated fail-closed bheAutomation capability", () => {
+  assert.match(
+    capabilityMigration,
+    /tenant_bhe_automation_readiness\(p_tenant_id\)/,
+  );
+
+  assert.match(
+    capabilityMigration,
+    /'bheAutomation',\s*coalesce\(feature\.tax_document_mode,'unconfigured'\)='external_bhe'\s*and live_gates\.bhe_automation_ready/,
+  );
+
+  const disabledModes =
+    capabilityMigration.match(/'bheAutomation',false/g) ?? [];
+
+  assert.ok(
+    disabledModes.length >= 5,
+    `expected bheAutomation=false on non-live modes, got ${disabledModes.length}`,
+  );
+
+  assert.match(
+    operationalTypes,
+    /bheAutomation: boolean/,
+  );
+
+  assert.match(
+    operationalServer,
+    /typeof row\.bheAutomation === "boolean"/,
+  );
+
+  assert.match(
+    operationalServer,
+    /assertTenantCanAutomateBhe/,
+  );
+
+  assert.match(
+    operationalServer,
+    /"bheAutomation",\s*"TENANT_MODE_BHE_AUTOMATION_BLOCKED"/,
+  );
 });
