@@ -151,7 +151,7 @@ Cada cambio incrementa `generation` y mantiene `requires_explicit_enablement=tru
 
 El reporte es de sólo lectura y devuelve por defecto `issuerVerified=false`, `authorizationActive=false`, `evidenceComplete=false`, `controlReady=false`. Expone separadamente los cuatro estados. `authorizationActive` describe el estado ACTIVE de una autorización vinculada a un emisor verificado y su ventana explícita; `controlReady` exige además la cadena actual positiva, toda la evidencia y un control existente con bloqueo explícito y generación positiva coincidente con la última auditoría del tenant. Si falta el control, expone `generation=0` y `controlReady=false`; las inconsistencias de generación también cierran el reporte. La lectura nunca crea ni repara controles, y los errores SQL siguen abortando la llamada. Un padre invalidado puede dejar `authorizationStatus=ACTIVE` mientras `controlReady=false`: las dimensiones se conservan separadas y el reporte no autoriza ejecución.
 
-Incluso con `controlReady=true`, `executionEnabled` permanece false y `requiresExplicitEnablement` true. El reporte no evalúa capabilities productivas ni modifica `bheAutomation`. Su integración fail-closed al resolver se reserva para Fase 1B.
+Incluso con `controlReady=true`, `executionEnabled` permanece false y `requiresExplicitEnablement` true. El reporte no evalúa capabilities productivas ni modifica `bheAutomation`. Fase 1B lo consume desde la readiness efectiva descrita a continuación.
 
 ### Rol transitorio de foundation 003
 
@@ -161,8 +161,29 @@ Incluso con `controlReady=true`, `executionEnabled` permanece false y `requiresE
 
 Antes del preflight, 009 toma un bloqueo `SHARE ROW EXCLUSIVE` sobre settings legacy y lo conserva hasta COMMIT. Así ninguna escritura concurrente puede introducir una activación entre el chequeo OFF y el cierre de permisos/triggers. Las lecturas continúan disponibles.
 
-`created_at`, `updated_at` y `updated_by` conservan su función histórica; los eventos nuevos de settings se escriben en `bhe_authority_audit`. `tenant_bhe_automation_audit` queda como historial congelado. Los flags legacy nunca promocionan el control nuevo; la instalación con todos OFF y el cierre del DML impiden que su resolver antiguo tenga autoridad ejecutable superior. Fase 1B deberá sustituir explícitamente esa fuente de autoridad, sin reutilizar flags históricos como prueba SII.
+`created_at`, `updated_at` y `updated_by` conservan su función histórica; los eventos nuevos de settings se escriben en `bhe_authority_audit`. `tenant_bhe_automation_audit` queda como historial congelado. Los flags legacy nunca promocionan el control nuevo; la instalación con todos OFF y el cierre del DML impiden que su resolver antiguo tenga autoridad ejecutable superior. Desde Fase 1B, esos flags sólo representan prerequisites foundation/technical legacy; la autoridad proviene exclusivamente del reporte de 009.
+
+### Fase 1B: readiness efectiva sin ejecución
+
+La migración `202609090010_cit73_bhe_authority_readiness.sql` reemplaza únicamente `tenant_bhe_automation_readiness`. No reescribe 003, 007, 008 ni 009, no hace backfill y no modifica datos. Conserva los campos diagnósticos legacy —incluidos `siiAuthorized` y `automationEnabled`, que no acreditan autoridad ni permiso de ejecución— y separa tres condiciones:
+
+| Campo | Fuente y significado |
+| --- | --- |
+| `foundationReady` | Conjunción histórica de 003: `automation_enabled`, modo legacy `sii_mass_webservice`, estado legacy `authorized`, proveedor incluido, especificación recibida, configuración técnica y worker declarados listos. Son requisitos legacy necesarios, nunca prueba de autoridad o ejecución real. |
+| `authorityControlReady` | `controlReady` de `tenant_bhe_authority_report`, con emisor verificado, autorización activa, evidencia completa y generación positiva entera en el mismo reporte. No se infieren estados leyendo tablas de autoridad. |
+| `authorityExecutionEnabled` | `executionEnabled=true` y `requiresExplicitEnablement=false` en ese reporte. 009 devuelve siempre false/true respectivamente. |
+| `effectiveReady` | `foundationReady AND authorityControlReady AND authorityExecutionEnabled`. |
+
+`ready` es un alias de `effectiveReady` para mantener el contrato del resolver de 007. Ese resolver permanece intacto: sólo un tenant activo, `live`, con `tax_document_mode=external_bhe` y readiness efectiva puede exponer `bheAutomation=true`. **Fase 1B NO habilita BHE automática:** con el reporte real de 009, `authorityExecutionEnabled=false`, `effectiveReady=false` y `bheAutomation=false`, incluso si los otros dos requisitos son true. Tampoco se modifica la compatibilidad de Fase 0: la aplicación sigue normalizando únicamente la ausencia de `bheAutomation` a false.
+
+La composición es `STABLE`, `SECURITY INVOKER`, con `search_path=''` y EXECUTE sólo para `service_role`, que ya tiene SELECT sobre settings y EXECUTE sobre el reporte. No agrega permisos de mutación. Los callers operacionales usan `supabaseAdmin`; los guards SQL indirectos con otro rol de sesión no reciben el reporte interno y cierran sólo la readiness BHE, conservando sus otras capabilities. No se cambian roles ni claims para obtener el reporte.
+
+Un reporte ausente, campos requeridos ausentes o de tipo incorrecto, contradicciones de autoridad o generación inválida cierran readiness. Los errores reales de DB se propagan y abortan la llamada; no se convierten en respuestas exitosas. La lectura no crea ni repara controles. Los flags legacy no pueden sustituir el reporte ni liberar ejecución.
+
+El transporte oficial SII sigue sin implementarse y continúa pendiente **GE00396714**. Esta fase no agrega endpoints, SOAP/WSDL/API, worker, outbox, issuance intents, secretos, credenciales ni UI administrativa.
 
 ### Validación local
 
 `node --test tests/security/cit73-bhe-authority-postgres.test.mjs` crea una base aleatoria y efímera en el contenedor PostgreSQL local `citaya-dte-sqltest` y la elimina al finalizar. No usa URLs ni conexiones Supabase. Reproduce grants por defecto amplios, deriva claims de sesiones de prueba, aplica las migraciones a fixtures y comprueba ACL/RLS, transiciones, rollback obligatorio de auditoría, aislamiento por FK, concurrencia real entre dos sesiones, vigencia y suspensión/revocación. También ejecuta contratos SQL CIT-72 y verifica que pagos/DTE y BHE manual conservan sus capabilities.
+
+`node --test tests/security/cit73-bhe-readiness-postgres.test.mjs` usa otra base efímera local para comprobar la composición de Fase 1B con un expediente creado mediante las RPC reales, las combinaciones de prerequisites, ACL, lectura sin escrituras y preservación de capabilities/guards. Los flags legacy completos y los reportes hipotéticos se introducen únicamente mediante fixtures privilegiados con rollback; no son vías de habilitación de la aplicación.
