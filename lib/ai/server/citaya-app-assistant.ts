@@ -36,13 +36,6 @@ export async function runCitayaAppAssistant(input: {
 
   const now = input.now ?? new Date();
   const startedAt = Date.now();
-  const requestTimeoutMs = Math.max(1, input.policy.timeoutMs);
-  const deadlineAt = startedAt + requestTimeoutMs;
-  const deadlineController = new AbortController();
-  const deadlineTimer = setTimeout(
-    () => deadlineController.abort(),
-    requestTimeoutMs,
-  );
   const promptVersion = assertCitayaAppPromptVersion(
     input.policy.promptVersion,
   );
@@ -50,6 +43,13 @@ export async function runCitayaAppAssistant(input: {
     provider: input.policy.provider,
     model: input.policy.model,
   });
+  const requestTimeoutMs = Math.max(1, input.policy.timeoutMs);
+  const deadlineAt = startedAt + requestTimeoutMs;
+  const deadlineController = new AbortController();
+  const deadlineTimer = setTimeout(
+    () => deadlineController.abort(),
+    requestTimeoutMs,
+  );
   let requestId: string | null = null;
 
   try {
