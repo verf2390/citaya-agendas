@@ -79,6 +79,11 @@ tools, permisos, auditoría, límites ni UI.
   obliga a que el modelo local imite la API de OpenAI. El repositorio incluye
   una implementación de referencia en `services/ai-gateway`, y la topología
   local propuesta está documentada en `docs/ai/LOCAL_AI_CLUSTER.md`.
+- `HybridAIProvider`: usa el modelo local como primera opción y solo puede
+  cambiar a OpenAI antes del primer turno exitoso. El proveedor elegido queda
+  fijo durante el resto del tool loop para no mezclar continuations de runtimes
+  distintos. Un timeout corto del primario permite conservar tiempo del deadline
+  global para el fallback cloud.
 
 No existe importación de proveedores desde componentes cliente. Todas las
 variables sin prefijo `NEXT_PUBLIC_` se leen exclusivamente en módulos
