@@ -34,6 +34,14 @@ export const privilegedRouteInventory = Object.freeze([
     rationale: "Hostname tenant auth runs before JSON parsing; client tenant hints are ignored and the authorized tenant/user are injected into rate limiting, policy, tools and audit. Evidence: citaya-ai-assistant-isolation.test.mjs.",
   },
   {
+    route: "app/api/admin/ai/usage/route.ts",
+    boundary: "host_tenant_admin",
+    status: "OK",
+    severity: "none",
+    markers: ["access.tenantId", "access.userId", "loadAIUsageSummary"],
+    rationale: "Usage telemetry authenticates the hostname tenant before aggregation; tenant/user/auth mode passed to the summary RPC come only from the server boundary and no prompts or tool results are returned.",
+  },
+  {
     route: "app/api/admin/availability/list/route.ts",
     boundary: "tenant_admin",
     status: "OK",
