@@ -45,9 +45,9 @@ function booleanEnv(name: string, fallback: boolean) {
 }
 
 function providerEnv(): AIProviderId {
-  return process.env.CITAYA_AI_PROVIDER?.trim().toLowerCase() === "local"
-    ? "local"
-    : "openai";
+  const value = process.env.CITAYA_AI_PROVIDER?.trim().toLowerCase();
+  if (value === "local" || value === "hybrid") return value;
+  return "openai";
 }
 
 function configuredModel(provider: AIProviderId, override?: string | null) {
@@ -85,7 +85,9 @@ export async function loadAITenantPolicy(
 
   const row = data as PolicyRow | null;
   const provider: AIProviderId =
-    row?.provider === "local" || row?.provider === "openai"
+    row?.provider === "local" ||
+    row?.provider === "openai" ||
+    row?.provider === "hybrid"
       ? row.provider
       : providerEnv();
   const promptVersion =
