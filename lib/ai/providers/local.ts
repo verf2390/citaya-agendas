@@ -18,7 +18,22 @@ function safeTokenCount(value: unknown) {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
 }
 
-function validateEndpoint(value: string) {
+function isPrivateIpv4(hostname: string) {
+  const parts = hostname.split(".").map(Number);
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return false;
+  }
+  return (
+    parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168)
+  );
+}
+
+function validateEndpoint(value: string, allowPrivateHttp = false) {
   let url: URL;
   try {
     url = new URL(value);
@@ -29,13 +44,19 @@ function validateEndpoint(value: string) {
     url.hostname === "localhost" ||
     url.hostname === "127.0.0.1" ||
     url.hostname === "[::1]";
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+  const privateHttp =
+    allowPrivateHttp && url.protocol === "http:" && isPrivateIpv4(url.hostname);
+  if (
+    url.protocol !== "https:" &&
+    !(url.protocol === "http:" && loopback) &&
+    !privateHttp
+  ) {
     throw new AIError(
       "AI_PROVIDER_CONFIG",
-      "El endpoint local debe usar HTTPS o loopback HTTP",
+      "El endpoint local debe usar HTTPS, loopback HTTP o una LAN privada autorizada explícitamente",
     );
   }
-  return { endpoint: url.toString(), loopback };
+  return { endpoint: url.toString(), loopback, privateHttp };
 }
 
 export class LocalModelProvider implements AIProvider {
@@ -44,15 +65,23 @@ export class LocalModelProvider implements AIProvider {
   private readonly endpoint: string;
   private readonly authToken: string;
 
-  constructor(input: { endpoint: string; model: string; authToken?: string }) {
-    const endpoint = validateEndpoint(input.endpoint.trim());
+  constructor(input: {
+    endpoint: string;
+    model: string;
+    authToken?: string;
+    allowPrivateHttp?: boolean;
+  }) {
+    const endpoint = validateEndpoint(
+      input.endpoint.trim(),
+      input.allowPrivateHttp === true,
+    );
     this.endpoint = endpoint.endpoint;
     this.model = input.model.trim();
     this.authToken = input.authToken?.trim() ?? "";
     if (!this.model) {
       throw new AIError("AI_PROVIDER_CONFIG", "El proveedor local requiere modelo");
     }
-    if (!endpoint.loopback && !this.authToken) {
+    if ((!endpoint.loopback || endpoint.privateHttp) && !this.authToken) {
       throw new AIError(
         "AI_PROVIDER_CONFIG",
         "El gateway local remoto requiere autenticación",
