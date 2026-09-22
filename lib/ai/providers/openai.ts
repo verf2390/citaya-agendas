@@ -152,6 +152,7 @@ export class OpenAIProvider implements AIProvider {
           parallel_tool_calls: false,
           max_output_tokens: request.maxOutputTokens,
           store: false,
+          include: ["reasoning.encrypted_content"],
         }),
         cache: "no-store",
         signal: request.signal,
