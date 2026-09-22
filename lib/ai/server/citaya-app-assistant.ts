@@ -36,6 +36,13 @@ export async function runCitayaAppAssistant(input: {
 
   const now = input.now ?? new Date();
   const startedAt = Date.now();
+  const requestTimeoutMs = Math.max(1, input.policy.timeoutMs);
+  const deadlineAt = startedAt + requestTimeoutMs;
+  const deadlineController = new AbortController();
+  const deadlineTimer = setTimeout(
+    () => deadlineController.abort(),
+    requestTimeoutMs,
+  );
   const promptVersion = assertCitayaAppPromptVersion(
     input.policy.promptVersion,
   );
@@ -43,18 +50,29 @@ export async function runCitayaAppAssistant(input: {
     provider: input.policy.provider,
     model: input.policy.model,
   });
-  const requestId = await beginAIRequestAudit({
-    tenantId: input.tenantId,
-    userId: input.userId,
-    authMode: input.authMode,
-    provider: provider.id,
-    model: provider.model,
-    promptVersion,
-    dailyTokenLimit: input.policy.dailyTokenLimit,
-    reservedTokens: reservedTokensForAIRequest(input.policy),
-  });
+  let requestId: string | null = null;
 
   try {
+    requestId = await beginAIRequestAudit({
+      tenantId: input.tenantId,
+      userId: input.userId,
+      authMode: input.authMode,
+      provider: provider.id,
+      model: provider.model,
+      promptVersion,
+      dailyTokenLimit: input.policy.dailyTokenLimit,
+      reservedTokens: reservedTokensForAIRequest(input.policy),
+      signal: deadlineController.signal,
+    });
+
+    const remainingTimeoutMs = deadlineAt - Date.now();
+    if (remainingTimeoutMs <= 0 || deadlineController.signal.aborted) {
+      throw new AIError(
+        "AI_TIMEOUT",
+        "La solicitud de IA excedió el tiempo máximo",
+      );
+    }
+
     const result = await runAICore({
       provider,
       instructions: buildCitayaAppAssistantInstructions({
@@ -73,7 +91,7 @@ export async function runCitayaAppAssistant(input: {
         now,
       },
       maxOutputTokens: input.policy.maxOutputTokens,
-      timeoutMs: input.policy.timeoutMs,
+      timeoutMs: remainingTimeoutMs,
       maxSteps: 4,
       maxToolCallsPerStep: 3,
     });
@@ -86,26 +104,32 @@ export async function runCitayaAppAssistant(input: {
       toolNames: result.toolsUsed,
       usage: result.usage,
       durationMs: Date.now() - startedAt,
+      signal: deadlineController.signal,
     });
     return result;
   } catch (error) {
-    try {
-      await finishAIRequestAudit({
-        requestId,
-        tenantId: input.tenantId,
-        userId: input.userId,
-        status: "failed",
-        toolNames: [],
-        usage: ZERO_USAGE,
-        durationMs: Date.now() - startedAt,
-        error,
-      });
-    } catch (auditError) {
-      console.error("[ai/audit] failed to close request", {
-        tenantId: input.tenantId,
-        code: auditError instanceof AIError ? auditError.code : "unknown",
-      });
+    if (requestId) {
+      try {
+        await finishAIRequestAudit({
+          requestId,
+          tenantId: input.tenantId,
+          userId: input.userId,
+          status: "failed",
+          toolNames: [],
+          usage: ZERO_USAGE,
+          durationMs: Date.now() - startedAt,
+          error,
+          signal: deadlineController.signal,
+        });
+      } catch (auditError) {
+        console.error("[ai/audit] failed to close request", {
+          tenantId: input.tenantId,
+          code: auditError instanceof AIError ? auditError.code : "unknown",
+        });
+      }
     }
     throw error;
+  } finally {
+    clearTimeout(deadlineTimer);
   }
 }
