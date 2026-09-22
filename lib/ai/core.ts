@@ -2,6 +2,7 @@ import { AIError } from "@/lib/ai/errors";
 import type {
   AICoreResult,
   AIConversationMessage,
+  AIEffectiveProviderId,
   AIProvider,
   AIProviderInput,
   AITool,
@@ -93,11 +94,18 @@ export async function runAICore(input: {
   ];
   let continuation: unknown;
   let usage = EMPTY_USAGE;
+  let effectiveProvider: AIEffectiveProviderId | null =
+    input.provider.id === "hybrid" ? null : input.provider.id;
+  let effectiveModel =
+    input.provider.id === "hybrid" ? "" : input.provider.model;
+  let fallbackUsed = false;
+  let providerDurationMs = 0;
   const toolsUsed = new Set<string>();
 
   try {
     for (let step = 1; step <= maxSteps; step += 1) {
       let turn;
+      const providerStartedAt = Date.now();
       try {
         turn = await input.provider.generate({
           instructions: input.instructions,
@@ -114,7 +122,37 @@ export async function runAICore(input: {
           });
         }
         throw error;
+      } finally {
+        providerDurationMs += Date.now() - providerStartedAt;
       }
+
+      const routedProvider =
+        turn.route?.effectiveProvider ??
+        (input.provider.id === "hybrid" ? null : input.provider.id);
+      const routedModel =
+        turn.route?.effectiveModel ??
+        (input.provider.id === "hybrid" ? "" : input.provider.model);
+      if (!routedProvider || !routedModel) {
+        throw new AIError(
+          "AI_PROVIDER_INVALID_RESPONSE",
+          "El proveedor híbrido no informó su ruta efectiva",
+        );
+      }
+      if (effectiveProvider && effectiveProvider !== routedProvider) {
+        throw new AIError(
+          "AI_PROVIDER_INVALID_RESPONSE",
+          "El proveedor cambió de ruta durante el tool loop",
+        );
+      }
+      if (effectiveModel && effectiveModel !== routedModel) {
+        throw new AIError(
+          "AI_PROVIDER_INVALID_RESPONSE",
+          "El proveedor cambió de modelo durante el tool loop",
+        );
+      }
+      effectiveProvider = routedProvider;
+      effectiveModel = routedModel;
+      fallbackUsed = fallbackUsed || turn.route?.fallbackUsed === true;
 
       usage = addUsage(usage, turn.usage);
       continuation = turn.continuation;
@@ -132,6 +170,14 @@ export async function runAICore(input: {
           toolsUsed: Array.from(toolsUsed),
           usage,
           steps: step,
+          route: {
+            requestedProvider: input.provider.id,
+            requestedModel: input.provider.model,
+            effectiveProvider,
+            effectiveModel,
+            fallbackUsed,
+            providerDurationMs,
+          },
         };
       }
 
