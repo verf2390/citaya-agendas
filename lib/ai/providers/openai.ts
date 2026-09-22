@@ -23,7 +23,24 @@ type OpenAIResponse = {
 
 function numberOrZero(value: unknown) {
   const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+function validateEndpoint(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new AIError("AI_PROVIDER_CONFIG", "Endpoint de OpenAI inválido");
+  }
+  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+    throw new AIError(
+      "AI_PROVIDER_CONFIG",
+      "El endpoint de OpenAI debe usar HTTPS o loopback HTTP",
+    );
+  }
+  return url.toString();
 }
 
 function usageFromResponse(response: OpenAIResponse): AIUsage {
@@ -81,8 +98,9 @@ export class OpenAIProvider implements AIProvider {
   constructor(input: { apiKey: string; model: string; endpoint?: string }) {
     this.apiKey = input.apiKey.trim();
     this.model = input.model.trim();
-    this.endpoint =
-      input.endpoint?.trim() || "https://api.openai.com/v1/responses";
+    this.endpoint = validateEndpoint(
+      input.endpoint?.trim() || "https://api.openai.com/v1/responses",
+    );
     if (!this.apiKey || !this.model) {
       throw new AIError(
         "AI_PROVIDER_CONFIG",
