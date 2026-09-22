@@ -100,8 +100,8 @@ export class OpenAIProvider implements AIProvider {
       : [];
 
     for (const item of request.input) {
-      if (item.type === "user") {
-        nextInput.push({ role: "user", content: item.text });
+      if (item.type === "user" || item.type === "assistant") {
+        nextInput.push({ role: item.type, content: item.text });
       } else {
         nextInput.push({
           type: "function_call_output",

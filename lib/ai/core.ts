@@ -1,6 +1,7 @@
 import { AIError } from "@/lib/ai/errors";
 import type {
   AICoreResult,
+  AIConversationMessage,
   AIProvider,
   AIProviderInput,
   AITool,
@@ -32,6 +33,7 @@ export async function runAICore(input: {
   provider: AIProvider;
   instructions: string;
   message: string;
+  history?: AIConversationMessage[];
   tools: AITool[];
   context: AIToolContext;
   maxOutputTokens: number;
@@ -57,7 +59,13 @@ export async function runAICore(input: {
   }
 
   const timeout = timeoutSignal(input.timeoutMs);
-  let providerInput: AIProviderInput[] = [{ type: "user", text: message }];
+  let providerInput: AIProviderInput[] = [
+    ...(input.history ?? []).map((item) => ({
+      type: item.role,
+      text: item.text,
+    }) satisfies AIProviderInput),
+    { type: "user", text: message },
+  ];
   let continuation: unknown;
   let usage = EMPTY_USAGE;
   const toolsUsed = new Set<string>();

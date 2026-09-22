@@ -10,6 +10,7 @@ import { SupabaseCitayaAppReadRepository } from "@/lib/ai/server/citaya-app-repo
 import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
 import { createCitayaAppReadTools } from "@/lib/ai/tools/citaya-app-read";
 import type { AIUsage } from "@/lib/ai/types";
+import type { AIConversationMessage } from "@/lib/ai/types";
 import type { TenantAdminAuthMode } from "@/lib/api/requireTenantAdmin";
 
 const ZERO_USAGE: AIUsage = {
@@ -24,6 +25,7 @@ export async function runCitayaAppAssistant(input: {
   userId: string;
   authMode: TenantAdminAuthMode;
   message: string;
+  history?: AIConversationMessage[];
   policy: AITenantPolicy;
   now?: Date;
 }) {
@@ -57,6 +59,7 @@ export async function runCitayaAppAssistant(input: {
         tenantSlug: input.tenantSlug,
       }),
       message: input.message,
+      history: input.history,
       tools: createCitayaAppReadTools(new SupabaseCitayaAppReadRepository()),
       context: {
         tenantId: input.tenantId,

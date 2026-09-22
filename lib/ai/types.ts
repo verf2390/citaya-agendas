@@ -20,7 +20,13 @@ export type AIToolCall = {
 
 export type AIProviderInput =
   | { type: "user"; text: string }
+  | { type: "assistant"; text: string }
   | { type: "tool_result"; callId: string; output: unknown };
+
+export type AIConversationMessage = {
+  role: "user" | "assistant";
+  text: string;
+};
 
 export type AIProviderRequest = {
   instructions: string;

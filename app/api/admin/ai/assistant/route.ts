@@ -6,6 +6,7 @@ import { runCitayaAppAssistant } from "@/lib/ai/server/citaya-app-assistant";
 import { loadAITenantPolicy } from "@/lib/ai/server/tenant-policy";
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { consumeRateLimit } from "@/lib/security/request";
+import type { AIConversationMessage } from "@/lib/ai/types";
 
 // CIT-64: privileged business reads are delegated to server-only helpers backed
 // by supabaseAdmin; this route remains bound to requireHostTenantAdmin.
@@ -49,6 +50,24 @@ function publicError(error: unknown) {
   );
 }
 
+function parseHistory(value: unknown): AIConversationMessage[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 6) return null;
+  const history: AIConversationMessage[] = [];
+  let totalLength = 0;
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const record = item as Record<string, unknown>;
+    if (record.role !== "user" && record.role !== "assistant") return null;
+    const text = String(record.text ?? "").trim();
+    if (!text || text.length > 2_000) return null;
+    totalLength += text.length;
+    if (totalLength > 6_000) return null;
+    history.push({ role: record.role, text });
+  }
+  return history;
+}
+
 export async function POST(req: Request) {
   const access = await requireHostTenantAdmin(req);
   if (!access.ok) {
@@ -71,11 +90,18 @@ export async function POST(req: Request) {
     body && typeof body === "object" && !Array.isArray(body)
       ? String((body as Record<string, unknown>).message ?? "").trim()
       : "";
+  const history =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? parseHistory((body as Record<string, unknown>).history)
+      : null;
   if (!message || message.length > 2_000) {
     return json(
       { ok: false, error: "El mensaje debe tener entre 1 y 2000 caracteres." },
       400,
     );
+  }
+  if (!history) {
+    return json({ ok: false, error: "El historial no es válido." }, 400);
   }
 
   try {
@@ -102,6 +128,7 @@ export async function POST(req: Request) {
       userId: access.userId,
       authMode: access.authMode,
       message,
+      history,
       policy,
     });
     return json({

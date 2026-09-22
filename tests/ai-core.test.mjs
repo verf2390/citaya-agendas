@@ -107,6 +107,39 @@ test("AI Core ejecuta solo la tool registrada y agrega uso", async () => {
   assert.equal(result.steps, 2);
 });
 
+test("AI Core entrega historial acotado al proveedor sin persistirlo", async () => {
+  const provider = {
+    id: "local",
+    model: "test-model",
+    async generate(request) {
+      assert.deepEqual(request.input, [
+        { type: "user", text: "Busca inactivos de 60 días" },
+        { type: "assistant", text: "Encontré 4 clientes." },
+        { type: "user", text: "Redáctame un mensaje para ellos" },
+      ]);
+      return {
+        text: "Borrador listo.",
+        toolCalls: [],
+        usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
+      };
+    },
+  };
+  const result = await runAICore({
+    provider,
+    instructions: "Solo lectura",
+    history: [
+      { role: "user", text: "Busca inactivos de 60 días" },
+      { role: "assistant", text: "Encontré 4 clientes." },
+    ],
+    message: "Redáctame un mensaje para ellos",
+    tools: [],
+    context,
+    maxOutputTokens: 500,
+    timeoutMs: 1_000,
+  });
+  assert.equal(result.text, "Borrador listo.");
+});
+
 test("AI Core rechaza una tool fuera de la allow-list", async () => {
   const provider = {
     id: "openai",
