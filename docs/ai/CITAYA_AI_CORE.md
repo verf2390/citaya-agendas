@@ -70,8 +70,10 @@ tools, permisos, auditoría, límites ni UI.
 ### Proveedores iniciales
 
 - `OpenAIProvider`: usa server-side `OPENAI_API_KEY`, el modelo configurado y la
-  Responses API. Envía `store: false`, desactiva tool calls paralelas y aplica
-  timeout.
+  Responses API. Envía `store: false`, conserva `reasoning.encrypted_content`
+  para continuaciones stateless con tools, desactiva tool calls paralelas y
+  aplica timeout. El endpoint debe usar HTTPS, salvo loopback HTTP para pruebas
+  locales.
 - `LocalModelProvider`: llama a un endpoint privado configurable que implementa
   el contrato de gateway Citaya. No presupone una API key en el navegador ni
   obliga a que el modelo local imite la API de OpenAI.
