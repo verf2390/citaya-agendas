@@ -121,3 +121,34 @@ test("parser ignora objetos ajenos a WhatsApp messages", () => {
   assert.deepEqual(extractMetaWebhookEvents({ object: "page", entry: [] }), []);
   assert.deepEqual(extractMetaWebhookEvents(null), []);
 });
+
+
+test("timestamp inválido conserva una clave idempotente determinista", () => {
+  const payload = {
+    object: "whatsapp_business_account",
+    entry: [
+      {
+        changes: [
+          {
+            field: "messages",
+            value: {
+              metadata: { phone_number_id: "123456789" },
+              statuses: [
+                {
+                  id: "wamid.bad-time",
+                  status: "delivered",
+                  timestamp: "not-a-number",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  const first = extractMetaWebhookEvents(payload)[0];
+  const second = extractMetaWebhookEvents(payload)[0];
+  assert.equal(first.occurredAt, "1970-01-01T00:00:00.000Z");
+  assert.equal(first.eventKey, second.eventKey);
+});
