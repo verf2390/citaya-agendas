@@ -128,3 +128,29 @@ test("RPCs SECURITY DEFINER de AI quedan revocados para anon/authenticated", () 
   }
 });
 
+test("tablas AI permanecen server-only aunque existan políticas RLS defensivas", () => {
+  const migration = read(
+    "migrations/202609220001_citaya_ai_core_foundation.sql",
+  );
+  assert.match(
+    migration,
+    /revoke all on public\.ai_tenant_settings from anon, authenticated;/,
+  );
+  assert.match(
+    migration,
+    /revoke all on public\.ai_request_audit from anon, authenticated;/,
+  );
+  assert.doesNotMatch(
+    migration,
+    /grant select on public\.ai_(tenant_settings|request_audit) to authenticated;/,
+  );
+  assert.match(
+    migration,
+    /grant select, insert, update, delete on public\.ai_tenant_settings to service_role;/,
+  );
+  assert.match(
+    migration,
+    /grant select, insert, update, delete on public\.ai_request_audit to service_role;/,
+  );
+});
+
