@@ -1,5 +1,5 @@
 import { AIError, safeAIErrorCode } from "@/lib/ai/errors";
-import type { AIProviderId, AIUsage } from "@/lib/ai/types";
+import type { AIProviderId, AIRouteSummary, AIUsage } from "@/lib/ai/types";
 import type { TenantAdminAuthMode } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -64,6 +64,7 @@ export async function finishAIRequestAudit(input: {
   toolNames: string[];
   usage: AIUsage;
   durationMs: number;
+  route?: AIRouteSummary;
   error?: unknown;
   signal?: AbortSignal;
 }) {
@@ -77,6 +78,13 @@ export async function finishAIRequestAudit(input: {
     p_output_tokens: input.usage.outputTokens,
     p_total_tokens: input.usage.totalTokens,
     p_duration_ms: Math.max(0, Math.round(input.durationMs)),
+    p_effective_provider: input.route?.effectiveProvider ?? null,
+    p_effective_model: input.route?.effectiveModel ?? null,
+    p_fallback_used: input.route?.fallbackUsed ?? false,
+    p_provider_duration_ms:
+      input.route == null
+        ? null
+        : Math.max(0, Math.round(input.route.providerDurationMs)),
     p_error_code: input.error ? safeAIErrorCode(input.error) : null,
   });
   if (input.signal) query.abortSignal(input.signal);
