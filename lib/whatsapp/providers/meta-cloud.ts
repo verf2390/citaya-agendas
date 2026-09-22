@@ -25,7 +25,11 @@ function assertGraphVersion(value: string) {
 }
 
 function normalizeRecipient(value: string) {
-  const digits = value.replace(/\D/g, "");
+  const raw = value.trim();
+  if (!raw || !/^[+\d\s().-]+$/.test(raw)) {
+    throw new Error("Destinatario WhatsApp inválido");
+  }
+  const digits = raw.replace(/\D/g, "");
   if (!/^[1-9]\d{7,14}$/.test(digits)) {
     throw new Error("Destinatario WhatsApp inválido");
   }
