@@ -33,7 +33,10 @@ function validateEndpoint(value: string) {
   } catch {
     throw new AIError("AI_PROVIDER_CONFIG", "Endpoint de OpenAI inválido");
   }
-  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "[::1]";
   if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
     throw new AIError(
       "AI_PROVIDER_CONFIG",
