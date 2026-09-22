@@ -1,4 +1,4 @@
-export type AIProviderId = "openai" | "local";
+export type AIProviderId = "openai" | "local" | "hybrid";
 
 export type AIUsage = {
   inputTokens: number;
