@@ -114,6 +114,12 @@ test("AI Core ejecuta solo la tool registrada y agrega uso", async () => {
     totalTokens: 28,
   });
   assert.equal(result.steps, 2);
+  assert.equal(result.route.requestedProvider, "openai");
+  assert.equal(result.route.effectiveProvider, "openai");
+  assert.equal(result.route.requestedModel, "test-model");
+  assert.equal(result.route.effectiveModel, "test-model");
+  assert.equal(result.route.fallbackUsed, false);
+  assert.ok(result.route.providerDurationMs >= 0);
 });
 
 test("AI Core entrega historial acotado al proveedor sin persistirlo", async () => {
@@ -449,8 +455,14 @@ test("HybridAIProvider hace fallback solo antes del primer turno exitoso", async
     signal: new AbortController().signal,
   };
 
-  assert.equal((await provider.generate(request)).text, "cloud");
-  assert.equal((await provider.generate(request)).text, "cloud");
+  const first = await provider.generate(request);
+  const second = await provider.generate(request);
+  assert.equal(first.text, "cloud");
+  assert.equal(first.route.effectiveProvider, "openai");
+  assert.equal(first.route.fallbackUsed, true);
+  assert.equal(second.text, "cloud");
+  assert.equal(second.route.effectiveProvider, "openai");
+  assert.equal(second.route.fallbackUsed, true);
   assert.deepEqual(calls, ["local", "cloud", "cloud"]);
 });
 
