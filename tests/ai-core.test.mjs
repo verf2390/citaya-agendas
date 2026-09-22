@@ -242,6 +242,7 @@ test("OpenAIProvider usa Responses API sin persistencia y schemas estrictos", as
 
   assert.equal(requests.length, 1);
   assert.equal(requests[0].store, false);
+  assert.deepEqual(requests[0].include, ["reasoning.encrypted_content"]);
   assert.equal(requests[0].parallel_tool_calls, false);
   assert.equal(requests[0].tools[0].strict, true);
   assert.equal(requests[0].max_output_tokens, 400);
