@@ -1,4 +1,5 @@
-export type AIProviderId = "openai" | "local" | "hybrid";
+export type AIEffectiveProviderId = "openai" | "local";
+export type AIProviderId = AIEffectiveProviderId | "hybrid";
 
 export type AIUsage = {
   inputTokens: number;
@@ -37,11 +38,24 @@ export type AIProviderRequest = {
   signal: AbortSignal;
 };
 
+export type AIRouteTurn = {
+  effectiveProvider: AIEffectiveProviderId;
+  effectiveModel: string;
+  fallbackUsed: boolean;
+};
+
+export type AIRouteSummary = AIRouteTurn & {
+  requestedProvider: AIProviderId;
+  requestedModel: string;
+  providerDurationMs: number;
+};
+
 export type AIProviderTurn = {
   text: string;
   toolCalls: AIToolCall[];
   continuation?: unknown;
   usage: AIUsage;
+  route?: AIRouteTurn;
 };
 
 export interface AIProvider {
@@ -69,4 +83,5 @@ export type AICoreResult = {
   toolsUsed: string[];
   usage: AIUsage;
   steps: number;
+  route: AIRouteSummary;
 };
