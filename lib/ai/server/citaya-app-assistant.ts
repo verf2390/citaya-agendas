@@ -1,0 +1,104 @@
+import { runAICore } from "@/lib/ai/core";
+import { AIError } from "@/lib/ai/errors";
+import {
+  buildCitayaAppAssistantInstructions,
+  CITAYA_APP_ASSISTANT_PROMPT_VERSION,
+} from "@/lib/ai/prompts/citaya-app-v1";
+import { createAIProvider } from "@/lib/ai/provider-factory";
+import { beginAIRequestAudit, finishAIRequestAudit } from "@/lib/ai/server/audit";
+import { SupabaseCitayaAppReadRepository } from "@/lib/ai/server/citaya-app-repository";
+import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
+import { createCitayaAppReadTools } from "@/lib/ai/tools/citaya-app-read";
+import type { AIUsage } from "@/lib/ai/types";
+import type { TenantAdminAuthMode } from "@/lib/api/requireTenantAdmin";
+
+const ZERO_USAGE: AIUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+};
+
+export async function runCitayaAppAssistant(input: {
+  tenantId: string;
+  tenantSlug: string;
+  userId: string;
+  authMode: TenantAdminAuthMode;
+  message: string;
+  policy: AITenantPolicy;
+  now?: Date;
+}) {
+  if (!input.policy.enabled) {
+    throw new AIError("AI_DISABLED", "La IA no está habilitada para este tenant");
+  }
+
+  const now = input.now ?? new Date();
+  const startedAt = Date.now();
+  const provider = createAIProvider({
+    provider: input.policy.provider,
+    model: input.policy.model,
+  });
+  const requestId = await beginAIRequestAudit({
+    tenantId: input.tenantId,
+    userId: input.userId,
+    authMode: input.authMode,
+    provider: provider.id,
+    model: provider.model,
+    promptVersion: CITAYA_APP_ASSISTANT_PROMPT_VERSION,
+    dailyTokenLimit: input.policy.dailyTokenLimit,
+    reservedTokens: input.policy.maxOutputTokens + 2_000,
+  });
+
+  try {
+    const result = await runAICore({
+      provider,
+      instructions: buildCitayaAppAssistantInstructions({
+        now,
+        timezone: "America/Santiago",
+        tenantSlug: input.tenantSlug,
+      }),
+      message: input.message,
+      tools: createCitayaAppReadTools(new SupabaseCitayaAppReadRepository()),
+      context: {
+        tenantId: input.tenantId,
+        tenantSlug: input.tenantSlug,
+        userId: input.userId,
+        timezone: "America/Santiago",
+        now,
+      },
+      maxOutputTokens: input.policy.maxOutputTokens,
+      timeoutMs: input.policy.timeoutMs,
+      maxSteps: 4,
+      maxToolCallsPerStep: 3,
+    });
+
+    await finishAIRequestAudit({
+      requestId,
+      tenantId: input.tenantId,
+      userId: input.userId,
+      status: "succeeded",
+      toolNames: result.toolsUsed,
+      usage: result.usage,
+      durationMs: Date.now() - startedAt,
+    });
+    return result;
+  } catch (error) {
+    try {
+      await finishAIRequestAudit({
+        requestId,
+        tenantId: input.tenantId,
+        userId: input.userId,
+        status: "failed",
+        toolNames: [],
+        usage: ZERO_USAGE,
+        durationMs: Date.now() - startedAt,
+        error,
+      });
+    } catch (auditError) {
+      console.error("[ai/audit] failed to close request", {
+        tenantId: input.tenantId,
+        code: auditError instanceof AIError ? auditError.code : "unknown",
+      });
+    }
+    throw error;
+  }
+}
