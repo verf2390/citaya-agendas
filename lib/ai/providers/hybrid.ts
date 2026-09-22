@@ -18,13 +18,19 @@ function isRetriableFirstTurnFailure(error: unknown) {
 export class HybridAIProvider implements AIProvider {
   readonly id = "hybrid" as const;
   readonly model: string;
+  private readonly primary: AIProvider;
+  private readonly fallback: AIProvider;
+  private readonly primaryTimeoutMs: number;
   private selected: SelectedProvider = null;
 
   constructor(
-    private readonly primary: AIProvider,
-    private readonly fallback: AIProvider,
-    private readonly primaryTimeoutMs: number,
+    primary: AIProvider,
+    fallback: AIProvider,
+    primaryTimeoutMs: number,
   ) {
+    this.primary = primary;
+    this.fallback = fallback;
+    this.primaryTimeoutMs = primaryTimeoutMs;
     this.model = primary.model;
     if (!Number.isInteger(primaryTimeoutMs) || primaryTimeoutMs < 250) {
       throw new AIError(
