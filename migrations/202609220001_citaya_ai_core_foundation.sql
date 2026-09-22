@@ -105,9 +105,12 @@ begin
     raise exception 'AI_AUDIT_INVALID_INPUT';
   end if;
 
-  if not (
-    public.is_tenant_member(p_tenant_id, p_user_id)
-    or public.is_platform_admin(p_user_id)
+  if (
+    p_auth_mode = 'tenant_members'
+    and not public.is_tenant_member(p_tenant_id, p_user_id)
+  ) or (
+    p_auth_mode = 'platform_admin'
+    and not public.is_platform_admin(p_user_id)
   ) then
     raise exception 'AI_AUDIT_FORBIDDEN';
   end if;
