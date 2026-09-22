@@ -46,6 +46,8 @@ type AIUsageSummary = {
   fallbackRequests: number;
   totalTokens: number;
   cloudTokens: number;
+  cloudInputTokens: number;
+  cloudOutputTokens: number;
   avgDurationMs: number;
   avgProviderDurationMs: number;
 };
