@@ -128,9 +128,9 @@ function DemoLanding() {
                   </p>
 
                   <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
-                    Esta demo te muestra cómo se vería una agenda online real para
+                    Esta demo te muestra cómo se vería una agenda online para
                     tu negocio: reservas 24/7, horarios disponibles, confirmación
-                    automática y una experiencia profesional desde el celular.
+                    dentro del sistema y una experiencia profesional desde el celular.
                   </p>
 
                   <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -162,7 +162,7 @@ function DemoLanding() {
                     className="mt-4 rounded-2xl bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(241,245,249,0.9))] p-4 ring-1 ring-slate-200/70"
                   >
                     <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-700">
-                      Sin compromiso • Sin pago • Demo real
+                      Sin compromiso • Sin pago • Demo interactiva
                     </p>
                     <p className="mt-1 text-sm text-slate-500">
                       En menos de 1 minuto puedes ver cómo funciona
