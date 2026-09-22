@@ -18,6 +18,8 @@ export async function resolveWhatsAppTenantByPhoneNumberId(
     .from("whatsapp_tenant_settings")
     .select("tenant_id,phone_number_id,waba_id,enabled,readiness_status")
     .eq("phone_number_id", phoneNumberId)
+    .eq("enabled", true)
+    .eq("readiness_status", "ready")
     .maybeSingle();
 
   if (error) throw error;
