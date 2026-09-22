@@ -134,8 +134,8 @@ export default async function DemoLandingPage({
                 </h1>
                 <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
                   Tus clientes eligen horario, tú solo atiendes. Agenda online
-                  activa 24/7 con confirmación automática y una experiencia
-                  simple desde el celular.
+                  activa 24/7 con confirmación de la reserva dentro del flujo y una
+                  experiencia simple desde el celular.
                 </p>
                 <p className="mt-3 text-sm font-medium text-slate-500">
                   Disponible hoy • Sin instalación compleja
@@ -161,7 +161,7 @@ export default async function DemoLandingPage({
             </div>
 
             <div className="mt-3 space-y-1 text-sm text-slate-500">
-              <p>Sistema probado con reservas reales.</p>
+              <p>Flujo funcional para probar reservas de demostración.</p>
               <p>En menos de 1 minuto puedes ver cómo funciona.</p>
             </div>
 
@@ -184,7 +184,7 @@ export default async function DemoLandingPage({
             <div className="mt-4 space-y-3">
               {[
                 "Clientes pueden reservar 24/7",
-                "Confirmación automática después de reservar",
+                "Confirmación de la reserva dentro del sistema",
                 "Servicios + profesionales en una sola agenda",
                 "Experiencia clara y cómoda desde celular",
               ].map((item) => (
@@ -212,14 +212,14 @@ export default async function DemoLandingPage({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-              Vista previa real
+              Vista previa
             </div>
             <h2 className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
               Así se vería la experiencia para tus clientes
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-              Esta demo usa datos reales del tenant para mostrar cómo se presenta
-              tu negocio antes de entrar a reservar.
+              Esta demo usa datos configurados para el tenant para mostrar cómo se
+              presenta tu negocio antes de entrar a reservar.
             </p>
           </div>
 
@@ -306,7 +306,7 @@ export default async function DemoLandingPage({
       <section className="mt-6 rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-700 shadow-sm sm:p-8">
         <div className="text-base font-semibold text-slate-900">Nota</div>
         <div className="mt-2 max-w-3xl leading-7">
-          Esta demo permite probar el flujo real de Citaya para que veas cómo
+          Esta demo permite probar el flujo funcional de Citaya para que veas cómo
           reservarían tus clientes en tu propio negocio, con tu marca, tus
           servicios y tu equipo.
         </div>
@@ -317,7 +317,7 @@ export default async function DemoLandingPage({
             className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition duration-200 hover:scale-[1.01] active:scale-[0.99] sm:w-auto"
             style={{ backgroundColor: primaryColor }}
           >
-            Ver reserva real ahora
+            Probar reserva ahora
           </Link>
         </div>
       </section>
