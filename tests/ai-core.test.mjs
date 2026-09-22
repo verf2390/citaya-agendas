@@ -316,3 +316,24 @@ test("LocalModelProvider normaliza el uso de tokens reportado", async (t) => {
     totalTokens: 5,
   });
 });
+
+
+test("LocalModelProvider exige autenticación fuera de loopback", () => {
+  assert.throws(
+    () =>
+      new LocalModelProvider({
+        endpoint: "https://ai.internal.example/gateway",
+        model: "local-test",
+      }),
+    (error) => error?.code === "AI_PROVIDER_CONFIG",
+  );
+
+  assert.doesNotThrow(
+    () =>
+      new LocalModelProvider({
+        endpoint: "https://ai.internal.example/gateway",
+        model: "local-test",
+        authToken: "synthetic-token",
+      }),
+  );
+});
