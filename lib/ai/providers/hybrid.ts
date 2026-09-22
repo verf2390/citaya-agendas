@@ -42,10 +42,26 @@ export class HybridAIProvider implements AIProvider {
 
   async generate(request: AIProviderRequest): Promise<AIProviderTurn> {
     if (this.selected === "primary") {
-      return this.primary.generate(request);
+      const turn = await this.primary.generate(request);
+      return {
+        ...turn,
+        route: {
+          effectiveProvider: this.primary.id === "openai" ? "openai" : "local",
+          effectiveModel: this.primary.model,
+          fallbackUsed: false,
+        },
+      };
     }
     if (this.selected === "fallback") {
-      return this.fallback.generate(request);
+      const turn = await this.fallback.generate(request);
+      return {
+        ...turn,
+        route: {
+          effectiveProvider: this.fallback.id === "local" ? "local" : "openai",
+          effectiveModel: this.fallback.model,
+          fallbackUsed: true,
+        },
+      };
     }
 
     // The provider is sticky for the rest of the tool loop. We only switch
@@ -73,14 +89,28 @@ export class HybridAIProvider implements AIProvider {
         signal: controller.signal,
       });
       this.selected = "primary";
-      return turn;
+      return {
+        ...turn,
+        route: {
+          effectiveProvider: this.primary.id === "openai" ? "openai" : "local",
+          effectiveModel: this.primary.model,
+          fallbackUsed: false,
+        },
+      };
     } catch (error) {
       if (request.signal.aborted) throw error;
       if (!primaryTimedOut && !isRetriableFirstTurnFailure(error)) throw error;
 
       const turn = await this.fallback.generate(request);
       this.selected = "fallback";
-      return turn;
+      return {
+        ...turn,
+        route: {
+          effectiveProvider: this.fallback.id === "local" ? "local" : "openai",
+          effectiveModel: this.fallback.model,
+          fallbackUsed: true,
+        },
+      };
     } finally {
       clearTimeout(timer);
       request.signal.removeEventListener("abort", onParentAbort);
