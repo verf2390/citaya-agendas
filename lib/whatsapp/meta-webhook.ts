@@ -54,7 +54,8 @@ export function verifyMetaWebhookChallenge(input: {
 function safeTimestamp(value: unknown) {
   const seconds = Number(value);
   if (!Number.isFinite(seconds) || seconds <= 0) {
-    return new Date().toISOString();
+    // Deterministic fallback keeps repeated malformed provider events idempotent.
+    return "1970-01-01T00:00:00.000Z";
   }
   return new Date(Math.floor(seconds) * 1000).toISOString();
 }
