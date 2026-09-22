@@ -124,7 +124,7 @@ function DemoLanding() {
                   </p>
 
                   <p className="mt-4 inline-flex items-center rounded-full bg-[linear-gradient(180deg,#ecfdf5,#d1fae5)] px-3 py-1 text-sm font-bold text-emerald-800 ring-1 ring-emerald-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-                    Respuestas en menos de 15 minutos
+                    Demo interactiva · Datos de ejemplo
                   </p>
 
                   <p className="mt-5 max-w-2xl text-base leading-7 text-slate-600">
@@ -187,7 +187,7 @@ function DemoLanding() {
                           ✅ Clientes pueden reservar 24/7
                         </li>
                         <li className="rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
-                          ✅ Confirmación automática después de reservar
+                          ✅ Confirmación de la reserva dentro del sistema
                         </li>
                         <li className="rounded-2xl border border-slate-200/90 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4 shadow-[0_10px_24px_rgba(15,23,42,0.10)]">
                           ✅ Horarios reales según disponibilidad
@@ -232,33 +232,33 @@ function DemoLanding() {
 
               <div className="rounded-[28px] border border-slate-800/10 bg-[linear-gradient(145deg,#020617_0%,#0f172a_55%,#172554_100%)] p-5 text-white shadow-[0_24px_55px_rgba(15,23,42,0.28)] sm:p-6">
                 <div className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                  Caso real
+                  Ejemplo de implementación
                 </div>
 
                 <h2 className="mt-4 text-2xl font-extrabold leading-tight text-white">
-                  Negocios reales ya están usando esto
+                  Así se adapta Citaya a tu negocio
                 </h2>
 
                 <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  Clientes ya están recibiendo reservas automáticas sin depender
-                  de mensajes.
+                  Esta demo usa datos de ejemplo para mostrar el flujo. En una
+                  implementación real configuramos tu marca, servicios, equipo y horarios.
                 </p>
 
                 <p className="mt-5 text-sm font-bold text-white">
-                  Fajas Paola — La Serena
+                  Tu negocio · Configuración personalizada
                 </p>
 
                 <p className="mt-1 text-xs text-slate-400">
-                  Clientes reales usando este sistema
+                  Contenido demostrativo, no testimonio de un cliente activo
                 </p>
 
                 <a
-                  href="https://instagram.com/fajaspaola"
+                  href="/reservar"
                   target="_blank"
                   rel="noreferrer"
                   className="mt-5 inline-flex min-h-[48px] items-center justify-center rounded-2xl bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] px-5 py-3 text-sm font-extrabold text-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.22)] transition duration-200 hover:-translate-y-0.5 hover:brightness-105 active:translate-y-0 active:scale-[0.99]"
                 >
-                  Ver negocio real funcionando
+                  Probar flujo de reserva
                 </a>
               </div>
             </div>
@@ -284,16 +284,16 @@ function DemoLanding() {
               <div className="grid gap-3 sm:grid-cols-3">
                 {[
                   {
-                    name: "María",
-                    text: "Reservé en 30 segundos. Se siente súper pro.",
+                    name: "Reserva online",
+                    text: "El cliente elige servicio, profesional, fecha y hora disponible.",
                   },
                   {
-                    name: "Camila",
-                    text: "Me llegó la confirmación y pude reagendar sin hablar con nadie.",
+                    name: "Gestión de citas",
+                    text: "La reserva queda registrada y puede administrarse desde Citaya.",
                   },
                   {
-                    name: "Daniela",
-                    text: "Así debería funcionar cualquier agenda online.",
+                    name: "Configuración",
+                    text: "Servicios, profesionales y horarios se adaptan a cada negocio.",
                   },
                 ].map((t) => (
                   <SurfaceCard
