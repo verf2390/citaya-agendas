@@ -22,6 +22,9 @@ const { runAICore } = await import(
 const { OpenAIProvider } = await import(
   pathToFileURL(resolve("lib/ai/providers/openai.ts")).href
 );
+const { LocalModelProvider } = await import(
+  pathToFileURL(resolve("lib/ai/providers/local.ts")).href
+);
 
 const context = {
   tenantId: "11111111-1111-4111-8111-111111111111",
@@ -253,5 +256,62 @@ test("OpenAIProvider usa Responses API sin persistencia y schemas estrictos", as
     inputTokens: 7,
     outputTokens: 3,
     totalTokens: 10,
+  });
+});
+
+
+test("OpenAIProvider rechaza endpoints HTTP remotos", () => {
+  assert.throws(
+    () =>
+      new OpenAIProvider({
+        apiKey: "synthetic-test-key",
+        model: "test-model",
+        endpoint: "http://example.com/v1/responses",
+      }),
+    (error) => error?.code === "AI_PROVIDER_CONFIG",
+  );
+
+  assert.doesNotThrow(
+    () =>
+      new OpenAIProvider({
+        apiKey: "synthetic-test-key",
+        model: "test-model",
+        endpoint: "http://127.0.0.1:8787/v1/responses",
+      }),
+  );
+});
+
+test("LocalModelProvider normaliza el uso de tokens reportado", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => {
+    return new Response(
+      JSON.stringify({
+        text: "OK",
+        toolCalls: [],
+        usage: {
+          inputTokens: 2.9,
+          outputTokens: 3.7,
+          totalTokens: 1,
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  });
+
+  const provider = new LocalModelProvider({
+    endpoint: "http://127.0.0.1:8787/ai",
+    model: "local-test",
+  });
+  const turn = await provider.generate({
+    instructions: "Solo lectura",
+    input: [{ type: "user", text: "Hola" }],
+    tools: [],
+    maxOutputTokens: 100,
+    signal: new AbortController().signal,
+  });
+
+  assert.deepEqual(turn.usage, {
+    inputTokens: 2,
+    outputTokens: 3,
+    totalTokens: 5,
   });
 });
