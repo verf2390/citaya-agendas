@@ -26,6 +26,13 @@ export async function generateMetadata({
 
   const slug = params?.slug ?? slugFromHost;
 
+  if (slugFromHost === "demo" || params?.slug === "demo") {
+    return {
+      title: "Demo Citaya | Agenda online",
+      description: "Demo interactiva de Citaya para probar el flujo de reservas con datos de ejemplo.",
+    };
+  }
+
   if (!slug) {
     return {
       title: "Citaya | Agenda",
