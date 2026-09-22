@@ -56,11 +56,38 @@ function demoAnswer(question: string): DemoMessage {
     };
   }
 
+  if (
+    q.includes("horario") ||
+    q.includes("hora") ||
+    q.includes("ocup") ||
+    q.includes("semanal")
+  ) {
+    return {
+      role: "assistant",
+      text:
+        "En esta semana ficticia, la franja con mayor ocupación es entre 17:00 y 19:00, con un 86% de los cupos utilizados.\n\nLa segunda franja más ocupada es de 11:00 a 13:00, con un 71%.\n\nEn una implementación real esto se calcularía desde las reservas del tenant y el rango de fechas que elijas.",
+      meta: "Demo: análisis semanal simulado · datos ficticios",
+    };
+  }
+
+  if (
+    q.includes("mensaje") ||
+    q.includes("redact") ||
+    q.includes("recuper")
+  ) {
+    return {
+      role: "assistant",
+      text:
+        "Claro. Te propongo este borrador:\n\n“Hola 👋 Hace un tiempo que no te vemos. Si quieres retomar tu atención, puedes revisar horarios disponibles y reservar directamente desde nuestro enlace. Si necesitas ayuda, escríbenos por aquí.”\n\nNo enviaré nada hasta que tú lo apruebes.",
+      meta: "Sin acción automática · borrador generado",
+    };
+  }
+
   return {
     role: "assistant",
     text:
-      "Claro. Te propongo este borrador:\n\n“Hola 👋 Hace un tiempo que no te vemos. Si quieres retomar tu atención, puedes revisar horarios disponibles y reservar directamente desde nuestro enlace. Si necesitas ayuda, escríbenos por aquí.”\n\nNo enviaré nada hasta que tú lo apruebes.",
-    meta: "Sin acción automática · borrador generado",
+      "Esta demo visual no tiene un LLM real conectado, así que no puedo interpretar libremente esa pregunta todavía.\n\nEn la versión real, Citaya AI usaría el modelo local o OpenAI y consultaría únicamente las tools autorizadas del negocio.",
+    meta: "Demo visual · respuesta libre deshabilitada",
   };
 }
 
