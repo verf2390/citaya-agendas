@@ -1531,7 +1531,7 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
                     {tenantName || tenantSlug || "Reserva tu hora"}
                   </div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground sm:text-sm">
-                    Reserva en pocos pasos • confirmación automática
+                    Reserva en pocos pasos • confirmación al finalizar
                   </div>
                 </div>
               </div>
@@ -2774,7 +2774,9 @@ function ReservarInner({ forcedTenantSlug = "" }: { forcedTenantSlug?: string })
               </SurfaceCard>
 
               <div className="mt-4 rounded-2xl border border-white/80 bg-white/74 px-3.5 py-2.5 text-xs text-muted-foreground shadow-[0_8px_18px_rgba(15,23,42,0.05)] backdrop-blur-sm">
-                Confirmación inmediata por correo y enlace privado para gestionar tu cita.
+                {isSafeDemoAppointment
+                  ? "La reserva quedará confirmada dentro de la demo. No se enviarán comunicaciones externas."
+                  : "Confirmación inmediata por correo y enlace privado para gestionar tu cita."}
               </div>
 
               <div className="mt-4">
