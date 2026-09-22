@@ -39,3 +39,22 @@ test("prompt version is configurable only through the known-version registry", (
   assert.match(policy, /assertCitayaAppPromptVersion/);
   assert.match(prompts, /citaya-app-assistant-v1/);
 });
+
+
+test("el deadline total cubre auditoría y ejecución del asistente", () => {
+  const assistant = read("lib/ai/server/citaya-app-assistant.ts");
+  const audit = read("lib/ai/server/audit.ts");
+
+  assert.match(assistant, /const deadlineController = new AbortController\(\)/);
+  assert.match(
+    assistant,
+    /beginAIRequestAudit\([\s\S]*?signal: deadlineController\.signal/,
+  );
+  assert.match(
+    assistant,
+    /timeoutMs: remainingTimeoutMs[\s\S]*?finishAIRequestAudit\([\s\S]*?signal: deadlineController\.signal/,
+  );
+  assert.match(audit, /query\.abortSignal\(input\.signal\)/);
+  assert.match(audit, /input\.signal\?\.aborted/);
+  assert.match(audit, /"AI_TIMEOUT"/);
+});
