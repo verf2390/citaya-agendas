@@ -1,7 +1,7 @@
 # Citaya AI Core — arquitectura y primera integración
 
-Estado: implementación inicial para Citaya App  
-Fecha: 2026-09-22  
+Estado: implementación inicial para Citaya App
+Fecha: 2026-09-22
 Rama: `feat/citaya-ai-core-assistant`
 
 ## Alcance de este bloque
@@ -135,6 +135,7 @@ mantiene trazabilidad operativa sin convertir la auditoría en un almacén de PI
 ```bash
 CITAYA_AI_ENABLED=false
 CITAYA_AI_PROVIDER=openai
+CITAYA_AI_PROMPT_VERSION=citaya-app-assistant-v1
 CITAYA_AI_OPENAI_MODEL=
 OPENAI_API_KEY=
 CITAYA_AI_LOCAL_ENDPOINT=
@@ -146,7 +147,8 @@ CITAYA_AI_REQUESTS_PER_MINUTE=10
 ```
 
 La migración crea `ai_tenant_settings`. Una fila por tenant puede habilitar la
-función y sobrescribir proveedor, modelo, límites y timeout. Los secretos nunca
+función y sobrescribir proveedor, modelo, versión de prompt, límites y timeout.
+Solo se aceptan versiones de prompt registradas en el código; los secretos nunca
 se guardan en esa tabla.
 
 ## Operación y despliegue
@@ -157,6 +159,25 @@ se guardan en esa tabla.
 4. Habilitar un tenant piloto en `ai_tenant_settings`.
 5. Verificar preguntas de reservas, inactividad, cobros y redacción.
 6. Revisar `ai_request_audit` antes de ampliar el rollout.
+
+## Verificación de esta entrega
+
+- build de producción completado con valores públicos sintéticos de Supabase;
+- 23 pruebas específicas de AI Core, tools, UI y aislamiento aprobadas;
+- 94 pruebas generales no dependientes de PostgreSQL aprobadas, excluyendo una
+  prueba de billing preexistente que falla también sin estos cambios;
+- 531 pruebas de seguridad no dependientes de PostgreSQL aprobadas;
+- lint dirigido a todos los archivos nuevos y modificados aprobado.
+
+Limitaciones del entorno de verificación:
+
+- no se ejecutaron las pruebas que requieren `psql`, porque el binario no está
+  instalado en el entorno de trabajo;
+- no se hizo una llamada real a un proveedor: los contratos y el tool loop se
+  probaron con providers/fetch simulados y sin usar credenciales reales;
+- el lint global conserva errores preexistentes fuera de este bloque;
+- la migración debe validarse en un entorno PostgreSQL/Supabase antes de habilitar
+  el primer tenant piloto.
 
 ## Fuera de alcance y próximos bloques
 

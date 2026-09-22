@@ -6,6 +6,7 @@ create table if not exists public.ai_tenant_settings (
   provider text not null default 'openai'
     check (provider in ('openai', 'local')),
   model_override text,
+  prompt_version text not null default 'citaya-app-assistant-v1',
   requests_per_minute integer not null default 10
     check (requests_per_minute between 1 and 60),
   daily_token_limit integer not null default 50000
@@ -16,7 +17,8 @@ create table if not exists public.ai_tenant_settings (
     check (timeout_ms between 1000 and 120000),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  check (model_override is null or length(model_override) between 1 and 120)
+  check (model_override is null or length(model_override) between 1 and 120),
+  check (length(prompt_version) between 1 and 120)
 );
 
 create table if not exists public.ai_request_audit (
@@ -112,12 +114,7 @@ begin
 
   perform pg_advisory_xact_lock(hashtext('citaya-ai:' || p_tenant_id::text));
 
-  select coalesce(sum(
-    case
-      when status = 'started' then reserved_tokens
-      else total_tokens
-    end
-  ), 0)
+  select coalesce(sum(greatest(total_tokens, reserved_tokens)), 0)
   into v_used_tokens
   from public.ai_request_audit
   where tenant_id = p_tenant_id

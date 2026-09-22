@@ -1,5 +1,12 @@
 export const CITAYA_APP_ASSISTANT_PROMPT_VERSION = "citaya-app-assistant-v1";
 
+export function assertCitayaAppPromptVersion(version: string) {
+  if (version !== CITAYA_APP_ASSISTANT_PROMPT_VERSION) {
+    throw new Error(`Unsupported Citaya App prompt version: ${version}`);
+  }
+  return version;
+}
+
 export function buildCitayaAppAssistantInstructions(input: {
   now: Date;
   timezone: string;

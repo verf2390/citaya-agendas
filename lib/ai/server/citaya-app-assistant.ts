@@ -1,8 +1,8 @@
 import { runAICore } from "@/lib/ai/core";
 import { AIError } from "@/lib/ai/errors";
 import {
+  assertCitayaAppPromptVersion,
   buildCitayaAppAssistantInstructions,
-  CITAYA_APP_ASSISTANT_PROMPT_VERSION,
 } from "@/lib/ai/prompts/citaya-app-v1";
 import { createAIProvider } from "@/lib/ai/provider-factory";
 import { beginAIRequestAudit, finishAIRequestAudit } from "@/lib/ai/server/audit";
@@ -35,6 +35,9 @@ export async function runCitayaAppAssistant(input: {
 
   const now = input.now ?? new Date();
   const startedAt = Date.now();
+  const promptVersion = assertCitayaAppPromptVersion(
+    input.policy.promptVersion,
+  );
   const provider = createAIProvider({
     provider: input.policy.provider,
     model: input.policy.model,
@@ -45,9 +48,9 @@ export async function runCitayaAppAssistant(input: {
     authMode: input.authMode,
     provider: provider.id,
     model: provider.model,
-    promptVersion: CITAYA_APP_ASSISTANT_PROMPT_VERSION,
+    promptVersion,
     dailyTokenLimit: input.policy.dailyTokenLimit,
-    reservedTokens: input.policy.maxOutputTokens + 2_000,
+    reservedTokens: input.policy.maxOutputTokens + 4_000,
   });
 
   try {

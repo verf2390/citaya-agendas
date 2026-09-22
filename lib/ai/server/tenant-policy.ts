@@ -1,5 +1,9 @@
 import { AIError } from "@/lib/ai/errors";
 import type { AIProviderId } from "@/lib/ai/types";
+import {
+  assertCitayaAppPromptVersion,
+  CITAYA_APP_ASSISTANT_PROMPT_VERSION,
+} from "@/lib/ai/prompts/citaya-app-v1";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 if (typeof window !== "undefined") {
@@ -10,6 +14,7 @@ export type AITenantPolicy = {
   enabled: boolean;
   provider: AIProviderId;
   model: string;
+  promptVersion: string;
   requestsPerMinute: number;
   dailyTokenLimit: number;
   maxOutputTokens: number;
@@ -20,6 +25,7 @@ type PolicyRow = {
   enabled: boolean;
   provider: string;
   model_override: string | null;
+  prompt_version: string;
   requests_per_minute: number;
   daily_token_limit: number;
   max_output_tokens: number;
@@ -65,7 +71,7 @@ export async function loadAITenantPolicy(
   const { data, error } = await supabaseAdmin
     .from("ai_tenant_settings")
     .select(
-      "enabled, provider, model_override, requests_per_minute, daily_token_limit, max_output_tokens, timeout_ms",
+      "enabled, provider, model_override, prompt_version, requests_per_minute, daily_token_limit, max_output_tokens, timeout_ms",
     )
     .eq("tenant_id", tenantId)
     .maybeSingle();
@@ -82,11 +88,25 @@ export async function loadAITenantPolicy(
     row?.provider === "local" || row?.provider === "openai"
       ? row.provider
       : providerEnv();
+  const promptVersion =
+    row?.prompt_version?.trim() ||
+    process.env.CITAYA_AI_PROMPT_VERSION?.trim() ||
+    CITAYA_APP_ASSISTANT_PROMPT_VERSION;
+  try {
+    assertCitayaAppPromptVersion(promptVersion);
+  } catch (error) {
+    throw new AIError(
+      "AI_PROVIDER_CONFIG",
+      "La versión de prompt configurada no está disponible",
+      { cause: error },
+    );
+  }
 
   return {
     enabled: row?.enabled ?? booleanEnv("CITAYA_AI_ENABLED", false),
     provider,
     model: configuredModel(provider, row?.model_override),
+    promptVersion,
     requestsPerMinute:
       row?.requests_per_minute ??
       integerEnv("CITAYA_AI_REQUESTS_PER_MINUTE", 10, 1, 60),

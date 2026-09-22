@@ -29,4 +29,13 @@ test("auditoría no crea columnas para prompts, respuestas o resultados", () => 
   assert.match(migration, /alter table public\.ai_request_audit enable row level security/);
   assert.match(migration, /revoke all on public\.ai_request_audit from anon, authenticated/);
   assert.match(migration, /is_tenant_member\(p_tenant_id, p_user_id\)/);
+  assert.match(migration, /greatest\(total_tokens, reserved_tokens\)/);
+});
+
+test("prompt version is configurable only through the known-version registry", () => {
+  const policy = read("lib/ai/server/tenant-policy.ts");
+  const prompts = read("lib/ai/prompts/citaya-app-v1.ts");
+  assert.match(policy, /CITAYA_AI_PROMPT_VERSION/);
+  assert.match(policy, /assertCitayaAppPromptVersion/);
+  assert.match(prompts, /citaya-app-assistant-v1/);
 });
