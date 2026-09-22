@@ -4,7 +4,7 @@ create table if not exists public.ai_tenant_settings (
   tenant_id uuid primary key references public.tenants(id) on delete cascade,
   enabled boolean not null default false,
   provider text not null default 'openai'
-    check (provider in ('openai', 'local')),
+    check (provider in ('openai', 'local', 'hybrid')),
   model_override text,
   prompt_version text not null default 'citaya-app-assistant-v1',
   requests_per_minute integer not null default 10
@@ -26,7 +26,7 @@ create table if not exists public.ai_request_audit (
   tenant_id uuid not null references public.tenants(id) on delete cascade,
   user_id uuid not null,
   auth_mode text not null check (auth_mode in ('tenant_members', 'platform_admin')),
-  provider text not null check (provider in ('openai', 'local')),
+  provider text not null check (provider in ('openai', 'local', 'hybrid')),
   model text not null check (length(model) between 1 and 120),
   prompt_version text not null check (length(prompt_version) between 1 and 120),
   status text not null default 'started'
@@ -97,7 +97,7 @@ declare
 begin
   if p_tenant_id is null or p_user_id is null
      or p_auth_mode not in ('tenant_members', 'platform_admin')
-     or p_provider not in ('openai', 'local')
+     or p_provider not in ('openai', 'local', 'hybrid')
      or length(coalesce(p_model, '')) not between 1 and 120
      or length(coalesce(p_prompt_version, '')) not between 1 and 120
      or p_daily_token_limit not between 1000 and 10000000
