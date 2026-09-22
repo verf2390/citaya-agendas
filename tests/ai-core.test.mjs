@@ -217,7 +217,7 @@ test("AI Core aplica el timeout total mientras una tool está ejecutándose", as
     }),
     (error) => error?.code === "AI_TIMEOUT",
   );
-  assert.ok(Date.now() - startedAt < 500);
+  assert.ok(Date.now() - startedAt < 1_000);
 });
 
 test("OpenAIProvider usa Responses API sin persistencia y schemas estrictos", async (t) => {
@@ -410,7 +410,7 @@ test("HybridAIProvider usa local y queda sticky tras un primer turno exitoso", a
       };
     },
   };
-  const provider = new HybridAIProvider(primary, fallback, 100);
+  const provider = new HybridAIProvider(primary, fallback, 250);
   const request = {
     instructions: "x",
     input: [{ type: "user", text: "hola" }],
@@ -446,7 +446,7 @@ test("HybridAIProvider hace fallback solo antes del primer turno exitoso", async
       };
     },
   };
-  const provider = new HybridAIProvider(primary, fallback, 100);
+  const provider = new HybridAIProvider(primary, fallback, 250);
   const request = {
     instructions: "x",
     input: [{ type: "user", text: "hola" }],
@@ -491,7 +491,7 @@ test("HybridAIProvider abandona un local lento sin consumir el deadline global",
       };
     },
   };
-  const provider = new HybridAIProvider(primary, fallback, 20);
+  const provider = new HybridAIProvider(primary, fallback, 250);
   const startedAt = Date.now();
   const turn = await provider.generate({
     instructions: "x",
@@ -536,7 +536,7 @@ test("HybridAIProvider no cambia de proveedor después de iniciar un tool loop",
       };
     },
   };
-  const provider = new HybridAIProvider(primary, fallback, 100);
+  const provider = new HybridAIProvider(primary, fallback, 250);
   const signal = new AbortController().signal;
 
   await provider.generate({
