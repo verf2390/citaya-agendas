@@ -25,14 +25,17 @@ function validateEndpoint(value: string) {
   } catch {
     throw new AIError("AI_PROVIDER_CONFIG", "Endpoint local inválido");
   }
-  const loopback = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "[::1]";
   if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
     throw new AIError(
       "AI_PROVIDER_CONFIG",
       "El endpoint local debe usar HTTPS o loopback HTTP",
     );
   }
-  return url.toString();
+  return { endpoint: url.toString(), loopback };
 }
 
 export class LocalModelProvider implements AIProvider {
@@ -42,11 +45,18 @@ export class LocalModelProvider implements AIProvider {
   private readonly authToken: string;
 
   constructor(input: { endpoint: string; model: string; authToken?: string }) {
-    this.endpoint = validateEndpoint(input.endpoint.trim());
+    const endpoint = validateEndpoint(input.endpoint.trim());
+    this.endpoint = endpoint.endpoint;
     this.model = input.model.trim();
     this.authToken = input.authToken?.trim() ?? "";
     if (!this.model) {
       throw new AIError("AI_PROVIDER_CONFIG", "El proveedor local requiere modelo");
+    }
+    if (!endpoint.loopback && !this.authToken) {
+      throw new AIError(
+        "AI_PROVIDER_CONFIG",
+        "El gateway local remoto requiere autenticación",
+      );
     }
   }
 
