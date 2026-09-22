@@ -246,7 +246,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $
+as $ai$
 declare
   v_result jsonb;
 begin
@@ -299,7 +299,7 @@ begin
 
   return coalesce(v_result, '{}'::jsonb);
 end;
-$;
+$ai$;
 
 revoke all on function public.get_ai_usage_summary(
   uuid, uuid, text, timestamptz
