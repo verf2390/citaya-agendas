@@ -24,6 +24,9 @@ export function createAIProvider(input: {
       endpoint: process.env.CITAYA_AI_LOCAL_ENDPOINT ?? "",
       model: input.model,
       authToken: process.env.CITAYA_AI_LOCAL_AUTH_TOKEN,
+      allowPrivateHttp:
+        process.env.CITAYA_AI_LOCAL_ALLOW_HTTP_PRIVATE?.trim().toLowerCase() ===
+        "true",
     });
   }
 
