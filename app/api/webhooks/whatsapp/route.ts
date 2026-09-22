@@ -58,6 +58,12 @@ export async function POST(req: Request) {
   }
 
   const rawBody = await req.text();
+  if (rawBody.length > 1_000_000) {
+    return NextResponse.json(
+      { ok: false, error: "Payload too large" },
+      { status: 413, headers: NO_STORE },
+    );
+  }
   if (
     !verifyMetaWebhookSignature({
       rawBody,
