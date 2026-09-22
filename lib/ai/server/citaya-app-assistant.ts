@@ -104,6 +104,7 @@ export async function runCitayaAppAssistant(input: {
       toolNames: result.toolsUsed,
       usage: result.usage,
       durationMs: Date.now() - startedAt,
+      route: result.route,
       signal: deadlineController.signal,
     });
     return result;
