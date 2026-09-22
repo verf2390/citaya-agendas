@@ -66,3 +66,19 @@ test("el deadline total cubre auditoría y ejecución del asistente", () => {
   assert.match(audit, /input\.signal\?\.aborted/);
   assert.match(audit, /"AI_TIMEOUT"/);
 });
+
+
+test("hybrid provider queda permitido sin ampliar acceso de auditoría", () => {
+  const migration = read(
+    "migrations/202609220001_citaya_ai_core_foundation.sql",
+  );
+  assert.match(
+    migration,
+    /provider in \('openai', 'local', 'hybrid'\)/,
+  );
+  assert.match(
+    migration,
+    /p_provider not in \('openai', 'local', 'hybrid'\)/,
+  );
+  assert.match(migration, /AI_AUDIT_FORBIDDEN/);
+});
