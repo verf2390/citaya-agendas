@@ -95,7 +95,7 @@ test("telemetría persiste routing sin contenido conversacional", () => {
   assert.match(migration, /get_ai_usage_summary/);
   assert.match(
     migration,
-    /get_ai_usage_summary[\s\S]*?returns jsonb[\s\S]*?as \$\$[\s\S]*?end;[\s\S]*?\$\$;/,
+    /get_ai_usage_summary[\s\S]*?returns jsonb[\s\S]*?as \$ai\$[\s\S]*?end;[\s\S]*?\$ai\$;/,
   );
   assert.match(migration, /cloud_input_tokens/);
   assert.match(migration, /cloud_output_tokens/);
