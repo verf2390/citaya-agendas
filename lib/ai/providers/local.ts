@@ -15,7 +15,7 @@ type LocalGatewayResponse = {
 
 function safeTokenCount(value: unknown) {
   const parsed = Number(value ?? 0);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
 }
 
 function validateEndpoint(value: string) {
@@ -106,14 +106,18 @@ export class LocalModelProvider implements AIProvider {
         }))
       : [];
 
+    const inputTokens = safeTokenCount(payload.usage?.inputTokens);
+    const outputTokens = safeTokenCount(payload.usage?.outputTokens);
+    const reportedTotalTokens = safeTokenCount(payload.usage?.totalTokens);
+
     return {
       text: typeof payload.text === "string" ? payload.text : "",
       toolCalls,
       continuation: payload.continuation,
       usage: {
-        inputTokens: safeTokenCount(payload.usage?.inputTokens),
-        outputTokens: safeTokenCount(payload.usage?.outputTokens),
-        totalTokens: safeTokenCount(payload.usage?.totalTokens),
+        inputTokens,
+        outputTokens,
+        totalTokens: Math.max(reportedTotalTokens, inputTokens + outputTokens),
       },
     };
   }
