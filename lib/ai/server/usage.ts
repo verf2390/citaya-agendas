@@ -15,6 +15,8 @@ export type AIUsageSummary = {
   fallbackRequests: number;
   totalTokens: number;
   cloudTokens: number;
+  cloudInputTokens: number;
+  cloudOutputTokens: number;
   avgDurationMs: number;
   avgProviderDurationMs: number;
 };
@@ -64,6 +66,8 @@ export async function loadAIUsageSummary(input: {
     fallbackRequests: count(row.fallback_requests),
     totalTokens: count(row.total_tokens),
     cloudTokens: count(row.cloud_tokens),
+    cloudInputTokens: count(row.cloud_input_tokens),
+    cloudOutputTokens: count(row.cloud_output_tokens),
     avgDurationMs: count(row.avg_duration_ms),
     avgProviderDurationMs: count(row.avg_provider_duration_ms),
   };
