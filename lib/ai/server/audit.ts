@@ -16,8 +16,9 @@ export async function beginAIRequestAudit(input: {
   promptVersion: string;
   dailyTokenLimit: number;
   reservedTokens: number;
+  signal?: AbortSignal;
 }) {
-  const { data, error } = await supabaseAdmin.rpc("begin_ai_request_audit", {
+  const query = supabaseAdmin.rpc("begin_ai_request_audit", {
     p_tenant_id: input.tenantId,
     p_user_id: input.userId,
     p_auth_mode: input.authMode,
@@ -27,7 +28,12 @@ export async function beginAIRequestAudit(input: {
     p_daily_token_limit: input.dailyTokenLimit,
     p_reserved_tokens: input.reservedTokens,
   });
+  if (input.signal) query.abortSignal(input.signal);
+  const { data, error } = await query;
 
+  if (input.signal?.aborted) {
+    throw new AIError("AI_TIMEOUT", "La solicitud de IA excedió el tiempo máximo");
+  }
   if (error) {
     if (String(error.message ?? "").includes("AI_DAILY_TOKEN_LIMIT")) {
       throw new AIError(
@@ -59,8 +65,9 @@ export async function finishAIRequestAudit(input: {
   usage: AIUsage;
   durationMs: number;
   error?: unknown;
+  signal?: AbortSignal;
 }) {
-  const { data, error } = await supabaseAdmin.rpc("finish_ai_request_audit", {
+  const query = supabaseAdmin.rpc("finish_ai_request_audit", {
     p_request_id: input.requestId,
     p_tenant_id: input.tenantId,
     p_user_id: input.userId,
@@ -72,6 +79,11 @@ export async function finishAIRequestAudit(input: {
     p_duration_ms: Math.max(0, Math.round(input.durationMs)),
     p_error_code: input.error ? safeAIErrorCode(input.error) : null,
   });
+  if (input.signal) query.abortSignal(input.signal);
+  const { data, error } = await query;
+  if (input.signal?.aborted) {
+    throw new AIError("AI_TIMEOUT", "La solicitud de IA excedió el tiempo máximo");
+  }
   if (error || data !== true) {
     throw new AIError(
       "AI_AUDIT_UNAVAILABLE",
