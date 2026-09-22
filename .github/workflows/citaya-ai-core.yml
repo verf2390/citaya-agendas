@@ -1,0 +1,49 @@
+name: Citaya AI Core
+
+on:
+  pull_request:
+    paths:
+      - "app/admin/asistente/**"
+      - "app/api/admin/ai/**"
+      - "components/admin/AdminNav.tsx"
+      - "docs/ai/**"
+      - "lib/ai/**"
+      - "migrations/*citaya_ai_core*"
+      - "tests/ai-*.test.mjs"
+      - "tests/security/citaya-ai-*.test.mjs"
+      - ".github/workflows/citaya-ai-core.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: AI Core tests
+        run: node --test tests/ai-*.test.mjs tests/security/citaya-ai-*.test.mjs
+
+      - name: AI Core lint
+        run: >
+          npx eslint
+          app/admin/asistente/page.tsx
+          app/api/admin/ai/assistant/route.ts
+          components/admin/AdminNav.tsx
+          "lib/ai/**/*.ts"
+          tests/ai-*.test.mjs
+          tests/security/citaya-ai-*.test.mjs
