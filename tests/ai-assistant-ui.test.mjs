@@ -21,3 +21,13 @@ test("UI envía solo mensaje e historial visible, nunca tenant hints", () => {
   assert.match(requestBlock, /history: messages/);
   assert.doesNotMatch(requestBlock, /tenantId|tenantSlug/);
 });
+
+
+test("UI muestra telemetría agregada sin exponer prompts", () => {
+  assert.match(page, /Uso de IA · 7 días/);
+  assert.match(page, /Telemetría agregada; no incluye prompts ni respuestas/);
+  assert.match(page, /localRequests/);
+  assert.match(page, /cloudRequests/);
+  assert.match(page, /fallbackRequests/);
+  assert.match(page, /cloudTokens/);
+});
