@@ -13,9 +13,10 @@ test("panel expone el asistente y comunica el modo solo lectura", () => {
 });
 
 test("UI envía solo mensaje e historial visible, nunca tenant hints", () => {
+  const requestStart = page.indexOf('adminFetch("/api/admin/ai/assistant"');
   const requestBlock = page.slice(
-    page.indexOf('adminFetch("/api/admin/ai/assistant"'),
-    page.indexOf('cache: "no-store"'),
+    requestStart,
+    page.indexOf('cache: "no-store"', requestStart),
   );
   assert.match(requestBlock, /message: value/);
   assert.match(requestBlock, /history: messages/);
