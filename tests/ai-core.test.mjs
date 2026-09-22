@@ -337,3 +337,36 @@ test("LocalModelProvider exige autenticación fuera de loopback", () => {
       }),
   );
 });
+
+
+test("LocalModelProvider exige opt-in y token para HTTP en LAN privada", () => {
+  assert.throws(
+    () =>
+      new LocalModelProvider({
+        endpoint: "http://192.168.1.50:8787/v1/generate",
+        model: "local-test",
+        authToken: "synthetic-token",
+      }),
+    (error) => error?.code === "AI_PROVIDER_CONFIG",
+  );
+
+  assert.throws(
+    () =>
+      new LocalModelProvider({
+        endpoint: "http://192.168.1.50:8787/v1/generate",
+        model: "local-test",
+        allowPrivateHttp: true,
+      }),
+    (error) => error?.code === "AI_PROVIDER_CONFIG",
+  );
+
+  assert.doesNotThrow(
+    () =>
+      new LocalModelProvider({
+        endpoint: "http://192.168.1.50:8787/v1/generate",
+        model: "local-test",
+        authToken: "synthetic-token",
+        allowPrivateHttp: true,
+      }),
+  );
+});
