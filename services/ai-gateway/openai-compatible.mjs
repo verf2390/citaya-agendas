@@ -134,9 +134,9 @@ export function buildOpenAICompatibleRequest(payload) {
 }
 
 function parseToolArguments(value) {
-  if (typeof value !== "string") throw invalid("Argumentos de tool inválidos");
+  const source = nonEmptyString(value, "tool_call.arguments");
   try {
-    return JSON.parse(value);
+    return JSON.parse(source);
   } catch {
     throw invalid("Argumentos de tool no son JSON válido");
   }
@@ -159,9 +159,13 @@ export function parseOpenAICompatibleResponse(payload, requestMessages) {
   if (!message) throw invalid("Respuesta upstream sin mensaje");
 
   const text = typeof message.content === "string" ? message.content : "";
+  if (text.length > MAX_TEXT) throw invalid("Respuesta upstream demasiado larga");
   const rawToolCalls = Array.isArray(message.tool_calls)
     ? message.tool_calls
     : [];
+  if (rawToolCalls.length > MAX_TOOLS) {
+    throw invalid("Respuesta upstream excede el máximo de tools");
+  }
   const toolCalls = rawToolCalls.map((call) => ({
     id: nonEmptyString(call?.id, "tool_call.id", 200),
     name: nonEmptyString(call?.function?.name, "tool_call.name", 120),
@@ -176,8 +180,15 @@ export function parseOpenAICompatibleResponse(payload, requestMessages) {
     role: "assistant",
     content: text || null,
   };
-  if (rawToolCalls.length > 0) {
-    continuationMessage.tool_calls = rawToolCalls;
+  if (toolCalls.length > 0) {
+    continuationMessage.tool_calls = toolCalls.map((call) => ({
+      id: call.id,
+      type: "function",
+      function: {
+        name: call.name,
+        arguments: jsonString(call.arguments),
+      },
+    }));
   }
 
   const inputTokens = tokenCount(payload.usage?.prompt_tokens);
