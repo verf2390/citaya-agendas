@@ -35,7 +35,7 @@ Hallazgos relevantes para la integración:
    Bearer de Supabase y componentes cliente para las pantallas administrativas.
 
 No se encontró un bloqueo arquitectónico que obligue a cambiar los flujos
-existentes. La integración se mantiene aislada bajo `lib/ai`, `services/ai` y
+existentes. La integración se mantiene aislada bajo `lib/ai` y
 `app/api/admin/ai`.
 
 ## Diseño
@@ -97,7 +97,7 @@ Reglas invariantes:
 
 | Tool | Acceso | Límites | Datos devueltos |
 |---|---|---|---|
-| `count_appointments` | lectura | un día, zona `America/Santiago` | conteo activo/cancelado y rango UTC |
+| `count_appointments` | lectura | un día, zona `America/Santiago` | fecha, zona horaria y conteos activo/cancelado/total |
 | `list_inactive_customers` | lectura | 1–3650 días, máximo 50 resultados | id, nombre, última visita/servicio y días |
 | `get_pending_receivables` | lectura | máximo 50 resultados | conteo, total CLP y saldos de citas |
 
@@ -116,7 +116,7 @@ cancelación del request.
 - `max_output_tokens` por request;
 - límite diario configurable por tenant, verificado antes de llamar al proveedor;
 - máximo de pasos/tools por request;
-- timeout total por request, providers, tools y consultas Supabase;
+- timeout total por request, incluyendo auditoría, providers, tools y consultas Supabase;
 - auditoría de tokens de entrada, salida y total cuando el proveedor los informa.
 
 El límite diario inicial es una barrera de uso, no una contabilidad financiera
@@ -175,6 +175,11 @@ se guardan en esa tabla.
   prueba de billing preexistente que falla también sin estos cambios;
 - 545 pruebas de seguridad no dependientes de PostgreSQL aprobadas;
 - lint dirigido a todos los archivos nuevos y modificados aprobado.
+
+Después de esa verificación se corrigieron hallazgos adicionales de review sobre
+reservas expiradas, `no_show` y el deadline de auditoría, y se agregaron pruebas
+de regresión. El build y las suites completas deben re-ejecutarse sobre el HEAD
+actual antes del merge o despliegue.
 
 Limitaciones del entorno de verificación:
 
