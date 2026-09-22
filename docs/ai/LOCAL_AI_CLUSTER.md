@@ -113,3 +113,22 @@ Ese modo solo admite rangos IPv4 privados RFC1918 y sigue exigiendo token. Debe 
 9. recién entonces decidir routing/fallback automático.
 
 No se requiere la laptop para la operación permanente.
+
+## Modo híbrido
+
+Cuando se configure `CITAYA_AI_PROVIDER=hybrid`, Citaya intenta primero el
+modelo local. Si el primer turno no puede iniciarse por indisponibilidad,
+respuesta inválida o por superar el timeout corto del primario, puede usar
+OpenAI como fallback.
+
+```bash
+CITAYA_AI_PROVIDER=hybrid
+CITAYA_AI_LOCAL_MODEL=<modelo-local>
+CITAYA_AI_OPENAI_MODEL=<modelo-cloud>
+CITAYA_AI_HYBRID_PRIMARY_TIMEOUT_MS=5000
+```
+
+El cambio de proveedor solo puede ocurrir antes de que exista un primer turno
+válido. Una vez iniciado un tool loop con un proveedor, Citaya no salta al otro
+en mitad de la conversación. Esto evita reutilizar estado/continuations
+incompatibles entre runtimes.
