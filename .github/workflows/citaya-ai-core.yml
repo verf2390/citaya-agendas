@@ -60,3 +60,11 @@ jobs:
           "lib/ai/**/*.ts"
           tests/ai-*.test.mjs
           tests/security/citaya-ai-*.test.mjs
+
+      - name: Production build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: synthetic-service-role-key-000000000000000000000000000000000000000000000000
+          CITAYA_AI_ENABLED: "false"
+        run: npm run build
