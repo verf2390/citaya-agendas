@@ -76,7 +76,9 @@ tools, permisos, auditoría, límites ni UI.
   locales.
 - `LocalModelProvider`: llama a un endpoint privado configurable que implementa
   el contrato de gateway Citaya. No presupone una API key en el navegador ni
-  obliga a que el modelo local imite la API de OpenAI.
+  obliga a que el modelo local imite la API de OpenAI. El repositorio incluye
+  una implementación de referencia en `services/ai-gateway`, y la topología
+  local propuesta está documentada en `docs/ai/LOCAL_AI_CLUSTER.md`.
 
 No existe importación de proveedores desde componentes cliente. Todas las
 variables sin prefijo `NEXT_PUBLIC_` se leen exclusivamente en módulos
