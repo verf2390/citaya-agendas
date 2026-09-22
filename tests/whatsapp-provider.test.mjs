@@ -44,14 +44,14 @@ test("provider Meta construye un envío template server-side", async (t) => {
   assert.equal(body.template.name, "booking_confirmation");
 });
 
-test("provider Meta rechaza destinatarios y templates inválidos", () => {
+test("provider Meta rechaza destinatarios y templates inválidos", async () => {
   const provider = new MetaCloudWhatsAppProvider({
     accessToken: "synthetic-access-token-1234567890",
     phoneNumberId: "123456789",
     graphVersion: "v99.0",
   });
 
-  assert.rejects(
+  await assert.rejects(
     provider.sendTemplate({
       to: "123",
       templateName: "booking_confirmation",
@@ -59,7 +59,7 @@ test("provider Meta rechaza destinatarios y templates inválidos", () => {
     }),
     /Destinatario WhatsApp inválido/,
   );
-  assert.rejects(
+  await assert.rejects(
     provider.sendTemplate({
       to: "56912345678",
       templateName: "BAD TEMPLATE",
