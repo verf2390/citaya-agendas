@@ -213,3 +213,32 @@ Limitaciones del entorno de verificación:
 La siguiente etapa de producto solo debe comenzar después de que este bloque
 compile, pase las pruebas, esté desplegado con la migración y haya sido validado
 con un tenant piloto.
+
+
+## Routing y telemetría
+
+El audit trail distingue el proveedor solicitado del proveedor que realmente
+resolvió la consulta. Esto permite medir el modo híbrido sin guardar prompts,
+respuestas ni resultados de tools.
+
+Por request se persiste, cuando existe una ruta efectiva:
+
+- proveedor solicitado (`openai`, `local` o `hybrid`);
+- modelo solicitado;
+- proveedor efectivo (`openai` o `local`);
+- modelo efectivo;
+- si hubo fallback;
+- tiempo total;
+- tiempo acumulado dentro de providers;
+- input/output/total tokens;
+- tools utilizadas;
+- estado y código de error seguro.
+
+`GET /api/admin/ai/usage?days=7` devuelve un resumen agregado del tenant
+autenticado, con un rango máximo de 30 días. El resumen incluye solicitudes,
+éxitos/fallos, uso local/cloud, fallbacks, latencia y tokens cloud separados en
+entrada/salida para permitir cálculo de costos sin fijar precios de modelos en
+la aplicación.
+
+El panel `/admin/asistente` muestra una vista compacta de estos datos. La
+telemetría es informativa: si temporalmente falla, el chat continúa disponible.
