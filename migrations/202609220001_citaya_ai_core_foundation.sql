@@ -281,6 +281,14 @@ begin
       sum(total_tokens) filter (where effective_provider = 'openai'),
       0
     ),
+    'cloud_input_tokens', coalesce(
+      sum(input_tokens) filter (where effective_provider = 'openai'),
+      0
+    ),
+    'cloud_output_tokens', coalesce(
+      sum(output_tokens) filter (where effective_provider = 'openai'),
+      0
+    ),
     'avg_duration_ms', coalesce(round(avg(duration_ms)), 0),
     'avg_provider_duration_ms', coalesce(round(avg(provider_duration_ms)), 0)
   )
