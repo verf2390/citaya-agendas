@@ -10,6 +10,7 @@ on:
       - "components/admin/AdminNav.tsx"
       - "docs/ai/**"
       - "lib/ai/**"
+      - "services/ai-gateway/**"
       - "migrations/*citaya_ai_core*"
       - "tests/ai-*.test.mjs"
       - "tests/security/citaya-ai-*.test.mjs"
@@ -21,6 +22,7 @@ on:
       - "components/admin/AdminNav.tsx"
       - "docs/ai/**"
       - "lib/ai/**"
+      - "services/ai-gateway/**"
       - "migrations/*citaya_ai_core*"
       - "tests/ai-*.test.mjs"
       - "tests/security/citaya-ai-*.test.mjs"
@@ -58,6 +60,7 @@ jobs:
           app/api/admin/ai/assistant/route.ts
           components/admin/AdminNav.tsx
           "lib/ai/**/*.ts"
+          "services/ai-gateway/**/*.mjs"
           tests/ai-*.test.mjs
           tests/security/citaya-ai-*.test.mjs
 
