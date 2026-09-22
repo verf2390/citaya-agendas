@@ -107,3 +107,24 @@ test("telemetría persiste routing sin contenido conversacional", () => {
     /conversation|message_text|tool_output/i,
   );
 });
+
+test("RPCs SECURITY DEFINER de AI quedan revocados para anon/authenticated", () => {
+  const migration = read(
+    "migrations/202609220001_citaya_ai_core_foundation.sql",
+  );
+
+  for (const fn of [
+    "begin_ai_request_audit",
+    "finish_ai_request_audit",
+    "get_ai_usage_summary",
+  ]) {
+    const start = migration.indexOf(`revoke all on function public.${fn}`);
+    assert.notEqual(start, -1, `missing revoke for ${fn}`);
+    const chunk = migration.slice(start, start + 500);
+    assert.match(chunk, /from public, anon, authenticated;/);
+    assert.match(chunk, new RegExp(
+      `grant execute on function public\\.${fn}[\\s\\S]*?to service_role;`,
+    ));
+  }
+});
+
