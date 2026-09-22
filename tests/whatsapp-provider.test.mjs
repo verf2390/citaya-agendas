@@ -61,6 +61,14 @@ test("provider Meta rechaza destinatarios y templates inválidos", async () => {
   );
   await assert.rejects(
     provider.sendTemplate({
+      to: "foo+56912345678",
+      templateName: "booking_confirmation",
+      languageCode: "es_CL",
+    }),
+    /Destinatario WhatsApp inválido/,
+  );
+  await assert.rejects(
+    provider.sendTemplate({
       to: "56912345678",
       templateName: "BAD TEMPLATE",
       languageCode: "es_CL",
