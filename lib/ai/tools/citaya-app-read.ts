@@ -53,16 +53,42 @@ export interface CitayaAppReadRepository {
 }
 
 const CANCELED_STATUSES = new Set(["canceled", "cancelled", "cancelada"]);
+const NON_VISIT_STATUSES = new Set([
+  ...CANCELED_STATUSES,
+  "no_show",
+  "expired",
+]);
+const NON_RECEIVABLE_STATUSES = new Set([
+  ...CANCELED_STATUSES,
+  "expired",
+]);
 
 function normalized(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function isCanceled(row: { status: string | null; booking_status: string | null }) {
+function hasStatus(
+  row: { status: string | null; booking_status: string | null },
+  statuses: Set<string>,
+) {
   return (
-    CANCELED_STATUSES.has(normalized(row.status)) ||
-    CANCELED_STATUSES.has(normalized(row.booking_status))
+    statuses.has(normalized(row.status)) ||
+    statuses.has(normalized(row.booking_status))
   );
+}
+
+function isCanceled(row: { status: string | null; booking_status: string | null }) {
+  return hasStatus(row, CANCELED_STATUSES);
+}
+
+function isNonVisit(row: { status: string | null; booking_status: string | null }) {
+  return hasStatus(row, NON_VISIT_STATUSES);
+}
+
+function isNonReceivable(
+  row: { status: string | null; booking_status: string | null },
+) {
+  return hasStatus(row, NON_RECEIVABLE_STATUSES);
 }
 
 function exactObject(value: unknown, allowedKeys: string[]) {
@@ -232,7 +258,7 @@ function inactiveCustomersTool(repository: CitayaAppReadRepository): AITool {
       });
       const latestByCustomer = new Map<string, CustomerAppointmentRow>();
       for (const appointment of appointments) {
-        if (!appointment.customer_id || !appointment.start_at || isCanceled(appointment)) {
+        if (!appointment.customer_id || !appointment.start_at || isNonVisit(appointment)) {
           continue;
         }
         const previous = latestByCustomer.get(appointment.customer_id);
@@ -302,7 +328,7 @@ function pendingReceivablesTool(repository: CitayaAppReadRepository): AITool {
         signal: context.signal,
       });
       const pending = rows
-        .filter((row) => !isCanceled(row))
+        .filter((row) => !isNonReceivable(row))
         .map((row) => ({ row, amount: receivableAmount(row) }))
         .filter(
           ({ row, amount }) =>
