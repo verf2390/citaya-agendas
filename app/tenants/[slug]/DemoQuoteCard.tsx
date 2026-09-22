@@ -24,7 +24,7 @@ const BUSINESS_OPTIONS = [
 ] as const;
 
 const BASE_MONTHLY = 29000;
-const IMPLEMENTATION_PRICE = 49000;
+const IMPLEMENTATION_PRICE = 49900;
 const EXTRA_PER_PRO = 3000;
 const INCLUDED_PROS = 10;
 
@@ -137,7 +137,7 @@ export default function DemoQuoteCard() {
             <b>Regla de precio:</b> hasta 10 profesionales pagas una mensualidad
             fija de <b>$29.000</b>. Desde el profesional 11 se suman{" "}
             <b>$3.000</b> por cada adicional. La implementación es de{" "}
-            <b>$49.000</b>.
+            <b>$49.900</b>.
           </div>
         </div>
 
