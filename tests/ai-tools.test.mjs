@@ -91,6 +91,13 @@ test("list_inactive_customers devuelve visitas antiguas y excluye canceladas", a
           booking_status: "confirmed",
         },
         {
+          customer_id: "c1",
+          start_at: "2026-09-15T12:00:00Z",
+          service_name: "No asistió",
+          status: "no_show",
+          booking_status: "no_show",
+        },
+        {
           customer_id: "c2",
           start_at: "2026-05-01T12:00:00Z",
           service_name: "Cancelada",
@@ -145,6 +152,19 @@ test("get_pending_receivables suma CLP sin ejecutar acciones", async () => {
           payment_required_amount: 20000,
           payment_paid_amount: 0,
           payment_remaining_amount: null,
+        },
+        {
+          id: "a3",
+          customer_id: "c3",
+          customer_name: "Reserva vencida",
+          service_name: "Evaluación",
+          start_at: "2026-09-17T12:00:00Z",
+          status: "expired",
+          booking_status: "expired",
+          payment_status: "pending",
+          payment_required_amount: 99999,
+          payment_paid_amount: 0,
+          payment_remaining_amount: 99999,
         },
       ];
     },
