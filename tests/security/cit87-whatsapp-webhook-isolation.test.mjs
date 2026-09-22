@@ -33,6 +33,12 @@ registerHooks({
     if (map[specifier]) {
       return { url: `citaya-wa:${map[specifier]}`, shortCircuit: true };
     }
+    if (specifier === "@/lib/whatsapp/meta-webhook") {
+      return {
+        url: pathToFileURL(resolve("lib/whatsapp/meta-webhook.ts")).href,
+        shortCircuit: true,
+      };
+    }
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
