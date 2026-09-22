@@ -222,11 +222,11 @@ $$;
 
 revoke all on function public.begin_ai_request_audit(
   uuid, uuid, text, text, text, text, integer, integer
-) from public;
+) from public, anon, authenticated;
 revoke all on function public.finish_ai_request_audit(
   uuid, uuid, uuid, text, text[], integer, integer, integer, integer,
   text, text, boolean, integer, text
-) from public;
+) from public, anon, authenticated;
 grant execute on function public.begin_ai_request_audit(
   uuid, uuid, text, text, text, text, integer, integer
 ) to service_role;
@@ -303,7 +303,7 @@ $ai$;
 
 revoke all on function public.get_ai_usage_summary(
   uuid, uuid, text, timestamptz
-) from public;
+) from public, anon, authenticated;
 grant execute on function public.get_ai_usage_summary(
   uuid, uuid, text, timestamptz
 ) to service_role;
