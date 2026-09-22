@@ -26,6 +26,22 @@ export const privilegedRouteInventory = Object.freeze([
     rationale: "Membership is checked for the requested tenant and all appointment/payment reads use that tenant.",
   },
   {
+    route: "app/api/admin/ai/assistant/route.ts",
+    boundary: "host_tenant_admin",
+    status: "OK",
+    severity: "none",
+    markers: ["access.tenantId", "access.userId", "consumeRateLimit"],
+    rationale: "Hostname tenant auth runs before JSON parsing; client tenant hints are ignored and the authorized tenant/user are injected into rate limiting, policy, tools and audit. Evidence: citaya-ai-assistant-isolation.test.mjs.",
+  },
+  {
+    route: "app/api/admin/ai/usage/route.ts",
+    boundary: "host_tenant_admin",
+    status: "OK",
+    severity: "none",
+    markers: ["access.tenantId", "access.userId", "loadAIUsageSummary"],
+    rationale: "Usage telemetry authenticates the hostname tenant before aggregation; tenant/user/auth mode passed to the summary RPC come only from the server boundary and no prompts or tool results are returned.",
+  },
+  {
     route: "app/api/admin/availability/list/route.ts",
     boundary: "tenant_admin",
     status: "OK",
@@ -514,6 +530,9 @@ export const privilegedRouteInventory = Object.freeze([
 ]);
 
 export const privilegedHelperInventory = Object.freeze([
+  { file: "lib/ai/server/audit.ts", status: "OK", severity: "none", boundary: "authenticated_tenant_argument", evidence: "The audit RPC receives the tenant and user established by requireHostTenantAdmin; begin_ai_request_audit verifies membership again and stores no prompts, arguments or tool results." },
+  { file: "lib/ai/server/citaya-app-repository.ts", status: "OK", severity: "none", boundary: "authenticated_tenant_argument", evidence: "Every appointments/customers read applies tenant_id from the server tool context. Evidence: citaya-ai-repository-isolation.test.mjs." },
+  { file: "lib/ai/server/tenant-policy.ts", status: "OK", severity: "none", boundary: "authenticated_tenant_argument", evidence: "AI configuration is selected only by the authenticated tenant id before provider creation; no secret is stored in the tenant row." },
   { file: "lib/api/appointmentAccess.ts", status: "FINDING", severity: "P2", boundary: "resource_actor", evidence: "authorizeAppointmentActor is tenant/token-bound; rotate/revoke update appointments by id only and currently have no callers." },
   { file: "lib/api/requireTenantAdmin.ts", status: "OK", severity: "none", boundary: "authentication", evidence: "Bearer auth plus tenant_members tenant_id+user_id or active super_admin; host helper resolves slug before delegation." },
   { file: "lib/dte/__tests__/dte-persistence.test.ts", status: "OK", severity: "none", boundary: "test_only", evidence: "Test-only environment-key manipulation and tenant isolation assertions." },

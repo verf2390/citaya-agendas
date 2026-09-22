@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import {
   CalendarDays,
   CalendarPlus,
+  Bot,
   CreditCard,
   LayoutDashboard,
   Megaphone,
@@ -27,6 +28,7 @@ import { getTenantSlugFromHostname } from "@/lib/tenant";
 
 const ITEMS = [
   { href: "/admin", label: "Panel", icon: LayoutDashboard },
+  { href: "/admin/asistente", label: "Asistente IA", icon: Bot },
   { href: "/admin/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/admin/customers", label: "Clientes", icon: Users },
   { href: "/admin/pagos", label: "Pagos", icon: CreditCard },
