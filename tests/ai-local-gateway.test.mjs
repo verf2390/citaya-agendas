@@ -125,3 +125,38 @@ test("gateway agrega tool_result sobre la continuation sin recrear contexto", ()
   assert.equal(request.messages.at(-1).tool_call_id, "call-1");
   assert.match(request.messages.at(-1).content, /"active":3/);
 });
+
+
+test("gateway rechaza respuestas con exceso de tool calls", () => {
+  const request = buildOpenAICompatibleRequest({
+    contractVersion: "citaya-ai-provider-v1",
+    model: "local-model",
+    instructions: "Solo lectura",
+    input: [{ type: "user", text: "hola" }],
+    tools: [],
+    maxOutputTokens: 100,
+    continuation: null,
+  });
+
+  assert.throws(
+    () =>
+      parseOpenAICompatibleResponse(
+        {
+          choices: [
+            {
+              message: {
+                content: "",
+                tool_calls: Array.from({ length: 13 }, (_, index) => ({
+                  id: `call-${index}`,
+                  type: "function",
+                  function: { name: "x", arguments: "{}" },
+                })),
+              },
+            },
+          ],
+        },
+        request.messages,
+      ),
+    /máximo de tools/,
+  );
+});
