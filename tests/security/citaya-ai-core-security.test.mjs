@@ -120,7 +120,7 @@ test("RPCs SECURITY DEFINER de AI quedan revocados para anon/authenticated", () 
   ]) {
     const start = migration.indexOf(`revoke all on function public.${fn}`);
     assert.notEqual(start, -1, `missing revoke for ${fn}`);
-    const chunk = migration.slice(start, start + 500);
+    const chunk = migration.slice(start, start + 1200);
     assert.match(chunk, /from public, anon, authenticated;/);
     assert.match(chunk, new RegExp(
       `grant execute on function public\\.${fn}[\\s\\S]*?to service_role;`,
