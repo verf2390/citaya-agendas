@@ -80,8 +80,8 @@ create policy ai_request_audit_member_read
 
 revoke all on public.ai_tenant_settings from anon, authenticated;
 revoke all on public.ai_request_audit from anon, authenticated;
-grant select on public.ai_tenant_settings to authenticated;
-grant select on public.ai_request_audit to authenticated;
+grant select, insert, update, delete on public.ai_tenant_settings to service_role;
+grant select, insert, update, delete on public.ai_request_audit to service_role;
 
 create or replace function public.begin_ai_request_audit(
   p_tenant_id uuid,
