@@ -25,6 +25,12 @@ const { OpenAIProvider } = await import(
 const { LocalModelProvider } = await import(
   pathToFileURL(resolve("lib/ai/providers/local.ts")).href
 );
+const { HybridAIProvider } = await import(
+  pathToFileURL(resolve("lib/ai/providers/hybrid.ts")).href
+);
+const { AIError } = await import(
+  pathToFileURL(resolve("lib/ai/errors.ts")).href
+);
 
 const context = {
   tenantId: "11111111-1111-4111-8111-111111111111",
@@ -369,4 +375,176 @@ test("LocalModelProvider exige opt-in y token para HTTP en LAN privada", () => {
         allowPrivateHttp: true,
       }),
   );
+});
+
+
+test("HybridAIProvider usa local y queda sticky tras un primer turno exitoso", async () => {
+  const calls = [];
+  const primary = {
+    id: "local",
+    model: "local-test",
+    async generate(request) {
+      calls.push("local");
+      return {
+        text: "local",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const fallback = {
+    id: "openai",
+    model: "cloud-test",
+    async generate() {
+      calls.push("cloud");
+      return {
+        text: "cloud",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const provider = new HybridAIProvider(primary, fallback, 100);
+  const request = {
+    instructions: "x",
+    input: [{ type: "user", text: "hola" }],
+    tools: [],
+    maxOutputTokens: 100,
+    signal: new AbortController().signal,
+  };
+
+  assert.equal((await provider.generate(request)).text, "local");
+  assert.equal((await provider.generate(request)).text, "local");
+  assert.deepEqual(calls, ["local", "local"]);
+});
+
+test("HybridAIProvider hace fallback solo antes del primer turno exitoso", async () => {
+  const calls = [];
+  const primary = {
+    id: "local",
+    model: "local-test",
+    async generate() {
+      calls.push("local");
+      throw new AIError("AI_PROVIDER_UNAVAILABLE", "local down");
+    },
+  };
+  const fallback = {
+    id: "openai",
+    model: "cloud-test",
+    async generate() {
+      calls.push("cloud");
+      return {
+        text: "cloud",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const provider = new HybridAIProvider(primary, fallback, 100);
+  const request = {
+    instructions: "x",
+    input: [{ type: "user", text: "hola" }],
+    tools: [],
+    maxOutputTokens: 100,
+    signal: new AbortController().signal,
+  };
+
+  assert.equal((await provider.generate(request)).text, "cloud");
+  assert.equal((await provider.generate(request)).text, "cloud");
+  assert.deepEqual(calls, ["local", "cloud", "cloud"]);
+});
+
+test("HybridAIProvider abandona un local lento sin consumir el deadline global", async () => {
+  const primary = {
+    id: "local",
+    model: "local-test",
+    async generate(request) {
+      return new Promise((resolve, reject) => {
+        request.signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    },
+  };
+  const fallback = {
+    id: "openai",
+    model: "cloud-test",
+    async generate() {
+      return {
+        text: "cloud",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const provider = new HybridAIProvider(primary, fallback, 20);
+  const startedAt = Date.now();
+  const turn = await provider.generate({
+    instructions: "x",
+    input: [{ type: "user", text: "hola" }],
+    tools: [],
+    maxOutputTokens: 100,
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(turn.text, "cloud");
+  assert.ok(Date.now() - startedAt < 500);
+});
+
+test("HybridAIProvider no cambia de proveedor después de iniciar un tool loop", async () => {
+  let call = 0;
+  const primary = {
+    id: "local",
+    model: "local-test",
+    async generate() {
+      call += 1;
+      if (call === 1) {
+        return {
+          text: "",
+          toolCalls: [{ id: "c1", name: "x", arguments: {} }],
+          continuation: { local: true },
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        };
+      }
+      throw new AIError("AI_PROVIDER_UNAVAILABLE", "local failed later");
+    },
+  };
+  let cloudCalls = 0;
+  const fallback = {
+    id: "openai",
+    model: "cloud-test",
+    async generate() {
+      cloudCalls += 1;
+      return {
+        text: "cloud",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const provider = new HybridAIProvider(primary, fallback, 100);
+  const signal = new AbortController().signal;
+
+  await provider.generate({
+    instructions: "x",
+    input: [{ type: "user", text: "hola" }],
+    tools: [],
+    maxOutputTokens: 100,
+    signal,
+  });
+
+  await assert.rejects(
+    provider.generate({
+      instructions: "x",
+      input: [{ type: "tool_result", callId: "c1", output: {} }],
+      tools: [],
+      maxOutputTokens: 100,
+      continuation: { local: true },
+      signal,
+    }),
+    (error) => error?.code === "AI_PROVIDER_UNAVAILABLE",
+  );
+  assert.equal(cloudCalls, 0);
 });
