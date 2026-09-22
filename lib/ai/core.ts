@@ -29,6 +29,31 @@ function timeoutSignal(timeoutMs: number) {
   return { signal: controller.signal, clear: () => clearTimeout(timer) };
 }
 
+function executeWithTimeout<T>(
+  execute: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) {
+    return Promise.reject(
+      new AIError("AI_TIMEOUT", "La solicitud de IA excedió el tiempo máximo"),
+    );
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(
+        new AIError("AI_TIMEOUT", "La solicitud de IA excedió el tiempo máximo"),
+      );
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    Promise.resolve()
+      .then(execute)
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 export async function runAICore(input: {
   provider: AIProvider;
   instructions: string;
@@ -137,7 +162,14 @@ export async function runAICore(input: {
         }
 
         try {
-          const output = await tool.execute(call.arguments, input.context);
+          const output = await executeWithTimeout(
+            () =>
+              tool.execute(call.arguments, {
+                ...input.context,
+                signal: timeout.signal,
+              }),
+            timeout.signal,
+          );
           toolsUsed.add(call.name);
           results.push({ type: "tool_result", callId: call.id, output });
         } catch (error) {

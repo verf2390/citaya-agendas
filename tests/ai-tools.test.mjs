@@ -58,6 +58,7 @@ test("count_appointments usa el día de Santiago y tenant del contexto", async (
       tenantId: TENANT,
       startIso: "2026-09-23T03:00:00.000Z",
       endIso: "2026-09-24T03:00:00.000Z",
+      signal: undefined,
     },
   ]);
   assert.deepEqual(result, {
@@ -71,8 +72,8 @@ test("count_appointments usa el día de Santiago y tenant del contexto", async (
 
 test("list_inactive_customers devuelve visitas antiguas y excluye canceladas", async () => {
   const repository = {
-    async listCustomers(tenantId) {
-      assert.equal(tenantId, TENANT);
+    async listCustomers(input) {
+      assert.equal(input.tenantId, TENANT);
       return [
         { id: "c1", full_name: "Ana" },
         { id: "c2", full_name: "Luis" },

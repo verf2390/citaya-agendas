@@ -34,16 +34,21 @@ export interface CitayaAppReadRepository {
     tenantId: string;
     startIso: string;
     endIso: string;
+    signal?: AbortSignal;
   }): Promise<AppointmentStatusRow[]>;
-  listCustomers(tenantId: string): Promise<CustomerReadRow[]>;
+  listCustomers(input: {
+    tenantId: string;
+    signal?: AbortSignal;
+  }): Promise<CustomerReadRow[]>;
   listPastCustomerAppointments(input: {
     tenantId: string;
     customerIds: string[];
     throughIso: string;
+    signal?: AbortSignal;
   }): Promise<CustomerAppointmentRow[]>;
   listPendingReceivables(input: {
     tenantId: string;
-    limit: number;
+    signal?: AbortSignal;
   }): Promise<ReceivableRow[]>;
 }
 
@@ -181,6 +186,7 @@ function countAppointmentsTool(repository: CitayaAppReadRepository): AITool {
         tenantId: context.tenantId,
         startIso: start.toISOString(),
         endIso: end.toISOString(),
+        signal: context.signal,
       });
       const canceled = rows.filter(isCanceled).length;
       return {
@@ -214,11 +220,15 @@ function inactiveCustomersTool(repository: CitayaAppReadRepository): AITool {
       const args = exactObject(argumentsValue, ["days", "limit"]);
       const days = integerArgument(args.days, 1, 3650);
       const limit = integerArgument(args.limit, 1, 50);
-      const customers = await repository.listCustomers(context.tenantId);
+      const customers = await repository.listCustomers({
+        tenantId: context.tenantId,
+        signal: context.signal,
+      });
       const appointments = await repository.listPastCustomerAppointments({
         tenantId: context.tenantId,
         customerIds: customers.map((customer) => customer.id),
         throughIso: context.now.toISOString(),
+        signal: context.signal,
       });
       const latestByCustomer = new Map<string, CustomerAppointmentRow>();
       for (const appointment of appointments) {
@@ -289,7 +299,7 @@ function pendingReceivablesTool(repository: CitayaAppReadRepository): AITool {
       const limit = integerArgument(args.limit, 1, 50);
       const rows = await repository.listPendingReceivables({
         tenantId: context.tenantId,
-        limit: 500,
+        signal: context.signal,
       });
       const pending = rows
         .filter((row) => !isCanceled(row))

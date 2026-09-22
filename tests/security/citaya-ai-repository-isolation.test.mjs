@@ -22,6 +22,8 @@ class Query {
   or(value) { this.filters.push(["or", value]); return this; }
   order() { return this; }
   limit() { return this; }
+  range() { return this; }
+  abortSignal() { return this; }
   then(resolve, reject) {
     state.queries.push(this);
     return Promise.resolve({ data: [], error: null }).then(resolve, reject);
@@ -74,13 +76,13 @@ test("cada consulta de IA conserva el filtro tenant_id", async () => {
     startIso: "2026-09-22T03:00:00Z",
     endIso: "2026-09-23T03:00:00Z",
   });
-  await repository.listCustomers(TENANT);
+  await repository.listCustomers({ tenantId: TENANT });
   await repository.listPastCustomerAppointments({
     tenantId: TENANT,
     customerIds: ["customer-a"],
     throughIso: "2026-09-22T15:00:00Z",
   });
-  await repository.listPendingReceivables({ tenantId: TENANT, limit: 50 });
+  await repository.listPendingReceivables({ tenantId: TENANT });
 
   assert.equal(state.queries.length, 4);
   for (const query of state.queries) {

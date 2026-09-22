@@ -169,6 +169,42 @@ test("AI Core rechaza una tool fuera de la allow-list", async () => {
   );
 });
 
+test("AI Core aplica el timeout total mientras una tool está ejecutándose", async () => {
+  const provider = {
+    id: "openai",
+    model: "test-model",
+    async generate() {
+      return {
+        text: "",
+        toolCalls: [
+          { id: "call-1", name: "count_appointments", arguments: {} },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      };
+    },
+  };
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    runAICore({
+      provider,
+      instructions: "Solo lectura",
+      message: "Cuenta mis reservas",
+      tools: [
+        {
+          definition,
+          execute: () => new Promise(() => {}),
+        },
+      ],
+      context,
+      maxOutputTokens: 500,
+      timeoutMs: 20,
+    }),
+    (error) => error?.code === "AI_TIMEOUT",
+  );
+  assert.ok(Date.now() - startedAt < 500);
+});
+
 test("OpenAIProvider usa Responses API sin persistencia y schemas estrictos", async (t) => {
   const requests = [];
   t.mock.method(globalThis, "fetch", async (_url, init) => {

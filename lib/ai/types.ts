@@ -56,6 +56,7 @@ export type AIToolContext = {
   tenantSlug: string;
   timezone: string;
   now: Date;
+  signal?: AbortSignal;
 };
 
 export type AITool = {

@@ -105,18 +105,25 @@ Los schemas usan validación estricta y `additionalProperties: false`. La salida
 de tools se trata como datos no confiables; el prompt prohíbe obedecer texto que
 aparezca dentro de nombres, servicios o resultados.
 
+Las consultas paginan todos los registros candidatos antes de calcular totales;
+el máximo de 50 limita únicamente lo que se devuelve al modelo, no el conteo ni
+la suma. Cada página conserva el filtro `tenant_id` y recibe la señal de
+cancelación del request.
+
 ## Rate limit, tokens y costo
 
 - límite duro por minuto mediante `consume_api_rate_limit`;
 - `max_output_tokens` por request;
 - límite diario configurable por tenant, verificado antes de llamar al proveedor;
 - máximo de pasos/tools por request;
-- timeout total por request y timeout de red del proveedor;
+- timeout total por request, providers, tools y consultas Supabase;
 - auditoría de tokens de entrada, salida y total cuando el proveedor los informa.
 
 El límite diario inicial es una barrera de uso, no una contabilidad financiera
 exacta: el precio depende del proveedor y modelo configurados. Una etapa futura
 puede agregar precios versionados sin cambiar el contrato de proveedor.
+La reserva conservadora de cada request nunca puede superar el presupuesto
+diario configurado para el tenant.
 
 ## Auditoría y privacidad
 
@@ -164,9 +171,9 @@ se guardan en esa tabla.
 
 - build de producción completado con valores públicos sintéticos de Supabase;
 - 23 pruebas específicas de AI Core, tools, UI y aislamiento aprobadas;
-- 94 pruebas generales no dependientes de PostgreSQL aprobadas, excluyendo una
+- 102 pruebas generales aprobadas, excluyendo una
   prueba de billing preexistente que falla también sin estos cambios;
-- 531 pruebas de seguridad no dependientes de PostgreSQL aprobadas;
+- 545 pruebas de seguridad no dependientes de PostgreSQL aprobadas;
 - lint dirigido a todos los archivos nuevos y modificados aprobado.
 
 Limitaciones del entorno de verificación:

@@ -8,6 +8,7 @@ import { createAIProvider } from "@/lib/ai/provider-factory";
 import { beginAIRequestAudit, finishAIRequestAudit } from "@/lib/ai/server/audit";
 import { SupabaseCitayaAppReadRepository } from "@/lib/ai/server/citaya-app-repository";
 import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
+import { reservedTokensForAIRequest } from "@/lib/ai/server/token-budget";
 import { createCitayaAppReadTools } from "@/lib/ai/tools/citaya-app-read";
 import type { AIUsage } from "@/lib/ai/types";
 import type { AIConversationMessage } from "@/lib/ai/types";
@@ -50,7 +51,7 @@ export async function runCitayaAppAssistant(input: {
     model: provider.model,
     promptVersion,
     dailyTokenLimit: input.policy.dailyTokenLimit,
-    reservedTokens: input.policy.maxOutputTokens + 4_000,
+    reservedTokens: reservedTokensForAIRequest(input.policy),
   });
 
   try {
