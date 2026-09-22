@@ -1,8 +1,18 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, LoaderCircle, Send, ShieldCheck, Sparkles, User } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  Cloud,
+  Cpu,
+  LoaderCircle,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  User,
+} from "lucide-react";
 
 import AdminNav from "@/components/admin/AdminNav";
 import {
@@ -25,6 +35,25 @@ type AssistantResponse = {
   answer?: string;
   error?: string;
   toolsUsed?: string[];
+};
+
+type AIUsageSummary = {
+  requests: number;
+  succeeded: number;
+  failed: number;
+  localRequests: number;
+  cloudRequests: number;
+  fallbackRequests: number;
+  totalTokens: number;
+  cloudTokens: number;
+  avgDurationMs: number;
+  avgProviderDurationMs: number;
+};
+
+type AIUsageResponse = {
+  ok?: boolean;
+  days?: number;
+  summary?: AIUsageSummary;
 };
 
 const EXAMPLE_QUESTIONS = [
@@ -50,6 +79,37 @@ export default function AdminAssistantPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [usage, setUsage] = useState<AIUsageSummary | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      try {
+        const response = await adminFetch("/api/admin/ai/usage?days=7", {
+          cache: "no-store",
+        });
+        if (response.status === 401) {
+          router.push(
+            `/login?redirectTo=${encodeURIComponent("/admin/asistente")}`,
+          );
+          return;
+        }
+        const payload = (await response.json().catch(() => null)) as
+          | AIUsageResponse
+          | null;
+        if (active && response.ok && payload?.ok && payload.summary) {
+          setUsage(payload.summary);
+        }
+      } catch {
+        // Telemetry is informative; a temporary failure must not block chat.
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   const submitMessage = async (message: string) => {
     const value = message.trim();
@@ -267,6 +327,73 @@ export default function AdminAssistantPage() {
                   <span>Puede analizar y redactar; no envía, cobra ni modifica reservas.</span>
                 </div>
               </div>
+            </AdminSectionCard>
+
+            <AdminSectionCard
+              title="Uso de IA · 7 días"
+              description="Telemetría agregada; no incluye prompts ni respuestas."
+            >
+              {usage ? (
+                <div className="grid gap-3 text-sm">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                        <Activity className="h-4 w-4" aria-hidden="true" />
+                        Solicitudes
+                      </div>
+                      <div className="mt-1 text-xl font-black text-slate-900">
+                        {usage.requests.toLocaleString("es-CL")}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="text-xs font-bold text-slate-500">
+                        Latencia prom.
+                      </div>
+                      <div className="mt-1 text-xl font-black text-slate-900">
+                        {usage.avgDurationMs
+                          ? `${(usage.avgDurationMs / 1000).toFixed(1)} s`
+                          : "—"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                      <span className="flex items-center gap-2 font-bold text-slate-600">
+                        <Cpu className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                        Local
+                      </span>
+                      <span className="font-black text-slate-900">
+                        {usage.localRequests.toLocaleString("es-CL")}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                      <span className="flex items-center gap-2 font-bold text-slate-600">
+                        <Cloud className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                        Cloud
+                      </span>
+                      <span className="font-black text-slate-900">
+                        {usage.cloudRequests.toLocaleString("es-CL")}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                      <span className="font-bold text-slate-600">Fallback</span>
+                      <span className="font-black text-slate-900">
+                        {usage.fallbackRequests.toLocaleString("es-CL")}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                      <span className="font-bold text-slate-600">Tokens cloud</span>
+                      <span className="font-black text-slate-900">
+                        {usage.cloudTokens.toLocaleString("es-CL")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm font-medium text-slate-500">
+                  Sin telemetría disponible todavía.
+                </div>
+              )}
             </AdminSectionCard>
           </div>
         </div>
