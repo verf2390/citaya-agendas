@@ -82,3 +82,24 @@ test("hybrid provider queda permitido sin ampliar acceso de auditoría", () => {
   );
   assert.match(migration, /AI_AUDIT_FORBIDDEN/);
 });
+
+
+test("telemetría persiste routing sin contenido conversacional", () => {
+  const migration = read(
+    "migrations/202609220001_citaya_ai_core_foundation.sql",
+  );
+  assert.match(migration, /effective_provider text/);
+  assert.match(migration, /effective_model text/);
+  assert.match(migration, /fallback_used boolean/);
+  assert.match(migration, /provider_duration_ms integer/);
+  assert.match(migration, /get_ai_usage_summary/);
+  assert.match(migration, /cloud_input_tokens/);
+  assert.match(migration, /cloud_output_tokens/);
+  assert.doesNotMatch(
+    migration.slice(
+      migration.indexOf("create table if not exists public.ai_request_audit"),
+      migration.indexOf("create index if not exists ai_request_audit"),
+    ),
+    /conversation|message_text|tool_output/i,
+  );
+});
