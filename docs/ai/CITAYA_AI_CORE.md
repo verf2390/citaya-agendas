@@ -242,3 +242,16 @@ la aplicación.
 
 El panel `/admin/asistente` muestra una vista compacta de estos datos. La
 telemetría es informativa: si temporalmente falla, el chat continúa disponible.
+
+## Verificación de migración contra producción — 2026-09-22
+
+La migración `202609220001_citaya_ai_core_foundation.sql` fue validada contra
+el esquema PostgreSQL actual del proyecto Supabase `citaya-agendas` mediante
+una ejecución transaccional `BEGIN ... ROLLBACK`.
+
+Resultado: PostgreSQL aceptó el DDL, funciones, grants y políticas sin error y
+el rollback dejó el esquema productivo sin objetos AI persistidos.
+
+La aplicación definitiva de la migración debe realizarse con AI deshabilitada
+por defecto y verificarse antes de habilitar cualquier tenant.
+
