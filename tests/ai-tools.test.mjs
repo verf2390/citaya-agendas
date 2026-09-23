@@ -180,3 +180,44 @@ test("get_pending_receivables suma CLP sin ejecutar acciones", async () => {
     [20000, 10000],
   );
 });
+
+
+test("list_inactive_customers formatea consulta directa sin segundo pase generativo", async () => {
+  const repository = {
+    async listCustomers() {
+      return [{ id: "c1", full_name: "Ana" }];
+    },
+    async listPastCustomerAppointments() {
+      return [
+        {
+          customer_id: "c1",
+          start_at: "2026-06-01T12:00:00Z",
+          service_name: "Control",
+          status: "confirmed",
+          booking_status: "confirmed",
+        },
+      ];
+    },
+  };
+  const tool = toolsByName(repository).get("list_inactive_customers");
+  const output = await tool.execute({ days: 60, limit: 10 }, context);
+  const direct = tool.directResponse({
+    message: "Muéstrame clientes que llevan más de 60 días sin venir.",
+    history: [],
+    argumentsValue: { days: 60, limit: 10 },
+    output,
+    context,
+  });
+
+  assert.match(direct, /Encontré 1 cliente/);
+  assert.match(direct, /Ana/);
+
+  const generative = tool.directResponse({
+    message: "Redáctame un mensaje para recuperar clientes inactivos.",
+    history: [],
+    argumentsValue: { days: 60, limit: 10 },
+    output,
+    context,
+  });
+  assert.equal(generative, null);
+});

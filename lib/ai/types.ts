@@ -73,9 +73,18 @@ export type AIToolContext = {
   signal?: AbortSignal;
 };
 
+export type AIToolDirectResponseInput = {
+  message: string;
+  history: AIConversationMessage[];
+  argumentsValue: unknown;
+  output: unknown;
+  context: AIToolContext;
+};
+
 export type AITool = {
   definition: AIToolDefinition;
   execute(argumentsValue: unknown, context: AIToolContext): Promise<unknown>;
+  directResponse?: (input: AIToolDirectResponseInput) => string | null;
 };
 
 export type AICoreResult = {
