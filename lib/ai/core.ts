@@ -190,6 +190,7 @@ export async function runAICore(input: {
 
       const seenCallIds = new Set<string>();
       const results: AIProviderInput[] = [];
+      let directResponse: string | null = null;
       for (const call of turn.toolCalls) {
         if (!call.id || seenCallIds.has(call.id)) {
           throw new AIError(
@@ -218,6 +219,19 @@ export async function runAICore(input: {
           );
           toolsUsed.add(call.name);
           results.push({ type: "tool_result", callId: call.id, output });
+
+          if (turn.toolCalls.length === 1 && tool.directResponse) {
+            const rendered = tool.directResponse({
+              message,
+              history: input.history ?? [],
+              argumentsValue: call.arguments,
+              output,
+              context: input.context,
+            });
+            if (rendered?.trim()) {
+              directResponse = rendered.trim();
+            }
+          }
         } catch (error) {
           if (error instanceof AIError) throw error;
           throw new AIError("AI_TOOL_FAILED", `Falló la tool ${call.name}`, {
@@ -225,6 +239,23 @@ export async function runAICore(input: {
           });
         }
       }
+      if (directResponse) {
+        return {
+          text: directResponse,
+          toolsUsed: Array.from(toolsUsed),
+          usage,
+          steps: step,
+          route: {
+            requestedProvider: input.provider.id,
+            requestedModel: input.provider.model,
+            effectiveProvider,
+            effectiveModel,
+            fallbackUsed,
+            providerDurationMs,
+          },
+        };
+      }
+
       providerInput = results;
     }
 
