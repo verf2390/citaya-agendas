@@ -122,6 +122,64 @@ test("AI Core ejecuta solo la tool registrada y agrega uso", async () => {
   assert.ok(result.route.providerDurationMs >= 0);
 });
 
+test("AI Core puede cerrar una consulta determinística tras una sola llamada al provider", async () => {
+  let providerCalls = 0;
+  const provider = {
+    id: "local",
+    model: "test-model",
+    async generate() {
+      providerCalls += 1;
+      return {
+        text: "",
+        toolCalls: [
+          {
+            id: "call-fast",
+            name: "count_appointments",
+            arguments: { date: "2026-09-23" },
+          },
+        ],
+        continuation: { turn: 1 },
+        usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 },
+      };
+    },
+  };
+
+  const result = await runAICore({
+    provider,
+    instructions: "Solo lectura",
+    message: "¿Cuántas reservas tengo mañana?",
+    tools: [
+      {
+        definition,
+        async execute() {
+          return { active: 3, canceled: 0, total: 3 };
+        },
+        directResponse({ message, output }) {
+          assert.equal(message, "¿Cuántas reservas tengo mañana?");
+          assert.deepEqual(output, { active: 3, canceled: 0, total: 3 });
+          return "Mañana tienes 3 reservas activas y 0 canceladas. Total: 3.";
+        },
+      },
+    ],
+    context,
+    maxOutputTokens: 500,
+    timeoutMs: 1_000,
+  });
+
+  assert.equal(providerCalls, 1);
+  assert.equal(result.steps, 1);
+  assert.equal(
+    result.text,
+    "Mañana tienes 3 reservas activas y 0 canceladas. Total: 3.",
+  );
+  assert.deepEqual(result.toolsUsed, ["count_appointments"]);
+  assert.deepEqual(result.usage, {
+    inputTokens: 10,
+    outputTokens: 4,
+    totalTokens: 14,
+  });
+});
+
 test("AI Core entrega historial acotado al proveedor sin persistirlo", async () => {
   const provider = {
     id: "local",
