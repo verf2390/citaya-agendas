@@ -10,6 +10,7 @@ import { SupabaseCitayaAppReadRepository } from "@/lib/ai/server/citaya-app-repo
 import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
 import { reservedTokensForAIRequest } from "@/lib/ai/server/token-budget";
 import { createCitayaAppReadTools } from "@/lib/ai/tools/citaya-app-read";
+import { resolveDirectReadIntent } from "@/lib/ai/server/direct-read-intent";
 import type { AIUsage } from "@/lib/ai/types";
 import type { AIConversationMessage } from "@/lib/ai/types";
 import type { TenantAdminAuthMode } from "@/lib/api/requireTenantAdmin";
@@ -73,28 +74,69 @@ export async function runCitayaAppAssistant(input: {
       );
     }
 
-    const result = await runAICore({
-      provider,
-      instructions: buildCitayaAppAssistantInstructions({
-        now,
-        timezone: "America/Santiago",
-        tenantSlug: input.tenantSlug,
-      }),
-      message: input.message,
-      history: input.history,
-      tools: createCitayaAppReadTools(new SupabaseCitayaAppReadRepository()),
-      context: {
-        tenantId: input.tenantId,
-        tenantSlug: input.tenantSlug,
-        userId: input.userId,
-        timezone: "America/Santiago",
-        now,
-      },
-      maxOutputTokens: input.policy.maxOutputTokens,
-      timeoutMs: remainingTimeoutMs,
-      maxSteps: 4,
-      maxToolCallsPerStep: 3,
-    });
+    const context = {
+      tenantId: input.tenantId,
+      tenantSlug: input.tenantSlug,
+      userId: input.userId,
+      timezone: "America/Santiago",
+      now,
+      signal: deadlineController.signal,
+    };
+    const tools = createCitayaAppReadTools(
+      new SupabaseCitayaAppReadRepository(),
+    );
+    const directIntent = resolveDirectReadIntent(input.message);
+
+    let result;
+    if (directIntent) {
+      const tool = tools.find(
+        (candidate) => candidate.definition.name === directIntent.toolName,
+      );
+      if (!tool?.directResponse) {
+        throw new AIError(
+          "AI_TOOL_FAILED",
+          "No se pudo resolver la consulta directa",
+        );
+      }
+      const output = await tool.execute(directIntent.argumentsValue, context);
+      const text = tool.directResponse({
+        message: input.message,
+        history: input.history ?? [],
+        argumentsValue: directIntent.argumentsValue,
+        output,
+        context,
+      });
+      if (!text?.trim()) {
+        throw new AIError(
+          "AI_TOOL_FAILED",
+          "No se pudo formatear la consulta directa",
+        );
+      }
+      result = {
+        text: text.trim(),
+        toolsUsed: [directIntent.toolName],
+        usage: ZERO_USAGE,
+        steps: 0,
+        route: undefined,
+      };
+    } else {
+      result = await runAICore({
+        provider,
+        instructions: buildCitayaAppAssistantInstructions({
+          now,
+          timezone: "America/Santiago",
+          tenantSlug: input.tenantSlug,
+        }),
+        message: input.message,
+        history: input.history,
+        tools,
+        context,
+        maxOutputTokens: input.policy.maxOutputTokens,
+        timeoutMs: remainingTimeoutMs,
+        maxSteps: 4,
+        maxToolCallsPerStep: 3,
+      });
+    }
 
     await finishAIRequestAudit({
       requestId,
