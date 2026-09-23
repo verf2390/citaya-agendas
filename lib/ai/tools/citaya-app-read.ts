@@ -175,6 +175,42 @@ function money(value: unknown) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+function normalizedPrompt(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function wantsGenerativeResponse(message: string) {
+  return /\b(redact|mensaje|campan|analiz|explic|suger|recomiend|resum|compara|estrateg)\w*/.test(
+    normalizedPrompt(message),
+  );
+}
+
+function dateLabel(value: unknown, timezone: string) {
+  const raw = String(value ?? "");
+  const date = new Date(raw);
+  if (!raw || Number.isNaN(date.getTime())) return raw;
+  return new Intl.DateTimeFormat("es-CL", {
+    timeZone: timezone,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function clp(value: unknown) {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount)) return null;
+  return new Intl.NumberFormat("es-CL", {
+    style: "currency",
+    currency: "CLP",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 function receivableAmount(row: ReceivableRow) {
   const remaining = money(row.payment_remaining_amount);
   if (remaining > 0) return remaining;
@@ -222,6 +258,31 @@ function countAppointmentsTool(repository: CitayaAppReadRepository): AITool {
         canceled,
         total: rows.length,
       };
+    },
+    directResponse({ message, output }) {
+      const prompt = normalizedPrompt(message);
+      if (
+        wantsGenerativeResponse(message) ||
+        (!prompt.includes("reserva") && !prompt.includes("cita"))
+      ) {
+        return null;
+      }
+      const result = output as {
+        date?: unknown;
+        active?: unknown;
+        canceled?: unknown;
+        total?: unknown;
+      };
+      const active = Number(result.active);
+      const canceled = Number(result.canceled);
+      const total = Number(result.total);
+      if (![active, canceled, total].every(Number.isFinite)) return null;
+      const when = prompt.includes("manana")
+        ? "Mañana"
+        : prompt.includes("hoy")
+          ? "Hoy"
+          : `El ${String(result.date ?? "")}`;
+      return `${when} tienes ${active} ${active === 1 ? "reserva activa" : "reservas activas"} y ${canceled} ${canceled === 1 ? "cancelada" : "canceladas"}. Total: ${total}.`;
     },
   };
 }
@@ -302,6 +363,59 @@ function inactiveCustomersTool(repository: CitayaAppReadRepository): AITool {
         })),
       };
     },
+    directResponse({ message, output, context }) {
+      const prompt = normalizedPrompt(message);
+      if (
+        wantsGenerativeResponse(message) ||
+        (!prompt.includes("inactiv") &&
+          !prompt.includes("sin venir") &&
+          !prompt.includes("sin asistir"))
+      ) {
+        return null;
+      }
+      const result = output as {
+        days?: unknown;
+        totalMatched?: unknown;
+        returned?: unknown;
+        customers?: Array<{
+          name?: unknown;
+          lastVisitAt?: unknown;
+          lastService?: unknown;
+          daysSinceLastVisit?: unknown;
+        }>;
+      };
+      const totalMatched = Number(result.totalMatched);
+      const returned = Number(result.returned);
+      if (
+        !Number.isFinite(totalMatched) ||
+        !Number.isFinite(returned) ||
+        !Array.isArray(result.customers)
+      ) {
+        return null;
+      }
+      if (totalMatched === 0) {
+        return `No encontré clientes con más de ${Number(result.days) || 0} días sin una visita válida.`;
+      }
+      const lines = result.customers.map((customer) => {
+        const name = String(customer.name ?? "Cliente");
+        const days = Number(customer.daysSinceLastVisit);
+        const service = String(customer.lastService ?? "").trim();
+        const visit = dateLabel(customer.lastVisitAt, context.timezone);
+        const detail = [
+          visit ? `última visita ${visit}` : "",
+          service || "",
+          Number.isFinite(days) ? `hace ${days} días` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return `- ${name}${detail ? `: ${detail}` : ""}`;
+      });
+      const intro =
+        returned < totalMatched
+          ? `Encontré ${totalMatched} clientes. Muestro ${returned}:`
+          : `Encontré ${totalMatched} ${totalMatched === 1 ? "cliente" : "clientes"}:`;
+      return `${intro}\n${lines.join("\n")}`;
+    },
   };
 }
 
@@ -349,6 +463,28 @@ function pendingReceivablesTool(repository: CitayaAppReadRepository): AITool {
           amount,
         })),
       };
+    },
+    directResponse({ message, output }) {
+      const prompt = normalizedPrompt(message);
+      if (
+        wantsGenerativeResponse(message) ||
+        !prompt.includes("pendiente") ||
+        (!prompt.includes("cobrar") &&
+          !prompt.includes("cobro") &&
+          !prompt.includes("saldo") &&
+          !prompt.includes("pago"))
+      ) {
+        return null;
+      }
+      const result = output as {
+        count?: unknown;
+        total?: unknown;
+      };
+      const count = Number(result.count);
+      const total = clp(result.total);
+      if (!Number.isFinite(count) || total === null) return null;
+      if (count === 0) return "No tienes saldos pendientes por cobrar.";
+      return `Tienes ${count} ${count === 1 ? "saldo pendiente" : "saldos pendientes"} por un total de ${total}.`;
     },
   };
 }
