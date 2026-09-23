@@ -424,7 +424,7 @@ function pendingReceivablesTool(repository: CitayaAppReadRepository): AITool {
     definition: {
       name: "get_pending_receivables",
       description:
-        "Resume saldos pendientes por cobrar de reservas del tenant actual. No ejecuta cobros.",
+        "Resume TODOS los saldos pendientes actuales por cobrar del tenant. No recibe fecha ni necesita un período. Si el usuario pregunta cuánto tiene pendiente por cobrar, úsala directamente y no pidas un día. No ejecuta cobros.",
       inputSchema: {
         type: "object",
         properties: {
