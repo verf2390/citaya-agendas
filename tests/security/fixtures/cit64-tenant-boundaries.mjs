@@ -527,6 +527,18 @@ export const privilegedRouteInventory = Object.freeze([
     markers: ["verifyMercadoPagoPayment", "getTenantPaymentConfig(intent.tenant_id)", "intent.tenant_id"],
     rationale: "Intent derives the tenant and the provider payment is fetched with that tenant credential then cross-checked.",
   },
+  {
+    route: "app/api/webhooks/whatsapp/route.ts",
+    boundary: "provider_callback",
+    status: "OK",
+    severity: "none",
+    markers: [
+      "verifyMetaWebhookSignature",
+      "resolveWhatsAppTenantByPhoneNumberId",
+      "event.phoneNumberId",
+    ],
+    rationale: "Meta signature is verified over the raw body before JSON parsing. The tenant is resolved exclusively from the configured phone_number_id and client/body tenant hints are ignored.",
+  },
 ]);
 
 export const privilegedHelperInventory = Object.freeze([
