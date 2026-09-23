@@ -221,3 +221,16 @@ test("list_inactive_customers formatea consulta directa sin segundo pase generat
   });
   assert.equal(generative, null);
 });
+
+
+test("get_pending_receivables declara que el saldo actual no requiere fecha", async () => {
+  const repository = {
+    async listPendingReceivables() {
+      return [];
+    },
+  };
+  const tool = toolsByName(repository).get("get_pending_receivables");
+
+  assert.match(tool.definition.description, /NO recibe fecha/i);
+  assert.match(tool.definition.description, /no pidas un día/i);
+});
