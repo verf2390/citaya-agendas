@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import {
   buildOpenAICompatibleRequest,
   parseOpenAICompatibleResponse,
 } from "../services/ai-gateway/openai-compatible.mjs";
+import {
+  bindDownstreamAbort,
+  canWriteResponse,
+} from "../services/ai-gateway/request-lifecycle.mjs";
 
 test("gateway convierte el contrato Citaya a chat completions sin tenant hints", () => {
   const request = buildOpenAICompatibleRequest({
@@ -159,4 +164,37 @@ test("gateway rechaza respuestas con exceso de tool calls", () => {
       ),
     /máximo de tools/,
   );
+});
+
+
+test("gateway aborta upstream si el cliente se desconecta antes de responder", () => {
+  const req = new EventEmitter();
+  const res = new EventEmitter();
+  res.writableEnded = false;
+  res.destroyed = false;
+  const controller = new AbortController();
+
+  const lifecycle = bindDownstreamAbort(req, res, controller);
+  res.emit("close");
+
+  assert.equal(lifecycle.wasClientClosed(), true);
+  assert.equal(controller.signal.aborted, true);
+  assert.equal(canWriteResponse(res), true);
+  lifecycle.cleanup();
+});
+
+test("gateway no marca cancelación cuando la respuesta ya terminó", () => {
+  const req = new EventEmitter();
+  const res = new EventEmitter();
+  res.writableEnded = true;
+  res.destroyed = false;
+  const controller = new AbortController();
+
+  const lifecycle = bindDownstreamAbort(req, res, controller);
+  res.emit("close");
+
+  assert.equal(lifecycle.wasClientClosed(), false);
+  assert.equal(controller.signal.aborted, false);
+  assert.equal(canWriteResponse(res), false);
+  lifecycle.cleanup();
 });
