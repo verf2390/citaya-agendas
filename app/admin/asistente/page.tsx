@@ -58,6 +58,8 @@ type AIUsageResponse = {
   summary?: AIUsageSummary;
 };
 
+const AI_ASSISTANT_CLIENT_TIMEOUT_MS = 40_000;
+
 const EXAMPLE_QUESTIONS = [
   "¿Cuántas reservas tengo mañana?",
   "Muéstrame clientes que llevan más de 60 días sin venir.",
@@ -128,18 +130,22 @@ export default function AdminAssistantPage() {
     setSending(true);
 
     try {
-      const response = await adminFetch("/api/admin/ai/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: value,
-          history: messages
-            .filter((item) => item.id !== INITIAL_MESSAGE.id)
-            .slice(-6)
-            .map(({ role, text }) => ({ role, text })),
-        }),
-        cache: "no-store",
-      });
+      const response = await adminFetch(
+        "/api/admin/ai/assistant",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: value,
+            history: messages
+              .filter((item) => item.id !== INITIAL_MESSAGE.id)
+              .slice(-6)
+              .map(({ role, text }) => ({ role, text })),
+          }),
+          cache: "no-store",
+        },
+        AI_ASSISTANT_CLIENT_TIMEOUT_MS,
+      );
       const payload = (await response.json().catch(() => null)) as
         | AssistantResponse
         | null;
