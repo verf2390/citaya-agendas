@@ -103,17 +103,17 @@ export async function finishAIRequestAudit(input: FinishAIRequestAuditInput) {
 }
 
 
-export async function finishAIRequestAuditBounded(
-  input: Omit<FinishAIRequestAuditInput, "signal"> & { timeoutMs?: number },
-) {
-  const timeoutMs = Math.max(1, Math.round(input.timeoutMs ?? 2_000));
+export async function finishAIRequestAuditBounded({
+  timeoutMs = 2_000,
+  ...input
+}: Omit<FinishAIRequestAuditInput, "signal"> & { timeoutMs?: number }) {
+  const boundedTimeoutMs = Math.max(1, Math.round(timeoutMs));
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), boundedTimeoutMs);
 
   try {
-    const { timeoutMs: _timeoutMs, ...auditInput } = input;
     await finishAIRequestAudit({
-      ...auditInput,
+      ...input,
       signal: controller.signal,
     });
   } finally {
