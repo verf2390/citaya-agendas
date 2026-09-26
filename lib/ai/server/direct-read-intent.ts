@@ -23,18 +23,29 @@ function wantsGenerativeResponse(message: string) {
   );
 }
 
+function asksForBusinessData(prompt: string) {
+  return /\b(mis|nuestros?|estos?|estas?|esos?|esas?|ellos|ellas|mism|anterior|previo|ultimo|datos?|lista|nombres?|segun|basad)\w*/.test(
+    prompt,
+  );
+}
+
 export function isPureDraftingRequest(message: string) {
   const prompt = normalizePrompt(message);
   const wantsDraft =
     /\b(redact|mensaje|recordator|borrador|escrib|prepara)\w*/.test(prompt);
-  if (!wantsDraft) return false;
+  return wantsDraft && !asksForBusinessData(prompt);
+}
 
-  const asksForBusinessData =
-    /\b(mis|nuestros?|estos?|estas?|esos?|esas?|ellos|ellas|mism|anterior|previo|ultimo|datos?|lista|nombres?|segun|basad)\w*/.test(
+export function isPureAdvisoryRequest(message: string) {
+  const prompt = normalizePrompt(message);
+  const wantsAdvice =
+    /\b(accion|idea|plan|estrateg|recomiend|consej|prioridad|explic)\w*/.test(
       prompt,
     );
+  const wantsDraft =
+    /\b(redact|mensaje|recordator|borrador|escrib|prepara)\w*/.test(prompt);
 
-  return !asksForBusinessData;
+  return wantsAdvice && !wantsDraft && !asksForBusinessData(prompt);
 }
 
 function localDateKey(now: Date, timezone: string) {
