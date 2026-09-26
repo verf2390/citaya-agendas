@@ -32,3 +32,12 @@ test("UI muestra telemetría agregada sin exponer prompts", () => {
   assert.match(page, /fallbackRequests/);
   assert.match(page, /cloudTokens/);
 });
+
+
+test("UI da al endpoint IA más tiempo que el timeout cliente global", () => {
+  assert.match(page, /AI_ASSISTANT_CLIENT_TIMEOUT_MS = 40_000/);
+  assert.match(
+    page,
+    /adminFetch\([\s\S]*\/api\/admin\/ai\/assistant[\s\S]*AI_ASSISTANT_CLIENT_TIMEOUT_MS/,
+  );
+});
