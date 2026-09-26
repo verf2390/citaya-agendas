@@ -66,6 +66,7 @@ export async function runCitayaAppAssistant(input: {
       promptVersion,
       dailyTokenLimit: input.policy.dailyTokenLimit,
       reservedTokens: reservedTokensForAIRequest(input.policy),
+      signal: deadlineController.signal,
     });
 
     const remainingTimeoutMs = deadlineAt - Date.now();
@@ -166,7 +167,6 @@ export async function runCitayaAppAssistant(input: {
           usage: ZERO_USAGE,
           durationMs: Date.now() - startedAt,
           error,
-          signal: deadlineController.signal,
         });
       } catch (auditError) {
         console.error("[ai/audit] failed to close request", {
