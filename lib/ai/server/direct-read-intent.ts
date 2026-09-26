@@ -30,7 +30,7 @@ export function isPureDraftingRequest(message: string) {
   if (!wantsDraft) return false;
 
   const asksForBusinessData =
-    /\b(mis|nuestros?|estos?|estas?|esos?|esas?|ellos|ellas|datos?|lista|nombres?|segun|basad)\w*/.test(
+    /\b(mis|nuestros?|estos?|estas?|esos?|esas?|ellos|ellas|mism|anterior|previo|ultimo|datos?|lista|nombres?|segun|basad)\w*/.test(
       prompt,
     );
 
