@@ -5,7 +5,10 @@ import {
   buildCitayaAppAssistantInstructions,
 } from "@/lib/ai/prompts/citaya-app-v1";
 import { createAIProvider } from "@/lib/ai/provider-factory";
-import { beginAIRequestAudit, finishAIRequestAudit } from "@/lib/ai/server/audit";
+import {
+  beginAIRequestAudit,
+  finishAIRequestAuditBounded,
+} from "@/lib/ai/server/audit";
 import { SupabaseCitayaAppReadRepository } from "@/lib/ai/server/citaya-app-repository";
 import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
 import { reservedTokensForAIRequest } from "@/lib/ai/server/token-budget";
@@ -63,7 +66,6 @@ export async function runCitayaAppAssistant(input: {
       promptVersion,
       dailyTokenLimit: input.policy.dailyTokenLimit,
       reservedTokens: reservedTokensForAIRequest(input.policy),
-      signal: deadlineController.signal,
     });
 
     const remainingTimeoutMs = deadlineAt - Date.now();
@@ -141,7 +143,7 @@ export async function runCitayaAppAssistant(input: {
       });
     }
 
-    await finishAIRequestAudit({
+    await finishAIRequestAuditBounded({
       requestId,
       tenantId: input.tenantId,
       userId: input.userId,
@@ -150,13 +152,12 @@ export async function runCitayaAppAssistant(input: {
       usage: result.usage,
       durationMs: Date.now() - startedAt,
       route: result.route,
-      signal: deadlineController.signal,
     });
     return result;
   } catch (error) {
     if (requestId) {
       try {
-        await finishAIRequestAudit({
+        await finishAIRequestAuditBounded({
           requestId,
           tenantId: input.tenantId,
           userId: input.userId,
