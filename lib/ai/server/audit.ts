@@ -56,7 +56,7 @@ export async function beginAIRequestAudit(input: {
   return requestId;
 }
 
-export async function finishAIRequestAudit(input: {
+export type FinishAIRequestAuditInput = {
   requestId: string;
   tenantId: string;
   userId: string;
@@ -67,7 +67,9 @@ export async function finishAIRequestAudit(input: {
   route?: AIRouteSummary;
   error?: unknown;
   signal?: AbortSignal;
-}) {
+};
+
+export async function finishAIRequestAudit(input: FinishAIRequestAuditInput) {
   const query = supabaseAdmin.rpc("finish_ai_request_audit", {
     p_request_id: input.requestId,
     p_tenant_id: input.tenantId,
@@ -97,5 +99,24 @@ export async function finishAIRequestAudit(input: {
       "AI_AUDIT_UNAVAILABLE",
       "No se pudo cerrar la auditoría de IA",
     );
+  }
+}
+
+
+export async function finishAIRequestAuditBounded(
+  input: Omit<FinishAIRequestAuditInput, "signal"> & { timeoutMs?: number },
+) {
+  const timeoutMs = Math.max(1, Math.round(input.timeoutMs ?? 2_000));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const { timeoutMs: _timeoutMs, ...auditInput } = input;
+    await finishAIRequestAudit({
+      ...auditInput,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
   }
 }
