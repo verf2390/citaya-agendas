@@ -2,6 +2,7 @@ import { runAICore } from "@/lib/ai/core";
 import { AIError } from "@/lib/ai/errors";
 import {
   assertCitayaAppPromptVersion,
+  buildCitayaAppAdvisoryInstructions,
   buildCitayaAppAssistantInstructions,
   buildCitayaAppDraftingInstructions,
 } from "@/lib/ai/prompts/citaya-app-v1";
@@ -15,6 +16,7 @@ import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
 import { reservedTokensForAIRequest } from "@/lib/ai/server/token-budget";
 import { createCitayaAppReadTools } from "@/lib/ai/tools/citaya-app-read";
 import {
+  isPureAdvisoryRequest,
   isPureDraftingRequest,
   resolveDirectReadIntent,
 } from "@/lib/ai/server/direct-read-intent";
@@ -131,6 +133,8 @@ export async function runCitayaAppAssistant(input: {
       };
     } else {
       const pureDrafting = isPureDraftingRequest(input.message);
+      const pureAdvisory = isPureAdvisoryRequest(input.message);
+      const lightweight = pureDrafting || pureAdvisory;
       result = await runAICore({
         provider,
         instructions: pureDrafting
@@ -138,18 +142,22 @@ export async function runCitayaAppAssistant(input: {
               now,
               timezone: "America/Santiago",
             })
-          : buildCitayaAppAssistantInstructions({
-              now,
-              timezone: "America/Santiago",
-              tenantSlug: input.tenantSlug,
-            }),
+          : pureAdvisory
+            ? buildCitayaAppAdvisoryInstructions()
+            : buildCitayaAppAssistantInstructions({
+                now,
+                timezone: "America/Santiago",
+                tenantSlug: input.tenantSlug,
+              }),
         message: input.message,
-        history: pureDrafting ? undefined : input.history,
-        tools: pureDrafting ? [] : tools,
+        history: lightweight ? undefined : input.history,
+        tools: lightweight ? [] : tools,
         context,
         maxOutputTokens: pureDrafting
           ? Math.min(input.policy.maxOutputTokens, 64)
-          : input.policy.maxOutputTokens,
+          : pureAdvisory
+            ? Math.min(input.policy.maxOutputTokens, 128)
+            : input.policy.maxOutputTokens,
         timeoutMs: remainingTimeoutMs,
         maxSteps: 4,
         maxToolCallsPerStep: 3,
