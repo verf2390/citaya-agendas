@@ -524,6 +524,52 @@ test("HybridAIProvider hace fallback solo antes del primer turno exitoso", async
   assert.deepEqual(calls, ["local", "cloud", "cloud"]);
 });
 
+test("HybridAIProvider hace fallback si el primer turno local es inválido", async () => {
+  const calls = [];
+  const primary = {
+    id: "local",
+    model: "local-test",
+    async generate() {
+      calls.push("local");
+      throw new AIError(
+        "AI_PROVIDER_INVALID_RESPONSE",
+        "local invalid response",
+      );
+    },
+  };
+  const fallback = {
+    id: "openai",
+    model: "cloud-test",
+    async generate() {
+      calls.push("cloud");
+      return {
+        text: "cloud",
+        toolCalls: [],
+        usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+      };
+    },
+  };
+  const provider = new HybridAIProvider(primary, fallback, 250);
+  const turn = await provider.generate({
+    instructions: "x",
+    input: [{ type: "user", text: "hola" }],
+    tools: [],
+    maxOutputTokens: 100,
+    signal: new AbortController().signal,
+  });
+
+  assert.equal(turn.text, "cloud");
+  assert.equal(turn.route.effectiveProvider, "openai");
+  assert.equal(turn.route.effectiveModel, "cloud-test");
+  assert.equal(turn.route.fallbackUsed, true);
+  assert.deepEqual(turn.usage, {
+    inputTokens: 2,
+    outputTokens: 3,
+    totalTokens: 5,
+  });
+  assert.deepEqual(calls, ["local", "cloud"]);
+});
+
 test("HybridAIProvider abandona un local lento sin consumir el deadline global", async () => {
   const primary = {
     id: "local",
