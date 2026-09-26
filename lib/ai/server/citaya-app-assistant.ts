@@ -3,6 +3,7 @@ import { AIError } from "@/lib/ai/errors";
 import {
   assertCitayaAppPromptVersion,
   buildCitayaAppAssistantInstructions,
+  buildCitayaAppDraftingInstructions,
 } from "@/lib/ai/prompts/citaya-app-v1";
 import { createAIProvider } from "@/lib/ai/provider-factory";
 import {
@@ -13,7 +14,10 @@ import { SupabaseCitayaAppReadRepository } from "@/lib/ai/server/citaya-app-repo
 import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
 import { reservedTokensForAIRequest } from "@/lib/ai/server/token-budget";
 import { createCitayaAppReadTools } from "@/lib/ai/tools/citaya-app-read";
-import { resolveDirectReadIntent } from "@/lib/ai/server/direct-read-intent";
+import {
+  isPureDraftingRequest,
+  resolveDirectReadIntent,
+} from "@/lib/ai/server/direct-read-intent";
 import type { AIUsage } from "@/lib/ai/types";
 import type { AIConversationMessage } from "@/lib/ai/types";
 import type { TenantAdminAuthMode } from "@/lib/api/requireTenantAdmin";
@@ -126,16 +130,22 @@ export async function runCitayaAppAssistant(input: {
         route: undefined,
       };
     } else {
+      const pureDrafting = isPureDraftingRequest(input.message);
       result = await runAICore({
         provider,
-        instructions: buildCitayaAppAssistantInstructions({
-          now,
-          timezone: "America/Santiago",
-          tenantSlug: input.tenantSlug,
-        }),
+        instructions: pureDrafting
+          ? buildCitayaAppDraftingInstructions({
+              now,
+              timezone: "America/Santiago",
+            })
+          : buildCitayaAppAssistantInstructions({
+              now,
+              timezone: "America/Santiago",
+              tenantSlug: input.tenantSlug,
+            }),
         message: input.message,
-        history: input.history,
-        tools,
+        history: pureDrafting ? undefined : input.history,
+        tools: pureDrafting ? [] : tools,
         context,
         maxOutputTokens: input.policy.maxOutputTokens,
         timeoutMs: remainingTimeoutMs,
