@@ -16,7 +16,7 @@ registerHooks({
   },
 });
 
-const { resolveDirectReadIntent } = await import(
+const { isPureDraftingRequest, resolveDirectReadIntent } = await import(
   pathToFileURL(resolve("lib/ai/server/direct-read-intent.ts")).href
 );
 
@@ -94,5 +94,36 @@ test("router directo no captura preguntas no relacionadas", () => {
   assert.equal(
     resolveDirectReadIntent("Muéstrame clientes inactivos de 60 días"),
     null,
+  );
+});
+
+
+test("clasifica redacción autocontenida para ruta liviana", () => {
+  assert.equal(
+    isPureDraftingRequest(
+      "Redáctame un recordatorio breve y cordial para una cita de mañana",
+    ),
+    true,
+  );
+  assert.equal(
+    isPureDraftingRequest("Redáctame un mensaje para recuperar clientes inactivos"),
+    true,
+  );
+});
+
+test("no usa ruta liviana cuando la redacción depende de datos o contexto previo", () => {
+  assert.equal(
+    isPureDraftingRequest(
+      "Redáctame un mensaje basado en mis clientes inactivos",
+    ),
+    false,
+  );
+  assert.equal(
+    isPureDraftingRequest("Redacta lo mismo pero más corto"),
+    false,
+  );
+  assert.equal(
+    isPureDraftingRequest("Redáctame un mensaje con esos datos"),
+    false,
   );
 });
