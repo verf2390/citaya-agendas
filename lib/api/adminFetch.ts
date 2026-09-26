@@ -9,6 +9,7 @@ import {
 export async function adminFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
+  fetchTimeoutMs?: number,
 ): Promise<Response> {
   try {
     const { data, error } = await withClientTimeout(
@@ -24,7 +25,7 @@ export async function adminFetch(
 
     const headers = new Headers(init.headers);
     headers.set("Authorization", `Bearer ${token}`);
-    return await fetchWithClientTimeout(input, { ...init, headers });
+    return await fetchWithClientTimeout(input, { ...init, headers }, fetchTimeoutMs);
   } catch {
     return new Response(
       JSON.stringify({
