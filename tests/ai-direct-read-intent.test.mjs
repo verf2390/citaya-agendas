@@ -45,6 +45,28 @@ test("router directo no intercepta solicitudes generativas", () => {
   );
 });
 
+test("router directo no convierte recordatorios en consultas de reservas", () => {
+  const context = {
+    now: new Date("2026-09-26T19:30:00Z"),
+    timezone: "America/Santiago",
+  };
+
+  assert.equal(
+    resolveDirectReadIntent(
+      "Haz un recordatorio breve y cordial para una cita de mañana",
+      context,
+    ),
+    null,
+  );
+  assert.equal(
+    resolveDirectReadIntent(
+      "Escribe un borrador para recordar la cita de mañana",
+      context,
+    ),
+    null,
+  );
+});
+
 test("router directo resuelve reservas de hoy y mañana con fecha local confiable", () => {
   const context = {
     now: new Date("2026-09-26T19:30:00Z"),

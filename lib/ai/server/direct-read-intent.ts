@@ -18,7 +18,7 @@ function normalizePrompt(value: string) {
 }
 
 function wantsGenerativeResponse(message: string) {
-  return /\b(redact|mensaje|campan|analiz|explic|suger|recomiend|resum|compara|estrateg)\w*/.test(
+  return /\b(redact|mensaje|recordator|borrador|escrib|campan|analiz|explic|suger|recomiend|resum|compara|estrateg)\w*/.test(
     normalizePrompt(message),
   );
 }
