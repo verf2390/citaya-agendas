@@ -83,6 +83,10 @@ test("prompt liviano de consejo respeta prioridad, restricciones y brevedad", ()
   assert.match(instructions, /exactamente ese número/i);
   assert.match(instructions, /ordénalas por prioridad/i);
   assert.match(instructions, /explicación breve/i);
-  assert.match(instructions, /90 palabras o menos/i);
+  assert.match(instructions, /75 palabras o menos/i);
+  assert.match(instructions, /intención y no solo las palabras literales/i);
+  assert.match(instructions, /sin descuentos/i);
+  assert.match(instructions, /servicios gratis/i);
+  assert.match(instructions, /beneficios económicos equivalentes/i);
   assert.match(instructions, /No inventes datos concretos del negocio/i);
 });
