@@ -13,6 +13,7 @@ test("redacción autocontenida usa prompt liviano sin tools ni historial previo"
   assert.match(source, /buildCitayaAppDraftingInstructions/);
   assert.match(source, /history: pureDrafting \? undefined : input\.history/);
   assert.match(source, /tools: pureDrafting \? \[\] : tools/);
+  assert.match(source, /Math\.min\(input\.policy\.maxOutputTokens, 64\)/);
 });
 
 test("ruta administrativa completa permanece disponible para solicitudes con datos", () => {
