@@ -17,6 +17,7 @@ registerHooks({
 });
 
 const {
+  buildCitayaAppAdvisoryInstructions,
   buildCitayaAppAssistantInstructions,
   buildCitayaAppDraftingInstructions,
 } = await import(
@@ -72,4 +73,16 @@ test("prompt liviano de redacción conserva fecha y límites mínimos", () => {
         tenantSlug: "demo",
       }).length,
   );
+});
+
+
+test("prompt liviano de consejo respeta prioridad, restricciones y brevedad", () => {
+  const instructions = buildCitayaAppAdvisoryInstructions();
+
+  assert.match(instructions, /Respeta exactamente las restricciones del usuario/i);
+  assert.match(instructions, /exactamente ese número/i);
+  assert.match(instructions, /ordénalas por prioridad/i);
+  assert.match(instructions, /explicación breve/i);
+  assert.match(instructions, /90 palabras o menos/i);
+  assert.match(instructions, /No inventes datos concretos del negocio/i);
 });
