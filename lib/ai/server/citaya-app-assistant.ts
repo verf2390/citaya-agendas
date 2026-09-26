@@ -156,7 +156,7 @@ export async function runCitayaAppAssistant(input: {
         maxOutputTokens: pureDrafting
           ? Math.min(input.policy.maxOutputTokens, 64)
           : pureAdvisory
-            ? Math.min(input.policy.maxOutputTokens, 128)
+            ? Math.min(input.policy.maxOutputTokens, 96)
             : input.policy.maxOutputTokens,
         timeoutMs: remainingTimeoutMs,
         maxSteps: 4,
