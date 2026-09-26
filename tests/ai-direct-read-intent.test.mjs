@@ -16,7 +16,11 @@ registerHooks({
   },
 });
 
-const { isPureDraftingRequest, resolveDirectReadIntent } = await import(
+const {
+  isPureAdvisoryRequest,
+  isPureDraftingRequest,
+  resolveDirectReadIntent,
+} = await import(
   pathToFileURL(resolve("lib/ai/server/direct-read-intent.ts")).href
 );
 
@@ -124,6 +128,37 @@ test("no usa ruta liviana cuando la redacción depende de datos o contexto previ
   );
   assert.equal(
     isPureDraftingRequest("Redáctame un mensaje con esos datos"),
+    false,
+  );
+});
+
+
+test("clasifica consejo autocontenido para ruta liviana", () => {
+  assert.equal(
+    isPureAdvisoryRequest(
+      "Tengo una barbería y quiero recuperar clientes que llevan más de 60 días sin volver, pero no quiero ofrecer descuentos. Dame 3 acciones concretas, ordénalas por prioridad y explica brevemente por qué harías cada una.",
+    ),
+    true,
+  );
+  assert.equal(
+    isPureAdvisoryRequest(
+      "Dame 3 acciones para recuperar clientes sin ofrecer descuentos",
+    ),
+    true,
+  );
+});
+
+test("consejo basado en datos reales mantiene la ruta completa", () => {
+  assert.equal(
+    isPureAdvisoryRequest(
+      "Analiza mis clientes inactivos y recomiéndame 3 acciones",
+    ),
+    false,
+  );
+  assert.equal(
+    isPureAdvisoryRequest(
+      "Según estos datos, dame un plan para recuperar clientes",
+    ),
     false,
   );
 });
