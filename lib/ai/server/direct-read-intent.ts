@@ -18,9 +18,23 @@ function normalizePrompt(value: string) {
 }
 
 function wantsGenerativeResponse(message: string) {
-  return /\b(redact|mensaje|recordator|borrador|escrib|campan|analiz|explic|suger|recomiend|resum|compara|estrateg)\w*/.test(
+  return /\b(redact|mensaje|recordator|borrador|escrib|prepara|campan|analiz|explic|suger|recomiend|resum|compara|estrateg)\w*/.test(
     normalizePrompt(message),
   );
+}
+
+export function isPureDraftingRequest(message: string) {
+  const prompt = normalizePrompt(message);
+  const wantsDraft =
+    /\b(redact|mensaje|recordator|borrador|escrib|prepara)\w*/.test(prompt);
+  if (!wantsDraft) return false;
+
+  const asksForBusinessData =
+    /\b(mis|nuestros?|estos?|estas?|esos?|esas?|ellos|ellas|datos?|lista|nombres?|segun|basad)\w*/.test(
+      prompt,
+    );
+
+  return !asksForBusinessData;
 }
 
 function localDateKey(now: Date, timezone: string) {
