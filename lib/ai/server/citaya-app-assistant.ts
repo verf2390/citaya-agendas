@@ -147,7 +147,9 @@ export async function runCitayaAppAssistant(input: {
         history: pureDrafting ? undefined : input.history,
         tools: pureDrafting ? [] : tools,
         context,
-        maxOutputTokens: input.policy.maxOutputTokens,
+        maxOutputTokens: pureDrafting
+          ? Math.min(input.policy.maxOutputTokens, 64)
+          : input.policy.maxOutputTokens,
         timeoutMs: remainingTimeoutMs,
         maxSteps: 4,
         maxToolCallsPerStep: 3,
