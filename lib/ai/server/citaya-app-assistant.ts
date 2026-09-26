@@ -85,7 +85,10 @@ export async function runCitayaAppAssistant(input: {
     const tools = createCitayaAppReadTools(
       new SupabaseCitayaAppReadRepository(),
     );
-    const directIntent = resolveDirectReadIntent(input.message);
+    const directIntent = resolveDirectReadIntent(input.message, {
+      now,
+      timezone: "America/Santiago",
+    });
 
     let result;
     if (directIntent) {

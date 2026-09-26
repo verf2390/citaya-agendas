@@ -45,8 +45,30 @@ test("router directo no intercepta solicitudes generativas", () => {
   );
 });
 
+test("router directo resuelve reservas de hoy y mañana con fecha local confiable", () => {
+  const context = {
+    now: new Date("2026-09-26T19:30:00Z"),
+    timezone: "America/Santiago",
+  };
+
+  assert.deepEqual(
+    resolveDirectReadIntent("¿Cuántas reservas tengo mañana?", context),
+    {
+      toolName: "count_appointments",
+      argumentsValue: { date: "2026-09-27" },
+    },
+  );
+
+  assert.deepEqual(
+    resolveDirectReadIntent("¿Cuántas citas tengo hoy?", context),
+    {
+      toolName: "count_appointments",
+      argumentsValue: { date: "2026-09-26" },
+    },
+  );
+});
+
 test("router directo no captura preguntas no relacionadas", () => {
-  assert.equal(resolveDirectReadIntent("¿Cuántas reservas tengo mañana?"), null);
   assert.equal(
     resolveDirectReadIntent("Muéstrame clientes inactivos de 60 días"),
     null,

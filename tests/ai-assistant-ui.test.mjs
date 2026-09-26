@@ -13,11 +13,14 @@ test("panel expone el asistente y comunica el modo solo lectura", () => {
 });
 
 test("UI envía solo mensaje e historial visible, nunca tenant hints", () => {
-  const requestStart = page.indexOf('adminFetch("/api/admin/ai/assistant"');
-  const requestBlock = page.slice(
+  const requestStart = page.indexOf('"/api/admin/ai/assistant"');
+  assert.notEqual(requestStart, -1);
+  const requestEnd = page.indexOf(
+    "AI_ASSISTANT_CLIENT_TIMEOUT_MS",
     requestStart,
-    page.indexOf('cache: "no-store"', requestStart),
   );
+  assert.notEqual(requestEnd, -1);
+  const requestBlock = page.slice(requestStart, requestEnd);
   assert.match(requestBlock, /message: value/);
   assert.match(requestBlock, /history: messages/);
   assert.doesNotMatch(requestBlock, /tenantId|tenantSlug/);
@@ -31,4 +34,13 @@ test("UI muestra telemetría agregada sin exponer prompts", () => {
   assert.match(page, /cloudRequests/);
   assert.match(page, /fallbackRequests/);
   assert.match(page, /cloudTokens/);
+});
+
+
+test("UI da al endpoint IA más tiempo que el timeout cliente global", () => {
+  assert.match(page, /AI_ASSISTANT_CLIENT_TIMEOUT_MS = 40_000/);
+  assert.match(
+    page,
+    /adminFetch\([\s\S]*\/api\/admin\/ai\/assistant[\s\S]*AI_ASSISTANT_CLIENT_TIMEOUT_MS/,
+  );
 });
