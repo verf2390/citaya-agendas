@@ -3,6 +3,10 @@ import {
   buildOpenAICompatibleRequest,
   parseOpenAICompatibleResponse,
 } from "./openai-compatible.mjs";
+import {
+  bindDownstreamAbort,
+  canWriteResponse,
+} from "./request-lifecycle.mjs";
 
 const HOST = process.env.CITAYA_AI_GATEWAY_HOST?.trim() || "127.0.0.1";
 const PORT = Number(process.env.CITAYA_AI_GATEWAY_PORT || 8787);
@@ -105,7 +109,12 @@ async function generate(req, res) {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let timedOut = false;
+  const downstream = bindDownstreamAbort(req, res, controller);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error("Local model timeout"));
+  }, TIMEOUT_MS);
 
   try {
     const headers = new Headers({ "Content-Type": "application/json" });
@@ -120,25 +129,31 @@ async function generate(req, res) {
     });
 
     if (!upstream.ok) {
-      json(res, 502, {
-        ok: false,
-        error: "Local model unavailable",
-      });
+      if (canWriteResponse(res)) {
+        json(res, 502, {
+          ok: false,
+          error: "Local model unavailable",
+        });
+      }
       return;
     }
 
     const raw = await upstream.json();
     const result = parseOpenAICompatibleResponse(raw, upstreamBody.messages);
-    json(res, 200, result);
+    if (canWriteResponse(res)) {
+      json(res, 200, result);
+    }
   } catch (error) {
-    json(res, controller.signal.aborted ? 504 : 502, {
+    if (downstream.wasClientClosed() || !canWriteResponse(res)) {
+      return;
+    }
+    json(res, timedOut ? 504 : 502, {
       ok: false,
-      error: controller.signal.aborted
-        ? "Local model timeout"
-        : "Local model unavailable",
+      error: timedOut ? "Local model timeout" : "Local model unavailable",
     });
   } finally {
     clearTimeout(timer);
+    downstream.cleanup();
   }
 }
 
