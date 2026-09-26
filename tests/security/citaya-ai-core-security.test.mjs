@@ -49,7 +49,7 @@ test("prompt version is configurable only through the known-version registry", (
 });
 
 
-test("el deadline total cubre auditoría y ejecución del asistente", () => {
+test("deadline principal y cierre de auditoría usan señales independientes", () => {
   const assistant = read("lib/ai/server/citaya-app-assistant.ts");
   const audit = read("lib/ai/server/audit.ts");
 
@@ -58,13 +58,17 @@ test("el deadline total cubre auditoría y ejecución del asistente", () => {
     assistant,
     /beginAIRequestAudit\([\s\S]*?signal: deadlineController\.signal/,
   );
-  assert.match(
+  assert.match(assistant, /timeoutMs: remainingTimeoutMs/);
+  assert.match(assistant, /finishAIRequestAuditBounded\(/);
+  assert.doesNotMatch(
     assistant,
-    /timeoutMs: remainingTimeoutMs[\s\S]*?finishAIRequestAudit\([\s\S]*?signal: deadlineController\.signal/,
+    /finishAIRequestAuditBounded\([\s\S]*?signal: deadlineController\.signal/,
   );
   assert.match(audit, /query\.abortSignal\(input\.signal\)/);
-  assert.match(audit, /input\.signal\?\.aborted/);
-  assert.match(audit, /"AI_TIMEOUT"/);
+  assert.match(audit, /finishAIRequestAuditBounded/);
+  assert.match(audit, /const controller = new AbortController\(\)/);
+  assert.match(audit, /setTimeout\(\(\) => controller\.abort\(\), boundedTimeoutMs\)/);
+  assert.match(audit, /signal: controller\.signal/);
 });
 
 
