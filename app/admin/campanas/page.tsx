@@ -336,7 +336,24 @@ export default function AdminCampanasPage() {
       return;
     }
 
+    const template = CAMPAIGN_TEMPLATES.find(
+      (item) => item.id === handoff.templateKey,
+    );
+    if (!template) {
+      toast({
+        title: "Plantilla de IA no válida",
+        description: "No se cargó contenido. Puedes preparar la campaña manualmente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setTemplateKey(handoff.templateKey);
+    setSegmentKey(handoff.segmentKey);
+    setSubject(template.subject);
+    setHeadline(template.headline);
     setMessage(handoff.message);
+    setCtaLabel(template.ctaLabel);
     setConfirmed(false);
     setSendState(null);
     setResult(null);

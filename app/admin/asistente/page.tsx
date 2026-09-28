@@ -204,7 +204,11 @@ export default function AdminAssistantPage() {
       return;
     }
 
-    const handoff = createCampaignDraftHandoff(action.preview.message);
+    const handoff = createCampaignDraftHandoff({
+      message: action.preview.message,
+      templateKey: action.preview.templateKey,
+      segmentKey: action.preview.segmentKey,
+    });
     if (!handoff) {
       setError("El borrador no se pudo preparar de forma segura.");
       return;

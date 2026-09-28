@@ -9,6 +9,8 @@ export type CitayaAppProposedAction = {
   };
   preview: {
     message: string;
+    templateKey: "promo" | "reactivation" | "reminder" | "pending_payment";
+    segmentKey: "all" | "inactive" | "pending_payment" | "upcoming";
   };
 };
 
@@ -18,6 +20,31 @@ function normalize(value: string) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+}
+
+function campaignIntent(message: string) {
+  const prompt = normalize(message);
+
+  if (
+    /clientes?\s+inactiv/.test(prompt) ||
+    /reactiv\w*/.test(prompt) ||
+    /recuperar\s+clientes?/.test(prompt)
+  ) {
+    return { templateKey: "reactivation", segmentKey: "inactive" } as const;
+  }
+
+  if (/pago\w*\s+pendient|pendient\w*\s+por\s+pagar/.test(prompt)) {
+    return {
+      templateKey: "pending_payment",
+      segmentKey: "pending_payment",
+    } as const;
+  }
+
+  if (/proxim\w*\s+cita|recordator\w*\s+cita/.test(prompt)) {
+    return { templateKey: "reminder", segmentKey: "upcoming" } as const;
+  }
+
+  return { templateKey: "promo", segmentKey: "all" } as const;
 }
 
 function isCampaignDraftRequest(message: string) {
@@ -40,6 +67,7 @@ export function proposeCitayaAppActions(input: {
 }): CitayaAppProposedAction[] {
   const draft = input.answer.trim().slice(0, 2_000);
   if (!draft || !isCampaignDraftRequest(input.message)) return [];
+  const intent = campaignIntent(input.message);
 
   return [
     {
@@ -54,6 +82,8 @@ export function proposeCitayaAppActions(input: {
       },
       preview: {
         message: draft,
+        templateKey: intent.templateKey,
+        segmentKey: intent.segmentKey,
       },
     },
   ];
