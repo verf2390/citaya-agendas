@@ -35,20 +35,45 @@ const campaignPage = readFileSync(
 );
 
 test("handoff de campaña acepta solo payload v1 acotado", () => {
-  const handoff = createCampaignDraftHandoff("  Hola, vuelve a reservar.  ");
+  const handoff = createCampaignDraftHandoff({
+    message: "  Hola, vuelve a reservar.  ",
+    templateKey: "reactivation",
+    segmentKey: "inactive",
+  });
   assert.deepEqual(handoff, {
-    version: 1,
+    version: 2,
     kind: "campaign_draft",
     message: "Hola, vuelve a reservar.",
+    templateKey: "reactivation",
+    segmentKey: "inactive",
   });
   assert.deepEqual(
     parseCampaignDraftHandoff(JSON.stringify(handoff)),
     handoff,
   );
-  assert.equal(parseCampaignDraftHandoff('{"version":2,"kind":"campaign_draft","message":"x"}'), null);
+  assert.equal(
+    parseCampaignDraftHandoff(
+      '{"version":2,"kind":"campaign_draft","message":"x","templateKey":"promo","segmentKey":"not_allowed"}',
+    ),
+    null,
+  );
   assert.equal(parseCampaignDraftHandoff("not-json"), null);
-  assert.equal(createCampaignDraftHandoff(""), null);
-  assert.equal(createCampaignDraftHandoff("x".repeat(2_001)), null);
+  assert.equal(
+    createCampaignDraftHandoff({
+      message: "",
+      templateKey: "promo",
+      segmentKey: "all",
+    }),
+    null,
+  );
+  assert.equal(
+    createCampaignDraftHandoff({
+      message: "x".repeat(2_001),
+      templateKey: "promo",
+      segmentKey: "all",
+    }),
+    null,
+  );
 });
 
 test("asistente solo hace handoff local y nunca envía campañas", () => {
@@ -64,7 +89,12 @@ test("campañas consume el borrador una vez y conserva confirmación humana", ()
   assert.match(campaignPage, /window\.sessionStorage\.getItem/);
   assert.match(campaignPage, /window\.sessionStorage\.removeItem/);
   assert.match(campaignPage, /parseCampaignDraftHandoff/);
+  assert.match(campaignPage, /setTemplateKey\(handoff\.templateKey\)/);
+  assert.match(campaignPage, /setSegmentKey\(handoff\.segmentKey\)/);
+  assert.match(campaignPage, /setSubject\(template\.subject\)/);
+  assert.match(campaignPage, /setHeadline\(template\.headline\)/);
   assert.match(campaignPage, /setMessage\(handoff\.message\)/);
+  assert.match(campaignPage, /setCtaLabel\(template\.ctaLabel\)/);
   assert.match(campaignPage, /setConfirmed\(false\)/);
   assert.match(
     campaignPage,
@@ -75,7 +105,7 @@ test("campañas consume el borrador una vez y conserva confirmación humana", ()
 test("storage key no contiene tenant ni contenido del borrador", () => {
   assert.equal(
     CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY,
-    "citaya-ai-campaign-draft-v1",
+    "citaya-ai-campaign-draft-v2",
   );
   assert.doesNotMatch(CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY, /tenant|message|prompt/i);
 });
