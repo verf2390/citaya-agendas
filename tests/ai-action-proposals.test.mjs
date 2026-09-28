@@ -37,8 +37,20 @@ test("propone borrador de campaña con confirmación humana obligatoria", () => 
     target: { path: "/admin/campanas" },
     preview: {
       message: "Hola, hace tiempo que no te vemos. Reserva tu próxima hora.",
+      templateKey: "reactivation",
+      segmentKey: "inactive",
     },
   });
+});
+
+test("mapea recuperación de clientes a reactivación e inactivos", () => {
+  const [action] = proposeCitayaAppActions({
+    message: "Crea una campaña para recuperar clientes.",
+    answer: "Te esperamos nuevamente.",
+  });
+
+  assert.equal(action?.preview.templateKey, "reactivation");
+  assert.equal(action?.preview.segmentKey, "inactive");
 });
 
 test("no convierte redacción general en acción de campaña", () => {
