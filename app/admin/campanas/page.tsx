@@ -448,10 +448,14 @@ export default function AdminCampanasPage() {
           duplicateOrLimitedCount: Number(json.duplicateOrLimitedCount ?? 0),
           missingPaymentLinkCount: Number(json.missingPaymentLinkCount ?? 0),
         });
-      } catch (e: any) {
+      } catch (error) {
         if (cancelled) return;
         setAudienceStats(null);
-        setAudienceStatsError(e?.message ?? "No se pudo revisar la audiencia.");
+        setAudienceStatsError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo revisar la audiencia.",
+        );
       } finally {
         if (!cancelled) setLoadingAudienceStats(false);
       }
@@ -543,10 +547,13 @@ export default function AdminCampanasPage() {
       setResult(null);
       setConfirmed(false);
       toast({ title: "Imagen cargada correctamente", description: "El contenido visual quedó listo para la campaña." });
-    } catch (e: any) {
+    } catch (error) {
       toast({
         title: "No se pudo subir el archivo",
-        description: e?.message ?? "Intenta nuevamente en unos minutos.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Intenta nuevamente en unos minutos.",
         variant: "destructive",
       });
     } finally {
@@ -679,8 +686,11 @@ export default function AdminCampanasPage() {
         title: "Campaña enviada",
         description: `${Number(json.sentCount ?? 0)} emails enviados.`,
       });
-    } catch (e: any) {
-      const text = e?.message ?? "No se pudo conectar con el endpoint de campañas.";
+    } catch (error) {
+      const text =
+        error instanceof Error
+          ? error.message
+          : "No se pudo conectar con el endpoint de campañas.";
       setSendState({ type: "error", text });
       toast({ title: "Error en campaña", description: text, variant: "destructive" });
     } finally {
