@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  ArrowRight,
   Bot,
   Cloud,
   Cpu,
@@ -22,12 +23,18 @@ import {
   StatusBadge,
 } from "@/components/admin/admin-ui";
 import { adminFetch } from "@/lib/api/adminFetch";
+import {
+  CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY,
+  createCampaignDraftHandoff,
+} from "@/lib/ai/actions/campaign-handoff";
+import type { CitayaAppProposedAction } from "@/lib/ai/actions/citaya-app-actions";
 
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
   toolsUsed?: string[];
+  proposedActions?: CitayaAppProposedAction[];
 };
 
 type AssistantResponse = {
@@ -35,6 +42,7 @@ type AssistantResponse = {
   answer?: string;
   error?: string;
   toolsUsed?: string[];
+  proposedActions?: CitayaAppProposedAction[];
 };
 
 type AIUsageSummary = {
@@ -169,6 +177,9 @@ export default function AdminAssistantPage() {
           role: "assistant",
           text: payload.answer ?? "",
           toolsUsed: payload.toolsUsed ?? [],
+          proposedActions: Array.isArray(payload.proposedActions)
+            ? payload.proposedActions
+            : [],
         },
       ]);
     } catch (requestError) {
@@ -179,6 +190,34 @@ export default function AdminAssistantPage() {
       );
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleProposedAction = (action: CitayaAppProposedAction) => {
+    if (
+      action.id !== "campaign_draft_v1" ||
+      action.kind !== "campaign_draft" ||
+      action.requiresConfirmation !== true ||
+      action.target.path !== "/admin/campanas"
+    ) {
+      setError("La acción propuesta no es válida.");
+      return;
+    }
+
+    const handoff = createCampaignDraftHandoff(action.preview.message);
+    if (!handoff) {
+      setError("El borrador no se pudo preparar de forma segura.");
+      return;
+    }
+
+    try {
+      window.sessionStorage.setItem(
+        CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY,
+        JSON.stringify(handoff),
+      );
+      router.push(action.target.path);
+    } catch {
+      setError("No se pudo abrir el editor de campañas.");
     }
   };
 
@@ -239,7 +278,35 @@ export default function AdminAssistantPage() {
                       <div className="whitespace-pre-wrap break-words">
                         {message.text}
                       </div>
-                      {message.toolsUsed?.length ? (
+                      {isAssistant && message.proposedActions?.length ? (
+                        <div className="mt-3 grid gap-2 border-t border-slate-200 pt-3">
+                          {message.proposedActions.map((action) => (
+                            <div
+                              key={action.id}
+                              className="rounded-xl border border-blue-200 bg-white p-3"
+                            >
+                              <div className="text-xs font-black uppercase tracking-wide text-blue-700">
+                                Acción propuesta · requiere revisión
+                              </div>
+                              <div className="mt-1 font-black text-slate-900">
+                                {action.title}
+                              </div>
+                              <div className="mt-1 text-xs font-medium leading-5 text-slate-600">
+                                {action.summary}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleProposedAction(action)}
+                                className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-700"
+                              >
+                                Revisar en Campañas
+                                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                                            {message.toolsUsed?.length ? (
                         <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-200 pt-2">
                           {message.toolsUsed.map((tool) => (
                             <StatusBadge key={tool} tone="blue">

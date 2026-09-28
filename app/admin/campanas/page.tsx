@@ -1,6 +1,10 @@
 "use client";
 
 import { adminFetch } from "@/lib/api/adminFetch";
+import {
+  CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY,
+  parseCampaignDraftHandoff,
+} from "@/lib/ai/actions/campaign-handoff";
 
 import { useEffect, useMemo, useState } from "react";
 import { Image as ImageIcon, RefreshCw, Send, Upload, Video, X } from "lucide-react";
@@ -313,6 +317,36 @@ export default function AdminCampanasPage() {
     void run();
   }, [router]);
 
+  useEffect(() => {
+    if (!authChecked) return;
+
+    const raw = window.sessionStorage.getItem(
+      CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY,
+    );
+    if (!raw) return;
+
+    window.sessionStorage.removeItem(CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY);
+    const handoff = parseCampaignDraftHandoff(raw);
+    if (!handoff) {
+      toast({
+        title: "Borrador de IA no válido",
+        description: "No se cargó contenido. Puedes preparar la campaña manualmente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setMessage(handoff.message);
+    setConfirmed(false);
+    setSendState(null);
+    setResult(null);
+    toast({
+      title: "Borrador de Citaya AI cargado",
+      description:
+        "Revisa plantilla, segmento y contenido antes de simular o enviar.",
+    });
+  }, [authChecked]);
+
   const selectedType = useMemo(
     () => CAMPAIGN_TEMPLATES.find((item) => item.id === templateKey),
     [templateKey],
@@ -414,10 +448,14 @@ export default function AdminCampanasPage() {
           duplicateOrLimitedCount: Number(json.duplicateOrLimitedCount ?? 0),
           missingPaymentLinkCount: Number(json.missingPaymentLinkCount ?? 0),
         });
-      } catch (e: any) {
+      } catch (error) {
         if (cancelled) return;
         setAudienceStats(null);
-        setAudienceStatsError(e?.message ?? "No se pudo revisar la audiencia.");
+        setAudienceStatsError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo revisar la audiencia.",
+        );
       } finally {
         if (!cancelled) setLoadingAudienceStats(false);
       }
@@ -509,10 +547,13 @@ export default function AdminCampanasPage() {
       setResult(null);
       setConfirmed(false);
       toast({ title: "Imagen cargada correctamente", description: "El contenido visual quedó listo para la campaña." });
-    } catch (e: any) {
+    } catch (error) {
       toast({
         title: "No se pudo subir el archivo",
-        description: e?.message ?? "Intenta nuevamente en unos minutos.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Intenta nuevamente en unos minutos.",
         variant: "destructive",
       });
     } finally {
@@ -645,8 +686,11 @@ export default function AdminCampanasPage() {
         title: "Campaña enviada",
         description: `${Number(json.sentCount ?? 0)} emails enviados.`,
       });
-    } catch (e: any) {
-      const text = e?.message ?? "No se pudo conectar con el endpoint de campañas.";
+    } catch (error) {
+      const text =
+        error instanceof Error
+          ? error.message
+          : "No se pudo conectar con el endpoint de campañas.";
       setSendState({ type: "error", text });
       toast({ title: "Error en campaña", description: text, variant: "destructive" });
     } finally {
