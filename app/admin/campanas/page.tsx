@@ -1,6 +1,10 @@
 "use client";
 
 import { adminFetch } from "@/lib/api/adminFetch";
+import {
+  CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY,
+  parseCampaignDraftHandoff,
+} from "@/lib/ai/actions/campaign-handoff";
 
 import { useEffect, useMemo, useState } from "react";
 import { Image as ImageIcon, RefreshCw, Send, Upload, Video, X } from "lucide-react";
@@ -312,6 +316,36 @@ export default function AdminCampanasPage() {
 
     void run();
   }, [router]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+
+    const raw = window.sessionStorage.getItem(
+      CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY,
+    );
+    if (!raw) return;
+
+    window.sessionStorage.removeItem(CAMPAIGN_DRAFT_HANDOFF_STORAGE_KEY);
+    const handoff = parseCampaignDraftHandoff(raw);
+    if (!handoff) {
+      toast({
+        title: "Borrador de IA no válido",
+        description: "No se cargó contenido. Puedes preparar la campaña manualmente.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setMessage(handoff.message);
+    setConfirmed(false);
+    setSendState(null);
+    setResult(null);
+    toast({
+      title: "Borrador de Citaya AI cargado",
+      description:
+        "Revisa plantilla, segmento y contenido antes de simular o enviar.",
+    });
+  }, [authChecked]);
 
   const selectedType = useMemo(
     () => CAMPAIGN_TEMPLATES.find((item) => item.id === templateKey),
