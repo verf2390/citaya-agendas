@@ -1,4 +1,5 @@
 import { runAICore } from "@/lib/ai/core";
+import { proposeCitayaAppActions } from "@/lib/ai/actions/citaya-app-actions";
 import { AIError } from "@/lib/ai/errors";
 import {
   assertCitayaAppPromptVersion,
@@ -164,6 +165,11 @@ export async function runCitayaAppAssistant(input: {
       });
     }
 
+    const proposedActions = proposeCitayaAppActions({
+      message: input.message,
+      answer: result.text,
+    });
+
     await finishAIRequestAuditBounded({
       requestId,
       tenantId: input.tenantId,
@@ -174,7 +180,7 @@ export async function runCitayaAppAssistant(input: {
       durationMs: Date.now() - startedAt,
       route: result.route,
     });
-    return result;
+    return { ...result, proposedActions };
   } catch (error) {
     if (requestId) {
       try {

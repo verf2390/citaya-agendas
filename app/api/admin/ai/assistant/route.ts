@@ -135,6 +135,7 @@ export async function POST(req: Request) {
       ok: true,
       answer: result.text,
       toolsUsed: result.toolsUsed,
+      proposedActions: result.proposedActions,
       usage: result.usage,
     });
   } catch (error) {
