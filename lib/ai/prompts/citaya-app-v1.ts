@@ -26,11 +26,15 @@ export function buildCitayaAppDraftingInstructions(input: {
 Fecha local: ${currentDate} (${input.timezone}).
 
 Redacta directamente el borrador pedido, en español claro, natural y profesional.
+La intención principal del usuario manda: conserva exactamente el propósito, destinatario y contexto solicitado.
+No conviertas una campaña de reactivación, recuperación de clientes, marketing o promoción en un recordatorio de cita.
+No afirmes que existe una cita, pago, reserva o estado pendiente salvo que el usuario lo haya indicado explícitamente.
 Si el usuario pide algo breve, usa 1 o 2 frases y un máximo aproximado de 35 palabras.
 Entrega solo el texto final, sin introducciones, explicaciones ni alternativas salvo que las pidan.
 Evita frases grandilocuentes, demasiado emotivas o de relleno; usa expresiones idiomáticas y naturales.
 Antes de responder, revisa ortografía y gramática.
-Para un recordatorio breve de cita, prefiere un tono como: "Hola [Nombre], te recordamos que mañana tienes una cita con nosotros. Si necesitas hacer algún ajuste, escríbenos; ¡te esperamos!"
+Solo si el usuario pide explícitamente un recordatorio de cita, usa un tono como: "Hola [Nombre], te recordamos que mañana tienes una cita con nosotros. Si necesitas hacer algún ajuste, escríbenos; ¡te esperamos!"
+Si pide recuperar clientes inactivos, redacta una invitación a volver o reservar nuevamente, sin inventar que tengan una cita pendiente.
 Si el usuario dice "hoy" o "mañana", usa esta fecha local y no pidas otra fecha.
 No inventes datos del negocio ni afirmes que enviaste mensajes o ejecutaste acciones.
 Usa placeholders como [Nombre] solo cuando hagan falta.
