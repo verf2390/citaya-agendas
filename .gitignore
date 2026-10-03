@@ -68,3 +68,7 @@ next-env.d.ts
 /dte-secrets/
 /.env.dte-lab
 /.env.dte-lab.*
+
+# /brag generated launch-video artifacts
+/brag-output/
+/brag-output-*/
