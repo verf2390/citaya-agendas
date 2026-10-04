@@ -80,7 +80,20 @@ class ConfigTests(unittest.TestCase):
   barber,_,bx=validate(self.config('barber'))
   with tempfile.TemporaryDirectory() as d:
    comp,_=compile_composition(barber,bx,Path(d),'preview');html=(comp/'index.html').read_text()
-   for value in ['Barbería Demo','Corte','Barba','Corte + barba','Barbero A','Barbero B']:
+   for value in ['Barbería Demo','Corte','Barba','Corte + barba']:
+    self.assertIn(value,html)
+  full=self.config('barber')
+  full['capabilities']=['online_booking','professional_selection','date_time_availability']
+  full['timing']={'intro':2.8,'demo':14.4,'outro':2.8}
+  full['scenes']=[
+   {'capability':'online_booking','mode':'service','duration':4.8},
+   {'capability':'professional_selection','mode':'professional','duration':4.8},
+   {'capability':'date_time_availability','mode':'date','duration':4.8},
+  ]
+  full,_,fx=validate(full)
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(full,fx,Path(d),'preview');html=(comp/'index.html').read_text()
+   for value in ['Barbero A','Barbero B','Elige fecha y hora','Mar 06','11:30']:
     self.assertIn(value,html)
   psychology,_,px=validate(self.config('psychology'))
   with tempfile.TemporaryDirectory() as d:
