@@ -57,6 +57,19 @@ test("M2M audit is fail-closed to active classified tenants and n8n", () => {
   );
 });
 
+test("M2M audit migration contains one canonical copy only", () => {
+  assert.equal(
+    (migration.match(/create or replace function public\.begin_ai_service_request_audit/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (migration.match(/create or replace function public\.finish_ai_service_request_audit/g) ?? []).length,
+    1,
+  );
+  assert.equal((migration.match(/commit;/g) ?? []).length, 1);
+  assert.match(migration, /p_provider not in \('openai', 'local', 'hybrid'\)/);
+});
+
 test("M2M audit RPCs remain service-role only", () => {
   for (const name of [
     "begin_ai_service_request_audit",
