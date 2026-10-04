@@ -163,6 +163,17 @@ class BriefTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(brief.BriefError):
                 brief.normalize_proposal(dict(PROPOSAL, **{field: value}), ROUTE, caps)
 
+    def test_operator_controls_visual_style_and_director_notes_are_not_copy(self):
+        caps = brief.relevant_capabilities(BRIEF, ROUTE, CATALOG)
+        config, report = brief.normalize_proposal(PROPOSAL, ROUTE, caps, "premium")
+        self.assertEqual(config["stylePreset"], "premium")
+        self.assertEqual(report["stylePreset"], "premium")
+        self.assertIn("NO son copy visible", brief.config_prompt(BRIEF, ROUTE, caps))
+        for value in ("Usa mi video como apertura", "Muestra una pantalla de reservas", "Termina invitando a probar Citaya"):
+            with self.subTest(value=value), self.assertRaises(brief.BriefError) as ctx:
+                brief.normalize_proposal(dict(PROPOSAL, hook=value), ROUTE, caps)
+            self.assertEqual(ctx.exception.code, "DIRECTOR_NOTE_IN_COPY")
+
     def test_invalid_json_duplicates_non_finite_and_arrays_rejected(self):
         for text in ('{"hook":"a","hook":"b"}', '{"x":NaN}', '{"x":Infinity}', '[]', 'not json'):
             with self.subTest(text=text), self.assertRaises(brief.BriefError):
