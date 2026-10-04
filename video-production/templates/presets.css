@@ -5,7 +5,7 @@
   --reel-safe-bottom:250px;
 }
 .stage .demo{top:1638px}
-.stage .progress{top:1702px}
+.stage .progress{display:none}
 .stage .subtitle{top:1490px}
 .stage.with-captions .screen{height:820px;top:650px}
 .stage.with-captions .demo{top:1715px}
