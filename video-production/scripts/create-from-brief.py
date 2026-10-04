@@ -25,7 +25,7 @@ Usa solo IDs incluidos en los catalogos entregados.
 No inventes clientes, negocios, precios, descuentos, testimonios, resultados, imagenes ni funciones.
 No declares capacidades planned o in_progress como disponibles; solo pueden aparecer en roadmap/concept.
 No uses medios que el operador no haya proporcionado.
-Puedes omitir timing y scenes: el motor determinista puede completarlos.
+No agregues timing, scenes, media, brand, project, audio, subtitles, creator ni commercialProfile; el motor determinista completa lo necesario.
 mediaApproved debe ser false; solo el operador humano puede aprobar medios.
 Responde en espanol si el brief esta en espanol.
 No muestres razonamiento. /no_think"""
@@ -58,22 +58,52 @@ def chunks(label, text):
 def catalog_context():
     products = read_json(ROOT / "catalog/products.json")["products"]
     niches = read_json(ROOT / "catalog/niches.json")["niches"]
-    templates = read_json(ROOT / "catalog/templates.json")["templates"]
     caps = read_json(ROOT / "catalog/capabilities.json")["capabilities"]
     compact = {
-        "products": [{"id": x["id"], "status": x["status"], "defaultTemplate": x["defaultTemplate"], "allowedTemplates": x["allowedTemplates"]} for x in products],
-        "niches": [{"id": x["id"], "name": x["name"]} for x in niches],
-        "templates": [{"id": x["id"], "sceneModes": x["sceneModes"]} for x in templates],
-        "capabilities": [{"id": x["id"], "product": x["product"], "status": x["status"], "safe": x["safeForCommercialVideo"], "niches": x["applicableNiches"], "scenes": x["suggestedScenes"], "benefit": (x.get("suggestedBenefits") or [""])[0], "gates": x.get("requiredGates", []), "also": x.get("alsoAppliesTo", [])} for x in caps],
-        "allowedAssets": []
+        "products": [x["id"] for x in products],
+        "niches": [x["id"] for x in niches],
+        "videoTypes": [
+            "product_demo", "sales_ad", "feature_highlight", "niche_specific_ad",
+            "website_showcase", "before_after", "portfolio", "educational",
+            "roadmap", "concept", "promotion", "service_highlight",
+            "appointment_campaign", "seasonal_offer", "creator_led"
+        ],
+        "commercialCapabilities": [
+            {
+                "id": x["id"],
+                "product": x["product"],
+                "also": x.get("alsoAppliesTo", []),
+                "niches": x["applicableNiches"],
+                "benefit": (x.get("suggestedBenefits") or [""])[0],
+            }
+            for x in caps
+            if x["status"] in ("live", "demo")
+            and x["safeForCommercialVideo"] is True
+            and not x.get("requiredGates")
+        ],
     }
     return json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
 
 def gateway_call(endpoint, token, model, brief, continuation=None, repair=None, timeout=90):
     if continuation is None:
-        schema = json.dumps(read_json(ROOT / "schemas/video-config.schema.json"), ensure_ascii=False, separators=(",", ":"))
+        contract = {
+            "required": [
+                "product", "niche", "videoType", "hook", "secondaryHook",
+                "cta", "capabilities", "mediaApproved"
+            ],
+            "limits": {
+                "hook": 74,
+                "secondaryHook": 90,
+                "cta": 40,
+                "capabilities": "1-8 unique IDs"
+            },
+            "forbidden": [
+                "timing", "scenes", "media", "brand", "project",
+                "audio", "subtitles", "creator", "commercialProfile"
+            ]
+        }
         inputs = [{"type": "user", "text": "BRIEF DEL OPERADOR:\n" + brief}]
-        inputs += chunks("JSON SCHEMA", schema)
+        inputs += [{"type": "user", "text": "CONTRATO MINIMO:\n" + json.dumps(contract, ensure_ascii=False, separators=(",", ":"))}]
         inputs += chunks("CATALOGOS PERMITIDOS", catalog_context())
     else:
         inputs = [{"type": "user", "text": "Corrige tu propuesta anterior. Devuelve solo el objeto JSON completo. Error del validador: " + (repair or "respuesta invalida")}]
