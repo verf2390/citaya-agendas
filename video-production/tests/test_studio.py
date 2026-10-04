@@ -133,8 +133,47 @@ class TenantTests(unittest.TestCase):
  def test_changed_config_revokes_approval(self):
   id,_,_=self.complete_preview();self.s.approve_final(self.a,id);c=copy.deepcopy(self.cfg);c['content']['cta']='Escríbenos';self.s.update_project(self.a,self.pa,c);self.error('FINAL_APPROVAL_REQUIRED',lambda:self.s.enqueue(self.a,self.pa,'final','f'))
  def test_metering_idempotent(self):
-  id,job,f=self.complete_preview();self.assertFalse(self.s.finish(job,{'config':f},{'wallSeconds':1}));self.s.record_ai(self.a,'request-1','qwen-local','local',100,30);self.s.record_ai(self.a,'request-1','qwen-local','local',100,30)
+  id,job,f=self.complete_preview();self.assertFalse(self.s.finish(job,{'config':f},{'wallSeconds':1}));self.s.record_ai(self.a,'request-1','qwen-local','local',100,30,project_id=self.pa,job_id=id,model='Qwen3-4B-GGUF:Q4_K_M',latency_seconds=1.234);self.s.record_ai(self.a,'request-1','qwen-local','local',100,30,project_id=self.pa,job_id=id,model='Qwen3-4B-GGUF:Q4_K_M',latency_seconds=1.234)
   u=self.s.usage(self.a)[0];self.assertEqual(u['previews_generated'],1);self.assertEqual(u['ai_input_tokens'],100);self.assertEqual(u['render_seconds'],1);self.assertEqual(u['cpu_seconds'],.5)
+  events=[dict(r) for r in self.s.db.execute('SELECT event_type,provider,provider_mode,metrics_json FROM video_usage_events WHERE tenant_id=? ORDER BY created_at',(self.a.tenant_id,))]
+  ai=next(x for x in events if x['event_type']=='ai');am=json.loads(ai['metrics_json']);self.assertEqual(am['projectId'],self.pa);self.assertEqual(am['jobId'],id);self.assertEqual(am['model'],'Qwen3-4B-GGUF:Q4_K_M');self.assertEqual(am['ai_total_tokens'],130);self.assertEqual(am['latencySeconds'],1.234)
+  complete=next(x for x in events if x['event_type']=='render_complete');cm=json.loads(complete['metrics_json']);self.assertEqual(cm['projectId'],self.pa);self.assertEqual(cm['jobId'],id);self.assertGreater(cm['output_bytes'],0)
+ def test_job_metering_counts_only_referenced_asset_bytes(self):
+  media=Path(self.temp.name)/'voice.srt';media.write_text('1\n00:00:00,000 --> 00:00:01,000\nHola\n')
+  unused=Path(self.temp.name)/'unused.srt';unused.write_text('1\n00:00:00,000 --> 00:00:01,000\nNo usado\n')
+  aid=self.s.upload(self.a,self.pa,media);self.s.upload(self.a,self.pa,unused)
+  cfg=copy.deepcopy(self.cfg);cfg['subtitles']={'enabled':True,'srt':'asset:'+aid};self.s.update_project(self.a,self.pa,cfg)
+  jid=self.s.enqueue(self.a,self.pa,'preview','asset-meter');job=self.s.claim('meter-node')
+  f=Path(self.temp.name)/'meter.txt';f.write_text('output')
+  self.assertTrue(self.s.finish(job,{'config':f},{'wallSeconds':1,'cpuSeconds':.25,'width':720,'height':1280,'durationMs':1000}))
+  report=self.s.project_usage_report(self.a,self.pa);jr=report['jobs'][0]
+  expected=media.stat().st_size
+  self.assertEqual(jr['inputBytes'],expected);self.assertEqual(jr['assetCount'],1);self.assertEqual(report['bytes']['inputConsumed'],expected)
+  self.assertGreater(report['bytes']['uploaded'],expected);self.assertGreater(report['bytes']['currentStorage'],report['bytes']['uploaded'])
+ def test_record_ai_usage_accepts_create_from_brief_metrics(self):
+  usage={'provider':'local','model':'Qwen3-4B-GGUF:Q4_K_M','status':'complete','calls':[],'inputTokens':220,'outputTokens':80,'totalTokens':300,'usageComplete':True,'elapsedSeconds':3.75}
+  jid,_,_=self.complete_preview()
+  self.assertTrue(self.s.record_ai_usage(self.a,'brief-run-1',usage,project_id=self.pa,job_id=jid))
+  self.assertFalse(self.s.record_ai_usage(self.a,'brief-run-1',usage,project_id=self.pa,job_id=jid))
+  report=self.s.project_usage_report(self.a,self.pa)
+  self.assertEqual(report['ai']['requests'],1);self.assertEqual(report['ai']['inputTokens'],220);self.assertEqual(report['ai']['outputTokens'],80);self.assertEqual(report['ai']['totalTokens'],300);self.assertEqual(report['ai']['latencySeconds'],3.75)
+  self.assertEqual(report['ai']['providers'],['local']);self.assertEqual(report['ai']['models'],['Qwen3-4B-GGUF:Q4_K_M'])
+ def test_record_ai_usage_rejects_incomplete_or_inconsistent_metrics(self):
+  bad={'provider':'local','model':'Qwen3-4B-GGUF:Q4_K_M','inputTokens':100,'outputTokens':20,'totalTokens':120,'usageComplete':False,'elapsedSeconds':1}
+  self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-1',bad,project_id=self.pa))
+  bad={**bad,'usageComplete':True,'totalTokens':999}
+  self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-2',bad,project_id=self.pa))
+  bad={'provider':'local','model':None,'inputTokens':100,'outputTokens':20,'totalTokens':120,'usageComplete':True,'elapsedSeconds':1}
+  self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-3',bad,project_id=self.pa))
+ def test_project_usage_report_and_accumulated_summary(self):
+  jid,job,f=self.complete_preview()
+  self.s.record_ai(self.a,'report-ai','qwen-local','local',120,40,project_id=self.pa,job_id=jid,model='Qwen3-4B-GGUF:Q4_K_M',latency_seconds=2.5)
+  report=self.s.project_usage_report(self.a,self.pa)
+  self.assertEqual(report['projectId'],self.pa);self.assertEqual(report['ai']['requests'],1);self.assertEqual(report['ai']['totalTokens'],160);self.assertEqual(report['ai']['latencySeconds'],2.5)
+  self.assertEqual(report['render']['previews'],1);self.assertEqual(report['render']['finals'],0);self.assertEqual(report['render']['wallSeconds'],1);self.assertEqual(report['render']['cpuSeconds'],.5)
+  self.assertGreater(report['bytes']['output'],0);self.assertEqual(len(report['jobs']),1);self.assertGreater(report['jobs'][0]['outputBytes'],0)
+  summary=self.s.usage_summary(self.a);self.assertEqual(summary['totals']['previews_generated'],1);self.assertEqual(summary['totals']['ai_total_tokens'],160);self.assertGreater(summary['totals']['current_storage_bytes'],0)
+  self.error('NOT_FOUND',lambda:self.s.project_usage_report(self.b,self.pa))
  def test_cancelled_attempt_cannot_publish(self):
   id=self.s.enqueue(self.a,self.pa,'preview','1');job=self.s.claim('node');self.s.cancel(self.a,id);self.assertFalse(self.s.finish(job,{}, {'wallSeconds':2}));self.assertEqual(self.s.usage(self.a)[0]['previews_generated'],0)
  def test_fenced_retry(self):
