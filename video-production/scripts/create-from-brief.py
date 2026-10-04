@@ -185,7 +185,7 @@ def main():
     print("Tipo:     ", normalized.get("videoType"))
     print("Hook:     ", normalized.get("hook"))
     print("CTA:      ", normalized.get("cta"))
-    print("IA:       ", f"{total[\'inputTokens\']} in / {total[\'outputTokens\']} out / {total[\'totalTokens\']} total")
+    print("IA:       ", "{} in / {} out / {} total".format(total["inputTokens"], total["outputTokens"], total["totalTokens"]))
     print("Config:   ", config_path)
 
     if args.config_only:
