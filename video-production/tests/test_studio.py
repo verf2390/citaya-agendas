@@ -163,6 +163,8 @@ class TenantTests(unittest.TestCase):
   self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-1',bad,project_id=self.pa))
   bad={**bad,'usageComplete':True,'totalTokens':999}
   self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-2',bad,project_id=self.pa))
+  bad={'provider':'local','model':None,'inputTokens':100,'outputTokens':20,'totalTokens':120,'usageComplete':True,'elapsedSeconds':1}
+  self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-3',bad,project_id=self.pa))
  def test_project_usage_report_and_accumulated_summary(self):
   jid,job,f=self.complete_preview()
   self.s.record_ai(self.a,'report-ai','qwen-local','local',120,40,project_id=self.pa,job_id=jid,model='Qwen3-4B-GGUF:Q4_K_M',latency_seconds=2.5)
