@@ -202,7 +202,10 @@ def apply_manifest(config, manifest, approved):
         creator = c.setdefault("creator", {})
         creator.setdefault("useClipAudio", True)
         if media.get("creatorVoiceover"):
-            creator.setdefault("voiceoverStart", c.get("timing", {}).get("intro", 0) if media.get("creatorIntro") else 0)
+            # A normalized brief config already contains voiceoverStart=0 even before
+            # media exists. When ingestion supplies both creator intro and voiceover,
+            # place narration immediately after the intro instead of overlapping it.
+            creator["voiceoverStart"] = c.get("timing", {}).get("intro", 0) if media.get("creatorIntro") else 0
         audio = c.setdefault("audio", {})
         audio.setdefault("music", True)
         audio.setdefault("sfx", True)
