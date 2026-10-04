@@ -129,7 +129,7 @@ export async function POST(req: Request) {
       operation: operation as "classify" | "summarize" | "draft",
       source,
       instruction,
-      labels,
+      labels: labels ?? undefined,
       policy,
     });
 
