@@ -188,6 +188,34 @@ class MediaIngestTests(unittest.TestCase):
             result, _ = ingest.apply_manifest(config, manifest, approved=True)
         self.assertEqual(result["creator"]["voiceoverStart"], 2.8)
 
+    def test_creator_led_voiceover_refits_demo_timeline(self):
+        config = {
+            "template": "creator-led-v1",
+            "timing": {"intro": 2.8, "demo": 14.4, "outro": 2.8},
+            "scenes": [
+                {"duration": 4.8},
+                {"duration": 4.8},
+                {"duration": 4.8},
+            ],
+            "mediaApproved": False,
+        }
+        manifest = {
+            "files": [
+                {"role": "creatorIntro", "inspection": {"durationMs": 9130}},
+                {"role": "creatorVoiceover", "inspection": {"durationMs": 9090}},
+            ],
+            "configPatch": {"media": {
+                "creatorIntro": "inputs/projects/demo/creator-intro.mp4",
+                "creatorVoiceover": "inputs/projects/demo/voiceover.ogg",
+            }},
+        }
+        with patch.object(ingest, "validate", side_effect=lambda value, mode: (value, {"valid": True}, {})):
+            result, _ = ingest.apply_manifest(config, manifest, approved=True)
+        self.assertEqual(result["timing"]["demo"], 9.69)
+        self.assertAlmostEqual(sum(scene["duration"] for scene in result["scenes"]), 9.69, places=6)
+        self.assertEqual(result["creator"]["voiceoverStart"], 2.8)
+        self.assertAlmostEqual(sum(result["timing"].values()), 15.29, places=6)
+
     def test_creator_intro_promotes_default_template_to_creator_led(self):
         config = {
             "template": "citaya-saas-vertical-v1",
