@@ -5,6 +5,7 @@ import copy, hashlib, json, math, re, subprocess, shutil
 ROOT = Path(__file__).resolve().parents[1]
 TYPES = ['product_demo','sales_ad','feature_highlight','niche_specific_ad','website_showcase','before_after','portfolio','educational','roadmap','concept','promotion','service_highlight','appointment_campaign','seasonal_offer','creator_led']
 MODES = {'preview': {'width':720,'height':1280,'fps':24,'quality':'draft'}, 'final':{'width':1080,'height':1920,'fps':30,'quality':'delivery'}}
+STYLE_PRESETS = ['minimal','dynamic','premium']
 class ConfigError(ValueError):
     def __init__(self, code, message): self.code=code; super().__init__(message)
 def fail(code, message): raise ConfigError(code,message)
@@ -84,7 +85,7 @@ def parse_srt(path,duration):
 
 def validate(config,mode='preview'):
     schema_validate(config)
-    shape(config,['brand','media','content','mediaPolicy','schemaVersion','product','niche','goal','videoType','template','format','hook','secondaryHook','capabilities','cta','timing','scenes','creator','subtitles','audio','commercialProfile','mediaApproved','project','shareCopy'],'config')
+    shape(config,['brand','media','content','mediaPolicy','schemaVersion','product','niche','goal','videoType','template','stylePreset','format','hook','secondaryHook','capabilities','cta','timing','scenes','creator','subtitles','audio','commercialProfile','mediaApproved','project','shareCopy'],'config')
     c=copy.deepcopy(config)
     if c.get('videoType')=='concept': c['videoType']='roadmap'
     expand_inputs(c)
@@ -98,6 +99,9 @@ def validate(config,mode='preview'):
     p=products[c['product']];c['template']=c.get('template',p['defaultTemplate'])
     if c['template'] not in p['allowedTemplates']: fail('INVALID_TEMPLATE','Template is not registered for this product.')
     template=read_json(ROOT/'templates'/c['template']/'template.json')
+    defaults={'creator-led-v1':'dynamic','website-showcase-v1':'premium','citaya-websites-vertical-v1':'premium','local-business-promo-v1':'minimal','offer-promo-v1':'dynamic','before-after-v1':'premium'}
+    c['stylePreset']=c.get('stylePreset',defaults.get(c['template'],'minimal'))
+    if c['stylePreset'] not in STYLE_PRESETS: fail('INVALID_STYLE_PRESET','stylePreset must be minimal, dynamic or premium.')
     c['goal']=text(c.get('goal','lead_generation'),40,'goal')
     c['hook']=text(c.get('hook',niches[c['niche']]['headline']),74,'hook')
     c['secondaryHook']=text(c.get('secondaryHook',p['tagline']),90,'secondaryHook')
@@ -192,7 +196,7 @@ def validate(config,mode='preview'):
     if media and not c['mediaApproved']: fail('MEDIA_REVIEW_REQUIRED','Set mediaApproved=true only after reviewing supplied media and captions for rights and private data.')
     c['shareCopy']=text(c.get('shareCopy',f'{c["hook"]} {c["secondaryHook"]} {c["cta"]}'),320,'shareCopy')
     if c['videoType']=='roadmap' and not c['shareCopy'].startswith('Concepto / hoja de ruta.'):c['shareCopy']='Concepto / hoja de ruta. Las funciones planificadas no están disponibles. '+c['shareCopy']
-    report={'valid':True,'schemaVersion':1,'mode':mode,'duration':round(duration,6),'resolution':MODES[mode],'capabilities':checked,'warnings':['Copy and supplied media still require human factual/privacy review; validation is not semantic or biometric inspection.'],'catalogSha256':{n:digest(ROOT/'catalog'/f'{n}.json') for n in catalogs},'mediaSha256':{m:digest(ROOT/m) for m in sorted(set(media))},'productionDataAccess':False}
+    report={'valid':True,'schemaVersion':1,'mode':mode,'duration':round(duration,6),'resolution':MODES[mode],'stylePreset':c['stylePreset'],'capabilities':checked,'warnings':['Copy and supplied media still require human factual/privacy review; validation is not semantic or biometric inspection.'],'catalogSha256':{n:digest(ROOT/'catalog'/f'{n}.json') for n in catalogs},'mediaSha256':{m:digest(ROOT/m) for m in sorted(set(media))},'productionDataAccess':False}
     return c,report,{'product':p,'niche':niches[c['niche']],'caps':caps,'template':template,'speech':speech,'cues':cues}
 
 def schema_validate(c):
