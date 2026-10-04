@@ -87,7 +87,7 @@ python3 video-production/scripts/generate-video.py --config video-production/con
 python3 video-production/scripts/generate-video.py --config video-production/configs/examples/roadmap.json --mode preview
 ```
 
-Veterinaria, barbería y psicología cambian `niche`, copy y capacidades seleccionadas; no requieren modificar código. También hay beauty, dentistry, massage, healthcare, architecture, local-business y professional-services, restaurant, retail y construction. Consulta/Evaluación/Sesión son los servicios demo; no se presume un producto sólo para barberías. Los demos de salud no incluyen historias clínicas ni información de pacientes.
+Veterinaria, barbería y psicología cambian `niche`, copy y capacidades seleccionadas; no requieren modificar código. También hay beauty, dentistry, massage, healthcare, architecture, local-business y professional-services, restaurant, retail y construction. Barbería usa una UI ficticia específica (`Barbería Demo`, Corte/Barba/Corte + barba y profesionales genéricos) para mantener coherencia visual sin inventar clientes; los demás nichos conservan los fixtures demo genéricos. Los demos de salud no incluyen historias clínicas ni información de pacientes.
 
 `timing` define intro/demo/outro. Por ejemplo `{ "intro":3, "demo":15, "outro":4 }` produce 22 segundos. Cada escena puede especificar duration; la suma debe coincidir con demo. Sin duraciones se distribuye el segmento entre escenas. Se rechazan tiempos que impidan leer las escenas.
 

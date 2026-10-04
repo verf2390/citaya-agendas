@@ -16,6 +16,13 @@ class ConfigTests(unittest.TestCase):
  def test_website(self):self.assertTrue(validate(self.config('website-services'))[1]['valid'])
  def test_creator_voiceover(self):
   c,r,x=validate(self.config('creator-led'));self.assertEqual([s['start'] for s in x['speech']],[0,3]);self.assertEqual(len(x['cues']),2)
+ def test_creator_intro_has_no_face_overlay_and_hook_moves_to_first_scene(self):
+  c,r,x=validate(self.config('creator-led'))
+  c['hook']='Reserva online sin mensajes'
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(c,x,Path(d),'preview');html=(comp/'index.html').read_text()
+   self.assertNotIn('id="creator-title"',html)
+   self.assertIn('<h2 class="headline">Reserva online sin mensajes</h2>',html)
  def test_vtt(self):self.assertEqual(len(parse_srt(R/'inputs/test-fixtures/captions.vtt',10)),1)
  def test_missing_optional_creator(self):
   c=self.config();c['creator']={'introVideo':'inputs/missing.mp4'};self.bad(c,'MEDIA_NOT_FOUND')
@@ -56,6 +63,43 @@ class ConfigTests(unittest.TestCase):
  def test_schema_is_valid(self):
   from jsonschema import Draft202012Validator
   Draft202012Validator.check_schema(read_json(R/'schemas/video-config.schema.json'))
+ def test_visual_style_presets_compile_with_reel_safe_contract(self):
+  for preset in ['minimal','dynamic','premium']:
+   with self.subTest(preset=preset):
+    raw=self.config();raw['stylePreset']=preset;c,r,x=validate(raw)
+    self.assertEqual(r['stylePreset'],preset)
+    with tempfile.TemporaryDirectory() as d:
+     comp,_=compile_composition(c,x,Path(d),'preview');html=(comp/'index.html').read_text()
+     self.assertIn('preset-'+preset,html);self.assertIn('data-style-preset="'+preset+'"',html);self.assertIn('--reel-safe-bottom:250px',html)
+     self.assertIn('.stage .progress{display:none}',html)
+  css=(R/'templates/presets.css').read_text()
+  self.assertIn('.preset-dynamic #brand-chrome .product-name{display:none}',css)
+  self.assertIn('top:1280px',css)
+  raw=self.config();raw['stylePreset']='invented';self.bad(raw,'SCHEMA_VALIDATION')
+ def test_barber_uses_niche_aware_demo_without_affecting_other_niches(self):
+  barber,_,bx=validate(self.config('barber'))
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(barber,bx,Path(d),'preview');html=(comp/'index.html').read_text()
+   for value in ['Barbería Demo','Corte','Barba','Corte + barba']:
+    self.assertIn(value,html)
+  full=self.config('barber')
+  full['capabilities']=['online_booking','professional_selection','date_time_availability']
+  full['timing']={'intro':2.8,'demo':14.4,'outro':2.8}
+  full['scenes']=[
+   {'capability':'online_booking','mode':'service','duration':4.8},
+   {'capability':'professional_selection','mode':'professional','duration':4.8},
+   {'capability':'date_time_availability','mode':'date','duration':4.8},
+  ]
+  full,_,fx=validate(full)
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(full,fx,Path(d),'preview');html=(comp/'index.html').read_text()
+   for value in ['Barbero A','Barbero B','Elige fecha y hora','Mar 06','11:30']:
+    self.assertIn(value,html)
+  psychology,_,px=validate(self.config('psychology'))
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(psychology,px,Path(d),'preview');html=(comp/'index.html').read_text()
+   self.assertNotIn('Barbería Demo',html)
+   self.assertIn('assets/ui/service.png',html)
 class TenantTests(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.s=Studio(self.temp.name);self.a=Actor(str(uuid.uuid4()),str(uuid.uuid4()));self.b=Actor(str(uuid.uuid4()),str(uuid.uuid4()))

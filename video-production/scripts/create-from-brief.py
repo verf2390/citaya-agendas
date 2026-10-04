@@ -14,7 +14,7 @@ import urllib.request
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-from production import ConfigError, ROOT, TYPES, process, read_json, validate, write_json
+from production import ConfigError, ROOT, STYLE_PRESETS, TYPES, process, read_json, validate, write_json
 from media_ingest import MediaIngestError, apply_manifest, scan_media, summary as media_summary, write_manifest
 
 REPO_ROOT = ROOT.parent
@@ -206,6 +206,8 @@ def config_prompt(brief, route, capabilities):
         'Redacta JSON exacto: {"hook":"texto","secondaryHook":"texto","cta":"texto","capabilities":["ID"]}. '
         "Limites de caracteres: hook 74, secondaryHook 90, cta 40. Elige 1-4 capacidades relevantes; "
         "cubre las funciones pedidas. Solo puedes afirmar lo que indican los IDs disponibles. "
+        "Las instrucciones de montaje del brief (por ejemplo: usa mi video como apertura, muestra una pantalla, termina invitando) "
+        "son notas del director y NO son copy visible. "
         "Si ninguna cubre el brief usa capabilities: []. Para roadmap CTA informativo sin ofrecer disponibilidad.\n"
         "Seleccion: " + compact(route) + "\nCapacidades (ID, nombre, estado): "
         + compact([[c["id"], c["name"], c["status"]] for c in capabilities])
@@ -227,9 +229,21 @@ def build_payload(model, stage, prompt, repair=False):
             "maxOutputTokens": budget, "continuation": None}
 
 
-def normalize_proposal(proposal, route, capabilities):
+def normalize_proposal(proposal, route, capabilities, style=None):
     if set(proposal) != {"hook", "secondaryHook", "cta", "capabilities"}:
         raise BriefError("La propuesta contiene campos ajenos al contrato de copy y capacidades.", "PROPOSAL_FIELDS")
+    director_note = re.compile(
+        r"\b(?:usa|usar|muestra|mostrar|pon|coloca|empieza|comienza|termina|finaliza)\b"
+        r"[^.!?]{0,80}\b(?:video|clip|apertura|intro|inicio|cierre|pantalla|escena|demo|invitando)\b",
+        re.I,
+    )
+    for field in ("hook", "secondaryHook", "cta"):
+        value = proposal.get(field)
+        if isinstance(value, str) and director_note.search(value):
+            raise BriefError(
+                "Una instruccion de direccion termino como copy visible; Qwen debe redactar mensaje comercial.",
+                "DIRECTOR_NOTE_IN_COPY",
+            )
     ids = proposal["capabilities"]
     allowed = {c["id"] for c in capabilities}
     if not isinstance(ids, list) or not 1 <= len(ids) <= 4 or any(not isinstance(i, str) or i not in allowed for i in ids):
@@ -239,6 +253,8 @@ def normalize_proposal(proposal, route, capabilities):
     end = round((duration - demo) / 2, 6)
     config = {**proposal, **{k: route[k] for k in ("product", "niche", "videoType")},
               "timing": {"intro": end, "demo": demo, "outro": end}, "mediaApproved": False}
+    if style is not None:
+        config["stylePreset"] = style
     # Sole authority: schema, truth gates, copy, scene readability and media policy.
     return validate(config, "preview")[:2]
 
@@ -253,7 +269,7 @@ def usage_of(response):
     return {k: usage[k] for k in keys}
 
 
-def generate_config(brief, endpoint, token, model, run_dir, timeout=70):
+def generate_config(brief, endpoint, token, model, run_dir, timeout=70, style=None):
     catalog = catalog_context()
     metrics = {"provider": "local", "model": model, "status": "running", "calls": [],
                "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "usageComplete": True}
@@ -312,7 +328,7 @@ def generate_config(brief, endpoint, token, model, run_dir, timeout=70):
             raise BriefError("No hay capacidades permitidas para esta seleccion y sus truth gates.", "NO_CAPABILITIES")
         print(f"IA: redactando config con {len(capabilities)} capacidades candidatas...", flush=True)
         normalized, report = step("config", config_prompt(brief, route, capabilities),
-                                  lambda data: normalize_proposal(data, route, capabilities))
+                                  lambda data: normalize_proposal(data, route, capabilities, style))
         write_json(run_dir / "generated-config.json", normalized)
         write_json(run_dir / "validation-report.json", report)
         metrics["status"] = "complete"
@@ -331,6 +347,7 @@ def main(argv=None):
     parser.add_argument("--config-only", action="store_true")
     parser.add_argument("--media-dir", help="Carpeta de material dentro de video-production/inputs/.")
     parser.add_argument("--approve-media", action="store_true", help="Confirma revision humana de derechos y privacidad del material detectado.")
+    parser.add_argument("--style", choices=STYLE_PRESETS, help="Preset visual: minimal, dynamic o premium.")
     parser.add_argument("--timeout", type=int, default=70, help="Timeout HTTP del cliente en segundos; no cambia el timeout del gateway.")
     args = parser.parse_args(argv)
     if args.approve_media and not args.media_dir:
@@ -366,7 +383,7 @@ def main(argv=None):
             )
         print("Aprobacion humana de medios: SI", flush=True)
 
-    normalized, report = generate_config(brief, endpoint, token, model, run_dir, args.timeout)
+    normalized, report = generate_config(brief, endpoint, token, model, run_dir, args.timeout, args.style)
     config_path = run_dir / "generated-config.json"
     if manifest:
         try:

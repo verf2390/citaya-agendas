@@ -16,6 +16,7 @@ def compile_composition(c,ctx,out,mode):
     brand=c.get('brand',{});custom=c['product']=='custom-client-video';content=c.get('content',{});
     t=c['timing'];duration=sum(t.values());r=MODES[mode];scale=r['width']/1080
     css=(ROOT/'templates/citaya-saas-vertical-v1/layout.css').read_text()
+    css+='\n'+(ROOT/'templates/presets.css').read_text()
     if ctx['template']['renderer']=='website':css+='\n'+(ROOT/'templates/citaya-websites-vertical-v1/layout.css').read_text()
     css+=f'\nhtml,body{{width:{r["width"]}px;height:{r["height"]}px}}.stage{{transform:scale({scale})}}'
     pieces=[];motions=[];proof=[]
@@ -34,7 +35,6 @@ def compile_composition(c,ctx,out,mode):
     if c['creator']['introVideo']:
         p=media(c['creator']['introVideo']);offset=c['creator']['introOffset']
         pieces.append(f'<video id="creator-intro" class="clip creator-video" src="{p}" muted playsinline data-start="0" data-duration="{t["intro"]}" data-media-start="{offset}" data-track-index="0"></video>')
-        clip('creator-title',0,t['intro'],f'<div class="creator-overlay"><h2>{E(c["hook"])}</h2></div>')
     else:
         clip('hook',0,t['intro'],f'<h1 class="headline hook">{E(c["hook"])}</h1><p class="secondary">{E(c["secondaryHook"])}</p>')
         motions.append("tl.fromTo('#hook .headline',{x:-28,opacity:0},{x:0,opacity:1,duration:.2,ease:'power3.out'},0);tl.fromTo('#hook .secondary',{y:25,opacity:0},{y:0,opacity:1,duration:.23,ease:'power3.out'},.12);")
@@ -54,6 +54,19 @@ def compile_composition(c,ctx,out,mode):
         elif m=='contact':body+='<h3 class="web-title">Conversemos</h3><div class="form-field">Nombre · Campo de ejemplo</div><div class="form-field">Correo · Sin datos reales</div><div class="form-field">Cuéntanos tu proyecto</div><div class="web-button">Enviar consulta</div><p class="web-proof">Formulario visual · No envía mensajes</p>'
         else:return benefit(s)
         return f'<div class="browser"><div class="browser-top">● ● ● <span>Vista de demostración</span></div><div class="web-content">{body}</div></div>'
+    def niche_demo(mode):
+        if c['niche']!='barber': return None
+        header='<div class="niche-demo-head"><span>CY</span><strong>Barbería Demo</strong><small>Reserva online · Datos ficticios</small></div>'
+        if mode=='service':
+            body='<h3>Elige un servicio</h3><div class="niche-demo-list"><div class="niche-demo-option is-selected"><b>Corte</b><span>Seleccionado</span></div><div class="niche-demo-option"><b>Barba</b><span>Disponible</span></div><div class="niche-demo-option"><b>Corte + barba</b><span>Disponible</span></div></div>'
+        elif mode=='professional':
+            body='<h3>Elige profesional</h3><div class="niche-demo-list"><div class="niche-demo-option is-selected"><b>Barbero A</b><span>Seleccionado</span></div><div class="niche-demo-option"><b>Barbero B</b><span>Disponible</span></div></div>'
+        elif mode=='date':
+            body='<h3>Elige fecha y hora</h3><div class="niche-demo-days"><span>Lun 05</span><span class="is-selected">Mar 06</span><span>Mié 07</span></div><div class="niche-demo-times"><span>10:00</span><span class="is-selected">11:30</span><span>13:00</span><span>16:30</span></div>'
+        else:
+            return None
+        return '<div class="niche-demo">'+header+'<div class="niche-demo-body">'+body+'</div></div>'
+
     def benefit(s):
         cap=ctx['caps'][s['capability']]
         badge='Simulación · Sin envío' if s['mode']=='campaign-preview' else STATUS[cap['status']]
@@ -71,15 +84,21 @@ def compile_composition(c,ctx,out,mode):
         elif ctx['template']['renderer']=='website':body=website(s)
         elif s['media']:body=f'<img src="{media(s["media"])}" alt="Material revisado">'
         elif m in UI:
-            src=UI[m];body=f'<img src="assets/ui/{src}.png" alt="Interfaz Citaya con datos ficticios">'
-            if m in ['service','professional','date']:
-                body+=f'<img id="{id}-selected" class="state" src="assets/ui/{src}-selected.png" alt="Selección ficticia">'
-                motions.append(f"tl.fromTo('#{id}-selected',{{opacity:0}},{{opacity:1,duration:.12,ease:'none'}},{clock+min(.65,s['duration']*.35)});")
+            demo=niche_demo(m)
+            if demo:
+                body=demo
+                motions.append(f"tl.fromTo('#{id} .niche-demo .is-selected',{{scale:.985,opacity:.75}},{{scale:1,opacity:1,duration:.16,ease:'power2.out'}},{clock+min(.55,s['duration']*.3)});")
+            else:
+                src=UI[m];body=f'<img src="assets/ui/{src}.png" alt="Interfaz Citaya con datos ficticios">'
+                if m in ['service','professional','date']:
+                    body+=f'<img id="{id}-selected" class="state" src="assets/ui/{src}-selected.png" alt="Selección ficticia">'
+                    motions.append(f"tl.fromTo('#{id}-selected',{{opacity:0}},{{opacity:1,duration:.12,ease:'none'}},{clock+min(.65,s['duration']*.35)});")
         else:body=benefit(s)
         qualifier=f'<div class="qualifier">{E(cap["commercialQualifier"])}</div>' if cap['requiredGates'] and c['videoType']!='roadmap' else ''
         if c['videoType']=='roadmap':qualifier=f'<div class="qualifier">{E(STATUS[cap["status"]])}</div>'
         elif cap['status']=='demo':qualifier='<div class="qualifier">Demo · No implica disponibilidad comercial</div>'
-        clip(id,clock,s['duration'],f'<h2 class="headline">{E(s["headline"])}</h2><div class="screen {"website-screen " if ctx["template"]["renderer"]=="website" else ""}{m}"><div class="screen-motion" data-layout-allow-overflow>{body}</div></div>{qualifier}')
+        scene_headline=c['hook'] if c['creator']['introVideo'] and i==0 else s['headline']
+        clip(id,clock,s['duration'],f'<h2 class="headline">{E(scene_headline)}</h2><div class="screen {"website-screen " if ctx["template"]["renderer"]=="website" else ""}{m}"><div class="screen-motion" data-layout-allow-overflow>{body}</div></div>{qualifier}')
         if s.get('video'):css+=f'\n#{id} .screen{{display:none}}#{id} .headline{{background:#ecf2f8;padding:25px;border-radius:20px}}'
         if custom and content.get('offer'):
             offer=content['offer']+(' · '+content['price'] if content.get('price') else '')
@@ -106,7 +125,8 @@ def compile_composition(c,ctx,out,mode):
     # A pre-mixed local track provides identical voice/ducking in preview and export.
     pieces.append(f'<audio id="master-audio" src="assets/master.wav" data-start="0" data-duration="{duration}" data-volume="1" data-track-index="10"></audio>')
     document='<!doctype html><html lang="es"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\' data: blob:; script-src \'self\' \'unsafe-inline\' \'unsafe-eval\'; style-src \'self\' \'unsafe-inline\'; connect-src \'self\';"><title>Citaya Production</title><script src="assets/vendor/gsap.min.js"></script><style>'+css+'</style></head><body>'
-    document+=f'<div id="root" data-composition-id="citaya-production" data-start="0" data-duration="{duration}" data-width="{r["width"]}" data-height="{r["height"]}" data-fps="{r["fps"]}"><div class="stage {"with-captions" if ctx["cues"] else ""}">'+''.join(pieces)+'</div></div><script>const tl=gsap.timeline({paused:true});'+''.join(motions)+"window.__timelines['citaya-production']=tl;</script></body></html>"
+    stage_classes='stage preset-'+c['stylePreset']+(' with-captions' if ctx['cues'] else '')
+    document+=f'<div id="root" data-composition-id="citaya-production" data-start="0" data-duration="{duration}" data-width="{r["width"]}" data-height="{r["height"]}" data-fps="{r["fps"]}"><div class="{stage_classes}" data-style-preset="{c["stylePreset"]}">'+''.join(pieces)+'</div></div><script>const tl=gsap.timeline({paused:true});'+''.join(motions)+"window.__timelines['citaya-production']=tl;</script></body></html>"
     (comp/'index.html').write_text(document,encoding='utf-8')
     write_json(comp/'package.json',{'private':True,'scripts':{'check':'hyperframes check','render':'hyperframes render'},'devDependencies':{'hyperframes':'0.8.114'}})
     write_json(comp/'hyperframes.json',{'meta':{'name':'Citaya reusable production'}})

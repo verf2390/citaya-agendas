@@ -1,0 +1,167 @@
+/* CIT-124 visual presets. Safe zones are conservative internal design margins, not a platform guarantee. */
+.stage{
+  --reel-safe-x:72px;
+  --reel-safe-top:128px;
+  --reel-safe-bottom:250px;
+}
+.stage .demo{top:1638px}
+.stage .progress{display:none}
+.stage .subtitle{top:1490px}
+.stage.with-captions .screen{height:820px;top:650px}
+.stage.with-captions .demo{top:1715px}
+.stage.with-captions .qualifier{top:1400px}
+.stage .qualifier{top:1450px}
+.stage .creator-overlay{top:1120px;left:72px;width:936px;padding:30px 34px}
+.stage .creator-outro-title{top:1080px;left:72px;width:936px}
+.stage .creator-outro-cta{top:1370px;left:72px;width:936px}
+#public-contact>div{top:1430px!important;left:90px!important;width:900px!important}
+
+/* Minimal: quiet, clean and product-first. */
+.stage.preset-minimal{background:#f8fafc}
+.preset-minimal .headline{letter-spacing:-2.4px}
+.preset-minimal .screen{border-color:#dbe3ec;box-shadow:0 20px 54px #0f172a18;background:#f8fafc}
+.preset-minimal .benefit-card{box-shadow:0 18px 50px #0f172a10}
+.preset-minimal .end{background:#111827}
+.preset-minimal .creator-overlay{background:#0f172ad9;backdrop-filter:blur(8px)}
+
+/* Dynamic: stronger contrast and motion-friendly depth for reels. */
+.stage.preset-dynamic{
+  background:
+    radial-gradient(circle at 82% 18%,#c7e8ff 0 16%,transparent 38%),
+    radial-gradient(circle at 15% 70%,#dff7ef 0 14%,transparent 36%),
+    linear-gradient(160deg,#f8fbff 0%,#eef5ff 48%,#f7fbf9 100%);
+}
+.preset-dynamic .headline{font-weight:850;letter-spacing:-3.4px}
+.preset-dynamic .screen{border:2px solid #b8d3ec;box-shadow:0 38px 100px #17365d2c;background:#f4f9ff}
+.preset-dynamic .status{box-shadow:0 8px 24px #2563eb1f}
+
+/* Creator-led chrome: keep identity visible without turning the reel into an admin demo. */
+.preset-dynamic #brand-chrome .brand{
+  left:72px;
+  top:96px;
+  width:190px;
+  height:56px;
+  padding:7px 10px;
+  border-radius:12px;
+  background:#ffffffd9;
+  box-shadow:0 10px 30px #0f172a18;
+}
+.preset-dynamic #brand-chrome .product-name{display:none}
+.preset-dynamic #brand-chrome .niche{
+  right:72px;
+  top:103px;
+  font-size:22px;
+  padding:8px 12px;
+  border-radius:999px;
+  background:#ffffffd9;
+  color:#334155;
+  box-shadow:0 10px 30px #0f172a14;
+}
+.preset-dynamic #brand-chrome .demo{display:none}
+
+.preset-dynamic .creator-overlay{
+  left:130px;
+  top:1280px;
+  width:820px;
+  padding:20px 26px;
+  border-radius:18px;
+  background:linear-gradient(135deg,#08111dc9,#12243dd1);
+  border:1px solid #ffffff20;
+  box-shadow:0 18px 48px #00000038;
+  backdrop-filter:blur(9px);
+}
+.preset-dynamic .creator-overlay h2{
+  font-size:46px;
+  line-height:1.12;
+  letter-spacing:-1.2px;
+  text-align:center;
+}
+.preset-dynamic .end{background:linear-gradient(145deg,#07111f,#12243d 62%,#163755)}
+.preset-dynamic .end-cta{box-shadow:0 22px 55px #00000035}
+.preset-dynamic .fill{height:6px;border-radius:6px}
+
+/* Premium: editorial, warm and restrained. */
+.stage.preset-premium{background:linear-gradient(160deg,#f7f3eb 0%,#f4efe6 58%,#ece6dc 100%)}
+.preset-premium .product-name,.preset-premium .niche{color:#403b35}
+.preset-premium .headline{color:#171512;font-weight:760;letter-spacing:-2.8px}
+.preset-premium .secondary{color:#6c5845}
+.preset-premium .screen{border:1px solid #cfc5b7;box-shadow:0 34px 90px #4a403526;background:#fbf8f2}
+.preset-premium .benefit-card{background:#fffdf8;border-color:#d6cec1;box-shadow:0 24px 72px #4a40351a}
+.preset-premium .status{background:#ece4d8;color:#574a3f}
+.preset-premium .creator-overlay{
+  background:#171512df;
+  border:1px solid #f4eadb38;
+  box-shadow:0 28px 76px #00000052;
+  backdrop-filter:blur(10px);
+}
+.preset-premium .end{background:linear-gradient(155deg,#171512,#29231d)}
+.preset-premium .end-logo,.preset-premium .end-cta{background:#eee4d5;color:#171512}
+.preset-premium .fill{background:#8b6f52}
+
+/* Niche-aware booking demo: deterministic fictional data, never a client record. */
+.niche-demo{
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg,#f8fbff 0%,#eef5fb 100%);
+  color:#0f172a;
+  padding:42px 42px 54px;
+}
+.niche-demo-head{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  grid-template-rows:auto auto;
+  column-gap:18px;
+  align-items:center;
+  padding-bottom:28px;
+  border-bottom:1px solid #d8e1ea;
+}
+.niche-demo-head>span{
+  grid-row:1/3;
+  display:grid;
+  place-items:center;
+  width:62px;height:62px;
+  border-radius:17px;
+  background:#0f172a;
+  color:#fff;
+  font-size:24px;
+  font-weight:850;
+}
+.niche-demo-head strong{font-size:34px;line-height:1.05}
+.niche-demo-head small{font-size:21px;color:#64748b;margin-top:5px}
+.niche-demo-body h3{font-size:51px;letter-spacing:-1.8px;margin:42px 0 30px}
+.niche-demo-list{display:grid;gap:20px}
+.niche-demo-option{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  min-height:112px;
+  padding:24px 28px;
+  background:#fff;
+  border:2px solid #d9e2ec;
+  border-radius:22px;
+  box-shadow:0 10px 28px #0f172a0c;
+}
+.niche-demo-option b{font-size:34px}
+.niche-demo-option span{font-size:23px;color:#64748b}
+.niche-demo-option.is-selected{
+  border-color:#2563eb;
+  box-shadow:0 14px 36px #2563eb20;
+}
+.niche-demo-option.is-selected span{color:#1d4ed8;font-weight:750}
+.niche-demo-days,.niche-demo-times{display:grid;gap:16px;margin-top:24px}
+.niche-demo-days{grid-template-columns:repeat(3,1fr)}
+.niche-demo-times{grid-template-columns:repeat(2,1fr)}
+.niche-demo-days span,.niche-demo-times span{
+  padding:22px 14px;
+  background:#fff;
+  border:2px solid #d9e2ec;
+  border-radius:18px;
+  text-align:center;
+  font-size:28px;
+  font-weight:650;
+}
+.niche-demo-days span.is-selected,.niche-demo-times span.is-selected{
+  background:#0f172a;
+  border-color:#0f172a;
+  color:#fff;
+}
