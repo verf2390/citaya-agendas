@@ -26,6 +26,28 @@ python3 video-production/scripts/create-from-brief.py --config-only "Haz un Reel
 
 Quitar `--config-only` genera el preview. No requiere Codex ni escribir JSON manual. Usa dos solicitudes pequeñas (128/256 tokens de salida), capacidades filtradas del catálogo y validación final de `production.py`. Conserva brief original, config normalizado y métricas IA. El modo final sigue requiriendo aprobación humana explícita. Ver [configuración, E2E manual, límites y errores](docs/brief-to-preview.md).
 
+## Crear desde un brief + carpeta de material (CIT-123)
+
+Copia medios revisados a una carpeta dentro de `video-production/inputs/`, idealmente `inputs/projects/<nombre>/`. El sistema detecta logo, fotos, screenshots, clips, creator intro/outro, voiceover, musica, SFX y SRT/VTT por tipo + nombre de archivo; inspecciona contenido, tamano, resolucion/duracion y SHA-256 antes de incorporarlos.
+
+Primero puedes inspeccionar sin IA ni render:
+
+```bash
+python3 video-production/scripts/ingest-media.py \
+  --dir video-production/inputs/projects/victor-promo
+```
+
+Luego:
+
+```bash
+python3 video-production/scripts/create-from-brief.py \
+  --media-dir video-production/inputs/projects/victor-promo \
+  --approve-media \
+  "Crea un Reel de Citaya Agendas"
+```
+
+`--approve-media` es obligatorio para usar material detectado: confirma revision humana de derechos y privacidad. La IA no recibe los bytes de los medios ni decide su aprobacion. Los medios siguen fuera de Git.
+
 ## Generar desde un config
 
 ```bash
