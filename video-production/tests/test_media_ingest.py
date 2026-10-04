@@ -188,6 +188,20 @@ class MediaIngestTests(unittest.TestCase):
             result, _ = ingest.apply_manifest(config, manifest, approved=True)
         self.assertEqual(result["creator"]["voiceoverStart"], 2.8)
 
+    def test_creator_intro_promotes_default_template_to_creator_led(self):
+        config = {
+            "template": "citaya-saas-vertical-v1",
+            "timing": {"intro": 3, "demo": 14, "outro": 3},
+            "scenes": [],
+            "mediaApproved": False,
+        }
+        manifest = {"configPatch": {"media": {
+            "creatorIntro": "inputs/projects/demo/creator-intro.mp4",
+        }}}
+        with patch.object(ingest, "validate", side_effect=lambda value, mode: (value, {"valid": True}, {})):
+            result, _ = ingest.apply_manifest(config, manifest, approved=True)
+        self.assertEqual(result["template"], "creator-led-v1")
+
     def test_apply_rejects_conflicting_existing_mapping(self):
         config = {"brand": {"logo": "inputs/already.png"}, "scenes": []}
         manifest = {"configPatch": {"brand": {"logo": "inputs/new.png"}}}
