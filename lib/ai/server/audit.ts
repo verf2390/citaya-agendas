@@ -126,6 +126,7 @@ export type AIServiceId = "n8n";
 export async function beginAIServiceRequestAudit(input: {
   tenantId: string;
   serviceId: AIServiceId;
+  workflowId: string;
   provider: AIProviderId;
   model: string;
   promptVersion: string;
@@ -136,6 +137,7 @@ export async function beginAIServiceRequestAudit(input: {
   const query = supabaseAdmin.rpc("begin_ai_service_request_audit", {
     p_tenant_id: input.tenantId,
     p_service_id: input.serviceId,
+    p_workflow_id: input.workflowId,
     p_provider: input.provider,
     p_model: input.model,
     p_prompt_version: input.promptVersion,
