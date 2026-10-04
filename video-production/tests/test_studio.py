@@ -138,6 +138,19 @@ class TenantTests(unittest.TestCase):
   events=[dict(r) for r in self.s.db.execute('SELECT event_type,provider,provider_mode,metrics_json FROM video_usage_events WHERE tenant_id=? ORDER BY created_at',(self.a.tenant_id,))]
   ai=next(x for x in events if x['event_type']=='ai');am=json.loads(ai['metrics_json']);self.assertEqual(am['projectId'],self.pa);self.assertEqual(am['jobId'],id);self.assertEqual(am['model'],'Qwen3-4B-GGUF:Q4_K_M');self.assertEqual(am['ai_total_tokens'],130);self.assertEqual(am['latencySeconds'],1.234)
   complete=next(x for x in events if x['event_type']=='render_complete');cm=json.loads(complete['metrics_json']);self.assertEqual(cm['projectId'],self.pa);self.assertEqual(cm['jobId'],id);self.assertGreater(cm['output_bytes'],0)
+ def test_record_ai_usage_accepts_create_from_brief_metrics(self):
+  usage={'provider':'local','model':'Qwen3-4B-GGUF:Q4_K_M','status':'complete','calls':[],'inputTokens':220,'outputTokens':80,'totalTokens':300,'usageComplete':True,'elapsedSeconds':3.75}
+  jid,_,_=self.complete_preview()
+  self.assertTrue(self.s.record_ai_usage(self.a,'brief-run-1',usage,project_id=self.pa,job_id=jid))
+  self.assertFalse(self.s.record_ai_usage(self.a,'brief-run-1',usage,project_id=self.pa,job_id=jid))
+  report=self.s.project_usage_report(self.a,self.pa)
+  self.assertEqual(report['ai']['requests'],1);self.assertEqual(report['ai']['inputTokens'],220);self.assertEqual(report['ai']['outputTokens'],80);self.assertEqual(report['ai']['totalTokens'],300);self.assertEqual(report['ai']['latencySeconds'],3.75)
+  self.assertEqual(report['ai']['providers'],['local']);self.assertEqual(report['ai']['models'],['Qwen3-4B-GGUF:Q4_K_M'])
+ def test_record_ai_usage_rejects_incomplete_or_inconsistent_metrics(self):
+  bad={'provider':'local','model':'Qwen3-4B-GGUF:Q4_K_M','inputTokens':100,'outputTokens':20,'totalTokens':120,'usageComplete':False,'elapsedSeconds':1}
+  self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-1',bad,project_id=self.pa))
+  bad={**bad,'usageComplete':True,'totalTokens':999}
+  self.error('INVALID_USAGE',lambda:self.s.record_ai_usage(self.a,'bad-2',bad,project_id=self.pa))
  def test_project_usage_report_and_accumulated_summary(self):
   jid,job,f=self.complete_preview()
   self.s.record_ai(self.a,'report-ai','qwen-local','local',120,40,project_id=self.pa,job_id=jid,model='Qwen3-4B-GGUF:Q4_K_M',latency_seconds=2.5)
