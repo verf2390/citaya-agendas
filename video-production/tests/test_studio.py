@@ -16,6 +16,13 @@ class ConfigTests(unittest.TestCase):
  def test_website(self):self.assertTrue(validate(self.config('website-services'))[1]['valid'])
  def test_creator_voiceover(self):
   c,r,x=validate(self.config('creator-led'));self.assertEqual([s['start'] for s in x['speech']],[0,3]);self.assertEqual(len(x['cues']),2)
+ def test_creator_intro_has_no_face_overlay_and_hook_moves_to_first_scene(self):
+  c,r,x=validate(self.config('creator-led'))
+  c['hook']='Reserva online sin mensajes'
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(c,x,Path(d),'preview');html=(comp/'index.html').read_text()
+   self.assertNotIn('id="creator-title"',html)
+   self.assertIn('<h2 class="headline">Reserva online sin mensajes</h2>',html)
  def test_vtt(self):self.assertEqual(len(parse_srt(R/'inputs/test-fixtures/captions.vtt',10)),1)
  def test_missing_optional_creator(self):
   c=self.config();c['creator']={'introVideo':'inputs/missing.mp4'};self.bad(c,'MEDIA_NOT_FOUND')
