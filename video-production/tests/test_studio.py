@@ -56,6 +56,15 @@ class ConfigTests(unittest.TestCase):
  def test_schema_is_valid(self):
   from jsonschema import Draft202012Validator
   Draft202012Validator.check_schema(read_json(R/'schemas/video-config.schema.json'))
+ def test_visual_style_presets_compile_with_reel_safe_contract(self):
+  for preset in ['minimal','dynamic','premium']:
+   with self.subTest(preset=preset):
+    raw=self.config();raw['stylePreset']=preset;c,r,x=validate(raw)
+    self.assertEqual(r['stylePreset'],preset)
+    with tempfile.TemporaryDirectory() as d:
+     comp,_=compile_composition(c,x,Path(d),'preview');html=(comp/'index.html').read_text()
+     self.assertIn('preset-'+preset,html);self.assertIn('data-style-preset="'+preset+'"',html);self.assertIn('--reel-safe-bottom:250px',html)
+  raw=self.config();raw['stylePreset']='invented';self.bad(raw,'SCHEMA_VALIDATION')
 class TenantTests(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.s=Studio(self.temp.name);self.a=Actor(str(uuid.uuid4()),str(uuid.uuid4()));self.b=Actor(str(uuid.uuid4()),str(uuid.uuid4()))
