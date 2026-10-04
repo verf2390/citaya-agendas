@@ -184,6 +184,14 @@ def apply_manifest(config, manifest, approved):
                     fail("MEDIA_CONFIG_CONFLICT", "El config ya define {}.{} con otro valor.".format(section, key))
                 current[key] = value
     media = c.get("media", {})
+    visuals = [("media", path) for path in media.get("images", []) + media.get("screenshots", [])]
+    visuals += [("video", path) for path in media.get("videos", [])]
+    for scene, (field, path) in zip(c.get("scenes", []), visuals):
+        scene[field] = path
+        if field == "media":
+            scene["video"] = None
+        else:
+            scene["media"] = None
     if media.get("creatorIntro") or media.get("creatorOutro") or media.get("creatorVoiceover"):
         creator = c.setdefault("creator", {})
         creator.setdefault("useClipAudio", True)
