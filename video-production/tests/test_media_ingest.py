@@ -170,6 +170,8 @@ class MediaIngestTests(unittest.TestCase):
         self.assertEqual(result["scenes"][2]["video"].split("/")[-1], "clip.mp4")
         self.assertEqual(result["creator"]["voiceoverStart"], 3)
         self.assertTrue(result["audio"]["duckMusicDuringVoice"])
+        self.assertTrue(result["subtitles"]["enabled"])
+        self.assertEqual(report["mode"], "preview")
 
     def test_normalized_zero_voiceover_start_is_replaced_after_intro(self):
         config = {
@@ -185,8 +187,6 @@ class MediaIngestTests(unittest.TestCase):
         with patch.object(ingest, "validate", side_effect=lambda value, mode: (value, {"valid": True, "mode": mode}, {})):
             result, _ = ingest.apply_manifest(config, manifest, approved=True)
         self.assertEqual(result["creator"]["voiceoverStart"], 2.8)
-        self.assertTrue(result["subtitles"]["enabled"])
-        self.assertEqual(report["mode"], "preview")
 
     def test_apply_rejects_conflicting_existing_mapping(self):
         config = {"brand": {"logo": "inputs/already.png"}, "scenes": []}
