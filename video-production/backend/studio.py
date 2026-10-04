@@ -86,7 +86,7 @@ class Studio:
             self.limit(actor,'max_storage_bytes',usage+info['bytes'])
             shutil.copyfile(src,dest);os.chmod(dest,0o600)
             self.db.execute('INSERT INTO video_assets VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(id,actor.tenant_id,project_id,info['type'],str(rel),mimetypes.guess_type(dest)[0] or 'application/octet-stream',info['bytes'],info['durationMs'],info['width'],info['height'],info['sha256'],time.time()))
-            self.record(actor.tenant_id,'upload:'+id,'upload',{'uploaded_bytes':info['bytes'],'storage_bytes':info['bytes']})
+            self.record(actor.tenant_id,'upload:'+id,'upload',{'uploaded_bytes':info['bytes'],'storage_bytes':info['bytes'],'projectId':project_id,'assetId':id})
         return id
     @contextmanager
     def materialize(self,actor,project_id,config):
@@ -190,7 +190,7 @@ class Studio:
             current=self.db.execute('SELECT * FROM video_jobs WHERE id=?',(job['id'],)).fetchone()
             if current['status']=='completed' and current['lease_token']==job['lease_token']:return False
             # Record actual attempt resources even if cancelled; successful-output counters are separate.
-            self.record(job['tenant_id'],f'attempt:{job["id"]}:{job["attempt"]}','render_attempt',{'render_seconds':metrics.get('wallSeconds',0),'cpu_seconds':metrics.get('cpuSeconds',0),'mode':job['mode'],'jobId':job['id'],'attempt':job['attempt'],'errorCode':error})
+            self.record(job['tenant_id'],f'attempt:{job["id"]}:{job["attempt"]}','render_attempt',{'render_seconds':metrics.get('wallSeconds',0),'cpu_seconds':metrics.get('cpuSeconds',0),'mode':job['mode'],'projectId':job['project_id'],'jobId':job['id'],'attempt':job['attempt'],'errorCode':error})
             if current['status']!='rendering' or current['lease_token']!=job['lease_token'] or current['lease_until']<time.time():return False
             if error:
                 self.db.execute("UPDATE video_jobs SET status='failed',error_code=?,finished_at=? WHERE id=?",(error,time.time(),job['id']));self.db.execute("UPDATE video_projects SET status='failed' WHERE tenant_id=? AND id=?",(job['tenant_id'],job['project_id']));return False
@@ -198,14 +198,26 @@ class Studio:
             for output_type,path in files.items():
                 src=Path(path);rel=Path(job['tenant_id'])/job['project_id']/'outputs'/job['id']/(output_type+src.suffix);dest=self.root/rel;dest.parent.mkdir(parents=True,exist_ok=True,mode=0o700);shutil.copyfile(src,dest);os.chmod(dest,0o600);total+=dest.stat().st_size
                 self.db.execute('INSERT INTO video_outputs VALUES(?,?,?,?,?,?,?,?,?,?,?)',(uid(),job['tenant_id'],job['project_id'],job['id'],output_type,str(rel),metrics.get('width'),metrics.get('height'),metrics.get('durationMs'),dest.stat().st_size,digest(dest)))
-            self.record(job['tenant_id'],'complete:'+job['id'],'render_complete',{'previews_generated':int(job['mode']=='preview'),'finals_generated':int(job['mode']=='final'),'output_bytes':total,'storage_bytes':total,**metrics})
+            self.record(job['tenant_id'],'complete:'+job['id'],'render_complete',{'previews_generated':int(job['mode']=='preview'),'finals_generated':int(job['mode']=='final'),'output_bytes':total,'storage_bytes':total,'projectId':job['project_id'],'jobId':job['id'],'outputCount':len(files),**metrics})
             self.db.execute("UPDATE video_jobs SET status='completed',finished_at=?,render_seconds=?,cpu_seconds=? WHERE id=?",(time.time(),metrics.get('wallSeconds',0),metrics.get('cpuSeconds',0),job['id']));self.db.execute("UPDATE video_projects SET status='completed' WHERE tenant_id=? AND id=?",(job['tenant_id'],job['project_id']));return True
-    def record_ai(self,actor,request_id,provider,provider_mode,input_tokens,output_tokens):
+    def record_ai(self,actor,request_id,provider,provider_mode,input_tokens,output_tokens,project_id=None,job_id=None,model=None,latency_seconds=None):
         if provider_mode not in ['local','cloud'] or any(type(x)!=int or x<0 for x in [input_tokens,output_tokens]):fail('INVALID_USAGE','Actual non-negative provider token counts required.')
+        if not isinstance(request_id,str) or not request_id or not isinstance(provider,str) or not provider:fail('INVALID_USAGE','AI request/provider identifiers are required.')
+        if model is not None and (not isinstance(model,str) or not model.strip()):fail('INVALID_USAGE','AI model must be non-empty text.')
+        if latency_seconds is not None and (type(latency_seconds) not in (int,float) or latency_seconds<0):fail('INVALID_USAGE','AI latency must be a non-negative number.')
+        if project_id is not None:self.project(actor,project_id)
+        if job_id is not None:
+            job=self.row('video_jobs',actor,job_id)
+            if project_id is not None and job['project_id']!=project_id:fail('INVALID_USAGE','AI job does not belong to the supplied project.')
+            project_id=job['project_id']
+        metrics={'ai_input_tokens':input_tokens,'ai_output_tokens':output_tokens,'ai_total_tokens':input_tokens+output_tokens}
+        if project_id is not None:metrics['projectId']=project_id
+        if job_id is not None:metrics['jobId']=job_id
+        if model is not None:metrics['model']=model.strip()
+        if latency_seconds is not None:metrics['latencySeconds']=round(float(latency_seconds),6)
         with self.tx():
-            period=datetime.now(timezone.utc).strftime('%Y-%m');row=self.db.execute('SELECT ai_input_tokens+ai_output_tokens FROM video_usage WHERE tenant_id=? AND period=?',(actor.tenant_id,period)).fetchone();used=row[0] if row else 0
             # Record actual incurred usage even if it exceeded a future plan limit. Budget checks belong before provider invocation.
-            return self.record(actor.tenant_id,'ai:'+request_id,'ai',{'ai_input_tokens':input_tokens,'ai_output_tokens':output_tokens},provider,provider_mode)
+            return self.record(actor.tenant_id,'ai:'+request_id,'ai',metrics,provider,provider_mode)
     def usage(self,actor):
         rows=[dict(r) for r in self.db.execute('SELECT * FROM video_usage WHERE tenant_id=? ORDER BY period DESC',(actor.tenant_id,))]
         current=self.db.execute('SELECT COALESCE(SUM(size_bytes),0) FROM video_assets WHERE tenant_id=?',(actor.tenant_id,)).fetchone()[0]+self.db.execute('SELECT COALESCE(SUM(size_bytes),0) FROM video_outputs WHERE tenant_id=?',(actor.tenant_id,)).fetchone()[0]
