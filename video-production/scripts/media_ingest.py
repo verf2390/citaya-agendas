@@ -190,6 +190,8 @@ def apply_manifest(config, manifest, approved):
                     fail("MEDIA_CONFIG_CONFLICT", "El config ya define {}.{} con otro valor.".format(section, key))
                 current[key] = value
     media = c.get("media", {})
+    if media.get("creatorIntro") and c.get("template") in ("citaya-saas-vertical-v1", "local-business-promo-v1"):
+        c["template"] = "creator-led-v1"
     visuals = [("media", path) for path in media.get("images", []) + media.get("screenshots", [])]
     visuals += [("video", path) for path in media.get("videos", [])]
     for scene, (field, path) in zip(c.get("scenes", []), visuals):
