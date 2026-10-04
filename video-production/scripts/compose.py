@@ -16,6 +16,7 @@ def compile_composition(c,ctx,out,mode):
     brand=c.get('brand',{});custom=c['product']=='custom-client-video';content=c.get('content',{});
     t=c['timing'];duration=sum(t.values());r=MODES[mode];scale=r['width']/1080
     css=(ROOT/'templates/citaya-saas-vertical-v1/layout.css').read_text()
+    css+='\n'+(ROOT/'templates/presets.css').read_text()
     if ctx['template']['renderer']=='website':css+='\n'+(ROOT/'templates/citaya-websites-vertical-v1/layout.css').read_text()
     css+=f'\nhtml,body{{width:{r["width"]}px;height:{r["height"]}px}}.stage{{transform:scale({scale})}}'
     pieces=[];motions=[];proof=[]
@@ -106,7 +107,8 @@ def compile_composition(c,ctx,out,mode):
     # A pre-mixed local track provides identical voice/ducking in preview and export.
     pieces.append(f'<audio id="master-audio" src="assets/master.wav" data-start="0" data-duration="{duration}" data-volume="1" data-track-index="10"></audio>')
     document='<!doctype html><html lang="es"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\' data: blob:; script-src \'self\' \'unsafe-inline\' \'unsafe-eval\'; style-src \'self\' \'unsafe-inline\'; connect-src \'self\';"><title>Citaya Production</title><script src="assets/vendor/gsap.min.js"></script><style>'+css+'</style></head><body>'
-    document+=f'<div id="root" data-composition-id="citaya-production" data-start="0" data-duration="{duration}" data-width="{r["width"]}" data-height="{r["height"]}" data-fps="{r["fps"]}"><div class="stage {"with-captions" if ctx["cues"] else ""}">'+''.join(pieces)+'</div></div><script>const tl=gsap.timeline({paused:true});'+''.join(motions)+"window.__timelines['citaya-production']=tl;</script></body></html>"
+    stage_classes='stage preset-'+c['stylePreset']+(' with-captions' if ctx['cues'] else '')
+    document+=f'<div id="root" data-composition-id="citaya-production" data-start="0" data-duration="{duration}" data-width="{r["width"]}" data-height="{r["height"]}" data-fps="{r["fps"]}"><div class="{stage_classes}" data-style-preset="{c["stylePreset"]}">'+''.join(pieces)+'</div></div><script>const tl=gsap.timeline({paused:true});'+''.join(motions)+"window.__timelines['citaya-production']=tl;</script></body></html>"
     (comp/'index.html').write_text(document,encoding='utf-8')
     write_json(comp/'package.json',{'private':True,'scripts':{'check':'hyperframes check','render':'hyperframes render'},'devDependencies':{'hyperframes':'0.8.114'}})
     write_json(comp/'hyperframes.json',{'meta':{'name':'Citaya reusable production'}})
