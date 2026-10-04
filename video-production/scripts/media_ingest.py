@@ -3,6 +3,7 @@
 import copy
 import json
 import re
+import unicodedata
 from pathlib import Path
 
 from production import ROOT, ConfigError, digest, inspect_media, validate
@@ -36,6 +37,10 @@ def fail(code, message):
 
 def _tokens(path):
     value = " ".join([path.stem] + list(path.parent.parts[-2:])).casefold()
+    value = "".join(
+        char for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
     return set(re.findall(r"[a-z0-9]+", value))
 
 
@@ -46,13 +51,14 @@ def resolve_media_dir(value):
         candidates.append(raw)
     else:
         candidates.extend([REPO_ROOT / raw, ROOT / raw, ROOT / "inputs" / "projects" / raw])
-    path = next((p.resolve() for p in candidates if p.exists()), candidates[0].resolve())
+    selected = next((p for p in candidates if p.exists()), candidates[0])
+    if selected.is_symlink():
+        fail("UNSAFE_MEDIA_DIR", "La carpeta de material no puede ser un symlink.")
+    path = selected.resolve()
     if path == INPUT_ROOT or not path.is_relative_to(INPUT_ROOT):
         fail("UNSAFE_MEDIA_DIR", "La carpeta debe estar dentro de video-production/inputs/.")
     if not path.exists() or not path.is_dir():
         fail("MEDIA_DIR_NOT_FOUND", "No existe la carpeta de material: " + str(value))
-    if path.is_symlink():
-        fail("UNSAFE_MEDIA_DIR", "La carpeta de material no puede ser un symlink.")
     return path
 
 
