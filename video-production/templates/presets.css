@@ -97,3 +97,71 @@
 .preset-premium .end{background:linear-gradient(155deg,#171512,#29231d)}
 .preset-premium .end-logo,.preset-premium .end-cta{background:#eee4d5;color:#171512}
 .preset-premium .fill{background:#8b6f52}
+
+/* Niche-aware booking demo: deterministic fictional data, never a client record. */
+.niche-demo{
+  position:absolute;
+  inset:0;
+  background:linear-gradient(180deg,#f8fbff 0%,#eef5fb 100%);
+  color:#0f172a;
+  padding:42px 42px 54px;
+}
+.niche-demo-head{
+  display:grid;
+  grid-template-columns:auto 1fr;
+  grid-template-rows:auto auto;
+  column-gap:18px;
+  align-items:center;
+  padding-bottom:28px;
+  border-bottom:1px solid #d8e1ea;
+}
+.niche-demo-head>span{
+  grid-row:1/3;
+  display:grid;
+  place-items:center;
+  width:62px;height:62px;
+  border-radius:17px;
+  background:#0f172a;
+  color:#fff;
+  font-size:24px;
+  font-weight:850;
+}
+.niche-demo-head strong{font-size:34px;line-height:1.05}
+.niche-demo-head small{font-size:21px;color:#64748b;margin-top:5px}
+.niche-demo-body h3{font-size:51px;letter-spacing:-1.8px;margin:42px 0 30px}
+.niche-demo-list{display:grid;gap:20px}
+.niche-demo-option{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  min-height:112px;
+  padding:24px 28px;
+  background:#fff;
+  border:2px solid #d9e2ec;
+  border-radius:22px;
+  box-shadow:0 10px 28px #0f172a0c;
+}
+.niche-demo-option b{font-size:34px}
+.niche-demo-option span{font-size:23px;color:#64748b}
+.niche-demo-option.is-selected{
+  border-color:#2563eb;
+  box-shadow:0 14px 36px #2563eb20;
+}
+.niche-demo-option.is-selected span{color:#1d4ed8;font-weight:750}
+.niche-demo-days,.niche-demo-times{display:grid;gap:16px;margin-top:24px}
+.niche-demo-days{grid-template-columns:repeat(3,1fr)}
+.niche-demo-times{grid-template-columns:repeat(2,1fr)}
+.niche-demo-days span,.niche-demo-times span{
+  padding:22px 14px;
+  background:#fff;
+  border:2px solid #d9e2ec;
+  border-radius:18px;
+  text-align:center;
+  font-size:28px;
+  font-weight:650;
+}
+.niche-demo-days span.is-selected,.niche-demo-times span.is-selected{
+  background:#0f172a;
+  border-color:#0f172a;
+  color:#fff;
+}
