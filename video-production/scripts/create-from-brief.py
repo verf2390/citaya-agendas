@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from production import ConfigError, ROOT, TYPES, process, read_json, validate, write_json
+from media_ingest import MediaIngestError, apply_manifest, scan_media, summary as media_summary, write_manifest
 
 REPO_ROOT = ROOT.parent
 ENV_FILE = REPO_ROOT / ".env.local"
@@ -328,8 +329,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("brief", nargs="*")
     parser.add_argument("--config-only", action="store_true")
+    parser.add_argument("--media-dir", help="Carpeta de material dentro de video-production/inputs/.")
+    parser.add_argument("--approve-media", action="store_true", help="Confirma revision humana de derechos y privacidad del material detectado.")
     parser.add_argument("--timeout", type=int, default=70, help="Timeout HTTP del cliente en segundos; no cambia el timeout del gateway.")
     args = parser.parse_args(argv)
+    if args.approve_media and not args.media_dir:
+        raise BriefError("--approve-media requiere --media-dir.", "MEDIA_APPROVAL_WITHOUT_DIR")
     if args.timeout <= 0:
         raise BriefError("--timeout debe ser positivo.")
     brief = " ".join(args.brief)
@@ -349,9 +354,32 @@ def main(argv=None):
     run_dir.mkdir(parents=True, exist_ok=False)
     (run_dir / "brief.txt").write_text(brief, encoding="utf-8")
     print("Evidencia: " + str(run_dir), flush=True)
+    manifest = None
+    if args.media_dir:
+        manifest = scan_media(args.media_dir)
+        write_manifest(run_dir / "media-manifest.json", manifest)
+        print(media_summary(manifest), flush=True)
+        if not args.approve_media:
+            raise BriefError(
+                "Material inspeccionado pero no aprobado. Revisa el resumen y repite con --approve-media.",
+                "MEDIA_APPROVAL_REQUIRED",
+            )
+        print("Aprobacion humana de medios: SI", flush=True)
+
     normalized, report = generate_config(brief, endpoint, token, model, run_dir, args.timeout)
     config_path = run_dir / "generated-config.json"
+    if manifest:
+        try:
+            normalized, report = apply_manifest(normalized, manifest, approved=True)
+        except MediaIngestError:
+            config_path.unlink(missing_ok=True)
+            (run_dir / "validation-report.json").unlink(missing_ok=True)
+            raise
+        write_json(config_path, normalized)
+        write_json(run_dir / "validation-report.json", report)
     print(f"Config validado: {config_path}\nProducto: {normalized['product']} | Nicho: {normalized['niche']} | Duracion: {report['duration']} s", flush=True)
+    if manifest:
+        print("Medios integrados: {} archivo(s).".format(len(manifest["files"])), flush=True)
     if args.config_only:
         return
     print("Generando preview local...", flush=True)
@@ -366,7 +394,7 @@ def main(argv=None):
 if __name__ == "__main__":
     try:
         main()
-    except (BriefError, ConfigError) as exc:
+    except (BriefError, ConfigError, MediaIngestError) as exc:
         print(f"VIDEO_BRIEF_FAILED [{exc.code}]: {exc}", file=sys.stderr)
         raise SystemExit(2)
     except (OSError, EOFError):
