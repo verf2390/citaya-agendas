@@ -57,16 +57,7 @@
   color:#334155;
   box-shadow:0 10px 30px #0f172a14;
 }
-.preset-dynamic #brand-chrome .demo{
-  left:72px;
-  top:1640px;
-  font-size:21px;
-  padding:5px 9px;
-  border-radius:8px;
-  background:#ffffffb8;
-  color:#475569;
-  opacity:.72;
-}
+.preset-dynamic #brand-chrome .demo{display:none}
 
 .preset-dynamic .creator-overlay{
   left:130px;
