@@ -64,6 +64,10 @@ class ConfigTests(unittest.TestCase):
     with tempfile.TemporaryDirectory() as d:
      comp,_=compile_composition(c,x,Path(d),'preview');html=(comp/'index.html').read_text()
      self.assertIn('preset-'+preset,html);self.assertIn('data-style-preset="'+preset+'"',html);self.assertIn('--reel-safe-bottom:250px',html)
+     self.assertIn('.stage .progress{display:none}',html)
+  css=(R/'templates/presets.css').read_text()
+  self.assertIn('.preset-dynamic #brand-chrome .product-name{display:none}',css)
+  self.assertIn('top:1280px',css)
   raw=self.config();raw['stylePreset']='invented';self.bad(raw,'SCHEMA_VALIDATION')
 class TenantTests(unittest.TestCase):
  def setUp(self):
