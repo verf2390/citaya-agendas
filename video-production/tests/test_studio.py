@@ -133,8 +133,11 @@ class TenantTests(unittest.TestCase):
  def test_changed_config_revokes_approval(self):
   id,_,_=self.complete_preview();self.s.approve_final(self.a,id);c=copy.deepcopy(self.cfg);c['content']['cta']='Escríbenos';self.s.update_project(self.a,self.pa,c);self.error('FINAL_APPROVAL_REQUIRED',lambda:self.s.enqueue(self.a,self.pa,'final','f'))
  def test_metering_idempotent(self):
-  id,job,f=self.complete_preview();self.assertFalse(self.s.finish(job,{'config':f},{'wallSeconds':1}));self.s.record_ai(self.a,'request-1','qwen-local','local',100,30);self.s.record_ai(self.a,'request-1','qwen-local','local',100,30)
+  id,job,f=self.complete_preview();self.assertFalse(self.s.finish(job,{'config':f},{'wallSeconds':1}));self.s.record_ai(self.a,'request-1','qwen-local','local',100,30,project_id=self.pa,job_id=id,model='Qwen3-4B-GGUF:Q4_K_M',latency_seconds=1.234);self.s.record_ai(self.a,'request-1','qwen-local','local',100,30,project_id=self.pa,job_id=id,model='Qwen3-4B-GGUF:Q4_K_M',latency_seconds=1.234)
   u=self.s.usage(self.a)[0];self.assertEqual(u['previews_generated'],1);self.assertEqual(u['ai_input_tokens'],100);self.assertEqual(u['render_seconds'],1);self.assertEqual(u['cpu_seconds'],.5)
+  events=[dict(r) for r in self.s.db.execute('SELECT event_type,provider,provider_mode,metrics_json FROM video_usage_events WHERE tenant_id=? ORDER BY created_at',(self.a.tenant_id,))]
+  ai=next(x for x in events if x['event_type']=='ai');am=json.loads(ai['metrics_json']);self.assertEqual(am['projectId'],self.pa);self.assertEqual(am['jobId'],id);self.assertEqual(am['model'],'Qwen3-4B-GGUF:Q4_K_M');self.assertEqual(am['ai_total_tokens'],130);self.assertEqual(am['latencySeconds'],1.234)
+  complete=next(x for x in events if x['event_type']=='render_complete');cm=json.loads(complete['metrics_json']);self.assertEqual(cm['projectId'],self.pa);self.assertEqual(cm['jobId'],id);self.assertGreater(cm['output_bytes'],0)
  def test_cancelled_attempt_cannot_publish(self):
   id=self.s.enqueue(self.a,self.pa,'preview','1');job=self.s.claim('node');self.s.cancel(self.a,id);self.assertFalse(self.s.finish(job,{}, {'wallSeconds':2}));self.assertEqual(self.s.usage(self.a)[0]['previews_generated'],0)
  def test_fenced_retry(self):
