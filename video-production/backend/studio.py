@@ -218,6 +218,68 @@ class Studio:
         with self.tx():
             # Record actual incurred usage even if it exceeded a future plan limit. Budget checks belong before provider invocation.
             return self.record(actor.tenant_id,'ai:'+request_id,'ai',metrics,provider,provider_mode)
+    def project_usage_report(self,actor,project_id):
+        project=self.project(actor,project_id)
+        events=[]
+        for row in self.db.execute('SELECT event_type,provider,provider_mode,metrics_json,created_at FROM video_usage_events WHERE tenant_id=? ORDER BY created_at',(actor.tenant_id,)):
+            item=dict(row)
+            try: metrics=json.loads(item['metrics_json'])
+            except (TypeError,ValueError): continue
+            if metrics.get('projectId')!=project_id: continue
+            item['metrics']=metrics;events.append(item)
+        ai=[e for e in events if e['event_type']=='ai']
+        attempts=[e for e in events if e['event_type']=='render_attempt']
+        completed=[e for e in events if e['event_type']=='render_complete']
+        jobs=[dict(r) for r in self.db.execute('SELECT id,mode,status,attempt,render_seconds,cpu_seconds,queued_at,started_at,finished_at,error_code FROM video_jobs WHERE tenant_id=? AND project_id=? ORDER BY queued_at',(actor.tenant_id,project_id))]
+        outputs=[dict(r) for r in self.db.execute('SELECT id,job_id,output_type,width,height,duration_ms,size_bytes FROM video_outputs WHERE tenant_id=? AND project_id=? ORDER BY job_id,output_type',(actor.tenant_id,project_id))]
+        assets=[dict(r) for r in self.db.execute('SELECT id,asset_type,size_bytes,duration_ms,width,height FROM video_assets WHERE tenant_id=? AND project_id=? ORDER BY created_at',(actor.tenant_id,project_id))]
+        by_job={}
+        for job in jobs:
+            job_outputs=[x for x in outputs if x['job_id']==job['id']]
+            by_job[job['id']]={**job,'outputBytes':sum(x['size_bytes'] for x in job_outputs),'outputs':job_outputs}
+        providers=sorted({e['provider'] for e in ai if e.get('provider')})
+        provider_modes=sorted({e['provider_mode'] for e in ai if e.get('provider_mode')})
+        models=sorted({e['metrics'].get('model') for e in ai if e['metrics'].get('model')})
+        ai_latency=sum(float(e['metrics'].get('latencySeconds',0)) for e in ai)
+        return {
+            'projectId':project_id,
+            'title':project['title'],
+            'status':project['status'],
+            'ai':{
+                'requests':len(ai),
+                'inputTokens':sum(int(e['metrics'].get('ai_input_tokens',0)) for e in ai),
+                'outputTokens':sum(int(e['metrics'].get('ai_output_tokens',0)) for e in ai),
+                'totalTokens':sum(int(e['metrics'].get('ai_total_tokens',e['metrics'].get('ai_input_tokens',0)+e['metrics'].get('ai_output_tokens',0))) for e in ai),
+                'latencySeconds':round(ai_latency,6),
+                'providers':providers,
+                'providerModes':provider_modes,
+                'models':models,
+            },
+            'render':{
+                'attempts':len(attempts),
+                'completed':len(completed),
+                'previews':sum(int(e['metrics'].get('previews_generated',0)) for e in completed),
+                'finals':sum(int(e['metrics'].get('finals_generated',0)) for e in completed),
+                'wallSeconds':round(sum(float(e['metrics'].get('render_seconds',0)) for e in attempts),6),
+                'cpuSeconds':round(sum(float(e['metrics'].get('cpu_seconds',0)) for e in attempts),6),
+            },
+            'bytes':{
+                'uploaded':sum(x['size_bytes'] for x in assets),
+                'output':sum(x['size_bytes'] for x in outputs),
+                'currentStorage':sum(x['size_bytes'] for x in assets)+sum(x['size_bytes'] for x in outputs),
+            },
+            'assets':assets,
+            'jobs':list(by_job.values()),
+        }
+    def usage_summary(self,actor):
+        rows=self.usage(actor)
+        totals={k:0 for k in ['previews_generated','finals_generated','render_seconds','cpu_seconds','ai_input_tokens','ai_output_tokens','storage_bytes','uploaded_bytes','output_bytes']}
+        for row in rows:
+            for key in totals:totals[key]+=row[key]
+        totals['ai_total_tokens']=totals['ai_input_tokens']+totals['ai_output_tokens']
+        totals['current_storage_bytes']=rows[0]['current_storage_bytes'] if rows else 0
+        totals['periods']=len(rows)
+        return {'periods':rows,'totals':totals}
     def usage(self,actor):
         rows=[dict(r) for r in self.db.execute('SELECT * FROM video_usage WHERE tenant_id=? ORDER BY period DESC',(actor.tenant_id,))]
         current=self.db.execute('SELECT COALESCE(SUM(size_bytes),0) FROM video_assets WHERE tenant_id=?',(actor.tenant_id,)).fetchone()[0]+self.db.execute('SELECT COALESCE(SUM(size_bytes),0) FROM video_outputs WHERE tenant_id=?',(actor.tenant_id,)).fetchone()[0]
