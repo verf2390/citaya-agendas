@@ -1,0 +1,42 @@
+test_brand_url_cannot_expose_credentials (test_studio.ConfigTests.test_brand_url_cannot_expose_credentials) ... ok
+test_catalog_integrity (test_studio.ConfigTests.test_catalog_integrity) ... ok
+test_creator_voiceover (test_studio.ConfigTests.test_creator_voiceover) ... ok
+test_ducking_required (test_studio.ConfigTests.test_ducking_required) ... ok
+test_external_logo_images (test_studio.ConfigTests.test_external_logo_images) ... ok
+test_final_contract (test_studio.ConfigTests.test_final_contract) ... ok
+test_gate_cannot_be_invented (test_studio.ConfigTests.test_gate_cannot_be_invented) ... ok
+test_internal_live (test_studio.ConfigTests.test_internal_live) ... ok
+test_malformed_ai (test_studio.ConfigTests.test_malformed_ai) ... ok
+test_minute_vtt_timestamps (test_studio.ConfigTests.test_minute_vtt_timestamps) ... ok
+test_missing_optional_creator (test_studio.ConfigTests.test_missing_optional_creator) ... ok
+test_no_invented_client_imagery (test_studio.ConfigTests.test_no_invented_client_imagery) ... ok
+test_offer_and_before_after_configs (test_studio.ConfigTests.test_offer_and_before_after_configs) ... ok
+test_path_traversal (test_studio.ConfigTests.test_path_traversal) ... ok
+test_planned_blocked (test_studio.ConfigTests.test_planned_blocked) ... ok
+test_roadmap_visible (test_studio.ConfigTests.test_roadmap_visible) ... ok
+test_schema_is_valid (test_studio.ConfigTests.test_schema_is_valid) ... ok
+test_vtt (test_studio.ConfigTests.test_vtt) ... ok
+test_website (test_studio.ConfigTests.test_website) ... ok
+test_engine_has_no_production_connectors (test_studio.SafetyTests.test_engine_has_no_production_connectors) ... ok
+test_prior_outputs_unchanged (test_studio.SafetyTests.test_prior_outputs_unchanged) ... ok
+test_arbitrary_path_blocked (test_studio.TenantTests.test_arbitrary_path_blocked) ... ok
+test_cancelled_attempt_cannot_publish (test_studio.TenantTests.test_cancelled_attempt_cannot_publish) ... ok
+test_changed_config_revokes_approval (test_studio.TenantTests.test_changed_config_revokes_approval) ... ok
+test_cross_project_asset (test_studio.TenantTests.test_cross_project_asset) ... ok
+test_cross_tenant_asset (test_studio.TenantTests.test_cross_tenant_asset) ... ok
+test_db_rejects_cross_tenant_foreign_key (test_studio.TenantTests.test_db_rejects_cross_tenant_foreign_key) ... ok
+test_expired_lease_and_retry_states (test_studio.TenantTests.test_expired_lease_and_retry_states) ... ok
+test_fenced_retry (test_studio.TenantTests.test_fenced_retry) ... ok
+test_final_requires_preview_and_approval (test_studio.TenantTests.test_final_requires_preview_and_approval) ... ok
+test_job_tenant_isolation (test_studio.TenantTests.test_job_tenant_isolation) ... ok
+test_metering_idempotent (test_studio.TenantTests.test_metering_idempotent) ... ok
+test_output_tenant_isolation (test_studio.TenantTests.test_output_tenant_isolation) ... ok
+test_safe_business_projection (test_studio.TenantTests.test_safe_business_projection) ... ok
+test_two_workers_claim_once (test_studio.TenantTests.test_two_workers_claim_once) ... ok
+test_upload_and_quota_accounting (test_studio.TenantTests.test_upload_and_quota_accounting) ... ok
+test_validated_artifacts_use_opaque_asset_ids (test_studio.TenantTests.test_validated_artifacts_use_opaque_asset_ids) ... ok
+
+----------------------------------------------------------------------
+Ran 37 tests in 29.347s
+
+OK

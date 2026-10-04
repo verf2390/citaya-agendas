@@ -1,0 +1,43 @@
+{
+  "product": "custom-client-video",
+  "template": "creator-led-v1",
+  "niche": "veterinary",
+  "videoType": "creator_led",
+  "brand": {
+    "businessName": "Veterinaria Demo",
+    "logo": "inputs/test-fixtures/logo.png",
+    "primaryColor": "#186A61",
+    "secondaryColor": "#FFFFFF"
+  },
+  "media": {
+    "images": [
+      "inputs/test-fixtures/business.png"
+    ],
+    "creatorIntro": "inputs/test-fixtures/intro.mp4",
+    "creatorVoiceover": "inputs/test-fixtures/voice.wav"
+  },
+  "content": {
+    "hook": "Más tiempo para cuidar.",
+    "secondaryHook": "Conoce nuestros servicios.",
+    "benefit": "Atención para tu mascota.",
+    "cta": "Conversemos"
+  },
+  "mediaPolicy": {
+    "useOnlyProvidedAssets": true,
+    "allowStockMedia": false,
+    "allowGeneratedMedia": false
+  },
+  "mediaApproved": true,
+  "timing": {
+    "intro": 3,
+    "demo": 4,
+    "outro": 3
+  },
+  "creator": {
+    "voiceoverStart": 3
+  },
+  "subtitles": {
+    "enabled": true,
+    "srt": "inputs/test-fixtures/captions.srt"
+  }
+}

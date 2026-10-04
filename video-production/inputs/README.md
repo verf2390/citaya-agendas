@@ -1,0 +1,1 @@
+Place reviewed fictional or approved-public media here. Relative config paths resolve from video-production/, never the current directory. Files are not committed. Do not place secrets or production exports here.

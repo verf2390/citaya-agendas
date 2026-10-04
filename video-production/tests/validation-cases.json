@@ -1,0 +1,17 @@
+{
+  "planned_in_sales": {
+    "rejected": true,
+    "code": "CAPABILITY_NOT_COMMERCIAL",
+    "message": "clinical_records is planned and cannot be presented as live."
+  },
+  "malformed": {
+    "rejected": true,
+    "code": "SCHEMA_VALIDATION",
+    "message": "['audio', 'music']: invalid type rule"
+  },
+  "missing_optional_creator": {
+    "rejected": true,
+    "code": "MEDIA_NOT_FOUND",
+    "message": "Optional media was supplied but does not exist: inputs/no-such-file.mp4. Use null to select the animated fallback."
+  }
+}

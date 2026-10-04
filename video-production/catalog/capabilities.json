@@ -1,0 +1,2084 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-10-03",
+  "verificationScope": "Afirmaciones verificadas por el usuario, código, tests y documentación locales; sin acceso a producción. Los gates por negocio nunca se infieren del estado live.",
+  "capabilities": [
+    {
+      "id": "online_booking",
+      "product": "citaya-agendas",
+      "name": "Reserva online",
+      "shortDescription": "Tus clientes pueden reservar solos, 24/7.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Tus clientes pueden reservar solos, 24/7."
+      ],
+      "suggestedScenes": [
+        "service"
+      ],
+      "sourceUiHint": "service",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "configurable_services",
+      "product": "citaya-agendas",
+      "name": "Servicios configurables",
+      "shortDescription": "Presenta tus servicios al reservar.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Presenta tus servicios al reservar."
+      ],
+      "suggestedScenes": [
+        "service"
+      ],
+      "sourceUiHint": "service",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "professional_selection",
+      "product": "citaya-agendas",
+      "name": "Selección de profesional",
+      "shortDescription": "Eligen quién les atiende.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Eligen quién les atiende."
+      ],
+      "suggestedScenes": [
+        "professional"
+      ],
+      "sourceUiHint": "professional",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "date_time_availability",
+      "product": "citaya-agendas",
+      "name": "Fecha y hora disponibles",
+      "shortDescription": "Eligen su hora.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Eligen su hora."
+      ],
+      "suggestedScenes": [
+        "date"
+      ],
+      "sourceUiHint": "date",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "booking_confirmation",
+      "product": "citaya-agendas",
+      "name": "Confirmación de reserva",
+      "shortDescription": "Reserva confirmada.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Reserva confirmada."
+      ],
+      "suggestedScenes": [
+        "confirmed"
+      ],
+      "sourceUiHint": "confirmed",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/confirmacion/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "private_appointment_management",
+      "product": "citaya-agendas",
+      "name": "Gestión privada de reservas",
+      "shortDescription": "Gestiona cada reserva desde su enlace privado.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Gestiona cada reserva desde su enlace privado."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/gestionar/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "cancel_reschedule",
+      "product": "citaya-agendas",
+      "name": "Cancelación y reagendamiento",
+      "shortDescription": "Cambia o cancela según las reglas del negocio.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Cambia o cancela según las reglas del negocio."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/gestionar/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "admin_calendar",
+      "product": "citaya-agendas",
+      "name": "Calendario administrativo",
+      "shortDescription": "Tu agenda, al día.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Tu agenda, al día."
+      ],
+      "suggestedScenes": [
+        "calendar"
+      ],
+      "sourceUiHint": "calendar",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/admin/agenda/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "customer_management",
+      "product": "citaya-agendas",
+      "name": "Clientes / mini CRM",
+      "shortDescription": "Cada cliente, a mano.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Cada cliente, a mano."
+      ],
+      "suggestedScenes": [
+        "customers"
+      ],
+      "sourceUiHint": "customers",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/admin/customers/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "appointment_history",
+      "product": "citaya-agendas",
+      "name": "Historial de citas",
+      "shortDescription": "Consulta las visitas anteriores.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Consulta las visitas anteriores."
+      ],
+      "suggestedScenes": [
+        "customers"
+      ],
+      "sourceUiHint": "customers",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/admin/customers/[id]/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "waitlist_persistence",
+      "product": "citaya-agendas",
+      "name": "Lista de espera",
+      "shortDescription": "Conserva solicitudes para próximas disponibilidades.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Conserva solicitudes para próximas disponibilidades."
+      ],
+      "suggestedScenes": [
+        "growth"
+      ],
+      "sourceUiHint": "growth",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/api/waitlist/create/route.ts"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "multi_tenant",
+      "product": "citaya-agendas",
+      "name": "Arquitectura multi-tenant",
+      "shortDescription": "Cada negocio tiene su propio espacio.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Cada negocio tiene su propio espacio."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "lib/tenant.ts"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "tenant_branding",
+      "product": "citaya-agendas",
+      "name": "Identidad por negocio",
+      "shortDescription": "Tu marca acompaña la reserva.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Tu marca acompaña la reserva."
+      ],
+      "suggestedScenes": [
+        "service"
+      ],
+      "sourceUiHint": "service",
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "app/reservar/page.tsx"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "tenant_isolation",
+      "product": "citaya-agendas",
+      "name": "Aislamiento por negocio",
+      "shortDescription": "Acceso limitado al negocio autorizado.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Acceso limitado al negocio autorizado."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Alcance verificado por el usuario y código local; no es una auditoría nueva de despliegue o seguridad.",
+      "evidence": [
+        "docs/security/cit64-tenant-isolation-audit.md"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "campaigns",
+      "product": "citaya-agendas",
+      "name": "Campañas",
+      "shortDescription": "Prepara campañas para tus clientes.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Prepara campañas para tus clientes."
+      ],
+      "suggestedScenes": [
+        "growth"
+      ],
+      "sourceUiHint": "growth",
+      "notes": "Respeta configuración, consentimiento y habilitación del negocio. Las escenas son demostraciones; no ejecutan envíos o pagos.",
+      "evidence": [
+        "app/api/admin/campaigns/send/route.ts"
+      ],
+      "requiredGates": [
+        "campaigns_enabled",
+        "external_communications_enabled"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "campaign_simulation",
+      "product": "citaya-agendas",
+      "name": "Vista previa de campañas",
+      "shortDescription": "Revisa una simulación antes de enviar.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Revisa una simulación antes de enviar."
+      ],
+      "suggestedScenes": [
+        "campaign-preview"
+      ],
+      "sourceUiHint": "campaign-preview",
+      "notes": "Respeta configuración, consentimiento y habilitación del negocio. Las escenas son demostraciones; no ejecutan envíos o pagos.",
+      "evidence": [
+        "tests/security/campaign-simulation-safe.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "payment_management",
+      "product": "citaya-agendas",
+      "name": "Gestión de pagos",
+      "shortDescription": "Revisa el estado de los pagos.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Revisa el estado de los pagos."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Respeta configuración, consentimiento y habilitación del negocio. Las escenas son demostraciones; no ejecutan envíos o pagos.",
+      "evidence": [
+        "docs/PAYMENTS_OPTIONAL_FLOW.md"
+      ],
+      "requiredGates": [
+        "payments_enabled"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "payment_links",
+      "product": "citaya-agendas",
+      "name": "Enlaces de pago",
+      "shortDescription": "Comparte un enlace de pago habilitado.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Comparte un enlace de pago habilitado."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Respeta configuración, consentimiento y habilitación del negocio. Las escenas son demostraciones; no ejecutan envíos o pagos.",
+      "evidence": [
+        "app/api/admin/payments/resend/route.ts"
+      ],
+      "requiredGates": [
+        "payments_enabled"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "automatic_reminders",
+      "product": "citaya-agendas",
+      "name": "Recordatorios automáticos",
+      "shortDescription": "Recuerda las próximas citas.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Recuerda las próximas citas."
+      ],
+      "suggestedScenes": [
+        "reminder"
+      ],
+      "sourceUiHint": "reminder",
+      "notes": "Respeta configuración, consentimiento y habilitación del negocio. Las escenas son demostraciones; no ejecutan envíos o pagos.",
+      "evidence": [
+        "tests/security/appointment-operational-communication.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "transactional_email",
+      "product": "citaya-agendas",
+      "name": "Correos transaccionales",
+      "shortDescription": "Mantén informados a tus clientes.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Mantén informados a tus clientes."
+      ],
+      "suggestedScenes": [
+        "reminder"
+      ],
+      "sourceUiHint": "reminder",
+      "notes": "Respeta configuración, consentimiento y habilitación del negocio. Las escenas son demostraciones; no ejecutan envíos o pagos.",
+      "evidence": [
+        "tests/security/appointment-operational-communication.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "appointment_communications",
+      "product": "citaya-agendas",
+      "name": "Comunicación de citas",
+      "shortDescription": "Acompaña reservas, cambios y cancelaciones.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Acompaña reservas, cambios y cancelaciones."
+      ],
+      "suggestedScenes": [
+        "reminder"
+      ],
+      "sourceUiHint": "reminder",
+      "notes": "Respeta configuración, consentimiento y habilitación del negocio. Las escenas son demostraciones; no ejecutan envíos o pagos.",
+      "evidence": [
+        "tests/security/appointment-operational-communication.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "dte_ready_flows",
+      "product": "citaya-agendas",
+      "name": "Documentos tributarios habilitados",
+      "shortDescription": "Flujos tributarios para negocios habilitados.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Flujos tributarios para negocios habilitados."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "La existencia de código no prueba habilitación universal. No mostrar datos tributarios ni emitir documentos. BHE externa no significa BHE automática.",
+      "evidence": [
+        "docs/cit72-capability-aware-live-rollout.md"
+      ],
+      "requiredGates": [
+        "dte_enabled",
+        "tax_readiness_verified"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "factura_33",
+      "product": "citaya-agendas",
+      "name": "Factura Electrónica 33",
+      "shortDescription": "Factura 33 donde esté habilitada.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Factura 33 donde esté habilitada."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "La existencia de código no prueba habilitación universal. No mostrar datos tributarios ni emitir documentos. BHE externa no significa BHE automática.",
+      "evidence": [
+        "docs/dte-sii/DTE_AUTOMATIC_WORKER_RUNBOOK.md"
+      ],
+      "requiredGates": [
+        "dte_enabled",
+        "tax_readiness_verified",
+        "type_33_authorized"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "boleta_39",
+      "product": "citaya-agendas",
+      "name": "Boleta Electrónica 39",
+      "shortDescription": "Boleta 39 donde esté habilitada.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Boleta 39 donde esté habilitada."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "La existencia de código no prueba habilitación universal. No mostrar datos tributarios ni emitir documentos. BHE externa no significa BHE automática.",
+      "evidence": [
+        "docs/dte-sii/DTE_AUTOMATIC_WORKER_RUNBOOK.md"
+      ],
+      "requiredGates": [
+        "dte_enabled",
+        "tax_readiness_verified",
+        "type_39_authorized"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "bhe_configuration",
+      "product": "citaya-agendas",
+      "name": "Configuración BHE externa",
+      "shortDescription": "Configura el uso de BHE externa.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Configura el uso de BHE externa."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "La existencia de código no prueba habilitación universal. No mostrar datos tributarios ni emitir documentos. BHE externa no significa BHE automática.",
+      "evidence": [
+        "docs/bhe/automatic-emission.md"
+      ],
+      "requiredGates": [
+        "external_bhe_verified"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "automatic_dte_after_payment",
+      "product": "citaya-agendas",
+      "name": "DTE automático tras pago verificado",
+      "shortDescription": "Emisión condicionada a pago verificado y gates del negocio.",
+      "status": "in_progress",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Emisión condicionada a pago verificado y gates del negocio."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Conservador: el runbook describe canary y habilitación explícita; no se inspeccionó producción ni se acreditó rollout general. Sólo roadmap hasta revisión de evidencia operacional.",
+      "evidence": [
+        "docs/dte-sii/DTE_AUTOMATIC_WORKER_RUNBOOK.md"
+      ],
+      "requiredGates": [
+        "dte_enabled",
+        "tax_readiness_verified",
+        "automatic_dte_authorized"
+      ],
+      "commercialQualifier": "Disponible según configuración y habilitación del negocio.",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_core",
+      "product": "citaya-ai",
+      "name": "Citaya AI Core",
+      "shortDescription": "Una base reutilizable de asistencia.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Una base reutilizable de asistencia."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_provider_architecture",
+      "product": "citaya-ai",
+      "name": "Proveedores local, cloud e híbrido",
+      "shortDescription": "Elige una arquitectura de proveedores.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Elige una arquitectura de proveedores."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_local_first",
+      "product": "citaya-ai",
+      "name": "Operación local-first",
+      "shortDescription": "Usa un proveedor local configurado.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Usa un proveedor local configurado."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_tenant_tools",
+      "product": "citaya-ai",
+      "name": "Herramientas por negocio",
+      "shortDescription": "Consultas limitadas al negocio autorizado.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Consultas limitadas al negocio autorizado."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_read_only",
+      "product": "citaya-ai",
+      "name": "Asistente de lectura",
+      "shortDescription": "Consulta información sin cambiar registros.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Consulta información sin cambiar registros."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_safe_proposals",
+      "product": "citaya-ai",
+      "name": "Propuestas revisables",
+      "shortDescription": "Revisa una propuesta antes de actuar.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Revisa una propuesta antes de actuar."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_campaign_handoff",
+      "product": "citaya-ai",
+      "name": "Borrador de campaña con revisión",
+      "shortDescription": "Revisa el borrador antes de llevarlo a campañas.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Revisa el borrador antes de llevarlo a campañas."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_human_confirmation",
+      "product": "citaya-ai",
+      "name": "Confirmación humana",
+      "shortDescription": "Las acciones sensibles requieren confirmación humana.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Las acciones sensibles requieren confirmación humana."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_no_autonomous_sensitive_actions",
+      "product": "citaya-ai",
+      "name": "Sin acciones sensibles autónomas",
+      "shortDescription": "El asistente no envía ni cobra por su cuenta.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "El asistente no envía ni cobra por su cuenta."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Capacidad verificada por el usuario; asistente habilitado por configuración. No implica autonomía, envío automático ni disponibilidad en Retail/Web Creators. La documentación local contiene restricciones de rollout, no se verificó un tenant de producción.",
+      "evidence": [
+        "docs/ai/CITAYA_AI_CORE.md",
+        "tests/ai-action-proposals.test.mjs",
+        "tests/ai-campaign-handoff.test.mjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "wordpress_creation",
+      "product": "citaya-web",
+      "name": "Creación en WordPress",
+      "shortDescription": "Un sitio que puedes administrar.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Un sitio que puedes administrar."
+      ],
+      "suggestedScenes": [
+        "desktop"
+      ],
+      "sourceUiHint": "desktop",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "visual_identity",
+      "product": "citaya-web",
+      "name": "Identidad visual",
+      "shortDescription": "Tu identidad, también en la web.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Tu identidad, también en la web."
+      ],
+      "suggestedScenes": [
+        "homepage"
+      ],
+      "sourceUiHint": "homepage",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "responsive_design",
+      "product": "citaya-web",
+      "name": "Diseño responsive",
+      "shortDescription": "Se adapta al computador y al celular.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Se adapta al computador y al celular."
+      ],
+      "suggestedScenes": [
+        "mobile"
+      ],
+      "sourceUiHint": "mobile",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "website_home",
+      "product": "citaya-web",
+      "name": "Página de inicio",
+      "shortDescription": "Presenta tu negocio desde el primer vistazo.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Presenta tu negocio desde el primer vistazo."
+      ],
+      "suggestedScenes": [
+        "homepage"
+      ],
+      "sourceUiHint": "homepage",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "website_services",
+      "product": "citaya-web",
+      "name": "Página de servicios",
+      "shortDescription": "Explica cómo puedes ayudar.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Explica cómo puedes ayudar."
+      ],
+      "suggestedScenes": [
+        "services"
+      ],
+      "sourceUiHint": "services",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "website_about",
+      "product": "citaya-web",
+      "name": "Sobre el estudio / negocio",
+      "shortDescription": "Presenta a tu equipo y tu enfoque.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Presenta a tu equipo y tu enfoque."
+      ],
+      "suggestedScenes": [
+        "about"
+      ],
+      "sourceUiHint": "about",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "project_galleries",
+      "product": "citaya-web",
+      "name": "Galerías de proyectos",
+      "shortDescription": "Muestra tu trabajo con claridad.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Muestra tu trabajo con claridad."
+      ],
+      "suggestedScenes": [
+        "portfolio"
+      ],
+      "sourceUiHint": "portfolio",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "website_contact",
+      "product": "citaya-web",
+      "name": "Página de contacto",
+      "shortDescription": "Facilita el siguiente paso.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Facilita el siguiente paso."
+      ],
+      "suggestedScenes": [
+        "contact"
+      ],
+      "sourceUiHint": "contact",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "lead_forms",
+      "product": "citaya-web",
+      "name": "Formularios de consulta",
+      "shortDescription": "Recibe nuevas consultas.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Recibe nuevas consultas."
+      ],
+      "suggestedScenes": [
+        "contact"
+      ],
+      "sourceUiHint": "contact",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "form_transactional_email",
+      "product": "citaya-web",
+      "name": "Correo de formularios",
+      "shortDescription": "Entrega consultas al correo configurado.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Entrega consultas al correo configurado."
+      ],
+      "suggestedScenes": [
+        "technical"
+      ],
+      "sourceUiHint": "technical",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "website_antispam",
+      "product": "citaya-web",
+      "name": "Protección antispam",
+      "shortDescription": "Filtra envíos automatizados básicos.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Filtra envíos automatizados básicos."
+      ],
+      "suggestedScenes": [
+        "technical"
+      ],
+      "sourceUiHint": "technical",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "website_privacy",
+      "product": "citaya-web",
+      "name": "Privacidad básica",
+      "shortDescription": "Explica el uso de los datos del formulario.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Explica el uso de los datos del formulario."
+      ],
+      "suggestedScenes": [
+        "technical"
+      ],
+      "sourceUiHint": "technical",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "basic_seo",
+      "product": "citaya-web",
+      "name": "SEO técnico básico",
+      "shortDescription": "Ordena la base técnica para buscadores.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Ordena la base técnica para buscadores."
+      ],
+      "suggestedScenes": [
+        "technical"
+      ],
+      "sourceUiHint": "technical",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "accessibility_qa",
+      "product": "citaya-web",
+      "name": "Revisión de accesibilidad",
+      "shortDescription": "Revisa navegación, contraste y formularios.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Revisa navegación, contraste y formularios."
+      ],
+      "suggestedScenes": [
+        "technical"
+      ],
+      "sourceUiHint": "technical",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "responsive_qa",
+      "product": "citaya-web",
+      "name": "QA responsive",
+      "shortDescription": "Revisa la experiencia en distintos tamaños.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Revisa la experiencia en distintos tamaños."
+      ],
+      "suggestedScenes": [
+        "mobile"
+      ],
+      "sourceUiHint": "mobile",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "performance_review",
+      "product": "citaya-web",
+      "name": "Revisión de rendimiento",
+      "shortDescription": "Revisa carga y peso de recursos.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Revisa carga y peso de recursos."
+      ],
+      "suggestedScenes": [
+        "technical"
+      ],
+      "sourceUiHint": "technical",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "hosting_ssl_domain",
+      "product": "citaya-web",
+      "name": "Publicación y HTTPS",
+      "shortDescription": "Publica con dominio, hosting y SSL acordados.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Publica con dominio, hosting y SSL acordados."
+      ],
+      "suggestedScenes": [
+        "technical"
+      ],
+      "sourceUiHint": "technical",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "website_cta",
+      "product": "citaya-web",
+      "name": "CTA de contacto / WhatsApp",
+      "shortDescription": "Haz visible cómo contactarte.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Haz visible cómo contactarte."
+      ],
+      "suggestedScenes": [
+        "contact"
+      ],
+      "sourceUiHint": "contact",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "portfolio_sites",
+      "product": "citaya-web",
+      "name": "Sitios de portafolio",
+      "shortDescription": "Tus proyectos, bien presentados.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Tus proyectos, bien presentados."
+      ],
+      "suggestedScenes": [
+        "portfolio"
+      ],
+      "sourceUiHint": "portfolio",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "local_business_sites",
+      "product": "citaya-web",
+      "name": "Web para negocios locales",
+      "shortDescription": "Presenta tu negocio y recibe consultas.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Presenta tu negocio y recibe consultas."
+      ],
+      "suggestedScenes": [
+        "desktop"
+      ],
+      "sourceUiHint": "desktop",
+      "notes": "Capacidad de servicio, no promesa de proyecto publicado ni puntuaciones SEO/rendimiento. Evidencia de workflow únicamente; ningún nombre, contenido, imagen o dato del cliente se reutiliza.",
+      "evidence": [
+        "../diego-videla-arquitectos/docs/alcance.md",
+        "../diego-videla-arquitectos/docs/deployment.md",
+        "../diego-videla-arquitectos/theme/dv-arquitectos/page-contacto.php",
+        "../diego-videla-arquitectos/tools/tests/internal-pages-browser.cjs"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": [
+        "citaya-services"
+      ]
+    },
+    {
+      "id": "n8n_appointment_hooks",
+      "product": "citaya-automation",
+      "name": "Flujos de citas con n8n",
+      "shortDescription": "Conecta eventos de citas con flujos configurados.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Conecta eventos de citas con flujos configurados."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Integración configurada; no se afirma orquestación autónoma de WhatsApp o AI.",
+      "evidence": [
+        "docs/CITAYA_TECH_AUDIT.md"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "retail_workspace",
+      "product": "citaya-retail",
+      "name": "Espacio Citaya Retail",
+      "shortDescription": "Concepto de operación para comercio.",
+      "status": "in_progress",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto de operación para comercio."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Producto registrado sin afirmar funcionalidades comerciales que no fueron verificadas.",
+      "evidence": [
+        "user-verified-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "clinical_records",
+      "product": "citaya-agendas",
+      "name": "Historia clínica electrónica completa",
+      "shortDescription": "Concepto en planificación: historia clínica electrónica completa.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: historia clínica electrónica completa."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "odontogram",
+      "product": "citaya-agendas",
+      "name": "Odontograma y registros de especialidad",
+      "shortDescription": "Concepto en planificación: odontograma y registros de especialidad.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: odontograma y registros de especialidad."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "customer_migration",
+      "product": "citaya-agendas",
+      "name": "Migración Excel / Encuadrado",
+      "shortDescription": "Concepto en planificación: migración excel / encuadrado.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: migración excel / encuadrado."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "whatsapp_business_api",
+      "product": "citaya-agendas",
+      "name": "Rollout completo de WhatsApp Business API",
+      "shortDescription": "Concepto en planificación: rollout completo de whatsapp business api.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: rollout completo de whatsapp business api."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "whatsapp_ai",
+      "product": "citaya-ai",
+      "name": "WhatsApp → Citaya AI",
+      "shortDescription": "Concepto en planificación: whatsapp → citaya ai.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: whatsapp → citaya ai."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ai_web_creators",
+      "product": "citaya-ai",
+      "name": "AI Web Creators",
+      "shortDescription": "Concepto en planificación: ai web creators.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: ai web creators."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "growth_copilot",
+      "product": "citaya-ai",
+      "name": "Citaya Growth Copilot",
+      "shortDescription": "Concepto en planificación: citaya growth copilot.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: citaya growth copilot."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "automatic_creative_generation",
+      "product": "citaya-ai",
+      "name": "Generación automática de ofertas y creatividades",
+      "shortDescription": "Concepto en planificación: generación automática de ofertas y creatividades.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: generación automática de ofertas y creatividades."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "ab_growth_experiments",
+      "product": "citaya-ai",
+      "name": "Experimentos de crecimiento A/B",
+      "shortDescription": "Concepto en planificación: experimentos de crecimiento a/b.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: experimentos de crecimiento a/b."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "meta_ads",
+      "product": "citaya-ai",
+      "name": "Integración Meta Ads",
+      "shortDescription": "Concepto en planificación: integración meta ads.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: integración meta ads."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "reputation_referrals",
+      "product": "citaya-ai",
+      "name": "Reputación y referidos",
+      "shortDescription": "Concepto en planificación: reputación y referidos.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: reputación y referidos."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "lead_intelligence",
+      "product": "citaya-ai",
+      "name": "Inteligencia de leads / speed-to-lead",
+      "shortDescription": "Concepto en planificación: inteligencia de leads / speed-to-lead.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: inteligencia de leads / speed-to-lead."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "citaya_cfo",
+      "product": "citaya-ai",
+      "name": "Citaya CFO",
+      "shortDescription": "Concepto en planificación: citaya cfo.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: citaya cfo."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "cash_forecasting",
+      "product": "citaya-ai",
+      "name": "Pronóstico de caja",
+      "shortDescription": "Concepto en planificación: pronóstico de caja.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: pronóstico de caja."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "profitability_analysis",
+      "product": "citaya-ai",
+      "name": "Análisis de rentabilidad",
+      "shortDescription": "Concepto en planificación: análisis de rentabilidad.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: análisis de rentabilidad."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "executive_briefs",
+      "product": "citaya-ai",
+      "name": "Resúmenes ejecutivos automáticos",
+      "shortDescription": "Concepto en planificación: resúmenes ejecutivos automáticos.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: resúmenes ejecutivos automáticos."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "financial_what_if",
+      "product": "citaya-ai",
+      "name": "Simulador financiero what-if",
+      "shortDescription": "Concepto en planificación: simulador financiero what-if.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: simulador financiero what-if."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "global_anonymized_learning",
+      "product": "citaya-ai",
+      "name": "Aprendizaje global anonimizado",
+      "shortDescription": "Concepto en planificación: aprendizaje global anonimizado.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: aprendizaje global anonimizado."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "automatic_bhe",
+      "product": "citaya-agendas",
+      "name": "BHE automática",
+      "shortDescription": "Concepto en planificación: bhe automática.",
+      "status": "planned",
+      "safeForCommercialVideo": false,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Concepto en planificación: bhe automática."
+      ],
+      "suggestedScenes": [
+        "benefit"
+      ],
+      "sourceUiHint": null,
+      "notes": "Estado no comercial fijado expresamente. Nunca promocionar como disponible ni cambiar automáticamente.",
+      "evidence": [
+        "user-planned-scope:2026-10-03"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    },
+    {
+      "id": "provided_business_content",
+      "product": "custom-client-video",
+      "name": "Contenido revisado del negocio",
+      "shortDescription": "Presenta tu negocio con tus propios materiales.",
+      "status": "live",
+      "safeForCommercialVideo": true,
+      "applicableNiches": [
+        "*"
+      ],
+      "suggestedBenefits": [
+        "Conoce nuestro trabajo."
+      ],
+      "suggestedScenes": [
+        "media",
+        "benefit",
+        "desktop",
+        "mobile",
+        "homepage",
+        "portfolio",
+        "services",
+        "about",
+        "contact",
+        "technical",
+        "before_after"
+      ],
+      "sourceUiHint": null,
+      "notes": "No certifica afirmaciones comerciales del cliente. Requiere revisión humana. Nunca usa datos de clientes ni inventa fotografías del negocio.",
+      "evidence": [
+        "user-provided-approved-assets"
+      ],
+      "requiredGates": [],
+      "commercialQualifier": "",
+      "alsoAppliesTo": []
+    }
+  ]
+}

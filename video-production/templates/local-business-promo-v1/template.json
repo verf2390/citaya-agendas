@@ -1,0 +1,13 @@
+{
+  "id": "local-business-promo-v1",
+  "version": 1,
+  "renderer": "business",
+  "formats": [
+    "vertical"
+  ],
+  "foundation": "brag-output-2026-10-03-122343",
+  "sceneModes": [
+    "media",
+    "benefit"
+  ]
+}

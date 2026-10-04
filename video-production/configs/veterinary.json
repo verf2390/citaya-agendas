@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "product": "citaya-agendas",
+  "niche": "veterinary",
+  "videoType": "sales_ad",
+  "hook": "¿Todavía agendas por WhatsApp?",
+  "secondaryHook": "Tus clientes pueden reservar solos, 24/7.",
+  "capabilities": [
+    "online_booking",
+    "admin_calendar",
+    "automatic_reminders",
+    "customer_management"
+  ],
+  "cta": "Prueba Citaya gratis"
+}

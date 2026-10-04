@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "products": [
+    {
+      "id": "citaya-agendas",
+      "name": "Citaya Agendas",
+      "tagline": "Agenda online para tu negocio",
+      "status": "live",
+      "defaultTemplate": "citaya-saas-vertical-v1",
+      "allowedTemplates": [
+        "citaya-saas-vertical-v1",
+        "creator-led-v1"
+      ]
+    },
+    {
+      "id": "citaya-ai",
+      "name": "Citaya AI",
+      "tagline": "Asistencia con control humano",
+      "status": "live",
+      "defaultTemplate": "citaya-saas-vertical-v1",
+      "allowedTemplates": [
+        "citaya-saas-vertical-v1",
+        "creator-led-v1"
+      ]
+    },
+    {
+      "id": "citaya-retail",
+      "name": "Citaya Retail",
+      "tagline": "Operación para el comercio",
+      "status": "in_progress",
+      "defaultTemplate": "citaya-saas-vertical-v1",
+      "allowedTemplates": [
+        "citaya-saas-vertical-v1",
+        "creator-led-v1"
+      ]
+    },
+    {
+      "id": "citaya-web",
+      "name": "Citaya Web",
+      "tagline": "Sitios que presentan tu negocio",
+      "status": "live",
+      "defaultTemplate": "citaya-websites-vertical-v1",
+      "allowedTemplates": [
+        "citaya-websites-vertical-v1",
+        "creator-led-v1",
+        "website-showcase-v1",
+        "before-after-v1"
+      ]
+    },
+    {
+      "id": "citaya-automation",
+      "name": "Citaya Automation",
+      "tagline": "Automatizaciones para tu negocio",
+      "status": "live",
+      "defaultTemplate": "citaya-saas-vertical-v1",
+      "allowedTemplates": [
+        "citaya-saas-vertical-v1",
+        "creator-led-v1"
+      ]
+    },
+    {
+      "id": "citaya-services",
+      "name": "Citaya · Diseño web",
+      "tagline": "Diseño y desarrollo para tu negocio",
+      "status": "live",
+      "defaultTemplate": "citaya-websites-vertical-v1",
+      "allowedTemplates": [
+        "citaya-websites-vertical-v1",
+        "creator-led-v1",
+        "website-showcase-v1",
+        "before-after-v1"
+      ]
+    },
+    {
+      "id": "custom-client-video",
+      "name": "Video de negocio",
+      "tagline": "Tu negocio, tu historia",
+      "status": "live",
+      "defaultTemplate": "local-business-promo-v1",
+      "allowedTemplates": [
+        "local-business-promo-v1",
+        "creator-led-v1",
+        "offer-promo-v1",
+        "before-after-v1",
+        "website-showcase-v1"
+      ]
+    }
+  ]
+}

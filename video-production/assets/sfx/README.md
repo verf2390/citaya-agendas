@@ -1,0 +1,1 @@
+Four short UI effects copied from the installed brag skill SFX collection used by V2 (Kenney CC0 per skill provenance): click2, bong_001, impactSoft_medium_001 and impactBell_heavy_000. Internal names: tap, notification, hit, success. Supplied soundEffects override these for a client configuration.

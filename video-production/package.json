@@ -1,0 +1,11 @@
+{
+  "name": "citaya-video-production",
+  "private": true,
+  "version": "1.0.0",
+  "devDependencies": {
+    "hyperframes": "0.8.114"
+  },
+  "scripts": {
+    "test": "python3 -m unittest discover -s tests -v"
+  }
+}

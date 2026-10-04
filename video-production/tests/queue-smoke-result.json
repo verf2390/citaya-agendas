@@ -1,0 +1,27 @@
+{
+  "status": "pass",
+  "tenantId": "04321d03-c377-41e6-855c-d56f26d925af",
+  "projectId": "d2c43e17-235a-483a-833f-5a5f1131df12",
+  "jobId": "61e95d13-b6db-451d-b5f1-e2d3b4f25b78",
+  "storage": "storage/smoke-a0d454791b2b",
+  "video": "storage/smoke-a0d454791b2b/04321d03-c377-41e6-855c-d56f26d925af/d2c43e17-235a-483a-833f-5a5f1131df12/outputs/61e95d13-b6db-451d-b5f1-e2d3b4f25b78/video.mp4",
+  "outputs": 6,
+  "usage": [
+    {
+      "tenant_id": "04321d03-c377-41e6-855c-d56f26d925af",
+      "period": "2026-10",
+      "previews_generated": 1,
+      "finals_generated": 0,
+      "render_seconds": 27.832,
+      "cpu_seconds": 31.759,
+      "ai_input_tokens": 0,
+      "ai_output_tokens": 0,
+      "storage_bytes": 470226,
+      "uploaded_bytes": 14029,
+      "output_bytes": 456197,
+      "current_storage_bytes": 470226
+    }
+  ],
+  "crossTenantDownload": "blocked",
+  "finalApproval": "recorded; no final requested"
+}

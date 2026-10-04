@@ -1,0 +1,32 @@
+# Deployment example only; not installed/enabled by this implementation.
+# Copy only video-production into /opt/citaya-video/video-production.
+# Install Node >=22, Python venv and Chromium cache for this dedicated user first.
+[Unit]
+Description=CITAYA VIDEO STUDIO private render worker
+After=local-fs.target
+
+[Service]
+Type=simple
+User=citaya-video
+Group=citaya-video
+WorkingDirectory=/opt/citaya-video/video-production
+Environment=HOME=/var/lib/citaya-video
+ExecStart=/opt/citaya-video/video-production/.venv/bin/python backend/worker.py --storage /var/lib/citaya-video/private --node render-1
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/var/lib/citaya-video /opt/citaya-video/video-production/inputs /opt/citaya-video/video-production/outputs
+KillMode=control-group
+TimeoutStopSec=15
+# Set technical CPU/memory/process/disk limits after measuring your render node.
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "templates": [
+    {
+      "id": "before-after-v1",
+      "version": 1,
+      "renderer": "website",
+      "formats": [
+        "vertical"
+      ],
+      "foundation": "brag-output-2026-10-03-122343",
+      "sceneModes": [
+        "before_after",
+        "media",
+        "benefit"
+      ]
+    },
+    {
+      "id": "citaya-saas-vertical-v1",
+      "version": 1,
+      "renderer": "saas",
+      "formats": [
+        "vertical"
+      ],
+      "foundation": "brag-output-2026-10-03-122343",
+      "sceneModes": [
+        "benefit",
+        "service",
+        "professional",
+        "date",
+        "confirmed",
+        "calendar",
+        "customers",
+        "reminder",
+        "growth",
+        "campaign-preview"
+      ]
+    },
+    {
+      "id": "citaya-websites-vertical-v1",
+      "version": 1,
+      "renderer": "website",
+      "formats": [
+        "vertical"
+      ],
+      "foundation": "brag-output-2026-10-03-122343",
+      "sceneModes": [
+        "desktop",
+        "mobile",
+        "homepage",
+        "portfolio",
+        "services",
+        "about",
+        "contact",
+        "technical",
+        "before_after",
+        "benefit"
+      ]
+    },
+    {
+      "id": "creator-led-v1",
+      "version": 1,
+      "renderer": "business",
+      "formats": [
+        "vertical"
+      ],
+      "foundation": "brag-output-2026-10-03-122343",
+      "sceneModes": [
+        "media",
+        "benefit",
+        "service",
+        "professional",
+        "date",
+        "confirmed",
+        "calendar",
+        "customers",
+        "reminder",
+        "growth",
+        "campaign-preview",
+        "desktop",
+        "mobile",
+        "homepage",
+        "portfolio",
+        "services",
+        "about",
+        "contact",
+        "technical"
+      ]
+    },
+    {
+      "id": "local-business-promo-v1",
+      "version": 1,
+      "renderer": "business",
+      "formats": [
+        "vertical"
+      ],
+      "foundation": "brag-output-2026-10-03-122343",
+      "sceneModes": [
+        "media",
+        "benefit"
+      ]
+    },
+    {
+      "id": "offer-promo-v1",
+      "version": 1,
+      "renderer": "business",
+      "formats": [
+        "vertical"
+      ],
+      "foundation": "brag-output-2026-10-03-122343",
+      "sceneModes": [
+        "media",
+        "benefit"
+      ]
+    },
+    {
+      "id": "website-showcase-v1",
+      "version": 1,
+      "renderer": "website",
+      "formats": [
+        "vertical"
+      ],
+      "foundation": "brag-output-2026-10-03-122343",
+      "sceneModes": [
+        "desktop",
+        "mobile",
+        "homepage",
+        "portfolio",
+        "services",
+        "about",
+        "contact",
+        "technical",
+        "before_after",
+        "benefit",
+        "media"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "before-after-v1",
+  "version": 1,
+  "renderer": "website",
+  "formats": [
+    "vertical"
+  ],
+  "foundation": "brag-output-2026-10-03-122343",
+  "sceneModes": [
+    "before_after",
+    "media",
+    "benefit"
+  ]
+}
