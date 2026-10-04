@@ -76,6 +76,17 @@ class ConfigTests(unittest.TestCase):
   self.assertIn('.preset-dynamic #brand-chrome .product-name{display:none}',css)
   self.assertIn('top:1280px',css)
   raw=self.config();raw['stylePreset']='invented';self.bad(raw,'SCHEMA_VALIDATION')
+ def test_barber_uses_niche_aware_demo_without_affecting_other_niches(self):
+  barber,_,bx=validate(self.config('barber'))
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(barber,bx,Path(d),'preview');html=(comp/'index.html').read_text()
+   for value in ['Barbería Demo','Corte','Barba','Corte + barba','Barbero A','Barbero B']:
+    self.assertIn(value,html)
+  psychology,_,px=validate(self.config('psychology'))
+  with tempfile.TemporaryDirectory() as d:
+   comp,_=compile_composition(psychology,px,Path(d),'preview');html=(comp/'index.html').read_text()
+   self.assertNotIn('Barbería Demo',html)
+   self.assertIn('assets/ui/service.png',html)
 class TenantTests(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.s=Studio(self.temp.name);self.a=Actor(str(uuid.uuid4()),str(uuid.uuid4()));self.b=Actor(str(uuid.uuid4()),str(uuid.uuid4()))
