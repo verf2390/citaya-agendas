@@ -19,6 +19,18 @@ def fingerprint(c):
     dependencies=sorted((ROOT/'catalog').glob('*.json'))+sorted((ROOT/'templates').rglob('*.css'))+sorted((ROOT/'templates').rglob('template.json'))+sorted((ROOT/'scripts').glob('*.py'))+[ROOT/'schemas/video-config.schema.json',ROOT/'package-lock.json']
     return hashlib.sha256((canonical(c)+''.join(digest(p) for p in dependencies)).encode()).hexdigest()
 
+def asset_ids(config):
+    found=set()
+    def walk(value):
+        if isinstance(value,dict):
+            for child in value.values():walk(child)
+        elif isinstance(value,list):
+            for child in value:walk(child)
+        elif isinstance(value,str) and value.startswith('asset:') and len(value)>6:
+            found.add(value[6:])
+    walk(config)
+    return sorted(found)
+
 class Studio:
     def __init__(self,root,limits=None):
         self.root=Path(root).resolve();self.root.mkdir(parents=True,exist_ok=True,mode=0o700);os.chmod(self.root,0o700)
@@ -198,7 +210,12 @@ class Studio:
             for output_type,path in files.items():
                 src=Path(path);rel=Path(job['tenant_id'])/job['project_id']/'outputs'/job['id']/(output_type+src.suffix);dest=self.root/rel;dest.parent.mkdir(parents=True,exist_ok=True,mode=0o700);shutil.copyfile(src,dest);os.chmod(dest,0o600);total+=dest.stat().st_size
                 self.db.execute('INSERT INTO video_outputs VALUES(?,?,?,?,?,?,?,?,?,?,?)',(uid(),job['tenant_id'],job['project_id'],job['id'],output_type,str(rel),metrics.get('width'),metrics.get('height'),metrics.get('durationMs'),dest.stat().st_size,digest(dest)))
-            self.record(job['tenant_id'],'complete:'+job['id'],'render_complete',{'previews_generated':int(job['mode']=='preview'),'finals_generated':int(job['mode']=='final'),'output_bytes':total,'storage_bytes':total,'projectId':job['project_id'],'jobId':job['id'],'outputCount':len(files),**metrics})
+            referenced=asset_ids(json.loads(job['config_json']))
+            input_bytes=0
+            if referenced:
+                placeholders=','.join('?' for _ in referenced)
+                input_bytes=self.db.execute(f'SELECT COALESCE(SUM(size_bytes),0) FROM video_assets WHERE tenant_id=? AND project_id=? AND id IN ({placeholders})',(job['tenant_id'],job['project_id'],*referenced)).fetchone()[0]
+            self.record(job['tenant_id'],'complete:'+job['id'],'render_complete',{'previews_generated':int(job['mode']=='preview'),'finals_generated':int(job['mode']=='final'),'input_bytes':input_bytes,'output_bytes':total,'storage_bytes':total,'projectId':job['project_id'],'jobId':job['id'],'assetCount':len(referenced),'outputCount':len(files),**metrics})
             self.db.execute("UPDATE video_jobs SET status='completed',finished_at=?,render_seconds=?,cpu_seconds=? WHERE id=?",(time.time(),metrics.get('wallSeconds',0),metrics.get('cpuSeconds',0),job['id']));self.db.execute("UPDATE video_projects SET status='completed' WHERE tenant_id=? AND id=?",(job['tenant_id'],job['project_id']));return True
     def record_ai(self,actor,request_id,provider,provider_mode,input_tokens,output_tokens,project_id=None,job_id=None,model=None,latency_seconds=None):
         if provider_mode not in ['local','cloud'] or any(type(x)!=int or x<0 for x in [input_tokens,output_tokens]):fail('INVALID_USAGE','Actual non-negative provider token counts required.')
@@ -247,7 +264,12 @@ class Studio:
         by_job={}
         for job in jobs:
             job_outputs=[x for x in outputs if x['job_id']==job['id']]
-            by_job[job['id']]={**job,'outputBytes':sum(x['size_bytes'] for x in job_outputs),'outputs':job_outputs}
+            complete=next((e for e in completed if e['metrics'].get('jobId')==job['id']),None)
+            by_job[job['id']]={**job,
+                'inputBytes':int(complete['metrics'].get('input_bytes',0)) if complete else 0,
+                'outputBytes':sum(x['size_bytes'] for x in job_outputs),
+                'assetCount':int(complete['metrics'].get('assetCount',0)) if complete else 0,
+                'outputs':job_outputs}
         providers=sorted({e['provider'] for e in ai if e.get('provider')})
         provider_modes=sorted({e['provider_mode'] for e in ai if e.get('provider_mode')})
         models=sorted({e['metrics'].get('model') for e in ai if e['metrics'].get('model')})
@@ -276,6 +298,7 @@ class Studio:
             },
             'bytes':{
                 'uploaded':sum(x['size_bytes'] for x in assets),
+                'inputConsumed':sum(int(e['metrics'].get('input_bytes',0)) for e in completed),
                 'output':sum(x['size_bytes'] for x in outputs),
                 'currentStorage':sum(x['size_bytes'] for x in assets)+sum(x['size_bytes'] for x in outputs),
             },
