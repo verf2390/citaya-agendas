@@ -170,6 +170,21 @@ class MediaIngestTests(unittest.TestCase):
         self.assertEqual(result["scenes"][2]["video"].split("/")[-1], "clip.mp4")
         self.assertEqual(result["creator"]["voiceoverStart"], 3)
         self.assertTrue(result["audio"]["duckMusicDuringVoice"])
+
+    def test_normalized_zero_voiceover_start_is_replaced_after_intro(self):
+        config = {
+            "timing": {"intro": 2.8, "demo": 14.4, "outro": 2.8},
+            "scenes": [],
+            "creator": {"voiceoverStart": 0, "introOffset": 0, "outroOffset": 0, "useClipAudio": True},
+            "mediaApproved": False,
+        }
+        manifest = {"configPatch": {"media": {
+            "creatorIntro": "inputs/projects/demo/creator-intro.mp4",
+            "creatorVoiceover": "inputs/projects/demo/voiceover.ogg",
+        }}}
+        with patch.object(ingest, "validate", side_effect=lambda value, mode: (value, {"valid": True, "mode": mode}, {})):
+            result, _ = ingest.apply_manifest(config, manifest, approved=True)
+        self.assertEqual(result["creator"]["voiceoverStart"], 2.8)
         self.assertTrue(result["subtitles"]["enabled"])
         self.assertEqual(report["mode"], "preview")
 
