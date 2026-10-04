@@ -177,6 +177,36 @@ def summary(manifest):
     return "\n".join(lines)
 
 
+def _manifest_duration_seconds(manifest, role):
+    for item in manifest.get("files", []):
+        if item.get("role") != role:
+            continue
+        duration_ms = item.get("inspection", {}).get("durationMs")
+        if type(duration_ms) in (int, float) and duration_ms > 0:
+            return duration_ms / 1000
+    return None
+
+
+def _fit_creator_voice_timeline(config, manifest):
+    """Fit creator-led demo pacing to reviewed narration instead of filler time."""
+    media = config.get("media", {})
+    if config.get("template") != "creator-led-v1" or not (media.get("creatorIntro") and media.get("creatorVoiceover")):
+        return
+    voice_seconds = _manifest_duration_seconds(manifest, "creatorVoiceover")
+    if voice_seconds is None:
+        return
+    scenes = config.get("scenes", [])
+    minimum_demo = max(3.0, 1.4 * len(scenes))
+    demo = round(max(minimum_demo, voice_seconds + 0.6), 3)
+    timing = config.setdefault("timing", {})
+    timing["demo"] = demo
+    if scenes:
+        each = round(demo / len(scenes), 6)
+        for scene in scenes[:-1]:
+            scene["duration"] = each
+        scenes[-1]["duration"] = round(demo - each * (len(scenes) - 1), 6)
+
+
 def apply_manifest(config, manifest, approved):
     if not approved:
         fail("MEDIA_APPROVAL_REQUIRED", "Revisa el manifiesto y repite con --approve-media para confirmar derechos y privacidad.")
@@ -200,6 +230,7 @@ def apply_manifest(config, manifest, approved):
             scene["video"] = None
         else:
             scene["media"] = None
+    _fit_creator_voice_timeline(c, manifest)
     if media.get("creatorIntro") or media.get("creatorOutro") or media.get("creatorVoiceover"):
         creator = c.setdefault("creator", {})
         creator.setdefault("useClipAudio", True)
