@@ -12,7 +12,7 @@ import {
 } from "@/lib/ai/server/audit";
 import type { AITenantPolicy } from "@/lib/ai/server/tenant-policy";
 import { reservedTokensForAIRequest } from "@/lib/ai/server/token-budget";
-import type { AIUsage } from "@/lib/ai/types";
+import type { AIRouteSummary, AIUsage } from "@/lib/ai/types";
 
 const ZERO_USAGE: AIUsage = {
   inputTokens: 0,
@@ -63,6 +63,8 @@ export async function runN8NAI(input: {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   let requestId: string | null = null;
+  let observedUsage: AIUsage = ZERO_USAGE;
+  let observedRoute: AIRouteSummary | undefined;
 
   try {
     requestId = await beginAIServiceRequestAudit({
@@ -79,6 +81,14 @@ export async function runN8NAI(input: {
       }),
       signal: controller.signal,
     });
+
+    const remainingTimeoutMs = requestTimeoutMs - (Date.now() - startedAt);
+    if (remainingTimeoutMs <= 0 || controller.signal.aborted) {
+      throw new AIError(
+        "AI_TIMEOUT",
+        "La solicitud de IA excedió el tiempo máximo",
+      );
+    }
 
     const result = await runAICore({
       provider,
@@ -98,10 +108,12 @@ export async function runN8NAI(input: {
         signal: controller.signal,
       },
       maxOutputTokens: outputLimit,
-      timeoutMs: requestTimeoutMs,
+      timeoutMs: remainingTimeoutMs,
       maxSteps: 1,
       maxToolCallsPerStep: 1,
     });
+    observedUsage = result.usage;
+    observedRoute = result.route;
 
     let text = result.text.trim();
     if (input.operation === "classify") {
@@ -140,8 +152,9 @@ export async function runN8NAI(input: {
           serviceId: input.serviceId,
           status: "failed",
           toolNames: [],
-          usage: ZERO_USAGE,
+          usage: observedUsage,
           durationMs: Date.now() - startedAt,
+          route: observedRoute,
           error,
         });
       } catch (auditError) {
