@@ -1,6 +1,8 @@
 # Contrato para Qwen / AI local o cloud
 
-El modelo recibe únicamente `schemas/tenant-video-config.schema.json` para autoservicio (o `video-config.schema.json` para operador interno), productos/nichos/templates permitidos, capacidades aprobadas y una lista de assets ya autorizados con ID, tipo, duración y dimensiones. No necesita el repositorio Citaya, Python, GSAP, HyperFrames ni shell. No recibe el catálogo operacional de perfiles de gates ni secretos.
+La salida se valida con `schemas/tenant-video-config.schema.json` para autoservicio o `video-config.schema.json` para operador interno. El modelo puede recibir un contrato reducido con sólo los campos que propone: no necesita el schema completo, el repositorio Citaya, Python, GSAP, HyperFrames ni shell. Recibe productos/nichos/templates permitidos, capacidades relevantes aprobadas y, si corresponde, una lista de assets ya autorizados. No recibe el catálogo operacional de perfiles de gates ni secretos.
+
+El [flujo local desde brief (CIT-122)](brief-to-preview.md) usa clasificación y generación separadas, con 128/256 tokens de salida, sin assets ni herramientas. El motor completa el config y `production.py` mantiene la autoridad final sobre schema y truth gates. Ese flujo fija `mediaApproved=false` y sólo genera preview.
 
 Prompt base:
 
