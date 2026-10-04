@@ -34,13 +34,57 @@
 .preset-dynamic .headline{font-weight:850;letter-spacing:-3.4px}
 .preset-dynamic .screen{border:2px solid #b8d3ec;box-shadow:0 38px 100px #17365d2c;background:#f4f9ff}
 .preset-dynamic .status{box-shadow:0 8px 24px #2563eb1f}
-.preset-dynamic .creator-overlay{
-  background:linear-gradient(135deg,#08111dea,#12243dea);
-  border:1px solid #ffffff2b;
-  box-shadow:0 26px 70px #0000004a;
-  backdrop-filter:blur(12px);
+
+/* Creator-led chrome: keep identity visible without turning the reel into an admin demo. */
+.preset-dynamic #brand-chrome .brand{
+  left:72px;
+  top:96px;
+  width:190px;
+  height:56px;
+  padding:7px 10px;
+  border-radius:12px;
+  background:#ffffffd9;
+  box-shadow:0 10px 30px #0f172a18;
 }
-.preset-dynamic .creator-overlay h2{font-size:58px;letter-spacing:-1.8px}
+.preset-dynamic #brand-chrome .product-name{display:none}
+.preset-dynamic #brand-chrome .niche{
+  right:72px;
+  top:103px;
+  font-size:22px;
+  padding:8px 12px;
+  border-radius:999px;
+  background:#ffffffd9;
+  color:#334155;
+  box-shadow:0 10px 30px #0f172a14;
+}
+.preset-dynamic #brand-chrome .demo{
+  left:72px;
+  top:1640px;
+  font-size:21px;
+  padding:5px 9px;
+  border-radius:8px;
+  background:#ffffffb8;
+  color:#475569;
+  opacity:.72;
+}
+
+.preset-dynamic .creator-overlay{
+  left:130px;
+  top:1280px;
+  width:820px;
+  padding:20px 26px;
+  border-radius:18px;
+  background:linear-gradient(135deg,#08111dc9,#12243dd1);
+  border:1px solid #ffffff20;
+  box-shadow:0 18px 48px #00000038;
+  backdrop-filter:blur(9px);
+}
+.preset-dynamic .creator-overlay h2{
+  font-size:46px;
+  line-height:1.12;
+  letter-spacing:-1.2px;
+  text-align:center;
+}
 .preset-dynamic .end{background:linear-gradient(145deg,#07111f,#12243d 62%,#163755)}
 .preset-dynamic .end-cta{box-shadow:0 22px 55px #00000035}
 .preset-dynamic .fill{height:6px;border-radius:6px}
