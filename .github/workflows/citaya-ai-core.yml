@@ -8,12 +8,16 @@ on:
       - "app/admin/asistente/**"
       - "app/admin/campanas/**"
       - "app/api/admin/ai/**"
+      - "app/api/integrations/ai/**"
       - "components/admin/AdminNav.tsx"
       - "docs/ai/**"
       - "lib/ai/**"
+      - "lib/api/requireM2M.ts"
       - "services/ai-gateway/**"
       - "migrations/*citaya_ai_core*"
+      - "migrations/*cit100_ai_m2m_audit.sql"
       - "tests/ai-*.test.mjs"
+      - "tests/m2m-ai-*.test.mjs"
       - "tests/security/citaya-ai-*.test.mjs"
       - ".github/workflows/citaya-ai-core.yml"
   pull_request:
@@ -21,12 +25,16 @@ on:
       - "app/admin/asistente/**"
       - "app/admin/campanas/**"
       - "app/api/admin/ai/**"
+      - "app/api/integrations/ai/**"
       - "components/admin/AdminNav.tsx"
       - "docs/ai/**"
       - "lib/ai/**"
+      - "lib/api/requireM2M.ts"
       - "services/ai-gateway/**"
       - "migrations/*citaya_ai_core*"
+      - "migrations/*cit100_ai_m2m_audit.sql"
       - "tests/ai-*.test.mjs"
+      - "tests/m2m-ai-*.test.mjs"
       - "tests/security/citaya-ai-*.test.mjs"
       - ".github/workflows/citaya-ai-core.yml"
   workflow_dispatch:
@@ -53,7 +61,7 @@ jobs:
         run: npm ci
 
       - name: AI Core tests
-        run: node --test tests/ai-*.test.mjs tests/security/citaya-ai-*.test.mjs
+        run: node --test tests/ai-*.test.mjs tests/m2m-ai-*.test.mjs tests/security/citaya-ai-*.test.mjs
 
       - name: AI Core lint
         run: >
@@ -61,10 +69,13 @@ jobs:
           app/admin/asistente/page.tsx
           app/admin/campanas/page.tsx
           app/api/admin/ai/assistant/route.ts
+          app/api/integrations/ai/route.ts
           components/admin/AdminNav.tsx
           "lib/ai/**/*.ts"
+          lib/api/requireM2M.ts
           "services/ai-gateway/**/*.mjs"
           tests/ai-*.test.mjs
+          tests/m2m-ai-*.test.mjs
           tests/security/citaya-ai-*.test.mjs
 
       - name: Production build
