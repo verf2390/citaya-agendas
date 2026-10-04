@@ -16,6 +16,18 @@ npm ci --prefix video-production
 
 La preparación puede requerir red para dependencias/Chromium. El render posterior usa la CLI instalada y assets locales; no invoca un agente cloud ni un modelo. Activar la venv para usar `python3`. El Chrome cacheado que ya usó V2 sirve en esta máquina. Si falta, preparar el navegador con el procedimiento de instalación de HyperFrames antes de procesar trabajos de clientes.
 
+## Crear desde un brief (CIT-122)
+
+Con el Citaya AI Gateway local activo y Qwen3-4B disponible:
+
+```bash
+python3 video-production/scripts/create-from-brief.py --config-only "Haz un Reel de 20 segundos para promocionar Citaya Agendas para una barbería. Quiero destacar reserva online, elección de profesional y fecha/hora. Termina invitando a probar Citaya."
+```
+
+Quitar `--config-only` genera el preview. No requiere Codex ni escribir JSON manual. Usa dos solicitudes pequeñas (128/256 tokens de salida), capacidades filtradas del catálogo y validación final de `production.py`. Conserva brief original, config normalizado y métricas IA. El modo final sigue requiriendo aprobación humana explícita. Ver [configuración, E2E manual, límites y errores](docs/brief-to-preview.md).
+
+## Generar desde un config
+
 ```bash
 python3 video-production/scripts/validate-config.py --config video-production/configs/veterinary.json
 python3 video-production/scripts/generate-video.py --config video-production/configs/veterinary.json --mode preview
