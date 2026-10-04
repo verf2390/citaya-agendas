@@ -170,9 +170,10 @@ class BriefTests(unittest.TestCase):
         self.assertEqual(report["stylePreset"], "premium")
         self.assertIn("NO son copy visible", brief.config_prompt(BRIEF, ROUTE, caps))
         for value in ("Usa mi video como apertura", "Muestra una pantalla de reservas", "Termina invitando a probar Citaya"):
-            with self.subTest(value=value), self.assertRaises(brief.BriefError) as ctx:
-                brief.normalize_proposal(dict(PROPOSAL, hook=value), ROUTE, caps)
-            self.assertEqual(ctx.exception.code, "DIRECTOR_NOTE_IN_COPY")
+            with self.subTest(value=value):
+                with self.assertRaises(brief.BriefError) as ctx:
+                    brief.normalize_proposal(dict(PROPOSAL, hook=value), ROUTE, caps)
+                self.assertEqual(ctx.exception.code, "DIRECTOR_NOTE_IN_COPY")
 
     def test_invalid_json_duplicates_non_finite_and_arrays_rejected(self):
         for text in ('{"hook":"a","hook":"b"}', '{"x":NaN}', '{"x":Infinity}', '[]', 'not json'):
