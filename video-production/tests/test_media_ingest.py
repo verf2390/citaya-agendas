@@ -74,6 +74,23 @@ class MediaIngestTests(unittest.TestCase):
             ingest.scan_media(outside)
         self.assertEqual(ctx.exception.code, "UNSAFE_MEDIA_DIR")
 
+    def test_rejects_root_symlink_and_accepts_spanish_accents(self):
+        target = self.inputs / "projects" / "target"
+        target.mkdir(parents=True)
+        link = self.inputs / "projects" / "linked"
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except OSError:
+            self.skipTest("symlinks unavailable")
+        with self.assertRaises(ingest.MediaIngestError) as ctx:
+            ingest.scan_media(link)
+        self.assertEqual(ctx.exception.code, "UNSAFE_MEDIA_DIR")
+
+        self.put("narración.wav")
+        manifest = ingest.scan_media(self.project)
+        roles = {item["role"] for item in manifest["files"]}
+        self.assertIn("creatorVoiceover", roles)
+
     def test_rejects_unsupported_hidden_and_ambiguous_audio(self):
         for name, code in (("logo.svg", "UNSUPPORTED_MEDIA"), (".secret.png", "UNSUPPORTED_MEDIA"), ("audio.wav", "AMBIGUOUS_AUDIO")):
             with self.subTest(name=name):
