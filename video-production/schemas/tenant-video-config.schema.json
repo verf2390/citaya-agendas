@@ -16,6 +16,13 @@
       "minLength": 1,
       "maxLength": 70
     },
+    "stylePreset": {
+      "enum": [
+        "minimal",
+        "dynamic",
+        "premium"
+      ]
+    },
     "niche": {
       "type": "string",
       "minLength": 1,
