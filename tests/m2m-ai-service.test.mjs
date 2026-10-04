@@ -152,10 +152,33 @@ test("invalid classification output fails closed and closes audit as failed", as
   assert.equal(state.finishes.length, 1);
   assert.equal(state.finishes[0].status, "failed");
   assert.deepEqual(state.finishes[0].usage, {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
+    inputTokens: 100,
+    outputTokens: 20,
+    totalTokens: 120,
   });
+  assert.equal(state.finishes[0].route.effectiveProvider, "local");
+});
+
+test("provider timeout uses only the remaining request budget after audit", async (t) => {
+  let nowCalls = 0;
+  t.mock.method(Date, "now", () => {
+    nowCalls += 1;
+    if (nowCalls === 1) return 1_000;
+    if (nowCalls === 2) return 1_250;
+    return 1_300;
+  });
+
+  await runN8NAI({
+    tenantId: "22222222-2222-4222-8222-222222222222",
+    tenantSlug: "tenant-a",
+    serviceId: "n8n",
+    workflowId: "daily-summary",
+    operation: "summarize",
+    source: "Texto",
+    policy: { ...policy, timeoutMs: 2_000 },
+  });
+
+  assert.equal(state.coreInput.timeoutMs, 1_750);
 });
 
 test("n8n prompt treats source content as untrusted data", async () => {
