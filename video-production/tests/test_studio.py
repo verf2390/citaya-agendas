@@ -142,7 +142,7 @@ class TenantTests(unittest.TestCase):
   media=Path(self.temp.name)/'voice.srt';media.write_text('1\n00:00:00,000 --> 00:00:01,000\nHola\n')
   unused=Path(self.temp.name)/'unused.srt';unused.write_text('1\n00:00:00,000 --> 00:00:01,000\nNo usado\n')
   aid=self.s.upload(self.a,self.pa,media);self.s.upload(self.a,self.pa,unused)
-  cfg=copy.deepcopy(self.cfg);cfg['media']={'captions':'asset:'+aid};self.s.update_project(self.a,self.pa,cfg)
+  cfg=copy.deepcopy(self.cfg);cfg['subtitles']={'enabled':True,'srt':'asset:'+aid};self.s.update_project(self.a,self.pa,cfg)
   jid=self.s.enqueue(self.a,self.pa,'preview','asset-meter');job=self.s.claim('meter-node')
   f=Path(self.temp.name)/'meter.txt';f.write_text('output')
   self.assertTrue(self.s.finish(job,{'config':f},{'wallSeconds':1,'cpuSeconds':.25,'width':720,'height':1280,'durationMs':1000}))
