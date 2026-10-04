@@ -218,6 +218,17 @@ class Studio:
         with self.tx():
             # Record actual incurred usage even if it exceeded a future plan limit. Budget checks belong before provider invocation.
             return self.record(actor.tenant_id,'ai:'+request_id,'ai',metrics,provider,provider_mode)
+    def record_ai_usage(self,actor,request_id,usage,project_id=None,job_id=None,provider_mode='local'):
+        if not isinstance(usage,dict) or usage.get('usageComplete') is not True:
+            fail('INVALID_USAGE','Complete provider-reported AI usage is required.')
+        provider=usage.get('provider');model=usage.get('model')
+        input_tokens=usage.get('inputTokens');output_tokens=usage.get('outputTokens');total_tokens=usage.get('totalTokens')
+        latency=usage.get('elapsedSeconds')
+        if any(type(x)!=int or x<0 for x in [input_tokens,output_tokens,total_tokens]) or total_tokens!=input_tokens+output_tokens:
+            fail('INVALID_USAGE','AI token totals must be complete and internally consistent.')
+        if type(latency) not in (int,float) or latency<0:
+            fail('INVALID_USAGE','AI elapsedSeconds must be a non-negative number.')
+        return self.record_ai(actor,request_id,provider,provider_mode,input_tokens,output_tokens,project_id=project_id,job_id=job_id,model=model,latency_seconds=latency)
     def project_usage_report(self,actor,project_id):
         project=self.project(actor,project_id)
         events=[]
