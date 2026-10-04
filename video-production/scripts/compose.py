@@ -35,7 +35,6 @@ def compile_composition(c,ctx,out,mode):
     if c['creator']['introVideo']:
         p=media(c['creator']['introVideo']);offset=c['creator']['introOffset']
         pieces.append(f'<video id="creator-intro" class="clip creator-video" src="{p}" muted playsinline data-start="0" data-duration="{t["intro"]}" data-media-start="{offset}" data-track-index="0"></video>')
-        clip('creator-title',0,t['intro'],f'<div class="creator-overlay"><h2>{E(c["hook"])}</h2></div>')
     else:
         clip('hook',0,t['intro'],f'<h1 class="headline hook">{E(c["hook"])}</h1><p class="secondary">{E(c["secondaryHook"])}</p>')
         motions.append("tl.fromTo('#hook .headline',{x:-28,opacity:0},{x:0,opacity:1,duration:.2,ease:'power3.out'},0);tl.fromTo('#hook .secondary',{y:25,opacity:0},{y:0,opacity:1,duration:.23,ease:'power3.out'},.12);")
@@ -80,7 +79,8 @@ def compile_composition(c,ctx,out,mode):
         qualifier=f'<div class="qualifier">{E(cap["commercialQualifier"])}</div>' if cap['requiredGates'] and c['videoType']!='roadmap' else ''
         if c['videoType']=='roadmap':qualifier=f'<div class="qualifier">{E(STATUS[cap["status"]])}</div>'
         elif cap['status']=='demo':qualifier='<div class="qualifier">Demo · No implica disponibilidad comercial</div>'
-        clip(id,clock,s['duration'],f'<h2 class="headline">{E(s["headline"])}</h2><div class="screen {"website-screen " if ctx["template"]["renderer"]=="website" else ""}{m}"><div class="screen-motion" data-layout-allow-overflow>{body}</div></div>{qualifier}')
+        scene_headline=c['hook'] if c['creator']['introVideo'] and i==0 else s['headline']
+        clip(id,clock,s['duration'],f'<h2 class="headline">{E(scene_headline)}</h2><div class="screen {"website-screen " if ctx["template"]["renderer"]=="website" else ""}{m}"><div class="screen-motion" data-layout-allow-overflow>{body}</div></div>{qualifier}')
         if s.get('video'):css+=f'\n#{id} .screen{{display:none}}#{id} .headline{{background:#ecf2f8;padding:25px;border-radius:20px}}'
         if custom and content.get('offer'):
             offer=content['offer']+(' · '+content['price'] if content.get('price') else '')
