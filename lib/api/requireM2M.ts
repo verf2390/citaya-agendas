@@ -114,12 +114,21 @@ export async function requireM2M(req: Request): Promise<M2MAuthResult> {
     return { ok: false, error: "Forbidden", status: 403 };
   }
 
+  const operationalMode = operational.operationalMode;
+  if (
+    operationalMode !== "demo" &&
+    operationalMode !== "live" &&
+    operationalMode !== "internal"
+  ) {
+    return { ok: false, error: "Forbidden", status: 403 };
+  }
+
   return {
     ok: true,
     tenantId,
     tenantSlug: String(tenant.slug ?? ""),
     serviceId: "n8n",
     authMode: "m2m",
-    operationalMode: operational.operationalMode,
+    operationalMode,
   };
 }
