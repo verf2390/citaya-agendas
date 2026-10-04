@@ -239,6 +239,8 @@ class Studio:
         if not isinstance(usage,dict) or usage.get('usageComplete') is not True:
             fail('INVALID_USAGE','Complete provider-reported AI usage is required.')
         provider=usage.get('provider');model=usage.get('model')
+        if not isinstance(model,str) or not model.strip():
+            fail('INVALID_USAGE','Complete AI usage must identify the provider model.')
         input_tokens=usage.get('inputTokens');output_tokens=usage.get('outputTokens');total_tokens=usage.get('totalTokens')
         latency=usage.get('elapsedSeconds')
         if any(type(x)!=int or x<0 for x in [input_tokens,output_tokens,total_tokens]) or total_tokens!=input_tokens+output_tokens:
