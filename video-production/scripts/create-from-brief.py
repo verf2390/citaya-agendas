@@ -233,8 +233,8 @@ def normalize_proposal(proposal, route, capabilities, style=None):
     if set(proposal) != {"hook", "secondaryHook", "cta", "capabilities"}:
         raise BriefError("La propuesta contiene campos ajenos al contrato de copy y capacidades.", "PROPOSAL_FIELDS")
     director_note = re.compile(
-        r"\\b(?:usa|usar|muestra|mostrar|pon|coloca|empieza|comienza|termina|finaliza)\\b"
-        r"[^.!?]{0,80}\\b(?:video|clip|apertura|intro|inicio|cierre|pantalla|escena|demo|invitando)\\b",
+        r"\b(?:usa|usar|muestra|mostrar|pon|coloca|empieza|comienza|termina|finaliza)\b"
+        r"[^.!?]{0,80}\b(?:video|clip|apertura|intro|inicio|cierre|pantalla|escena|demo|invitando)\b",
         re.I,
     )
     for field in ("hook", "secondaryHook", "cta"):
