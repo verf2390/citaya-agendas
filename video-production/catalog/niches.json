@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "niches": [
+    {
+      "id": "barber",
+      "name": "Barbería",
+      "headline": "Tu próxima atención",
+      "suggestedCta": "Reserva una atención",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido ficticio; no implica resultados garantizados."
+    },
+    {
+      "id": "beauty",
+      "name": "Belleza y estética",
+      "headline": "Tu próxima sesión",
+      "suggestedCta": "Reserva una sesión",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido ficticio; no implica resultados garantizados."
+    },
+    {
+      "id": "veterinary",
+      "name": "Veterinaria",
+      "headline": "Más tiempo para atender",
+      "suggestedCta": "Reserva una consulta",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Sin registros clínicos, diagnósticos ni promesas terapéuticas."
+    },
+    {
+      "id": "psychology",
+      "name": "Psicología",
+      "headline": "Tu agenda de consultas",
+      "suggestedCta": "Reserva una sesión",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Sin registros clínicos, diagnósticos ni promesas terapéuticas."
+    },
+    {
+      "id": "dentistry",
+      "name": "Odontología",
+      "headline": "Organiza tus evaluaciones",
+      "suggestedCta": "Reserva una evaluación",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Sin registros clínicos, diagnósticos ni promesas terapéuticas."
+    },
+    {
+      "id": "massage",
+      "name": "Masajes",
+      "headline": "Tu próxima sesión",
+      "suggestedCta": "Reserva una sesión",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido ficticio; no implica resultados garantizados."
+    },
+    {
+      "id": "healthcare",
+      "name": "Salud",
+      "headline": "Organiza tus consultas",
+      "suggestedCta": "Reserva una consulta",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Sin registros clínicos, diagnósticos ni promesas terapéuticas."
+    },
+    {
+      "id": "architecture",
+      "name": "Arquitectura",
+      "headline": "Muestra tus proyectos",
+      "suggestedCta": "Conversemos sobre tu proyecto",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido ficticio; no implica resultados garantizados."
+    },
+    {
+      "id": "local-business",
+      "name": "Negocio local",
+      "headline": "Tu negocio, más cerca",
+      "suggestedCta": "Conversemos",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido ficticio; no implica resultados garantizados."
+    },
+    {
+      "id": "professional-services",
+      "name": "Servicios profesionales",
+      "headline": "Tu negocio, organizado",
+      "suggestedCta": "Agenda una consulta",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido ficticio; no implica resultados garantizados."
+    },
+    {
+      "id": "restaurant",
+      "name": "Restaurante",
+      "headline": "Conoce nuestro trabajo.",
+      "suggestedCta": "Conversemos",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido proporcionado por el negocio. No requiere agendamiento."
+    },
+    {
+      "id": "retail",
+      "name": "Tienda / comercio",
+      "headline": "Conoce nuestro trabajo.",
+      "suggestedCta": "Conversemos",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido proporcionado por el negocio. No requiere agendamiento."
+    },
+    {
+      "id": "construction",
+      "name": "Construcción",
+      "headline": "Conoce nuestro trabajo.",
+      "suggestedCta": "Conversemos",
+      "demoServices": [
+        "Consulta",
+        "Evaluación",
+        "Sesión"
+      ],
+      "notes": "Contenido proporcionado por el negocio. No requiere agendamiento."
+    }
+  ]
+}

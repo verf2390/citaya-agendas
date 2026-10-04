@@ -1,0 +1,21 @@
+{
+  "id": "citaya-saas-vertical-v1",
+  "version": 1,
+  "renderer": "saas",
+  "formats": [
+    "vertical"
+  ],
+  "foundation": "brag-output-2026-10-03-122343",
+  "sceneModes": [
+    "benefit",
+    "service",
+    "professional",
+    "date",
+    "confirmed",
+    "calendar",
+    "customers",
+    "reminder",
+    "growth",
+    "campaign-preview"
+  ]
+}

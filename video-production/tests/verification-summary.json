@@ -1,0 +1,21 @@
+{
+  "completedAt": "2026-10-03T16:59:12.584692+00:00",
+  "unitAndContractTests": 37,
+  "testStatus": "pass",
+  "catalog": {
+    "capabilities": 77,
+    "products": 7,
+    "templates": 7,
+    "niches": 13
+  },
+  "previousBragOutputs": "all recorded content hashes and file sets unchanged",
+  "productionDatabaseAccess": false,
+  "productionEnvironmentFilesRead": false,
+  "productionDeployments": 0,
+  "fullResolutionFinalRendersDuringDevelopment": 0,
+  "selfServiceIntegration": "private executable backend and contracts implemented; authenticated Next.js adapter/UI not deployed",
+  "pricing": "none",
+  "previewEvidence": "preview-results.json",
+  "tenantQueueEvidence": "queue-smoke-result.json",
+  "failureEvidence": "validation-cases.json"
+}

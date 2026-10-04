@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "profiles": [],
+  "instructions": "Owner-maintained evidence gate. No actual tenant names/IDs, credentials or tax artifacts. Add a reviewed pseudonymous profile with id, enabledGates, approvedBy, evidenceReference, reviewDate, expiresOn only after operational verification. A video config cannot supply gates."
+}

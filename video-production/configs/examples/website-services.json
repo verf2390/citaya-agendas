@@ -1,0 +1,14 @@
+{
+  "product": "citaya-web",
+  "niche": "architecture",
+  "videoType": "website_showcase",
+  "hook": "Tu trabajo merece una buena web.",
+  "secondaryHook": "Proyectos, servicios y contacto en un solo lugar.",
+  "capabilities": [
+    "wordpress_creation",
+    "responsive_design",
+    "project_galleries",
+    "website_contact"
+  ],
+  "cta": "Hablemos de tu sitio web"
+}

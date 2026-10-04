@@ -1,0 +1,22 @@
+{
+  "id": "website-showcase-v1",
+  "version": 1,
+  "renderer": "website",
+  "formats": [
+    "vertical"
+  ],
+  "foundation": "brag-output-2026-10-03-122343",
+  "sceneModes": [
+    "desktop",
+    "mobile",
+    "homepage",
+    "portfolio",
+    "services",
+    "about",
+    "contact",
+    "technical",
+    "before_after",
+    "benefit",
+    "media"
+  ]
+}

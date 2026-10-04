@@ -1,0 +1,30 @@
+{
+  "id": "creator-led-v1",
+  "version": 1,
+  "renderer": "business",
+  "formats": [
+    "vertical"
+  ],
+  "foundation": "brag-output-2026-10-03-122343",
+  "sceneModes": [
+    "media",
+    "benefit",
+    "service",
+    "professional",
+    "date",
+    "confirmed",
+    "calendar",
+    "customers",
+    "reminder",
+    "growth",
+    "campaign-preview",
+    "desktop",
+    "mobile",
+    "homepage",
+    "portfolio",
+    "services",
+    "about",
+    "contact",
+    "technical"
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "previewOnly": true,
+  "finalRendersDuringDevelopment": 0,
+  "results": [
+    {
+      "test": "agendas",
+      "output": "outputs/20261003T165828.130731Z-citaya-agendas-preview-a4d42b",
+      "status": "complete",
+      "media": {
+        "width": 720,
+        "height": 1280,
+        "duration": 20.0,
+        "frames": 480,
+        "fps": "24/1",
+        "videoCodec": "h264",
+        "audioCodec": "aac",
+        "audioChannels": 2,
+        "posterTime": 1.68,
+        "posterBakedIntoFrameZero": true,
+        "decode": "pass",
+        "audioLevels": [
+          "mean_volume: -20.6 dB",
+          "max_volume: -3.9 dB"
+        ]
+      },
+      "note": "Final engine verification with original bundled music and resource metering."
+    },
+    {
+      "test": "website",
+      "output": "outputs/20261003T163323.700217Z-citaya-web-preview-5249db",
+      "status": "complete",
+      "media": {
+        "width": 720,
+        "height": 1280,
+        "duration": 20.0,
+        "frames": 480,
+        "fps": "24/1",
+        "videoCodec": "h264",
+        "audioCodec": "aac",
+        "audioChannels": 2,
+        "posterTime": 1.68,
+        "posterBakedIntoFrameZero": true,
+        "decode": "pass",
+        "audioLevels": [
+          "mean_volume: -20.6 dB",
+          "max_volume: -3.9 dB"
+        ]
+      }
+    },
+    {
+      "test": "creator",
+      "output": "outputs/20261003T163803.429885Z-custom-client-video-preview-29a5c9",
+      "status": "complete",
+      "media": {
+        "width": 720,
+        "height": 1280,
+        "duration": 10.0,
+        "frames": 240,
+        "fps": "24/1",
+        "videoCodec": "h264",
+        "audioCodec": "aac",
+        "audioChannels": 2,
+        "posterTime": 1.8,
+        "posterBakedIntoFrameZero": true,
+        "decode": "pass",
+        "audioLevels": [
+          "mean_volume: -18.7 dB",
+          "max_volume: -4.9 dB"
+        ]
+      }
+    },
+    {
+      "test": "tenant-worker",
+      "result": "tests/queue-smoke-result.json",
+      "status": "pass"
+    }
+  ]
+}

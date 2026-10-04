@@ -1,0 +1,536 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:citaya:video-config:v1",
+  "title": "CITAYA VIDEO STUDIO configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "product": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 60
+    },
+    "template": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 70
+    },
+    "niche": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "videoType": {
+      "enum": [
+        "product_demo",
+        "sales_ad",
+        "feature_highlight",
+        "niche_specific_ad",
+        "website_showcase",
+        "before_after",
+        "portfolio",
+        "educational",
+        "roadmap",
+        "concept",
+        "promotion",
+        "service_highlight",
+        "appointment_campaign",
+        "seasonal_offer",
+        "creator_led"
+      ]
+    },
+    "format": {
+      "enum": [
+        "vertical"
+      ]
+    },
+    "hook": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 74
+    },
+    "secondaryHook": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 90
+    },
+    "cta": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "shareCopy": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 320
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "intro": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 120
+        },
+        "demo": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 120
+        },
+        "outro": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 120
+        }
+      },
+      "required": []
+    },
+    "creator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "introVideo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "outroVideo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "voiceover": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "voiceoverStart": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 120
+        },
+        "introOffset": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 120
+        },
+        "outroOffset": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 120
+        },
+        "useClipAudio": {
+          "type": "boolean"
+        }
+      },
+      "required": []
+    },
+    "subtitles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "srt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "vtt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        }
+      },
+      "required": []
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "music": {
+          "type": "boolean"
+        },
+        "sfx": {
+          "type": "boolean"
+        },
+        "duckMusicDuringVoice": {
+          "type": "boolean"
+        }
+      },
+      "required": []
+    },
+    "commercialProfile": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mediaApproved": {
+      "type": "boolean"
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 35
+        }
+      },
+      "required": []
+    },
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "businessName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 45
+        },
+        "logo": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "logoLight": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "logoDark": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "primaryColor": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "secondaryColor": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "website": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 180,
+          "pattern": "^https://[^\\s<>]+$"
+        },
+        "socialHandle": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 40,
+          "pattern": "^@[A-Za-z0-9_.]+$"
+        },
+        "whatsapp": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\+?[0-9]{7,15}$"
+        }
+      },
+      "required": []
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "creatorIntro": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "creatorOutro": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "clientVoiceover": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "creatorVoiceover": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "backgroundMusic": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 250,
+          "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+        },
+        "images": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          }
+        },
+        "videos": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          }
+        },
+        "screenshots": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          }
+        },
+        "soundEffects": {
+          "type": "array",
+          "maxItems": 12,
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          }
+        }
+      },
+      "required": []
+    },
+    "mediaPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "useOnlyProvidedAssets": {
+          "type": "boolean"
+        },
+        "allowStockMedia": {
+          "type": "boolean"
+        },
+        "allowGeneratedMedia": {
+          "type": "boolean"
+        }
+      },
+      "required": []
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hook": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 74
+        },
+        "secondaryHook": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 90
+        },
+        "offer": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65
+        },
+        "price": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 35
+        },
+        "benefit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 65
+        },
+        "cta": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 40
+        },
+        "finalTagline": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 70
+        },
+        "featureLabels": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          }
+        }
+      },
+      "required": []
+    },
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "mode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "headline": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "duration": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 120
+          },
+          "media": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          },
+          "video": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          },
+          "beforeMedia": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          },
+          "afterMedia": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 250,
+            "pattern": "^(?:(?:\\./)?(?:inputs|assets)/[^\\x00]+|asset:[a-f0-9-]{36})$"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  "required": [
+    "product"
+  ]
+}

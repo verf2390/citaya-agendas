@@ -1,0 +1,36 @@
+{
+  "product": "custom-client-video",
+  "template": "offer-promo-v1",
+  "niche": "veterinary",
+  "videoType": "seasonal_offer",
+  "brand": {
+    "businessName": "Veterinaria Demo",
+    "logo": "inputs/test-fixtures/logo.png",
+    "primaryColor": "#186A61",
+    "secondaryColor": "#FFFFFF"
+  },
+  "media": {
+    "images": [
+      "inputs/test-fixtures/business.png"
+    ]
+  },
+  "content": {
+    "hook": "Una propuesta para tu negocio.",
+    "secondaryHook": "Oferta de demostración.",
+    "offer": "Sesión de evaluación",
+    "price": "Precio de ejemplo: $20.000",
+    "benefit": "Conoce el servicio.",
+    "cta": "Consulta condiciones"
+  },
+  "mediaPolicy": {
+    "useOnlyProvidedAssets": true,
+    "allowStockMedia": false,
+    "allowGeneratedMedia": false
+  },
+  "mediaApproved": true,
+  "timing": {
+    "intro": 2.5,
+    "demo": 5,
+    "outro": 2.5
+  }
+}

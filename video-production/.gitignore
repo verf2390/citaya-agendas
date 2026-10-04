@@ -1,0 +1,11 @@
+node_modules/
+outputs/
+inputs/*
+!inputs/README.md
+__pycache__/
+storage/
+.venv/
+
+# Keep synthetic test fixtures versioned
+!inputs/test-fixtures/
+!inputs/test-fixtures/**

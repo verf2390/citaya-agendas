@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "product": "citaya-agendas",
+  "niche": "veterinary",
+  "videoType": "roadmap",
+  "hook": "Lo que viene para Citaya",
+  "secondaryHook": "Conceptos en planificación.",
+  "capabilities": [
+    "clinical_records"
+  ],
+  "cta": "Conoce lo que viene",
+  "scenes": [
+    {
+      "capability": "clinical_records",
+      "headline": "Historia clínica · Concepto",
+      "duration": 14.4
+    }
+  ]
+}
