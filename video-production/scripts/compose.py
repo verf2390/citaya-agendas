@@ -29,7 +29,7 @@ def compile_composition(c,ctx,out,mode):
     branding=f'<img class="brand" src="assets/branding/citaya-logo.svg" alt="Citaya"><div class="product-name">{E(ctx["product"]["name"])}</div><div class="niche">{E(ctx["niche"]["name"])}</div>'
     if custom:
         logo=brand.get('logoDark') or brand.get('logo') or brand.get('logoLight')
-        branding=(f'<img class="brand" src="{media(logo)}" alt="Logo aprobado" style="object-fit:contain;background:white;border-radius:16px">' if logo else '')+f'<div class="product-name">{E(brand["businessName"])}</div><div class="niche">{E(ctx["niche"]["name"])}</div>'
+        branding=(f'<img class="brand" src="{media(logo)}" alt="Logo aprobado" style="object-fit:contain;background:white;border-radius:16px">' if logo else '')+f'<div class="product-name">{E(brand["businessName"])}</div><div class="niche">{E(c["project"]["category"])}</div>'
     if c['creator']['introVideo']:css+='\n.product-name,.niche{background:white;padding:12px;border-radius:12px}.brand{background:white;border-radius:14px}.demo{background:white;padding:6px}'
     clip('brand-chrome',0,duration-t['outro'],branding+'<div class="demo">Demostración · Datos ficticios / material revisado</div><div class="progress" data-layout-ignore><div class="fill"></div></div>',track=1)
     if c['creator']['introVideo']:
