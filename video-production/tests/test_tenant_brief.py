@@ -94,11 +94,11 @@ class TenantBriefTests(unittest.TestCase):
                 "benefit": "Todo en un solo lugar",
                 "cta": "Agenda una demo",
                 "scenes": [
-                    {"headline": "Agenda", "mode": "benefit", "durationSeconds": 1.5},
-                    {"headline": "Servicios", "mode": "benefit", "durationSeconds": 1.1},
-                    {"headline": "Clientes", "mode": "benefit", "durationSeconds": 1.1},
-                    {"headline": "Pagos y facturación", "mode": "benefit", "durationSeconds": 1.5},
-                    {"headline": "Campañas", "mode": "benefit", "durationSeconds": 1.2},
+                    {"headline": "Agenda", "visualIntent": "agenda", "durationSeconds": 1.5},
+                    {"headline": "Servicios", "visualIntent": "servicios", "durationSeconds": 1.1},
+                    {"headline": "Clientes", "visualIntent": "clientes", "durationSeconds": 1.1},
+                    {"headline": "Pagos y facturación", "visualIntent": "pagos_facturacion", "durationSeconds": 1.5},
+                    {"headline": "Campañas", "visualIntent": "campanas", "durationSeconds": 1.2},
                 ],
                 "outroSeconds": 1.6,
             }),
@@ -188,11 +188,53 @@ class TenantBriefTests(unittest.TestCase):
             [scene["headline"] for scene in directed["scenes"]],
             ["Agenda", "Servicios", "Clientes", "Pagos y facturación", "Campañas"],
         )
+        self.assertEqual(
+            [scene["mode"] for scene in directed["scenes"]],
+            ["calendar", "service", "customers", "payments", "campaign-preview"],
+        )
         self.assertAlmostEqual(
             sum(scene["duration"] for scene in directed["scenes"]),
             directed["timing"]["demo"],
             places=6,
         )
+
+
+    def test_external_brand_cannot_request_citaya_product_ui(self):
+        response = {
+            "text": json.dumps({
+                "hook": "Tu negocio",
+                "secondaryHook": "Una propuesta clara",
+                "benefit": "Muestra lo importante",
+                "cta": "Conoce más",
+                "scenes": [
+                    {"headline": "Agenda", "visualIntent": "agenda", "durationSeconds": 3},
+                ],
+                "outroSeconds": 2,
+            }),
+            "toolCalls": [],
+            "usage": {"inputTokens": 10, "outputTokens": 10, "totalTokens": 20},
+        }
+        config = {
+            "schemaVersion": 1,
+            "product": "custom-client-video",
+            "template": "creator-led-v1",
+            "stylePreset": "dynamic",
+            "niche": "local-business",
+            "videoType": "promotion",
+            "brand": {"businessName": "Negocio Externo"},
+            "capabilities": ["provided_business_content"],
+            "content": {"hook": "Hook", "secondaryHook": "Segundo", "benefit": "Beneficio", "cta": "CTA"},
+            "media": {},
+            "creator": {"useClipAudio": True, "voiceoverStart": 0},
+            "mediaPolicy": {"useOnlyProvidedAssets": True, "allowStockMedia": False, "allowGeneratedMedia": False},
+            "mediaApproved": False,
+            "timing": {"intro": 2, "demo": 11, "outro": 2},
+            "project": {"creativeBrief": "Muestra una agenda.", "targetDurationSeconds": 15},
+        }
+        with patch.object(tenant_brief, "gateway_call", return_value=response):
+            with self.assertRaises(tenant_brief.TenantBriefError) as caught:
+                tenant_brief.direct_tenant_config(config=config, assets=[])
+        self.assertEqual(caught.exception.code, "AI_INVALID_PROPOSAL")
 
     def test_rejects_secret_like_brief(self):
         with self.assertRaises(tenant_brief.TenantBriefError) as caught:
