@@ -214,6 +214,22 @@ export async function POST(req: Request) {
     });
     if (!allowed) return NextResponse.json({ ok: false, code: "RATE_LIMITED" }, { status: 429 });
 
+    if (action === "create_from_brief") {
+      const result = await callVideoStudio<Record<string, unknown>>({
+        action: "create_from_brief",
+        tenantId: access.tenantId,
+        userId: access.userId,
+        payload: {
+          title: body?.title,
+          brief: body?.brief,
+          businessName: body?.businessName,
+          niche: body?.niche,
+          style: body?.style,
+          durationSeconds: body?.durationSeconds,
+        },
+      });
+      return NextResponse.json({ ok: true, ...result }, { status: 201 });
+    }
     if (action === "create") {
       const project = await callVideoStudio<unknown>({
         action: "create_project",

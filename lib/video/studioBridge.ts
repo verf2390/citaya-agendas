@@ -10,6 +10,7 @@ import { createWriteStream } from "node:fs";
 
 export type VideoStudioAction =
   | "list_projects"
+  | "create_from_brief"
   | "project_detail"
   | "create_project"
   | "update_project"

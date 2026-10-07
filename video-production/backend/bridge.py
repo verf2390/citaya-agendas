@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from studio import Actor, Studio
+from tenant_brief import generate_tenant_config
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STORAGE = ROOT / "storage" / "private"
@@ -139,6 +140,32 @@ def main():
     try:
         if action == "list_projects":
             result = studio.list_projects(actor)
+        elif action == "create_from_brief":
+            title = str(payload.get("title") or "Nuevo video")
+            config, report, usage = generate_tenant_config(
+                brief=payload.get("brief"),
+                business_name=payload.get("businessName"),
+                niche=payload.get("niche"),
+                style=payload.get("style"),
+                duration_seconds=payload.get("durationSeconds"),
+            )
+            project_id = studio.create_project(actor, config, title)
+            if usage is not None:
+                try:
+                    studio.record_ai_usage(
+                        actor,
+                        uid(),
+                        usage,
+                        project_id=project_id,
+                        provider_mode="local",
+                    )
+                except Exception:
+                    pass
+            result = {
+                "project": safe_project_detail(studio, actor, project_id),
+                "report": report,
+                "usage": usage,
+            }
         elif action == "project_detail":
             result = safe_project_detail(studio, actor, str(payload.get("projectId", "")))
         elif action == "create_project":
