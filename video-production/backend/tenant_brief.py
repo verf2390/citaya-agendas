@@ -177,6 +177,44 @@ def usage_from_response(response, model, elapsed):
     }
 
 
+def _validate_creation_proposal(response, token):
+    if response.get("toolCalls"):
+        raise TenantBriefError("AI_UNEXPECTED_TOOLS")
+    proposal = parse_json_object(response["text"])
+    if set(proposal) != {"hook", "secondaryHook", "benefit", "cta"}:
+        raise TenantBriefError("AI_INVALID_PROPOSAL")
+    hook = clean_text(proposal["hook"], 74, "AI_INVALID_PROPOSAL")
+    secondary = clean_text(proposal["secondaryHook"], 90, "AI_INVALID_PROPOSAL")
+    benefit = clean_text(proposal["benefit"], 65, "AI_INVALID_PROPOSAL")
+    cta = clean_text(proposal["cta"], 40, "AI_INVALID_PROPOSAL")
+    if token and token in json.dumps(proposal, ensure_ascii=False):
+        raise TenantBriefError("AI_UNSAFE_RESPONSE")
+    return hook, secondary, benefit, cta
+
+
+def _combined_usage(responses, model, elapsed):
+    totals = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
+    for response in responses:
+        usage = response.get("usage")
+        if not isinstance(usage, dict):
+            return None
+        values = [usage.get("inputTokens"), usage.get("outputTokens"), usage.get("totalTokens")]
+        if any(type(value) is not int or value < 0 for value in values):
+            return None
+        if values[2] != values[0] + values[1]:
+            return None
+        totals["inputTokens"] += values[0]
+        totals["outputTokens"] += values[1]
+        totals["totalTokens"] += values[2]
+    return {
+        "provider": "local",
+        "model": model,
+        **totals,
+        "elapsedSeconds": round(elapsed, 6),
+        "usageComplete": True,
+    }
+
+
 def generate_tenant_config(*, brief, business_name, niche, niche_label=None, style, duration_seconds):
     token = os.environ.get("CITAYA_AI_LOCAL_AUTH_TOKEN", "").strip()
     endpoint = os.environ.get(
@@ -227,18 +265,33 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
 
     started = time.monotonic()
     response = gateway_call(endpoint, token, payload)
+    responses = [response]
+    try:
+        hook, secondary, benefit, cta = _validate_creation_proposal(response, token)
+    except TenantBriefError as exc:
+        if exc.code not in ("AI_INVALID_JSON", "AI_INVALID_PROPOSAL"):
+            raise
+        repair_prompt = (
+            'Repara la propuesta anterior. Devuelve SOLO JSON exacto con estas cuatro claves: '
+            '{"hook":"texto","secondaryHook":"texto","benefit":"texto","cta":"texto"}. '
+            "Limites estrictos: hook 74, secondaryHook 90, benefit 65, cta 40 caracteres. "
+            "No agregues afirmaciones nuevas, precios, ofertas ni datos. Conserva solo el significado ya presente. "
+            "PROPUESTA_ANTERIOR: " + json.dumps(str(response.get("text", ""))[:1800], ensure_ascii=False)
+            + "\n/no_think"
+        )
+        repair_payload = {
+            "contractVersion": "citaya-ai-provider-v1",
+            "model": model,
+            "instructions": SYSTEM,
+            "input": [{"type": "user", "text": repair_prompt}],
+            "tools": [],
+            "maxOutputTokens": 180,
+            "continuation": None,
+        }
+        repaired = gateway_call(endpoint, token, repair_payload)
+        responses.append(repaired)
+        hook, secondary, benefit, cta = _validate_creation_proposal(repaired, token)
     elapsed = time.monotonic() - started
-    if response.get("toolCalls"):
-        raise TenantBriefError("AI_UNEXPECTED_TOOLS")
-    proposal = parse_json_object(response["text"])
-    if set(proposal) != {"hook", "secondaryHook", "benefit", "cta"}:
-        raise TenantBriefError("AI_INVALID_PROPOSAL")
-    hook = clean_text(proposal["hook"], 74, "AI_INVALID_PROPOSAL")
-    secondary = clean_text(proposal["secondaryHook"], 90, "AI_INVALID_PROPOSAL")
-    benefit = clean_text(proposal["benefit"], 65, "AI_INVALID_PROPOSAL")
-    cta = clean_text(proposal["cta"], 40, "AI_INVALID_PROPOSAL")
-    if token and token in json.dumps(proposal, ensure_ascii=False):
-        raise TenantBriefError("AI_UNSAFE_RESPONSE")
 
     intro = 2.5
     outro = 2.5
@@ -272,7 +325,7 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
         },
     }
     _, report, _ = validate(config, "preview")
-    return config, report, usage_from_response(response, model, elapsed)
+    return config, report, _combined_usage(responses, model, elapsed)
 
 
 
