@@ -73,3 +73,9 @@ test("Video Studio exposes a post-upload guarded AI director", () => {
   assert.match(page, /creativeBrief/);
   assert.match(page, /prioriza no cortarlos/);
 });
+
+
+test("Video Studio surfaces legacy ambiguous config errors clearly", () => {
+  assert.match(page, /AMBIGUOUS_CONFIG/);
+  assert.match(page, /campos duplicados/);
+});

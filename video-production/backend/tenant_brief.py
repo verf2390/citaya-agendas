@@ -24,13 +24,6 @@ MAX_GATEWAY_RESPONSE = 262144
 DIRECTOR_MODES = (
     "media",
     "benefit",
-    "desktop",
-    "mobile",
-    "homepage",
-    "services",
-    "about",
-    "contact",
-    "technical",
 )
 
 SYSTEM = (
@@ -257,8 +250,8 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
             "category": niche_label[:35],
         },
     }
-    normalized, report, _ = validate(config, "preview")
-    return normalized, report, usage_from_response(response, model, elapsed)
+    _, report, _ = validate(config, "preview")
+    return config, report, usage_from_response(response, model, elapsed)
 
 
 
@@ -309,6 +302,18 @@ def direct_tenant_config(*, config, assets, brief=None):
     validate_endpoint(endpoint)
 
     current = copy.deepcopy(config)
+
+    # Older Video Studio projects persisted the normalized engine aliases as well
+    # as the public content/media vocabulary. The public vocabulary is canonical
+    # for tenant editing; remove derived aliases before changing copy/media so a
+    # stale duplicate cannot trigger AMBIGUOUS_CONFIG.
+    for key in ("hook", "secondaryHook", "cta"):
+        current.pop(key, None)
+    creator_public = current.get("creator")
+    if isinstance(creator_public, dict):
+        for key in ("introVideo", "outroVideo", "voiceover"):
+            creator_public.pop(key, None)
+
     project = current.setdefault("project", {})
     stored_brief = project.get("creativeBrief")
     chosen_brief = brief if isinstance(brief, str) and brief.strip() else stored_brief
