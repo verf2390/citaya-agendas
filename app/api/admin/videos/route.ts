@@ -5,7 +5,10 @@ import { Readable } from "node:stream";
 
 import { NextResponse } from "next/server";
 
-import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
+import {
+  requireHostTenantAdmin,
+  requirePlatformAdmin,
+} from "@/lib/api/requireTenantAdmin";
 import { idempotencyKey, consumeRateLimit } from "@/lib/security/request";
 import {
   callVideoStudio,
@@ -73,10 +76,17 @@ async function authorize(req: Request) {
       ),
     } as const;
   }
-  if (
-    access.authMode !== "platform_admin" ||
-    access.tenantSlug !== VIDEO_STUDIO_TENANT_SLUG
-  ) {
+  if (access.tenantSlug !== VIDEO_STUDIO_TENANT_SLUG) {
+    return {
+      response: NextResponse.json(
+        { ok: false, code: "NOT_FOUND" },
+        { status: 404 },
+      ),
+    } as const;
+  }
+
+  const platform = await requirePlatformAdmin(req);
+  if (!platform.ok || platform.userId !== access.userId) {
     return {
       response: NextResponse.json(
         { ok: false, code: "NOT_FOUND" },

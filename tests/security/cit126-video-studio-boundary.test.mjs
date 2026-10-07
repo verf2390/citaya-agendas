@@ -15,8 +15,9 @@ test("video admin authenticates hostname tenant before parsing mutations", () =>
   const post = route.slice(route.indexOf("export async function POST"));
 
   assert.match(authorize, /requireHostTenantAdmin\(req\)/);
-  assert.match(authorize, /access\.authMode !== "platform_admin"/);
   assert.match(authorize, /access\.tenantSlug !== VIDEO_STUDIO_TENANT_SLUG/);
+  assert.match(authorize, /requirePlatformAdmin\(req\)/);
+  assert.match(authorize, /platform\.userId !== access\.userId/);
   assert.match(post, /const auth = await authorize\(req\)/);
   assert.ok(
     post.indexOf("const auth = await authorize(req)") <
@@ -39,14 +40,15 @@ test("video admin injects tenant/user from guard and never accepts tenant hints"
 
 test("video bridge has no shell and Python Actor owns tenant boundary", () => {
   assert.match(bridge, /shell: false/);
-  assert.match(bridge, /video-production\/backend\/bridge\.py/);
+  assert.match(bridge, /process\.env\.CITAYA_VIDEO_RUNTIME_ROOT/);
+  assert.match(bridge, /resolve\(VIDEO_RUNTIME_ROOT, "backend\/bridge\.py"\)/);
   assert.match(python, /actor = Actor\(tenant_id, user_id\)/);
   assert.match(python, /WHERE tenant_id=\? AND project_id=\?/);
   assert.doesNotMatch(python, /http\.server|Flask|FastAPI|listen\(/);
 });
 
 test("uploads are staged privately and Python rejects paths outside staging", () => {
-  assert.match(bridge, /video-production\/storage\/staging/);
+  assert.match(bridge, /resolve\(VIDEO_RUNTIME_ROOT, "storage\/staging"\)/);
   assert.match(bridge, /mode: 0o700/);
   assert.match(bridge, /mode: 0o600/);
   assert.match(python, /path\.is_relative_to\(STAGING_ROOT\)/);
@@ -63,7 +65,8 @@ test("download stays tenant-authorized and private", () => {
 
 test("Video Studio is temporarily restricted to rg-spa platform admin", () => {
   assert.match(route, /const VIDEO_STUDIO_TENANT_SLUG = "rg-spa"/);
-  assert.match(route, /access\.authMode !== "platform_admin"/);
   assert.match(route, /access\.tenantSlug !== VIDEO_STUDIO_TENANT_SLUG/);
+  assert.match(route, /requirePlatformAdmin\(req\)/);
+  assert.match(route, /platform\.userId !== access\.userId/);
   assert.match(route, /code: "NOT_FOUND"/);
 });
