@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clapperboard,
   Download,
+  FileAudio2,
   FileVideo2,
   ImageIcon,
   LoaderCircle,
@@ -160,15 +161,30 @@ function cloneConfig(project: VideoProject) {
   return structuredClone(project.config || {});
 }
 
-function mediaReferences(assets: VideoAsset[]) {
+function mediaReferences(
+  assets: VideoAsset[],
+  introAssetId: string,
+  outroAssetId: string,
+) {
+  const reservedVideos = new Set(
+    [introAssetId, outroAssetId].filter(Boolean),
+  );
   return {
     images: assets
       .filter((asset) => asset.assetType === "image")
       .map((asset) => "asset:" + asset.id),
     videos: assets
-      .filter((asset) => asset.assetType === "video")
+      .filter(
+        (asset) =>
+          asset.assetType === "video" && !reservedVideos.has(asset.id),
+      )
       .map((asset) => "asset:" + asset.id),
   };
+}
+
+function assetId(value: unknown) {
+  if (typeof value !== "string" || !value.startsWith("asset:")) return "";
+  return value.slice(6);
 }
 
 export default function AdminVideosPage() {
@@ -194,6 +210,11 @@ export default function AdminVideosPage() {
   const [benefit, setBenefit] = useState("");
   const [cta, setCta] = useState("");
   const [rightsApproved, setRightsApproved] = useState(false);
+  const [introAssetId, setIntroAssetId] = useState("");
+  const [outroAssetId, setOutroAssetId] = useState("");
+  const [voiceAssetId, setVoiceAssetId] = useState("");
+  const [musicAssetId, setMusicAssetId] = useState("");
+  const [useClipAudio, setUseClipAudio] = useState(true);
 
   const apiJson = useCallback(
     async (body: Record<string, unknown>, key?: string) => {
@@ -275,6 +296,23 @@ export default function AdminVideosPage() {
     );
     setBenefit(String(content.benefit || ""));
     setCta(String(content.cta || next.config.cta || ""));
+
+    const media =
+      next.config.media && typeof next.config.media === "object"
+        ? (next.config.media as Record<string, unknown>)
+        : {};
+    const creator =
+      next.config.creator && typeof next.config.creator === "object"
+        ? (next.config.creator as Record<string, unknown>)
+        : {};
+
+    setIntroAssetId(assetId(media.creatorIntro));
+    setOutroAssetId(assetId(media.creatorOutro));
+    setVoiceAssetId(
+      assetId(media.clientVoiceover || media.creatorVoiceover),
+    );
+    setMusicAssetId(assetId(media.backgroundMusic));
+    setUseClipAudio(creator.useClipAudio !== false);
     setRightsApproved(next.config.mediaApproved === true);
   }, []);
 
@@ -461,7 +499,23 @@ export default function AdminVideosPage() {
       config.media && typeof config.media === "object"
         ? (config.media as Record<string, unknown>)
         : {};
-    const refs = mediaReferences(project.assets);
+    const existingCreator =
+      config.creator && typeof config.creator === "object"
+        ? (config.creator as Record<string, unknown>)
+        : {};
+    const existingAudio =
+      config.audio && typeof config.audio === "object"
+        ? (config.audio as Record<string, unknown>)
+        : {};
+    const refs = mediaReferences(
+      project.assets,
+      introAssetId,
+      outroAssetId,
+    );
+    const voiceoverStart =
+      introAssetId && config.timing && typeof config.timing === "object"
+        ? Number((config.timing as Record<string, unknown>).intro || 0)
+        : 0;
 
     config.content = {
       ...existingContent,
@@ -474,6 +528,22 @@ export default function AdminVideosPage() {
       ...existingMedia,
       images: refs.images,
       videos: refs.videos,
+      creatorIntro: introAssetId ? "asset:" + introAssetId : null,
+      creatorOutro: outroAssetId ? "asset:" + outroAssetId : null,
+      clientVoiceover: voiceAssetId ? "asset:" + voiceAssetId : null,
+      creatorVoiceover: null,
+      backgroundMusic: musicAssetId ? "asset:" + musicAssetId : null,
+    };
+    config.creator = {
+      ...existingCreator,
+      useClipAudio,
+      voiceoverStart,
+    };
+    config.audio = {
+      ...existingAudio,
+      music: Boolean(musicAssetId),
+      sfx: false,
+      duckMusicDuringVoice: Boolean(musicAssetId && voiceAssetId),
     };
     config.mediaApproved = project.assets.length > 0 ? rightsApproved : false;
 
@@ -866,8 +936,8 @@ export default function AdminVideosPage() {
                       Subir material
                     </div>
                     <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-                      Imágenes y videos. Los archivos quedan privados y solo se
-                      incorporan después de tu confirmación.
+                      Imágenes, videos, voz y música. Los archivos quedan
+                      privados y solo se incorporan después de tu confirmación.
                     </p>
 
                     <label className="mt-3 flex cursor-pointer items-center justify-center rounded-xl bg-slate-900 px-3 py-3 text-sm font-black text-white">
@@ -875,7 +945,7 @@ export default function AdminVideosPage() {
                       <input
                         type="file"
                         multiple
-                        accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm"
+                        accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.wav,.mp3,.m4a,.ogg"
                         className="sr-only"
                         disabled={Boolean(working)}
                         onChange={(event) => {
@@ -884,6 +954,116 @@ export default function AdminVideosPage() {
                         }}
                       />
                     </label>
+
+                    {project.assets.some(
+                      (asset) => asset.assetType === "video",
+                    ) ? (
+                      <div className="mt-4 grid gap-3">
+                        <label className="grid gap-1 text-xs font-black text-slate-600">
+                          Video de inicio
+                          <select
+                            value={introAssetId}
+                            onChange={(event) =>
+                              setIntroAssetId(event.target.value)
+                            }
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950"
+                          >
+                            <option value="">Sin video de inicio</option>
+                            {project.assets
+                              .filter((asset) => asset.assetType === "video")
+                              .map((asset, index) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {"Video " + String(index + 1) + " · " + formatBytes(asset.sizeBytes)}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+
+                        <label className="grid gap-1 text-xs font-black text-slate-600">
+                          Video de cierre
+                          <select
+                            value={outroAssetId}
+                            onChange={(event) =>
+                              setOutroAssetId(event.target.value)
+                            }
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950"
+                          >
+                            <option value="">Sin video de cierre</option>
+                            {project.assets
+                              .filter((asset) => asset.assetType === "video")
+                              .map((asset, index) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {"Video " + String(index + 1) + " · " + formatBytes(asset.sizeBytes)}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+
+                        <label className="flex items-start gap-2 text-xs font-bold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={useClipAudio}
+                            onChange={(event) =>
+                              setUseClipAudio(event.target.checked)
+                            }
+                            className="mt-1"
+                          />
+                          Conservar el audio original de los clips de inicio/cierre.
+                        </label>
+                      </div>
+                    ) : null}
+
+                    {project.assets.some(
+                      (asset) => asset.assetType === "audio",
+                    ) ? (
+                      <div className="mt-4 grid gap-3">
+                        <label className="grid gap-1 text-xs font-black text-slate-600">
+                          Voz / narración
+                          <select
+                            value={voiceAssetId}
+                            onChange={(event) =>
+                              setVoiceAssetId(event.target.value)
+                            }
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950"
+                          >
+                            <option value="">Sin voiceover</option>
+                            {project.assets
+                              .filter((asset) => asset.assetType === "audio")
+                              .map((asset, index) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {"Audio " + String(index + 1) + " · " + formatBytes(asset.sizeBytes)}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+
+                        <label className="grid gap-1 text-xs font-black text-slate-600">
+                          Música de fondo
+                          <select
+                            value={musicAssetId}
+                            onChange={(event) =>
+                              setMusicAssetId(event.target.value)
+                            }
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950"
+                          >
+                            <option value="">Sin música</option>
+                            {project.assets
+                              .filter((asset) => asset.assetType === "audio")
+                              .map((asset, index) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {"Audio " + String(index + 1) + " · " + formatBytes(asset.sizeBytes)}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+
+                        {voiceAssetId && musicAssetId ? (
+                          <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs font-bold leading-5 text-blue-900">
+                            La música se atenuará automáticamente mientras habla la voz.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {project.assets.length ? (
                       <label className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-900">
@@ -911,12 +1091,18 @@ export default function AdminVideosPage() {
                       >
                         {asset.assetType === "video" ? (
                           <FileVideo2 className="h-5 w-5 text-blue-600" />
+                        ) : asset.assetType === "audio" ? (
+                          <FileAudio2 className="h-5 w-5 text-violet-600" />
                         ) : (
                           <ImageIcon className="h-5 w-5 text-emerald-600" />
                         )}
                         <div className="min-w-0">
                           <div className="text-xs font-black text-slate-900">
-                            {asset.assetType === "video" ? "Video" : "Imagen"}
+                            {asset.assetType === "video"
+                              ? "Video"
+                              : asset.assetType === "audio"
+                                ? "Audio"
+                                : "Imagen"}
                           </div>
                           <div className="text-xs font-medium text-slate-500">
                             {formatBytes(asset.sizeBytes)}
