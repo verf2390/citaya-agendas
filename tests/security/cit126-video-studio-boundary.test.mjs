@@ -40,14 +40,15 @@ test("video admin injects tenant/user from guard and never accepts tenant hints"
 
 test("video bridge has no shell and Python Actor owns tenant boundary", () => {
   assert.match(bridge, /shell: false/);
-  assert.match(bridge, /video-production\/backend\/bridge\.py/);
+  assert.match(bridge, /process\.env\.CITAYA_VIDEO_RUNTIME_ROOT/);
+  assert.match(bridge, /resolve\(VIDEO_RUNTIME_ROOT, "backend\/bridge\.py"\)/);
   assert.match(python, /actor = Actor\(tenant_id, user_id\)/);
   assert.match(python, /WHERE tenant_id=\? AND project_id=\?/);
   assert.doesNotMatch(python, /http\.server|Flask|FastAPI|listen\(/);
 });
 
 test("uploads are staged privately and Python rejects paths outside staging", () => {
-  assert.match(bridge, /video-production\/storage\/staging/);
+  assert.match(bridge, /resolve\(VIDEO_RUNTIME_ROOT, "storage\/staging"\)/);
   assert.match(bridge, /mode: 0o700/);
   assert.match(bridge, /mode: 0o600/);
   assert.match(python, /path\.is_relative_to\(STAGING_ROOT\)/);
