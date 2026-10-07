@@ -305,6 +305,12 @@ export default function AdminVideosPage() {
     if (typeof projectMeta.creativeBrief === "string") {
       setBrief(projectMeta.creativeBrief);
     }
+    if (
+      typeof projectMeta.category === "string" &&
+      projectMeta.category.trim()
+    ) {
+      setNiche(projectMeta.category);
+    }
 
     const media =
       next.config.media && typeof next.config.media === "object"
@@ -544,6 +550,14 @@ export default function AdminVideosPage() {
       secondaryHook: secondaryHook.trim(),
       benefit: benefit.trim(),
       cta: cta.trim(),
+    };
+    const existingProjectMeta =
+      config.project && typeof config.project === "object"
+        ? (config.project as Record<string, unknown>)
+        : {};
+    config.project = {
+      ...existingProjectMeta,
+      category: niche.trim() || "Negocio local",
     };
     config.media = {
       ...existingMedia,

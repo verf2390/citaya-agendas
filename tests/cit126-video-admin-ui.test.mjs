@@ -79,3 +79,9 @@ test("Video Studio surfaces legacy ambiguous config errors clearly", () => {
   assert.match(page, /AMBIGUOUS_CONFIG/);
   assert.match(page, /campos duplicados/);
 });
+
+
+test("Video Studio persists the editable niche as the rendered project category", () => {
+  assert.match(page, /setNiche\(projectMeta\.category\)/);
+  assert.match(page, /category: niche\.trim\(\) \|\| "Negocio local"/);
+});
