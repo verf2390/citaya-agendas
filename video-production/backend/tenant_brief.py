@@ -209,6 +209,25 @@ def _validate_creation_proposal(response, token):
     return hook, secondary, benefit, cta
 
 
+def _safe_creation_fallback(*, brief, business_name, niche_label):
+    hook = _normalize_creation_text(business_name, 74)
+    secondary = _normalize_creation_text(niche_label, 90)
+    first_line = next(
+        (line.strip() for line in re.split(r"[\r\n]+", brief) if line.strip()),
+        business_name,
+    )
+    benefit = _normalize_creation_text(first_line, 65)
+    cta_match = re.search(
+        r"(?im)^\s*(?:cta|llamado a la acci[oó]n)\s*:\s*[“\"']?([^\r\n”\"']+)",
+        brief,
+    )
+    cta = _normalize_creation_text(
+        cta_match.group(1) if cta_match else "Conoce más",
+        40,
+    )
+    return hook, secondary, benefit, cta
+
+
 def _combined_usage(responses, model, elapsed):
     totals = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
     for response in responses:
@@ -307,7 +326,16 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
         }
         repaired = gateway_call(endpoint, token, repair_payload)
         responses.append(repaired)
-        hook, secondary, benefit, cta = _validate_creation_proposal(repaired, token)
+        try:
+            hook, secondary, benefit, cta = _validate_creation_proposal(repaired, token)
+        except TenantBriefError as repair_exc:
+            if repair_exc.code not in ("AI_INVALID_JSON", "AI_INVALID_PROPOSAL"):
+                raise
+            hook, secondary, benefit, cta = _safe_creation_fallback(
+                brief=brief,
+                business_name=business_name,
+                niche_label=niche_label,
+            )
     elapsed = time.monotonic() - started
 
     intro = 2.5
