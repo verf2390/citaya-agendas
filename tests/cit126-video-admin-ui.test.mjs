@@ -58,3 +58,9 @@ test("Preview player forces browser-compatible MP4 blob and reports media errors
   assert.match(page, /key=\{previewUrl\}/);
   assert.match(page, /onError=/);
 });
+
+test("Video Studio accepts a free-form niche and longer creative briefs", () => {
+  assert.match(page, /list="video-studio-niches"/);
+  assert.match(page, /nicheLabel: niche\.trim\(\)/);
+  assert.match(page, /maxLength=\{6000\}/);
+});

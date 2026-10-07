@@ -201,7 +201,7 @@ export default function AdminVideosPage() {
 
   const [title, setTitle] = useState("Nuevo video");
   const [businessName, setBusinessName] = useState("");
-  const [niche, setNiche] = useState("local-business");
+  const [niche, setNiche] = useState("Negocio local");
   const [style, setStyle] = useState("dynamic");
   const [duration, setDuration] = useState(15);
   const [brief, setBrief] = useState("");
@@ -443,7 +443,13 @@ export default function AdminVideosPage() {
         action: "create_from_brief",
         title: title.trim() || "Nuevo video",
         businessName: businessName.trim(),
-        niche,
+        niche:
+          NICHES.find(
+            ([id, label]) =>
+              id.toLowerCase() === niche.trim().toLowerCase() ||
+              label.toLowerCase() === niche.trim().toLowerCase(),
+          )?.[0] || "local-business",
+        nicheLabel: niche.trim(),
         style,
         durationSeconds: duration,
         brief: brief.trim(),
@@ -740,17 +746,19 @@ export default function AdminVideosPage() {
 
                 <label className="grid gap-1 text-xs font-black text-slate-600">
                   Rubro
-                  <select
+                  <input
                     value={niche}
                     onChange={(event) => setNiche(event.target.value)}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950"
-                  >
+                    list="video-studio-niches"
+                    maxLength={60}
+                    placeholder="Ej. Barbería, veterinaria, software para reservas..."
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950 outline-none focus:border-blue-400"
+                  />
+                  <datalist id="video-studio-niches">
                     {NICHES.map(([id, label]) => (
-                      <option key={id} value={id}>
-                        {label}
-                      </option>
+                      <option key={id} value={label} />
                     ))}
-                  </select>
+                  </datalist>
                 </label>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -788,7 +796,7 @@ export default function AdminVideosPage() {
                     value={brief}
                     onChange={(event) => setBrief(event.target.value)}
                     rows={5}
-                    maxLength={1000}
+                    maxLength={6000}
                     placeholder="Ej. Muestra el proceso del corte, el resultado final y termina invitando a reservar."
                     className="resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-950 outline-none focus:border-blue-400"
                   />

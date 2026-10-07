@@ -248,6 +248,7 @@ export async function POST(req: Request) {
           brief: body?.brief,
           businessName: body?.businessName,
           niche: body?.niche,
+          nicheLabel: body?.nicheLabel,
           style: body?.style,
           durationSeconds: body?.durationSeconds,
         },
