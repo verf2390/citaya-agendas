@@ -480,12 +480,17 @@ def direct_tenant_config(*, config, assets, brief=None):
     if total > 120:
         raise TenantBriefError("INVALID_DURATION")
 
+    uses_citaya_product_ui = any(
+        scene["mode"] in {"service", "calendar", "customers", "payments", "campaign-preview"}
+        for scene in scenes
+    )
     current["template"] = (
         "creator-led-v1"
         if media.get("creatorIntro")
         or media.get("creatorOutro")
         or media.get("clientVoiceover")
         or media.get("creatorVoiceover")
+        or uses_citaya_product_ui
         else current.get("template", "local-business-promo-v1")
     )
     current["capabilities"] = ["provided_business_content"]
