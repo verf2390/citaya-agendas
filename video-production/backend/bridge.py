@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-from studio import Actor, Studio
+from studio import Actor, Studio, uid
 from tenant_brief import generate_tenant_config
 
 ROOT = Path(__file__).resolve().parents[1]
