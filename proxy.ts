@@ -125,5 +125,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/:path*"],
+  // API routes handle their own auth and must bypass Proxy so large multipart
+  // uploads (Video Studio, attachments, etc.) are not subject to Proxy's
+  // request-body buffering limit.
+  matcher: ["/((?!api(?:/|$)).*)"],
 };
