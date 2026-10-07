@@ -14,6 +14,7 @@ def compile_composition(c,ctx,out,mode):
             src=ROOT/path;name=digest(src)[:16]+src.suffix.lower();dest=comp/'assets'/'inputs'/name;dest.parent.mkdir(exist_ok=True);shutil.copy2(src,dest);imported[path]='assets/inputs/'+name
         return imported[path]
     brand=c.get('brand',{});custom=c['product']=='custom-client-video';content=c.get('content',{});
+    citaya_owned_ui=custom and str(brand.get('businessName','')).strip().casefold()=='citaya'
     t=c['timing'];duration=sum(t.values());r=MODES[mode];scale=r['width']/1080
     css=(ROOT/'templates/citaya-saas-vertical-v1/layout.css').read_text()
     css+='\n'+(ROOT/'templates/presets.css').read_text()
@@ -22,6 +23,16 @@ def compile_composition(c,ctx,out,mode):
     pieces=[];motions=[];proof=[]
     if brand.get('primaryColor'):css+=f'\n.fill{{background:{brand["primaryColor"]}}}.screen{{border-color:{brand["primaryColor"]}}}'
     if brand.get('secondaryColor'):css+=f'\n.screen{{background:{brand["secondaryColor"]}}}'
+    if citaya_owned_ui:
+        css+='''\n.citaya-admin-demo{font-family:Inter,system-ui,sans-serif;background:#fff;border:1px solid #dbe3ee;border-radius:24px;padding:28px;color:#0f172a;box-shadow:0 20px 55px rgba(15,23,42,.08)}
+.citaya-admin-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
+.citaya-admin-head strong{font-size:34px}.citaya-admin-head span{font-size:18px;font-weight:800;color:#2563eb;background:#eff6ff;padding:8px 12px;border-radius:999px}
+.citaya-admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.citaya-admin-card{border:1px solid #e2e8f0;border-radius:18px;padding:18px;background:#f8fafc}
+.citaya-admin-card small{display:block;font-size:17px;font-weight:800;color:#64748b;margin-bottom:8px}.citaya-admin-card b{font-size:24px}
+.citaya-admin-list{display:grid;gap:10px}.citaya-admin-row{display:flex;justify-content:space-between;align-items:center;border:1px solid #e2e8f0;border-radius:16px;padding:14px 16px;font-size:19px;font-weight:800}
+.citaya-admin-row em{font-style:normal;font-size:15px;color:#475569;background:#f1f5f9;padding:6px 9px;border-radius:999px}
+.citaya-chip-wrap{display:flex;flex-wrap:wrap;gap:10px}.citaya-chip{font-size:17px;font-weight:800;border:1px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;padding:10px 13px;border-radius:999px}'''
     def clip(id,start,length,content,cls='',track=2):
         pieces.append(f'<section id="{id}" class="clip {cls}" data-start="{start:.6f}" data-duration="{length:.6f}" data-track-index="{track}">{content}</section>')
     def enter(id,start):
@@ -67,6 +78,13 @@ def compile_composition(c,ctx,out,mode):
             return None
         return '<div class="niche-demo">'+header+'<div class="niche-demo-body">'+body+'</div></div>'
 
+    def citaya_product_ui(mode):
+        if mode=='payments':
+            return '<div class="citaya-admin-demo"><div class="citaya-admin-head"><strong>Pagos y facturación</strong><span>CITAYA</span></div><div class="citaya-admin-grid"><div class="citaya-admin-card"><small>Pagos pendientes</small><b>Gestión centralizada</b></div><div class="citaya-admin-card"><small>Pagos confirmados</small><b>Estado visible</b></div></div><div class="citaya-admin-list"><div class="citaya-admin-row">Métodos de pago <em>Configuración</em></div><div class="citaya-admin-row">Facturación <em>Revisión</em></div></div></div>'
+        if mode=='campaign-preview':
+            return '<div class="citaya-admin-demo"><div class="citaya-admin-head"><strong>Campañas</strong><span>CRM</span></div><div class="citaya-chip-wrap"><span class="citaya-chip">Todos</span><span class="citaya-chip">Clientes recurrentes</span><span class="citaya-chip">Clientes inactivos</span><span class="citaya-chip">Pago pendiente</span></div><div class="citaya-admin-list" style="margin-top:18px"><div class="citaya-admin-row">Audiencia segmentada <em>Vista previa</em></div><div class="citaya-admin-row">Mensaje de campaña <em>Revisar antes de enviar</em></div></div></div>'
+        return None
+
     def benefit(s):
         cap=ctx['caps'][s['capability']]
         badge='Simulación · Sin envío' if s['mode']=='campaign-preview' else STATUS[cap['status']]
@@ -83,6 +101,8 @@ def compile_composition(c,ctx,out,mode):
             vp=media(s['video']);pieces.append(f'<video id="scene-video-{i}" class="clip creator-video" src="{vp}" muted playsinline data-start="{clock}" data-duration="{s["duration"]}" data-track-index="0"></video>')
         elif ctx['template']['renderer']=='website':body=website(s)
         elif s['media']:body=f'<img src="{media(s["media"])}" alt="Material revisado">'
+        elif citaya_owned_ui and m in ['payments','campaign-preview']:
+            body=citaya_product_ui(m)
         elif m in UI:
             demo=niche_demo(m)
             if demo:

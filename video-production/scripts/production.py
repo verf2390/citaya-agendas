@@ -231,9 +231,13 @@ def expand_inputs(c):
     if c.get('product')=='custom-client-video':
         if not c.get('brand',{}).get('businessName'):fail('MISSING_BRAND','Client videos require brand.businessName.')
         if not c['mediaPolicy']['useOnlyProvidedAssets']:fail('MEDIA_POLICY','Client videos must use only provided assets.')
+        citaya_owned_ui=str(c.get('brand',{}).get('businessName','')).strip().casefold()=='citaya'
+        citaya_ui_modes={'service','calendar','customers','payments','campaign-preview'}
         for scene in c['scenes']:
-            if scene.get('mode') not in ['benefit','media','before_after'] and not scene.get('media'):fail('PROVIDED_MEDIA_REQUIRED','Client website scenes require a supplied screenshot; no invented business imagery.')
-            if scene.get('mode')=='before_after' and not (scene.get('beforeMedia') and scene.get('afterMedia')):fail('PROVIDED_MEDIA_REQUIRED','Client before/after requires both reviewed images.')
+            mode=scene.get('mode')
+            trusted_product_ui=citaya_owned_ui and mode in citaya_ui_modes
+            if mode not in ['benefit','media','before_after'] and not scene.get('media') and not trusted_product_ui:fail('PROVIDED_MEDIA_REQUIRED','Client website scenes require a supplied screenshot; no invented business imagery.')
+            if mode=='before_after' and not (scene.get('beforeMedia') and scene.get('afterMedia')):fail('PROVIDED_MEDIA_REQUIRED','Client before/after requires both reviewed images.')
 
 def validate_media_inputs(c):
     found=[]
