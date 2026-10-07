@@ -2069,7 +2069,12 @@
         "about",
         "contact",
         "technical",
-        "before_after"
+        "before_after",
+        "service",
+        "calendar",
+        "customers",
+        "payments",
+        "campaign-preview"
       ],
       "sourceUiHint": null,
       "notes": "No certifica afirmaciones comerciales del cliente. Requiere revisión humana. Nunca usa datos de clientes ni inventa fotografías del negocio.",
