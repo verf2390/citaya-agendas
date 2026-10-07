@@ -7,6 +7,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https://images.unsplash.com https://*.supabase.co https://*.supabase.in https://*.khipu.com https://*.transbank.cl https://*.mercadopago.com",
   "font-src 'self' data:",
+  "media-src 'self' blob:",
   "connect-src 'self' https://*.supabase.co https://*.supabase.in https://api.mercadopago.com https://payment-api.khipu.com https://webpay3g.transbank.cl https://webpay3gint.transbank.cl",
   "frame-src 'self' https://*.mercadopago.com https://*.khipu.com https://*.transbank.cl",
   "object-src 'none'",
