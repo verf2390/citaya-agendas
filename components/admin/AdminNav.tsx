@@ -16,6 +16,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  Video,
   Wrench,
   Shield,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import { getTenantSlugFromHostname } from "@/lib/tenant";
 const ITEMS = [
   { href: "/admin", label: "Panel", icon: LayoutDashboard },
   { href: "/admin/asistente", label: "Asistente IA", icon: Bot },
+  { href: "/admin/videos", label: "Videos", icon: Video },
   { href: "/admin/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/admin/customers", label: "Clientes", icon: Users },
   { href: "/admin/pagos", label: "Pagos", icon: CreditCard },
