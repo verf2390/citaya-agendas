@@ -6,6 +6,7 @@ from datetime import datetime,timezone
 import hashlib,json,mimetypes,os,shutil,sqlite3,sys,time,uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from production import ROOT,ConfigError,fail,validate,schema_validate,tenant_schema_validate,inspect_media,parse_srt,digest,write_json
+from media_analysis import AnalysisMixin
 @dataclass(frozen=True)
 class Actor:
     tenant_id: str
@@ -31,7 +32,7 @@ def asset_ids(config):
     walk(config)
     return sorted(found)
 
-class Studio:
+class Studio(AnalysisMixin):
     def __init__(self,root,limits=None):
         self.root=Path(root).resolve();self.root.mkdir(parents=True,exist_ok=True,mode=0o700);os.chmod(self.root,0o700)
         self.db=sqlite3.connect(self.root/'studio.sqlite',timeout=30,isolation_level=None);self.db.row_factory=sqlite3.Row
