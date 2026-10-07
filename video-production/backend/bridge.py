@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from studio import Actor, Studio, uid
-from tenant_brief import generate_tenant_config
+from tenant_brief import direct_tenant_config, generate_tenant_config
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STORAGE = ROOT / "storage" / "private"
@@ -165,6 +165,50 @@ def main():
             result = {
                 "project": safe_project_detail(studio, actor, project_id),
                 "report": report,
+                "usage": usage,
+            }
+        elif action == "direct_project":
+            project_id = str(payload.get("projectId", ""))
+            project = studio.project(actor, project_id)
+            config = safe_json(project["config_json"], {})
+            assets = [
+                {
+                    "id": row["id"],
+                    "assetType": row["asset_type"],
+                    "durationMs": row["duration_ms"],
+                    "width": row["width"],
+                    "height": row["height"],
+                }
+                for row in studio.db.execute(
+                    "SELECT id,asset_type,duration_ms,width,height FROM video_assets "
+                    "WHERE tenant_id=? AND project_id=? ORDER BY created_at",
+                    (actor.tenant_id, project_id),
+                )
+            ]
+            directed, director_report, usage = direct_tenant_config(
+                config=config,
+                assets=assets,
+                brief=payload.get("brief"),
+            )
+            _, validation_report = studio.validated(
+                actor, project_id, directed, "preview"
+            )
+            studio.update_project(actor, project_id, directed)
+            if usage is not None:
+                try:
+                    studio.record_ai_usage(
+                        actor,
+                        uid(),
+                        usage,
+                        project_id=project_id,
+                        provider_mode="local",
+                    )
+                except Exception:
+                    pass
+            result = {
+                "project": safe_project_detail(studio, actor, project_id),
+                "director": director_report,
+                "report": validation_report,
                 "usage": usage,
             }
         elif action == "project_detail":

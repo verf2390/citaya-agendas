@@ -136,7 +136,7 @@ def validate(config,mode='preview'):
     for i,pat in forbidden.items():
         if c['videoType']!='roadmap' and caps[i]['status'] in ['planned','in_progress'] and any(re.search(pat,v,re.I) for v in copy_values if isinstance(v,str)): fail('CAPABILITY_NOT_COMMERCIAL',i+' cannot be claimed in commercial copy.')
     timing=c.setdefault('timing',{});shape(timing,['intro','demo','outro'],'timing')
-    for k,d,lo in [('intro',2.8,1.5),('demo',14.4,3),('outro',2.8,2)]: timing[k]=number(timing.get(k,d),lo,60,'timing.'+k)
+    for k,d,lo in [('intro',2.8,1.5),('demo',14.4,3),('outro',2.8,1.5)]: timing[k]=number(timing.get(k,d),lo,60,'timing.'+k)
     duration=sum(timing.values())
     if duration>120: fail('INVALID_TIMING','Total duration must not exceed 120 seconds.')
     scenes=c.get('scenes',[{'capability':i} for i in ids])
@@ -149,7 +149,7 @@ def validate(config,mode='preview'):
         # No cross-feature visual: e.g. clinical record claim cannot hide under a calendar capability.
         if s['mode'] not in cap['suggestedScenes']+['benefit','media'] and not (s['mode']=='before_after' and template['renderer']=='website'): fail('SCENE_CAPABILITY_MISMATCH','Scene mode does not illustrate this capability.')
         s['headline']=text(s.get('headline',cap['suggestedBenefits'][0] if len(cap['suggestedBenefits'][0])<=64 else cap['name']),64,'scene.headline')
-        s['duration']=number(s.get('duration',timing['demo']/len(scenes)),1.4,30,'scene.duration')
+        s['duration']=number(s.get('duration',timing['demo']/len(scenes)),1.0,30,'scene.duration')
         for key in ['media','beforeMedia','afterMedia']: s[key]=asset(s.get(key),'image')
         s['video']=asset(s.get('video'),'video')
         if s['video'] and float(probe(ROOT/s['video'])['format']['duration'])+.04<s['duration']: fail('MEDIA_DURATION','Scene video is shorter than its scene.')
@@ -184,7 +184,7 @@ def validate(config,mode='preview'):
     audio=c.setdefault('audio',{});shape(audio,['music','sfx','duckMusicDuringVoice'],'audio')
     for k in ['music','sfx','duckMusicDuringVoice']:audio[k]=boolean(audio.get(k,True),'audio.'+k)
     if speech and audio['music'] and not audio['duckMusicDuringVoice']: fail('VOICE_DUCKING_REQUIRED','Music under speech requires duckMusicDuringVoice=true.')
-    project=c.setdefault('project',{});shape(project,['name','category'],'project');project['name']=text(project.get('name','Estudio Demo' if c['niche']=='architecture' else 'Negocio Demo'),32,'project.name');project['category']=text(project.get('category',niches[c['niche']]['name']),35,'project.category')
+    project=c.setdefault('project',{});shape(project,['name','category','creativeBrief','targetDurationSeconds'],'project');project['name']=text(project.get('name','Estudio Demo' if c['niche']=='architecture' else 'Negocio Demo'),32,'project.name');project['category']=text(project.get('category',niches[c['niche']]['name']),35,'project.category')
     for s in scenes:
         media.extend(s[k] for k in ['media','video','beforeMedia','afterMedia'] if s[k])
         for i,pat in forbidden.items():

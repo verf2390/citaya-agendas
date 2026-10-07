@@ -255,6 +255,23 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ ok: true, ...result }, { status: 201 });
     }
+    if (action === "direct") {
+      const projectId = String(body?.projectId ?? "").trim();
+      const brief = String(body?.brief ?? "").trim();
+      if (!projectId || !brief) {
+        return NextResponse.json(
+          { ok: false, code: "INVALID_REQUEST" },
+          { status: 400 },
+        );
+      }
+      const result = await callVideoStudio<Record<string, unknown>>({
+        action: "direct_project",
+        tenantId: access.tenantId,
+        userId: access.userId,
+        payload: { projectId, brief },
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
     if (action === "create") {
       const project = await callVideoStudio<unknown>({
         action: "create_project",

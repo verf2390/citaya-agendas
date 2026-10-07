@@ -44,6 +44,8 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(config["brand"]["businessName"], "Negocio Demo")
         self.assertEqual(config["stylePreset"], "dynamic")
         self.assertFalse(config["mediaApproved"])
+        self.assertEqual(config["project"]["creativeBrief"], "Video corto mostrando nuestro trabajo real.")
+        self.assertEqual(config["project"]["targetDurationSeconds"], 15)
         self.assertEqual(report["duration"], 15)
         self.assertEqual(usage["totalTokens"], 30)
 
@@ -80,6 +82,101 @@ class TenantBriefTests(unittest.TestCase):
         prompt = sent["input"][0]["text"]
         self.assertIn("Software para reservas", prompt)
         self.assertIn("Escena y dirección creativa", prompt)
+
+    def test_director_preserves_full_intro_and_voice(self):
+        response = {
+            "text": json.dumps({
+                "hook": "¿Pagas por funciones que no usas?",
+                "secondaryHook": "Por eso creamos Citaya",
+                "benefit": "Todo en un solo lugar",
+                "cta": "Agenda una demo",
+                "scenes": [
+                    {"headline": "Agenda", "mode": "benefit", "durationSeconds": 1.5},
+                    {"headline": "Servicios", "mode": "services", "durationSeconds": 1.1},
+                    {"headline": "Clientes", "mode": "benefit", "durationSeconds": 1.1},
+                    {"headline": "Pagos y facturación", "mode": "benefit", "durationSeconds": 1.5},
+                    {"headline": "Campañas", "mode": "benefit", "durationSeconds": 1.2},
+                ],
+                "outroSeconds": 1.6,
+            }),
+            "toolCalls": [],
+            "usage": {"inputTokens": 100, "outputTokens": 50, "totalTokens": 150},
+        }
+        env = {
+            "CITAYA_AI_PROVIDER": "local",
+            "CITAYA_AI_LOCAL_ENDPOINT": "http://127.0.0.1:8787/v1/generate",
+            "CITAYA_AI_LOCAL_MODEL": "Qwen/Qwen3-4B-GGUF:Q4_K_M",
+        }
+        config = {
+            "schemaVersion": 1,
+            "product": "custom-client-video",
+            "template": "creator-led-v1",
+            "stylePreset": "dynamic",
+            "niche": "local-business",
+            "videoType": "promotion",
+            "brand": {"businessName": "Citaya"},
+            "capabilities": ["provided_business_content"],
+            "content": {
+                "hook": "Hook",
+                "secondaryHook": "Segundo",
+                "benefit": "Beneficio",
+                "cta": "CTA",
+            },
+            "media": {
+                "creatorIntro": "asset:11111111-1111-1111-1111-111111111111",
+                "clientVoiceover": "asset:22222222-2222-2222-2222-222222222222",
+            },
+            "creator": {"useClipAudio": True, "voiceoverStart": 2.5},
+            "mediaPolicy": {
+                "useOnlyProvidedAssets": True,
+                "allowStockMedia": False,
+                "allowGeneratedMedia": False,
+            },
+            "mediaApproved": True,
+            "timing": {"intro": 2.5, "demo": 10.5, "outro": 2},
+            "project": {
+                "creativeBrief": "Usa mi video completo al inicio y luego la locución.",
+                "targetDurationSeconds": 15,
+            },
+        }
+        assets = [
+            {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "assetType": "video",
+                "durationMs": 7210,
+                "width": 1080,
+                "height": 1920,
+            },
+            {
+                "id": "22222222-2222-2222-2222-222222222222",
+                "assetType": "audio",
+                "durationMs": 7870,
+                "width": None,
+                "height": None,
+            },
+        ]
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            tenant_brief, "gateway_call", return_value=response
+        ):
+            directed, report, usage = tenant_brief.direct_tenant_config(
+                config=config,
+                assets=assets,
+            )
+
+        self.assertEqual(directed["timing"]["intro"], 7.21)
+        self.assertEqual(directed["creator"]["voiceoverStart"], 7.21)
+        self.assertGreaterEqual(report["plannedDurationSeconds"], 15.08)
+        self.assertTrue(report["preservedMedia"])
+        self.assertEqual(usage["totalTokens"], 150)
+        self.assertEqual(
+            [scene["headline"] for scene in directed["scenes"]],
+            ["Agenda", "Servicios", "Clientes", "Pagos y facturación", "Campañas"],
+        )
+        self.assertAlmostEqual(
+            sum(scene["duration"] for scene in directed["scenes"]),
+            directed["timing"]["demo"],
+            places=6,
+        )
 
     def test_rejects_secret_like_brief(self):
         with self.assertRaises(tenant_brief.TenantBriefError) as caught:

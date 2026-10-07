@@ -64,3 +64,12 @@ test("Video Studio accepts a free-form niche and longer creative briefs", () => 
   assert.match(page, /nicheLabel: niche\.trim\(\)/);
   assert.match(page, /maxLength=\{6000\}/);
 });
+
+
+test("Video Studio exposes a post-upload guarded AI director", () => {
+  assert.match(page, /Dirigir con IA/);
+  assert.match(page, /action: "direct"/);
+  assert.match(page, /directWithAi/);
+  assert.match(page, /creativeBrief/);
+  assert.match(page, /prioriza no cortarlos/);
+});
