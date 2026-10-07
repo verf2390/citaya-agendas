@@ -16,6 +16,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  Video,
   Wrench,
   Shield,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import { getTenantSlugFromHostname } from "@/lib/tenant";
 const ITEMS = [
   { href: "/admin", label: "Panel", icon: LayoutDashboard },
   { href: "/admin/asistente", label: "Asistente IA", icon: Bot },
+  { href: "/admin/videos", label: "Videos", icon: Video, tenantOnly: "rg-spa" },
   { href: "/admin/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/admin/customers", label: "Clientes", icon: Users },
   { href: "/admin/pagos", label: "Pagos", icon: CreditCard },
@@ -130,7 +132,10 @@ export default function AdminNav() {
 
           <nav className="mt-4 min-w-0 max-w-full overflow-hidden lg:flex-1">
             <div className="no-scrollbar flex w-full max-w-full gap-1 overflow-x-auto overscroll-x-contain pb-1 [-webkit-overflow-scrolling:touch] lg:grid lg:min-w-0 lg:gap-1.5 lg:overflow-visible lg:pb-0">
-              {ITEMS.map((item) => {
+              {ITEMS.filter(
+                (item) =>
+                  !("tenantOnly" in item) || item.tenantOnly === tenant?.slug,
+              ).map((item) => {
                 const active =
                   pathname === item.href ||
                   (item.href !== "/admin" && pathname.startsWith(`${item.href}/`));

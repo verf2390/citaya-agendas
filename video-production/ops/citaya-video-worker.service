@@ -1,0 +1,32 @@
+[Unit]
+Description=CITAYA Video Studio private render worker
+After=local-fs.target citaya.service
+Wants=citaya.service
+
+[Service]
+Type=simple
+User=verf
+Group=verf
+WorkingDirectory=/home/verf/apps/citaya-video-runtime/video-production
+Environment=HOME=/home/verf
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/verf/apps/citaya-video-runtime/video-production/.venv/bin/python backend/worker.py --storage /home/verf/apps/citaya-video-data/private --node render-1
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/home/verf/apps/citaya-video-data /home/verf/apps/citaya-video-runtime/video-production/storage /home/verf/apps/citaya-video-runtime/video-production/inputs /home/verf/apps/citaya-video-runtime/video-production/outputs
+KillMode=control-group
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -309,6 +309,14 @@ export const privilegedRouteInventory = Object.freeze([
     rationale: "GET/PATCH await the hostname boundary before config reads or JSON; config select/update bind id to access.tenantId and internal errors are generic. Evidence: cit64-admin-tenant-auth-order.test.mjs (mocked boundary; helper lookup unchanged).",
   },
   {
+    route: "app/api/admin/videos/route.ts",
+    boundary: "host_tenant_admin",
+    status: "OK",
+    severity: "none",
+    markers: ["access.tenantId", "access.userId", "mutationOriginAllowed", "consumeRateLimit", "callVideoStudio"],
+    rationale: "Single Video Studio adapter authenticates the hostname tenant before JSON/multipart parsing; tenant/user are injected from the trusted boundary, uploads are private staging files, Python Actor enforces tenant-scoped SQLite access, mutations check origin/rate limits, and downloads are authorized before private no-store streaming. Evidence: cit126-video-studio-boundary.test.mjs.",
+  },
+  {
     route: "app/api/admin/waitlist/[id]/route.ts",
     boundary: "tenant_admin",
     status: "OK",
