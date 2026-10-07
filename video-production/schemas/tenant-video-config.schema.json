@@ -220,6 +220,16 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 35
+        },
+        "creativeBrief": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 6000
+        },
+        "targetDurationSeconds": {
+          "type": "number",
+          "minimum": 8,
+          "maximum": 60
         }
       },
       "required": []

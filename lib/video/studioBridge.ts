@@ -11,6 +11,7 @@ import { createWriteStream } from "node:fs";
 export type VideoStudioAction =
   | "list_projects"
   | "create_from_brief"
+  | "direct_project"
   | "project_detail"
   | "create_project"
   | "update_project"
@@ -69,7 +70,7 @@ export async function callVideoStudio<T>(input: {
       rejectPromise(error);
     };
     const timeoutMs =
-      input.action === "create_from_brief"
+      input.action === "create_from_brief" || input.action === "direct_project"
         ? BRIEF_BRIDGE_TIMEOUT_MS
         : BRIDGE_TIMEOUT_MS;
     const timer = setTimeout(() => {

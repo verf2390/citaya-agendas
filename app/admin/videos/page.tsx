@@ -297,6 +297,13 @@ export default function AdminVideosPage() {
     );
     setBenefit(String(content.benefit || ""));
     setCta(String(content.cta || next.config.cta || ""));
+    const projectMeta =
+      next.config.project && typeof next.config.project === "object"
+        ? (next.config.project as Record<string, unknown>)
+        : {};
+    if (typeof projectMeta.creativeBrief === "string") {
+      setBrief(projectMeta.creativeBrief);
+    }
 
     const media =
       next.config.media && typeof next.config.media === "object"
@@ -569,6 +576,40 @@ export default function AdminVideosPage() {
     setProject(updated);
     syncEditor(updated);
     return updated;
+  }
+
+  async function directWithAi() {
+    if (!project || !brief.trim()) {
+      setError("Escribe el brief creativo antes de dirigir el video.");
+      return;
+    }
+    if (project.assets.length > 0 && !rightsApproved) {
+      setError("Confirma que revisaste y puedes usar los medios antes de dirigir.");
+      return;
+    }
+
+    setWorking("direct");
+    setError("");
+    try {
+      await saveConfig();
+      const payload = await apiJson({
+        action: "direct",
+        projectId: project.id,
+        brief: brief.trim(),
+      });
+      const directed = payload.project as VideoProject;
+      setProject(directed);
+      syncEditor(directed);
+      await loadProjects();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "El Director IA no pudo crear el montaje.",
+      );
+    } finally {
+      setWorking("");
+    }
   }
 
   async function saveCopy() {
@@ -943,6 +984,24 @@ export default function AdminVideosPage() {
                       <Save className="h-4 w-4" />
                       Guardar edición
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void directWithAi()}
+                      disabled={Boolean(working) || !brief.trim()}
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {working === "direct" ? (
+                        <LoaderCircle className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      Dirigir con IA
+                    </button>
+                    <p className="text-xs font-medium leading-5 text-slate-500">
+                      El Director usa tu brief y las duraciones reales de los medios.
+                      Si voz o video no caben en el tiempo objetivo, prioriza no cortarlos.
+                    </p>
                   </div>
 
                   <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">

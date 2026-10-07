@@ -77,3 +77,13 @@ test("Qwen brief creation gets a longer bridge timeout without widening other ac
   assert.match(bridge, /input\.action === "create_from_brief"/);
   assert.match(bridge, /: BRIDGE_TIMEOUT_MS/);
 });
+
+
+test("AI director uses the long Qwen timeout and keeps tenant identity server-derived", () => {
+  assert.match(bridge, /input\.action === "create_from_brief" \|\| input\.action === "direct_project"/);
+  assert.match(python, /action == "direct_project"/);
+  assert.match(python, /direct_tenant_config/);
+  assert.match(route, /action === "direct"/);
+  assert.match(route, /action: "direct_project"/);
+  assert.doesNotMatch(route, /body\?\.tenantId|body\?\.userId/);
+});
