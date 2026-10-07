@@ -112,6 +112,7 @@ test("n8n runner is tool-free and audits workflow/provider usage", async () => {
   assert.equal(state.coreInput.maxSteps, 1);
   assert.equal(state.coreInput.message, "Texto a resumir");
   assert.equal(state.begin.workflowId, "daily-summary");
+  assert.equal(state.begin.productId, "n8n");
   assert.equal(state.begin.serviceId, "n8n");
   assert.equal(state.finishes.length, 1);
   assert.equal(state.finishes[0].status, "succeeded");

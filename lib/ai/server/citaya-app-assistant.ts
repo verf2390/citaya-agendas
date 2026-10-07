@@ -66,6 +66,7 @@ export async function runCitayaAppAssistant(input: {
   try {
     requestId = await beginAIRequestAudit({
       tenantId: input.tenantId,
+      productId: "agendas",
       userId: input.userId,
       authMode: input.authMode,
       provider: provider.id,

@@ -69,6 +69,7 @@ export async function runN8NAI(input: {
   try {
     requestId = await beginAIServiceRequestAudit({
       tenantId: input.tenantId,
+      productId: "n8n",
       serviceId: input.serviceId,
       workflowId: input.workflowId,
       provider: provider.id,

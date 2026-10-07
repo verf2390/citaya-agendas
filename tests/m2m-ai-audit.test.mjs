@@ -166,6 +166,7 @@ test("service audit wrapper sends n8n actor and workflow without user id", async
 
   const requestId = await audit.beginAIServiceRequestAudit({
     tenantId: "22222222-2222-4222-8222-222222222222",
+    productId: "n8n",
     serviceId: "n8n",
     workflowId: "daily-summary",
     provider: "local",
@@ -178,6 +179,7 @@ test("service audit wrapper sends n8n actor and workflow without user id", async
   assert.equal(requestId, "11111111-1111-4111-8111-111111111111");
   assert.equal(state.calls.length, 1);
   assert.equal(state.calls[0].name, "begin_ai_service_request_audit");
+  assert.equal(state.calls[0].args.p_product_id, "n8n");
   assert.equal(state.calls[0].args.p_service_id, "n8n");
   assert.equal(state.calls[0].args.p_workflow_id, "daily-summary");
   assert.equal("p_user_id" in state.calls[0].args, false);
@@ -190,6 +192,7 @@ test("service audit wrapper preserves tenant daily-token limit errors", async ()
     () =>
       audit.beginAIServiceRequestAudit({
         tenantId: "22222222-2222-4222-8222-222222222222",
+        productId: "n8n",
         serviceId: "n8n",
         workflowId: "daily-summary",
         provider: "local",

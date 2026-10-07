@@ -1,4 +1,5 @@
 import { AIError, safeAIErrorCode } from "@/lib/ai/errors";
+import type { AIProductId } from "@/lib/ai/product";
 import type { AIProviderId, AIRouteSummary, AIUsage } from "@/lib/ai/types";
 import type { TenantAdminAuthMode } from "@/lib/api/requireTenantAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -9,6 +10,7 @@ if (typeof window !== "undefined") {
 
 export async function beginAIRequestAudit(input: {
   tenantId: string;
+  productId: AIProductId;
   userId: string;
   authMode: TenantAdminAuthMode;
   provider: AIProviderId;
@@ -20,6 +22,7 @@ export async function beginAIRequestAudit(input: {
 }) {
   const query = supabaseAdmin.rpc("begin_ai_request_audit", {
     p_tenant_id: input.tenantId,
+    p_product_id: input.productId,
     p_user_id: input.userId,
     p_auth_mode: input.authMode,
     p_provider: input.provider,
@@ -125,6 +128,7 @@ export type AIServiceId = "n8n";
 
 export async function beginAIServiceRequestAudit(input: {
   tenantId: string;
+  productId: AIProductId;
   serviceId: AIServiceId;
   workflowId: string;
   provider: AIProviderId;
@@ -136,6 +140,7 @@ export async function beginAIServiceRequestAudit(input: {
 }) {
   const query = supabaseAdmin.rpc("begin_ai_service_request_audit", {
     p_tenant_id: input.tenantId,
+    p_product_id: input.productId,
     p_service_id: input.serviceId,
     p_workflow_id: input.workflowId,
     p_provider: input.provider,
