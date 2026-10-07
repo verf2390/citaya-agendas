@@ -52,6 +52,72 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(report["duration"], 15)
         self.assertEqual(usage["totalTokens"], 30)
 
+    def test_repairs_invalid_creation_proposal_once(self):
+        first = {
+            "text": json.dumps({
+                "hook": "HDR Barber Studio",
+                "secondaryHook": "Tu corte, a tu estilo",
+                "benefit": "Reserva online",
+                "cta": "Reserva tu hora",
+                "extra": "no permitido",
+            }),
+            "toolCalls": [],
+            "usage": {"inputTokens": 40, "outputTokens": 20, "totalTokens": 60},
+        }
+        repaired = {
+            "text": json.dumps({
+                "hook": "HDR Barber Studio",
+                "secondaryHook": "Tu corte, a tu estilo",
+                "benefit": "Reserva online",
+                "cta": "Reserva tu hora",
+            }),
+            "toolCalls": [],
+            "usage": {"inputTokens": 30, "outputTokens": 10, "totalTokens": 40},
+        }
+        env = {
+            "CITAYA_AI_PROVIDER": "local",
+            "CITAYA_AI_LOCAL_ENDPOINT": "http://127.0.0.1:8787/v1/generate",
+            "CITAYA_AI_LOCAL_MODEL": "Qwen/Qwen3-4B-GGUF:Q4_K_M",
+        }
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            tenant_brief, "gateway_call", side_effect=[first, repaired]
+        ) as gateway:
+            config, _, usage = tenant_brief.generate_tenant_config(
+                brief="Anuncio vertical para HDR Barber Studio. Objetivo: conseguir reservas.",
+                business_name="HDR Barber Studio",
+                niche="barber",
+                niche_label="Barbería",
+                style="dynamic",
+                duration_seconds=15,
+            )
+        self.assertEqual(gateway.call_count, 2)
+        self.assertEqual(config["content"]["cta"], "Reserva tu hora")
+        self.assertEqual(usage["totalTokens"], 100)
+        self.assertIn("Repara la propuesta anterior", gateway.call_args.args[2]["input"][0]["text"])
+
+    def test_repair_still_fails_closed_if_second_proposal_is_invalid(self):
+        invalid = {
+            "text": json.dumps({
+                "hook": "x" * 75,
+                "secondaryHook": "Segundo",
+                "benefit": "Beneficio",
+                "cta": "CTA",
+            }),
+            "toolCalls": [],
+            "usage": {"inputTokens": 10, "outputTokens": 10, "totalTokens": 20},
+        }
+        with patch.object(tenant_brief, "gateway_call", side_effect=[invalid, invalid]):
+            with self.assertRaises(tenant_brief.TenantBriefError) as caught:
+                tenant_brief.generate_tenant_config(
+                    brief="Video corto para negocio real.",
+                    business_name="Negocio Demo",
+                    niche="local-business",
+                    niche_label="Negocio local",
+                    style="dynamic",
+                    duration_seconds=15,
+                )
+        self.assertEqual(caught.exception.code, "AI_INVALID_PROPOSAL")
+
     def test_accepts_longer_creative_brief_and_custom_niche_label(self):
         response = {
             "text": json.dumps({
