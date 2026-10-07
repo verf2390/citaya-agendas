@@ -17,6 +17,10 @@ test("Video Studio UI exposes the reviewed production flow", () => {
   for (const marker of [
     "create_from_brief",
     "Subir material",
+    "Video de inicio",
+    "Video de cierre",
+    "Voz / narración",
+    "Música de fondo",
     "Guardar edición",
     "Generar preview",
     "Aprobar preview",
@@ -35,4 +39,14 @@ test("Video Studio UI uses authenticated adminFetch without tenant hints", () =>
   assert.doesNotMatch(page, /tenantId\s*:/);
   assert.doesNotMatch(page, /userId\s*:/);
   assert.doesNotMatch(page, /fetch\("/);
+});
+
+test("Video Studio media controls wire supported audio and creator roles", () => {
+  assert.match(page, /creatorIntro/);
+  assert.match(page, /creatorOutro/);
+  assert.match(page, /clientVoiceover/);
+  assert.match(page, /backgroundMusic/);
+  assert.match(page, /duckMusicDuringVoice/);
+  assert.match(page, /useClipAudio/);
+  assert.match(page, /\.wav,.mp3,.m4a,.ogg/);
 });
