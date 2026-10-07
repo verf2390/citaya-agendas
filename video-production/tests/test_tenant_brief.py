@@ -52,14 +52,47 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(report["duration"], 15)
         self.assertEqual(usage["totalTokens"], 30)
 
+    def test_accepts_extra_keys_and_normalizes_long_creation_copy_without_repair(self):
+        response = {
+            "text": json.dumps({
+                "hook": "HDR Barber Studio " + ("corte " * 20),
+                "secondaryHook": "Estilo urbano profesional " + ("barbería " * 20),
+                "benefit": "Corte clásico, degradado o corte más barba " + ("real " * 20),
+                "cta": "Reserva tu hora online ahora mismo desde el sistema",
+                "extra": "Qwen puede agregar metadatos inocuos",
+            }),
+            "toolCalls": [],
+            "usage": {"inputTokens": 40, "outputTokens": 20, "totalTokens": 60},
+        }
+        env = {
+            "CITAYA_AI_PROVIDER": "local",
+            "CITAYA_AI_LOCAL_ENDPOINT": "http://127.0.0.1:8787/v1/generate",
+            "CITAYA_AI_LOCAL_MODEL": "Qwen/Qwen3-4B-GGUF:Q4_K_M",
+        }
+        with patch.dict(os.environ, env, clear=False), patch.object(
+            tenant_brief, "gateway_call", return_value=response
+        ) as gateway:
+            config, _, usage = tenant_brief.generate_tenant_config(
+                brief="Anuncio vertical para HDR Barber Studio usando solo afirmaciones confirmadas.",
+                business_name="HDR Barber Studio",
+                niche="barber",
+                niche_label="Barbería",
+                style="dynamic",
+                duration_seconds=15,
+            )
+        self.assertEqual(gateway.call_count, 1)
+        self.assertLessEqual(len(config["content"]["hook"]), 74)
+        self.assertLessEqual(len(config["content"]["secondaryHook"]), 90)
+        self.assertLessEqual(len(config["content"]["benefit"]), 65)
+        self.assertLessEqual(len(config["content"]["cta"]), 40)
+        self.assertEqual(usage["totalTokens"], 60)
+
     def test_repairs_invalid_creation_proposal_once(self):
         first = {
             "text": json.dumps({
                 "hook": "HDR Barber Studio",
                 "secondaryHook": "Tu corte, a tu estilo",
                 "benefit": "Reserva online",
-                "cta": "Reserva tu hora",
-                "extra": "no permitido",
             }),
             "toolCalls": [],
             "usage": {"inputTokens": 40, "outputTokens": 20, "totalTokens": 60},
@@ -98,7 +131,7 @@ class TenantBriefTests(unittest.TestCase):
     def test_repair_still_fails_closed_if_second_proposal_is_invalid(self):
         invalid = {
             "text": json.dumps({
-                "hook": "x" * 75,
+                "hook": ["tipo", "incorrecto"],
                 "secondaryHook": "Segundo",
                 "benefit": "Beneficio",
                 "cta": "CTA",

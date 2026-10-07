@@ -177,18 +177,35 @@ def usage_from_response(response, model, elapsed):
     }
 
 
+def _normalize_creation_text(value, max_len):
+    if not isinstance(value, str):
+        raise TenantBriefError("AI_INVALID_PROPOSAL")
+    value = re.sub(r"\\s+", " ", value).strip()
+    if not value:
+        raise TenantBriefError("AI_INVALID_PROPOSAL")
+    if len(value) <= max_len:
+        return value
+    clipped = value[:max_len].rstrip()
+    if " " in clipped:
+        word_clipped = clipped.rsplit(" ", 1)[0].rstrip()
+        if word_clipped:
+            clipped = word_clipped
+    return clipped
+
+
 def _validate_creation_proposal(response, token):
     if response.get("toolCalls"):
         raise TenantBriefError("AI_UNEXPECTED_TOOLS")
     proposal = parse_json_object(response["text"])
-    if set(proposal) != {"hook", "secondaryHook", "benefit", "cta"}:
-        raise TenantBriefError("AI_INVALID_PROPOSAL")
-    hook = clean_text(proposal["hook"], 74, "AI_INVALID_PROPOSAL")
-    secondary = clean_text(proposal["secondaryHook"], 90, "AI_INVALID_PROPOSAL")
-    benefit = clean_text(proposal["benefit"], 65, "AI_INVALID_PROPOSAL")
-    cta = clean_text(proposal["cta"], 40, "AI_INVALID_PROPOSAL")
     if token and token in json.dumps(proposal, ensure_ascii=False):
         raise TenantBriefError("AI_UNSAFE_RESPONSE")
+    required = {"hook", "secondaryHook", "benefit", "cta"}
+    if not required.issubset(proposal):
+        raise TenantBriefError("AI_INVALID_PROPOSAL")
+    hook = _normalize_creation_text(proposal["hook"], 74)
+    secondary = _normalize_creation_text(proposal["secondaryHook"], 90)
+    benefit = _normalize_creation_text(proposal["benefit"], 65)
+    cta = _normalize_creation_text(proposal["cta"], 40)
     return hook, secondary, benefit, cta
 
 
