@@ -6,9 +6,11 @@ import test from "node:test";
 const page = readFileSync(resolve("app/admin/videos/page.tsx"), "utf8");
 const nav = readFileSync(resolve("components/admin/AdminNav.tsx"), "utf8");
 
-test("Video Studio appears in admin navigation", () => {
+test("Video Studio navigation is visible only for rg-spa", () => {
   assert.match(nav, /href: "\/admin\/videos"/);
   assert.match(nav, /label: "Videos"/);
+  assert.match(nav, /tenantOnly: "rg-spa"/);
+  assert.match(nav, /item\.tenantOnly === tenant\?\.slug/);
 });
 
 test("Video Studio UI exposes the reviewed production flow", () => {

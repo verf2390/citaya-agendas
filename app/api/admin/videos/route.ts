@@ -16,6 +16,8 @@ import {
 
 export const runtime = "nodejs";
 
+const VIDEO_STUDIO_TENANT_SLUG = "rg-spa";
+
 function hostHeader(req: Request) {
   return (req.headers.get("x-forwarded-host") || req.headers.get("host") || "")
     .split(",")[0]
@@ -71,6 +73,18 @@ async function authorize(req: Request) {
       ),
     } as const;
   }
+  if (
+    access.authMode !== "platform_admin" ||
+    access.tenantSlug !== VIDEO_STUDIO_TENANT_SLUG
+  ) {
+    return {
+      response: NextResponse.json(
+        { ok: false, code: "NOT_FOUND" },
+        { status: 404 },
+      ),
+    } as const;
+  }
+
   return { access } as const;
 }
 

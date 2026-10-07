@@ -15,6 +15,8 @@ test("video admin authenticates hostname tenant before parsing mutations", () =>
   const post = route.slice(route.indexOf("export async function POST"));
 
   assert.match(authorize, /requireHostTenantAdmin\(req\)/);
+  assert.match(authorize, /access\.authMode !== "platform_admin"/);
+  assert.match(authorize, /access\.tenantSlug !== VIDEO_STUDIO_TENANT_SLUG/);
   assert.match(post, /const auth = await authorize\(req\)/);
   assert.ok(
     post.indexOf("const auth = await authorize(req)") <
@@ -57,4 +59,11 @@ test("download stays tenant-authorized and private", () => {
   assert.match(route, /Cache-Control": "private, no-store"/);
   assert.match(route, /X-Content-Type-Options": "nosniff"/);
   assert.doesNotMatch(route, /storage_path/);
+});
+
+test("Video Studio is temporarily restricted to rg-spa platform admin", () => {
+  assert.match(route, /const VIDEO_STUDIO_TENANT_SLUG = "rg-spa"/);
+  assert.match(route, /access\.authMode !== "platform_admin"/);
+  assert.match(route, /access\.tenantSlug !== VIDEO_STUDIO_TENANT_SLUG/);
+  assert.match(route, /code: "NOT_FOUND"/);
 });
