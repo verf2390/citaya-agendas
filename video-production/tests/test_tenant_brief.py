@@ -128,7 +128,7 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(usage["totalTokens"], 100)
         self.assertIn("Repara la propuesta anterior", gateway.call_args.args[2]["input"][0]["text"])
 
-    def test_repair_still_fails_closed_if_second_proposal_is_invalid(self):
+    def test_uses_safe_server_fallback_if_repair_is_still_invalid(self):
         invalid = {
             "text": json.dumps({
                 "hook": ["tipo", "incorrecto"],
@@ -140,16 +140,19 @@ class TenantBriefTests(unittest.TestCase):
             "usage": {"inputTokens": 10, "outputTokens": 10, "totalTokens": 20},
         }
         with patch.object(tenant_brief, "gateway_call", side_effect=[invalid, invalid]):
-            with self.assertRaises(tenant_brief.TenantBriefError) as caught:
-                tenant_brief.generate_tenant_config(
-                    brief="Video corto para negocio real.",
-                    business_name="Negocio Demo",
-                    niche="local-business",
-                    niche_label="Negocio local",
-                    style="dynamic",
-                    duration_seconds=15,
-                )
-        self.assertEqual(caught.exception.code, "AI_INVALID_PROPOSAL")
+            config, _, usage = tenant_brief.generate_tenant_config(
+                brief="Video corto para negocio real.\nCTA: Reserva tu hora",
+                business_name="Negocio Demo",
+                niche="local-business",
+                niche_label="Negocio local",
+                style="dynamic",
+                duration_seconds=15,
+            )
+        self.assertEqual(config["content"]["hook"], "Negocio Demo")
+        self.assertEqual(config["content"]["secondaryHook"], "Negocio local")
+        self.assertEqual(config["content"]["benefit"], "Video corto para negocio real.")
+        self.assertEqual(config["content"]["cta"], "Reserva tu hora")
+        self.assertEqual(usage["totalTokens"], 40)
 
     def test_accepts_longer_creative_brief_and_custom_niche_label(self):
         response = {
