@@ -40,7 +40,7 @@ const VIDEO_RUNTIME_ROOT = resolve(
 const BRIDGE_PATH = resolve(VIDEO_RUNTIME_ROOT, "backend/bridge.py");
 const STAGING_ROOT = resolve(VIDEO_RUNTIME_ROOT, "storage/staging");
 const BRIDGE_TIMEOUT_MS = 15_000;
-const BRIEF_BRIDGE_TIMEOUT_MS = 80_000;
+const BRIEF_BRIDGE_TIMEOUT_MS = 85_000;
 const MAX_BRIDGE_OUTPUT_BYTES = 2_000_000;
 
 function pythonBin() {

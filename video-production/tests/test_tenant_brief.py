@@ -208,3 +208,10 @@ class TenantBriefTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GatewayTimeoutPolicyTests(unittest.TestCase):
+    def test_gateway_client_timeout_exceeds_gateway_service_budget(self):
+        import inspect
+        signature = inspect.signature(gateway_call)
+        self.assertEqual(signature.parameters["timeout"].default, 80)

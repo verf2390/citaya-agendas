@@ -106,7 +106,7 @@ def parse_json_object(text):
     return result
 
 
-def gateway_call(endpoint, token, payload, timeout=70):
+def gateway_call(endpoint, token, payload, timeout=80):
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if token:
         headers["Authorization"] = "Bearer " + token

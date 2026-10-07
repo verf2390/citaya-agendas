@@ -73,7 +73,7 @@ test("Video Studio is temporarily restricted to rg-spa platform admin", () => {
 
 test("Qwen brief creation gets a longer bridge timeout without widening other actions", () => {
   assert.match(bridge, /const BRIDGE_TIMEOUT_MS = 15_000/);
-  assert.match(bridge, /const BRIEF_BRIDGE_TIMEOUT_MS = 80_000/);
+  assert.match(bridge, /const BRIEF_BRIDGE_TIMEOUT_MS = 85_000/);
   assert.match(bridge, /input\.action === "create_from_brief"/);
   assert.match(bridge, /: BRIDGE_TIMEOUT_MS/);
 });
