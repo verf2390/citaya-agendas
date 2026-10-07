@@ -113,6 +113,7 @@ const ERROR_LABELS: Record<string, string> = {
   AI_GATEWAY_CONFIG: "El gateway local de IA no está configurado correctamente.",
   AI_INVALID_JSON: "Qwen devolvió una propuesta inválida. Intenta nuevamente.",
   AI_INVALID_PROPOSAL: "La propuesta de Qwen no pasó las reglas de Video Studio.",
+  AMBIGUOUS_CONFIG: "El proyecto tenía campos duplicados de una versión anterior. Vuelve a dirigirlo.",
   UNSAFE_BRIEF: "El brief parece contener una credencial o secreto.",
   VIDEO_STUDIO_TIMEOUT: "Video Studio excedió el tiempo de respuesta.",
   VIDEO_STUDIO_UNAVAILABLE: "Video Studio no está disponible en este servidor.",

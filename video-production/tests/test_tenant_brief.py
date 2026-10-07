@@ -42,6 +42,9 @@ class TenantBriefTests(unittest.TestCase):
 
         self.assertEqual(config["product"], "custom-client-video")
         self.assertEqual(config["brand"]["businessName"], "Negocio Demo")
+        self.assertNotIn("hook", config)
+        self.assertNotIn("secondaryHook", config)
+        self.assertNotIn("cta", config)
         self.assertEqual(config["stylePreset"], "dynamic")
         self.assertFalse(config["mediaApproved"])
         self.assertEqual(config["project"]["creativeBrief"], "Video corto mostrando nuestro trabajo real.")
@@ -92,7 +95,7 @@ class TenantBriefTests(unittest.TestCase):
                 "cta": "Agenda una demo",
                 "scenes": [
                     {"headline": "Agenda", "mode": "benefit", "durationSeconds": 1.5},
-                    {"headline": "Servicios", "mode": "services", "durationSeconds": 1.1},
+                    {"headline": "Servicios", "mode": "benefit", "durationSeconds": 1.1},
                     {"headline": "Clientes", "mode": "benefit", "durationSeconds": 1.1},
                     {"headline": "Pagos y facturación", "mode": "benefit", "durationSeconds": 1.5},
                     {"headline": "Campañas", "mode": "benefit", "durationSeconds": 1.2},
@@ -116,6 +119,9 @@ class TenantBriefTests(unittest.TestCase):
             "videoType": "promotion",
             "brand": {"businessName": "Citaya"},
             "capabilities": ["provided_business_content"],
+            "hook": "Hook viejo",
+            "secondaryHook": "Segundo viejo",
+            "cta": "CTA viejo",
             "content": {
                 "hook": "Hook",
                 "secondaryHook": "Segundo",
@@ -126,7 +132,12 @@ class TenantBriefTests(unittest.TestCase):
                 "creatorIntro": "asset:11111111-1111-1111-1111-111111111111",
                 "clientVoiceover": "asset:22222222-2222-2222-2222-222222222222",
             },
-            "creator": {"useClipAudio": True, "voiceoverStart": 2.5},
+            "creator": {
+                "useClipAudio": True,
+                "voiceoverStart": 2.5,
+                "introVideo": "asset:11111111-1111-1111-1111-111111111111",
+                "voiceover": "asset:22222222-2222-2222-2222-222222222222",
+            },
             "mediaPolicy": {
                 "useOnlyProvidedAssets": True,
                 "allowStockMedia": False,
@@ -165,6 +176,11 @@ class TenantBriefTests(unittest.TestCase):
 
         self.assertEqual(directed["timing"]["intro"], 7.21)
         self.assertEqual(directed["creator"]["voiceoverStart"], 7.21)
+        self.assertNotIn("hook", directed)
+        self.assertNotIn("secondaryHook", directed)
+        self.assertNotIn("cta", directed)
+        self.assertNotIn("introVideo", directed["creator"])
+        self.assertNotIn("voiceover", directed["creator"])
         self.assertGreaterEqual(report["plannedDurationSeconds"], 15.08)
         self.assertTrue(report["preservedMedia"])
         self.assertEqual(usage["totalTokens"], 150)
