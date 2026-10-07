@@ -146,6 +146,7 @@ def main():
                 brief=payload.get("brief"),
                 business_name=payload.get("businessName"),
                 niche=payload.get("niche"),
+                niche_label=payload.get("nicheLabel"),
                 style=payload.get("style"),
                 duration_seconds=payload.get("durationSeconds"),
             )

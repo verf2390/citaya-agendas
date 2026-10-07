@@ -39,6 +39,7 @@ const VIDEO_RUNTIME_ROOT = resolve(
 const BRIDGE_PATH = resolve(VIDEO_RUNTIME_ROOT, "backend/bridge.py");
 const STAGING_ROOT = resolve(VIDEO_RUNTIME_ROOT, "storage/staging");
 const BRIDGE_TIMEOUT_MS = 15_000;
+const BRIEF_BRIDGE_TIMEOUT_MS = 80_000;
 const MAX_BRIDGE_OUTPUT_BYTES = 2_000_000;
 
 function pythonBin() {
@@ -67,10 +68,14 @@ export async function callVideoStudio<T>(input: {
       settled = true;
       rejectPromise(error);
     };
+    const timeoutMs =
+      input.action === "create_from_brief"
+        ? BRIEF_BRIDGE_TIMEOUT_MS
+        : BRIDGE_TIMEOUT_MS;
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       finishError(new VideoStudioError("VIDEO_STUDIO_TIMEOUT"));
-    }, BRIDGE_TIMEOUT_MS);
+    }, timeoutMs);
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
