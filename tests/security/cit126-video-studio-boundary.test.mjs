@@ -8,11 +8,22 @@ const bridge = readFileSync(resolve("lib/video/studioBridge.ts"), "utf8");
 const python = readFileSync(resolve("video-production/backend/bridge.py"), "utf8");
 
 test("video admin authenticates hostname tenant before parsing mutations", () => {
+  const authorize = route.slice(
+    route.indexOf("async function authorize"),
+    route.indexOf("export async function GET"),
+  );
   const post = route.slice(route.indexOf("export async function POST"));
+
+  assert.match(authorize, /requireHostTenantAdmin\(req\)/);
   assert.match(post, /const auth = await authorize\(req\)/);
-  assert.match(post, /requireHostTenantAdmin/);
-  assert.ok(post.indexOf("const auth = await authorize(req)") < post.indexOf("req.formData()"));
-  assert.ok(post.indexOf("const auth = await authorize(req)") < post.indexOf("req.json()"));
+  assert.ok(
+    post.indexOf("const auth = await authorize(req)") <
+      post.indexOf("req.formData()"),
+  );
+  assert.ok(
+    post.indexOf("const auth = await authorize(req)") <
+      post.indexOf("req.json()"),
+  );
   assert.match(post, /mutationOriginAllowed\(req\)/);
   assert.match(post, /consumeRateLimit/);
 });
