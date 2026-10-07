@@ -50,3 +50,11 @@ test("Video Studio media controls wire supported audio and creator roles", () =>
   assert.match(page, /useClipAudio/);
   assert.match(page, /\.wav,.mp3,.m4a,.ogg/);
 });
+
+test("Preview player forces browser-compatible MP4 blob and reports media errors", () => {
+  assert.match(page, /response\.arrayBuffer\(\)/);
+  assert.match(page, /new Blob\(\[bytes\], \{ type: "video\/mp4" \}\)/);
+  assert.match(page, /preload="metadata"/);
+  assert.match(page, /key=\{previewUrl\}/);
+  assert.match(page, /onError=/);
+});

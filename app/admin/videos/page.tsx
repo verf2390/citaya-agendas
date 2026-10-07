@@ -197,6 +197,7 @@ export default function AdminVideosPage() {
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
+  const [previewPlaybackError, setPreviewPlaybackError] = useState("");
 
   const [title, setTitle] = useState("Nuevo video");
   const [businessName, setBusinessName] = useState("");
@@ -333,10 +334,16 @@ export default function AdminVideosPage() {
       120000,
     );
     if (!response.ok) return;
-    const blob = await response.blob();
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength) {
+      setPreviewPlaybackError("El preview llegó vacío desde el servidor.");
+      return;
+    }
+    const blob = new Blob([bytes], { type: "video/mp4" });
     const url = URL.createObjectURL(blob);
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     previewUrlRef.current = url;
+    setPreviewPlaybackError("");
     setPreviewUrl(url);
   }, []);
 
@@ -1127,9 +1134,21 @@ export default function AdminVideosPage() {
                   {previewUrl ? (
                     <div className="mx-auto max-w-[23rem] overflow-hidden rounded-2xl border border-slate-200 bg-black shadow-lg">
                       <video
+                        key={previewUrl}
                         src={previewUrl}
                         controls
                         playsInline
+                        preload="metadata"
+                        onLoadedMetadata={() => setPreviewPlaybackError("")}
+                        onError={(event) => {
+                          const mediaError = event.currentTarget.error;
+                          const code = mediaError?.code ?? 0;
+                          setPreviewPlaybackError(
+                            "Chrome no pudo reproducir el preview (MediaError " +
+                              String(code) +
+                              ").",
+                          );
+                        }}
                         className="aspect-[9/16] w-full object-contain"
                       />
                     </div>
@@ -1143,6 +1162,11 @@ export default function AdminVideosPage() {
                       </div>
                     </div>
                   )}
+                  {previewPlaybackError ? (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
+                      {previewPlaybackError}
+                    </div>
+                  ) : null}
                 </AdminSectionCard>
 
                 <AdminSectionCard title="Producción">
