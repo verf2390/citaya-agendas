@@ -120,7 +120,9 @@ class TenantBriefTests(unittest.TestCase):
                 duration_seconds=20,
             )
         self.assertEqual(len(config["content"]["benefit"]), 64)
-        self.assertEqual(len(config["scenes"][0]["headline"]), 64)
+        from production import validate
+        normalized, _, _ = validate(config, "preview")
+        self.assertEqual(len(normalized["scenes"][0]["headline"]), 64)
         self.assertEqual(report["duration"], 20)
 
     def test_repairs_invalid_creation_proposal_once(self):
