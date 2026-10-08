@@ -96,9 +96,34 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(gateway.call_count, 1)
         self.assertLessEqual(len(config["content"]["hook"]), 74)
         self.assertLessEqual(len(config["content"]["secondaryHook"]), 90)
-        self.assertLessEqual(len(config["content"]["benefit"]), 65)
+        self.assertLessEqual(len(config["content"]["benefit"]), 64)
         self.assertLessEqual(len(config["content"]["cta"]), 40)
         self.assertEqual(usage["totalTokens"], 60)
+
+    def test_65_char_benefit_is_normalized_before_scene_generation(self):
+        response = {
+            "text": json.dumps({
+                "hook": "HDR Barber Studio",
+                "secondaryHook": "Corte clásico, degradado o corte más barba",
+                "benefit": "x" * 65,
+                "cta": "Reserva tu hora online",
+            }),
+            "toolCalls": [],
+        }
+        with patch.object(tenant_brief, "gateway_call", return_value=response):
+            config, report, _ = tenant_brief.generate_tenant_config(
+                brief="Anuncio vertical para HDR Barber Studio.",
+                business_name="HDR Barber Studio",
+                niche="barber",
+                niche_label="Barbería",
+                style="dynamic",
+                duration_seconds=20,
+            )
+        self.assertEqual(len(config["content"]["benefit"]), 64)
+        from production import validate
+        normalized, _, _ = validate(config, "preview")
+        self.assertEqual(len(normalized["scenes"][0]["headline"]), 64)
+        self.assertEqual(report["duration"], 20)
 
     def test_repairs_invalid_creation_proposal_once(self):
         first = {
