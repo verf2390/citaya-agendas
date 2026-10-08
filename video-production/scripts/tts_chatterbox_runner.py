@@ -134,15 +134,16 @@ def main():
 
             chunks = text_chunks(value['text'])
             pieces = []
-            for index, chunk in enumerate(chunks):
+            for chunk in chunks:
                 kwargs = {
                     'language_id': 'es',
                     'exaggeration': 0.5,
                     'temperature': 0.8,
                     'cfg_weight': 0.5,
+                    # Re-apply the approved local reference on every chunk so a
+                    # long narration cannot drift to a different voice.
+                    'audio_prompt_path': str(reference),
                 }
-                if index == 0:
-                    kwargs['audio_prompt_path'] = str(reference)
                 wav = model.generate(chunk, **kwargs)
                 pieces.append(wav.squeeze(0).detach().cpu())
 
