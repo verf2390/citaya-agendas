@@ -1,4 +1,4 @@
-"""Local TTS adapter and post-synthesis timeline gate. No downloads or fallback."""
+"""Local TTS adapter and post-synthesis timeline gate. No downloads or cloud fallback."""
 import hashlib
 import json
 import math
@@ -14,9 +14,12 @@ from typing import Protocol
 from production import ConfigError, probe
 from tts_contract import normalize_tts, reject, validate_tts_config
 
-RUNTIME = Path('/home/verf/apps/citaya-tts-runtime')
-MODEL = 'es_MX-claude-high'
-MODEL_SHA256 = '3ef40a71ea63852cd8ab7e6fa7d2ecdcfa67a0b47c9c48e3f10e02ee02083ea0'
+# Operator-installed, self-contained Chatterbox runtime. The path and model
+# cache are code-owned and never tenant configurable.
+RUNTIME = Path('/home/verf/apps/citaya-chatterbox-runtime')
+HF_HOME = RUNTIME / 'hf-home'
+HF_HUB_CACHE = HF_HOME / 'hub'
+MODEL = 'chatterbox-es-mx-latam-v3'
 
 
 class TTSProvider(Protocol):
@@ -74,31 +77,31 @@ def inspect_wav(path):
 
 
 class LocalTTSProvider:
-    """One pinned voice on CPU in a separate, network-denied Python process."""
+    """Pinned Chatterbox LATAM voice on CPU in a separate, network-denied process."""
     def synthesize(self, text, voice, speed, output_path):
         tts = normalize_tts({'enabled': True, 'text': text, 'voice': voice, 'speed': speed})
         output_path = Path(output_path).absolute()
         generated_path(output_path, output_path.parent.parent)
+
         python = RUNTIME / '.venv/bin/python'
-        model = RUNTIME / 'models' / (MODEL + '.onnx')
-        config = model.with_suffix('.onnx.json')
-        if not all(p.is_file() for p in (python, model, config)):
+        source = RUNTIME / 'space/chatterbox/src/chatterbox/tts.py'
+        reference = RUNTIME / 'benchmarks/es_mx_f1.wav'
+        if not all(p.is_file() for p in (python, source, reference)):
             reject('TTS_DEPENDENCY_MISSING')
-        # Runtime assets are operator-installed; never resolve model IDs online.
-        try:
-            valid_model = hashlib.sha256(model.read_bytes()).hexdigest() == MODEL_SHA256
-        except OSError:
-            valid_model = False
-        if not valid_model:
-            reject('TTS_DEPENDENCY_MISSING')
+
         started = time.monotonic()
         try:
             result = subprocess.run(
-                [str(python), '-I', str(Path(__file__).with_name('tts_piper_runner.py')), str(output_path)],
+                [str(python), '-I', str(Path(__file__).with_name('tts_chatterbox_runner.py')),
+                 str(output_path), str(RUNTIME)],
                 input=json.dumps(tts, ensure_ascii=False), text=True, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, timeout=180, check=False, close_fds=True,
-                env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'OMP_NUM_THREADS': '2',
-                     'OPENBLAS_NUM_THREADS': '2', 'HF_HUB_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1'},
+                stderr=subprocess.DEVNULL, timeout=900, check=False, close_fds=True,
+                env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
+                     'OMP_NUM_THREADS': '4', 'OPENBLAS_NUM_THREADS': '4',
+                     'HF_HOME': str(HF_HOME), 'HF_HUB_CACHE': str(HF_HUB_CACHE),
+                     'HF_TOKEN_PATH': str(RUNTIME / 'no-hf-token'),
+                     'HF_HUB_DISABLE_IMPLICIT_TOKEN': '1', 'HF_HUB_OFFLINE': '1',
+                     'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1'},
             )
             if result.returncode != 0:
                 reject('TTS_DEPENDENCY_MISSING' if result.returncode == 3 else 'TTS_SYNTHESIS_FAILED')

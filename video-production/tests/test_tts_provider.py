@@ -18,6 +18,7 @@ sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'backend'), str(ROOT / 'tests'
 from production import ConfigError, read_json, validate, tenant_schema_validate
 from tts_contract import apply_brief_narration, extract_narration, normalize_tts
 from tts_provider import LocalTTSProvider, prepare_tts, inspect_wav
+from tts_chatterbox_runner import generation_kwargs, text_chunks
 import tts_provider
 from fake_tts import FakeTTSProvider
 
@@ -260,31 +261,59 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(outside.read_bytes(), b'unchanged')
 
     def test_network_guard_blocks_native_socket_creation(self):
-        code = 'from tts_piper_runner import deny_network; deny_network(); import socket; socket.socket()'
         env = {'PATH': '/usr/bin:/bin', 'PYTHONPATH': str(ROOT/'scripts')}
-        result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('Operation not permitted', result.stderr)
-        self.assertNotIn('network guard unavailable', result.stderr)
+        for module in ['tts_piper_runner', 'tts_chatterbox_runner']:
+            with self.subTest(module=module):
+                code = f'from {module} import deny_network; deny_network(); import socket; socket.socket()'
+                result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Operation not permitted', result.stderr)
+                self.assertNotIn('network guard unavailable', result.stderr)
+
+    def test_chatterbox_chunking_preserves_narration_without_truncation(self):
+        text = ('Primera frase corta. ' * 10) + ('palabra ' * 55) + ('x' * 350)
+        chunks = text_chunks(text)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(0 < len(chunk) <= 300 for chunk in chunks))
+        source_chars = ''.join(text.split())
+        chunk_chars = ''.join(''.join(chunks).split())
+        self.assertEqual(chunk_chars, source_chars)
+
+    def test_chatterbox_every_chunk_uses_same_reference_voice(self):
+        reference = Path('/private/runtime/benchmarks/es_mx_f1.wav')
+        kwargs = generation_kwargs(reference)
+        self.assertEqual(kwargs['audio_prompt_path'], str(reference))
+        self.assertEqual(kwargs['language_id'], 'es')
+        self.assertEqual(kwargs['exaggeration'], 0.5)
+        self.assertEqual(kwargs['temperature'], 0.8)
+        self.assertEqual(kwargs['cfg_weight'], 0.5)
 
     def test_local_process_has_no_shell_no_text_argv_and_clean_env(self):
         with tempfile.TemporaryDirectory() as runtime:
             runtime = Path(runtime)
-            for path in ['.venv/bin/python', 'models/es_MX-claude-high.onnx', 'models/es_MX-claude-high.onnx.json']:
+            for path in ['.venv/bin/python', 'space/chatterbox/src/chatterbox/tts.py', 'benchmarks/es_mx_f1.wav']:
                 p = runtime/path; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(b'fixture')
             def run(args, **kwargs):
                 self.assertNotIn('shell', kwargs)
                 self.assertNotIn('Conoce nuestro', str(args))
                 self.assertNotIn('HOME', kwargs['env'])
+                self.assertEqual(kwargs['env']['HF_HUB_OFFLINE'], '1')
+                self.assertEqual(kwargs['env']['TRANSFORMERS_OFFLINE'], '1')
+                self.assertEqual(kwargs['env']['HF_HUB_DISABLE_IMPLICIT_TOKEN'], '1')
+                self.assertNotIn('HF_TOKEN', kwargs['env'])
+                self.assertTrue(kwargs['env']['HF_TOKEN_PATH'].endswith('/no-hf-token'))
+                self.assertTrue(kwargs['env']['HF_HUB_CACHE'].endswith('/hf-home/hub'))
+                self.assertTrue(str(args[2]).endswith('tts_chatterbox_runner.py'))
                 tts = json.loads(kwargs['input'])
-                FakeTTSProvider().synthesize(tts['text'], tts['voice'], tts['speed'], Path(args[-1]))
+                FakeTTSProvider().synthesize(tts['text'], tts['voice'], tts['speed'], Path(args[3]))
                 return subprocess.CompletedProcess(args, 0, '{"networkDenied":true,"peakRssKiB":100}', '')
             real_run = subprocess.run
             def route(args, **kwargs):
                 return run(args, **kwargs) if str(args[0]) == str(runtime/'.venv/bin/python') else real_run(args, **kwargs)
-            with patch.object(tts_provider, 'RUNTIME', runtime), patch.object(tts_provider, 'MODEL_SHA256', hashlib.sha256(b'fixture').hexdigest()), patch.object(tts_provider.subprocess, 'run', side_effect=route):
+            with patch.object(tts_provider, 'RUNTIME', runtime), patch.object(tts_provider, 'HF_HOME', runtime/'hf-home'), patch.object(tts_provider, 'HF_HUB_CACHE', runtime/'hf-home/hub'), patch.object(tts_provider.subprocess, 'run', side_effect=route):
                 _, _, _, meta = self.prepare(LocalTTSProvider())
                 self.assertEqual(meta['voiceProvider'], 'local-tts')
+                self.assertEqual(meta['voiceModel'], 'chatterbox-es-mx-latam-v3')
 
 
 if __name__ == '__main__': unittest.main()

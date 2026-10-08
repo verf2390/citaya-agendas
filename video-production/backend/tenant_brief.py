@@ -438,7 +438,8 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
 
     project = current.setdefault("project", {})
     stored_brief = project.get("creativeBrief")
-    chosen_brief = brief if isinstance(brief, str) and brief.strip() else stored_brief
+    replacing_brief = isinstance(brief, str) and bool(brief.strip())
+    chosen_brief = brief if replacing_brief else stored_brief
     chosen_brief = check_brief(chosen_brief, token)
     project["creativeBrief"] = chosen_brief
     apply_brief_narration(current, chosen_brief)
@@ -654,7 +655,13 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     current["capabilities"] = ["provided_business_content"]
     current["scenes"] = scenes
     current["timing"] = {"intro": intro, "demo": demo, "outro": outro}
-    existing_content = current.get("content") if isinstance(current.get("content"), dict) else {}
+    existing_content = copy.deepcopy(current.get("content")) if isinstance(current.get("content"), dict) else {}
+    if replacing_brief:
+        # A new brief is authoritative for editable commercial copy. Never carry
+        # stale offers/prices/labels from an older project or example config into
+        # a newly directed ad.
+        for key in ("offer", "price", "featureLabels"):
+            existing_content.pop(key, None)
     current["content"] = {
         **existing_content,
         "hook": hook,

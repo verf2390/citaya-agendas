@@ -383,10 +383,15 @@ class VisualDirectorTests(unittest.TestCase):
                          "cta": "Reserva tu hora", "outroSeconds": 2,
                          "scenes": [{"headline": "Trabajo real", "visualIntent": "media", "durationSeconds": 11}]}
 
-    def direct(self, inventory=None, proposal=None):
+    def direct(self, inventory=None, proposal=None, brief=None):
         with patch.dict(os.environ, {"CITAYA_AI_PROVIDER": "local"}), patch.object(
                 tenant_brief, "gateway_call", return_value={"text": json.dumps(proposal or self.proposal), "toolCalls": []}) as call:
-            result = tenant_brief.direct_tenant_config(config=self.config, assets=self.assets, visual_inventory=inventory)
+            result = tenant_brief.direct_tenant_config(
+                config=self.config,
+                assets=self.assets,
+                visual_inventory=inventory,
+                brief=brief,
+            )
         return result, call.call_args.args[2]
 
     def test_inventory_included_with_only_public_projection(self):
@@ -402,6 +407,22 @@ class VisualDirectorTests(unittest.TestCase):
         result, payload = self.direct()
         self.assertNotIn('"visual":', payload["input"][0]["text"])
         self.assertNotIn("video", result[0]["scenes"][0])
+
+    def test_new_brief_drops_stale_optional_commercial_copy(self):
+        self.config["content"].update({
+            "offer": "Oferta anterior",
+            "price": "$18.000",
+            "featureLabels": ["Texto viejo"],
+        })
+        preserved, _ = self.direct()
+        self.assertEqual(preserved[0]["content"]["price"], "$18.000")
+
+        redirected, _ = self.direct(
+            brief="Nuevo anuncio del taller. Usa solo el proceso real. CTA: Reserva tu hora."
+        )
+        self.assertNotIn("offer", redirected[0]["content"])
+        self.assertNotIn("price", redirected[0]["content"])
+        self.assertNotIn("featureLabels", redirected[0]["content"])
 
     def test_content_fixture_can_select_exact_working_asset(self):
         def choose(_endpoint, _token, payload):

@@ -115,7 +115,13 @@ class ModernTests(unittest.TestCase):
         self.assertIn('Reserva tu hora', source)
 
     def test_offer_price_and_feature_are_small_overlays(self):
-        source, nodes, _ = self.compile()
+        raw = self.config()
+        raw['content'].update({
+            'offer': 'Corte + barba',
+            'price': '$18.000',
+            'featureLabels': ['Tu estilo', 'Cada detalle cuenta'],
+        })
+        source, nodes, _ = self.compile(raw)
         self.assertIn('Corte + barba · $18.000', source)
         self.assertEqual(sum(a.get('class') == 'modern-offer' for _, a in nodes), 3)
         self.assertEqual(sum(a.get('class') == 'modern-feature' for _, a in nodes), 3)

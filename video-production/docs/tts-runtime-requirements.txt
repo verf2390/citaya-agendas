@@ -1,5 +1,10 @@
-# Proposed isolated runtime only. Do not install without owner approval.
-# CPython 3.12 / Linux x86_64; exact wheel hashes, no training/HTTP extras.
+# LEGACY PIPER EVALUATION REQUIREMENTS — NOT THE ACTIVE CIT-128 RUNTIME.
+#
+# These pins document the earlier Piper candidate only. CIT-128 now uses the
+# operator-installed Chatterbox LatAm runtime documented in
+# video-production/docs/local-tts-runtime-proposal.md.
+#
+# Do not use this file to provision the active Chatterbox runtime.
 piper-tts==1.8.0 --hash=sha256:25b4d3f31ff70c8fa7151908e00aaa5650cbdf16bca8fcf21299f3941b89a7d3
 onnxruntime==1.30.0 --hash=sha256:fa688e7891a6aa206636fe7372e27ee75fd17713289f6b4fc7b190e0a7de9328
 pathvalidate==3.3.1 --hash=sha256:5263baab691f8e1af96092fa5137ee17df5bdfbd6cff1fcac4d6ef4bc2e1735f
