@@ -484,7 +484,10 @@ class VisualDirectorTests(unittest.TestCase):
 
     def test_no_analysis_keeps_legacy_behavior(self):
         result, payload = self.direct()
-        self.assertNotIn('"visual":', payload["input"][0]["text"])
+        prompt = payload["input"][0]["text"]
+        self.assertNotIn('"visual":', prompt)
+        self.assertIn('"visualIntent":"generic"', prompt)
+        self.assertIn("benefit 64", prompt)
         self.assertNotIn("video", result[0]["scenes"][0])
 
     def test_new_brief_drops_stale_optional_commercial_copy(self):
