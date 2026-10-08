@@ -16,7 +16,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'backend'), str(ROOT / 'tests')]
 from production import ConfigError, read_json, validate, tenant_schema_validate
-from tts_contract import apply_brief_narration, extract_narration, normalize_tts
+from tts_contract import apply_brief_narration, estimate_tts_seconds, extract_narration, normalize_tts
 from tts_provider import LocalTTSProvider, prepare_tts, inspect_wav
 from tts_chatterbox_runner import generation_kwargs, text_chunks
 import tts_provider
@@ -65,6 +65,18 @@ class ContractTests(unittest.TestCase):
     def test_spanish_punctuation_preserved(self):
         text = '¡Tu próximo corte! ¿Clásico, degradado o barba? Incluye bebida; reserva hoy.'
         self.assertEqual(normalize_tts({'enabled': True, 'text': text})['text'], text)
+
+    def test_duration_estimate_is_conservative_and_respects_speed(self):
+        text = (
+            'Tu próximo corte tiene nombre: HDR Barber Studio. '
+            'Corte clásico, degradado o corte más barba. '
+            'Todos incluyen bebida de cortesía y mascarilla facial de carbón. '
+            'Reserva tu hora online.'
+        )
+        normal = estimate_tts_seconds(text, 1.0)
+        self.assertGreaterEqual(normal, 19.0)
+        self.assertGreater(estimate_tts_seconds(text, .9), normal)
+        self.assertLess(estimate_tts_seconds(text, 1.1), normal)
 
     def test_unknown_voice(self):
         raw = config(); raw['audio']['tts']['voice'] = 'another-model'
