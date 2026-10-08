@@ -48,6 +48,18 @@ _TENS_ES = {30: 'treinta', 40: 'cuarenta', 50: 'cincuenta', 60: 'sesenta', 70: '
 _HUNDREDS_ES = {200: 'doscientos', 300: 'trescientos', 400: 'cuatrocientos', 500: 'quinientos', 600: 'seiscientos', 700: 'setecientos', 800: 'ochocientos', 900: 'novecientos'}
 
 
+def _apocope_currency_words(value):
+    if value == 'uno':
+        return 'un'
+    if value.endswith('veintiuno'):
+        return value[:-9] + 'veintiún'
+    if value.endswith(' y uno'):
+        return value[:-6] + ' y un'
+    if value.endswith(' uno'):
+        return value[:-4] + ' un'
+    return value
+
+
 def _spanish_integer(value):
     if not isinstance(value, int) or value < 0 or value > 999_999_999:
         return None
@@ -68,11 +80,11 @@ def _spanish_integer(value):
     if value < 1_000_000:
         thousands = value // 1000
         rest = value % 1000
-        prefix = 'mil' if thousands == 1 else _spanish_integer(thousands) + ' mil'
+        prefix = 'mil' if thousands == 1 else _apocope_currency_words(_spanish_integer(thousands)) + ' mil'
         return prefix if not rest else prefix + ' ' + _spanish_integer(rest)
     millions = value // 1_000_000
     rest = value % 1_000_000
-    prefix = 'un millón' if millions == 1 else _spanish_integer(millions) + ' millones'
+    prefix = 'un millón' if millions == 1 else _apocope_currency_words(_spanish_integer(millions)) + ' millones'
     return prefix if not rest else prefix + ' ' + _spanish_integer(rest)
 
 
@@ -115,7 +127,7 @@ def normalize_narration_currency(text, brief):
         words = _spanish_integer(value)
         if not unit or not words:
             return match.group(0)
-        return f'{words} {unit}'
+        return f'{_apocope_currency_words(words)} {unit}'
 
     return narration_text(pattern.sub(replace, safe))
 
