@@ -18,7 +18,7 @@ sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'backend'), str(ROOT / 'tests'
 from production import ConfigError, read_json, validate, tenant_schema_validate
 from tts_contract import apply_brief_narration, extract_narration, normalize_tts
 from tts_provider import LocalTTSProvider, prepare_tts, inspect_wav
-from tts_chatterbox_runner import text_chunks
+from tts_chatterbox_runner import generation_kwargs, text_chunks
 import tts_provider
 from fake_tts import FakeTTSProvider
 
@@ -278,6 +278,15 @@ class ProviderTests(unittest.TestCase):
         source_chars = ''.join(text.split())
         chunk_chars = ''.join(''.join(chunks).split())
         self.assertEqual(chunk_chars, source_chars)
+
+    def test_chatterbox_every_chunk_uses_same_reference_voice(self):
+        reference = Path('/private/runtime/benchmarks/es_mx_f1.wav')
+        kwargs = generation_kwargs(reference)
+        self.assertEqual(kwargs['audio_prompt_path'], str(reference))
+        self.assertEqual(kwargs['language_id'], 'es')
+        self.assertEqual(kwargs['exaggeration'], 0.5)
+        self.assertEqual(kwargs['temperature'], 0.8)
+        self.assertEqual(kwargs['cfg_weight'], 0.5)
 
     def test_local_process_has_no_shell_no_text_argv_and_clean_env(self):
         with tempfile.TemporaryDirectory() as runtime:
