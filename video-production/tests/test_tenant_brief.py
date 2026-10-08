@@ -557,6 +557,28 @@ class VisualDirectorTests(unittest.TestCase):
         self.assertEqual(result[0]["audio"]["tts"]["start"], 1)
         self.assertEqual(result[0]["audio"]["tts"]["speed"], .95)
 
+    def test_director_extends_timeline_for_explicit_tts_budget(self):
+        narration = (
+            "¿Necesitas un corte para este fin de semana? "
+            "En HDR Barber Studio, el corte degradado cuesta $14.000 y dura 45 minutos. "
+            "Incluye bebida de cortesía y mascarilla facial de carbón. "
+            "Reserva tu hora online."
+        )
+        brief = (
+            "Crea un Reel vertical moderno para HDR Barber Studio.\n"
+            "LOCUCIÓN:\n" + narration
+        )
+        result, _ = self.direct(brief=brief)
+        directed, report, _ = result
+        estimated = report["estimatedTtsSeconds"]
+        self.assertGreater(estimated, 15)
+        self.assertGreaterEqual(
+            sum(directed["timing"].values()),
+            directed["audio"]["tts"]["start"] + estimated,
+        )
+        self.assertEqual(directed["audio"]["tts"]["text"], narration)
+        self.assertGreater(report["plannedDurationSeconds"], 15)
+
     def test_nonexistent_or_unapproved_asset_rejected(self):
         for identifier in ("invented", "ffffffff-1111-1111-1111-111111111111"):
             self.proposal["scenes"][0]["assetId"] = identifier
