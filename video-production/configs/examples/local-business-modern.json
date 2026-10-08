@@ -1,0 +1,71 @@
+{
+  "product": "custom-client-video",
+  "template": "local-business-promo-v2",
+  "niche": "local-business",
+  "videoType": "promotion",
+  "brand": {
+    "businessName": "Estudio Demo",
+    "logo": "inputs/test-fixtures/logo.png"
+  },
+  "media": {
+    "images": [
+      "inputs/test-fixtures/business.png",
+      "inputs/test-fixtures/modern-video-still.png"
+    ],
+    "videos": [
+      "inputs/test-fixtures/intro.mp4"
+    ]
+  },
+  "content": {
+    "hook": "Tu estilo empieza aquí",
+    "secondaryHook": "Conoce nuestro trabajo",
+    "benefit": "Corte y cuidado personal",
+    "offer": "Corte + barba",
+    "price": "$18.000",
+    "featureLabels": [
+      "Tu estilo",
+      "Cada detalle cuenta"
+    ],
+    "cta": "Reserva tu hora",
+    "finalTagline": "Estudio Demo"
+  },
+  "mediaPolicy": {
+    "useOnlyProvidedAssets": true,
+    "allowStockMedia": false,
+    "allowGeneratedMedia": false
+  },
+  "mediaApproved": true,
+  "timing": {
+    "intro": 1.5,
+    "demo": 7,
+    "outro": 1.5
+  },
+  "stylePreset": "dynamic",
+  "audio": {
+    "music": false,
+    "sfx": false
+  },
+  "scenes": [
+    {
+      "capability": "provided_business_content",
+      "mode": "media",
+      "headline": "Tu estilo empieza aquí",
+      "duration": 2,
+      "media": "inputs/test-fixtures/business.png"
+    },
+    {
+      "capability": "provided_business_content",
+      "mode": "media",
+      "headline": "Cada detalle cuenta",
+      "duration": 3,
+      "video": "inputs/test-fixtures/intro.mp4"
+    },
+    {
+      "capability": "provided_business_content",
+      "mode": "media",
+      "headline": "Un momento para ti",
+      "duration": 2,
+      "media": "inputs/test-fixtures/modern-video-still.png"
+    }
+  ]
+}

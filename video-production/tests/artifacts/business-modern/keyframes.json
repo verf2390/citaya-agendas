@@ -1,0 +1,48 @@
+{
+  "project": "composition",
+  "runtime": "all",
+  "compositions": [
+    {
+      "composition": "index.html",
+      "source": "index.html",
+      "tweens": [
+        {
+          "id": "#scene-1-motion-fromTo-3500",
+          "target": "#scene-1-motion",
+          "method": "fromTo",
+          "start": 3.5,
+          "duration": 3,
+          "end": 6.5,
+          "shape": "flat",
+          "keyframes": [
+            {
+              "pct": 0,
+              "time": 3.5,
+              "properties": {
+                "scale": 1,
+                "xPercent": 0
+              }
+            },
+            {
+              "pct": 100,
+              "time": 6.5,
+              "properties": {
+                "scale": 1.055,
+                "xPercent": 0
+              }
+            }
+          ],
+          "path": null
+        }
+      ],
+      "traces": [],
+      "cssKeyframes": [],
+      "anime": []
+    }
+  ],
+  "_meta": {
+    "version": "0.8.114",
+    "latestVersion": "0.8.114",
+    "updateAvailable": false
+  }
+}

@@ -1,0 +1,319 @@
+{
+  "ok": true,
+  "reports": [
+    {
+      "variant": "minimal",
+      "first": "matrix(1.0125, 0, 0, 1.0125, 0, 0)",
+      "last": "matrix(1.0242, 0, 0, 1.0242, 0, 0)",
+      "again": "matrix(1.0125, 0, 0, 1.0125, 0, 0)",
+      "headlines": [
+        {
+          "text": "Tu estilo empieza aqu\u00ed",
+          "lines": 1,
+          "font": "84px"
+        },
+        {
+          "text": "Tu estilo empieza aqu\u00ed",
+          "lines": 1,
+          "font": "84px"
+        },
+        {
+          "text": "Cada detalle cuenta",
+          "lines": 1,
+          "font": "84px"
+        },
+        {
+          "text": "Un momento para ti",
+          "lines": 1,
+          "font": "84px"
+        },
+        {
+          "text": "Estudio Demo",
+          "lines": 1,
+          "font": "64px"
+        },
+        {
+          "text": "Reserva tu hora",
+          "lines": 1,
+          "font": "78px"
+        }
+      ],
+      "media": [
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "VIDEO",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        }
+      ]
+    },
+    {
+      "variant": "premium",
+      "first": "matrix(1.0175, 0, 0, 1.0175, 0, 0)",
+      "last": "matrix(1.0338, 0, 0, 1.0338, 0, 0)",
+      "again": "matrix(1.0175, 0, 0, 1.0175, 0, 0)",
+      "headlines": [
+        {
+          "text": "Tu estilo empieza aqu\u00ed",
+          "lines": 1,
+          "font": "80px"
+        },
+        {
+          "text": "Tu estilo empieza aqu\u00ed",
+          "lines": 1,
+          "font": "80px"
+        },
+        {
+          "text": "Cada detalle cuenta",
+          "lines": 1,
+          "font": "80px"
+        },
+        {
+          "text": "Un momento para ti",
+          "lines": 1,
+          "font": "80px"
+        },
+        {
+          "text": "Estudio Demo",
+          "lines": 1,
+          "font": "64px"
+        },
+        {
+          "text": "Reserva tu hora",
+          "lines": 1,
+          "font": "78px"
+        }
+      ],
+      "media": [
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "VIDEO",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        }
+      ]
+    },
+    {
+      "variant": "creator",
+      "first": "matrix(1.0275, 0, 0, 1.0275, 0, 0)",
+      "last": "matrix(1.0532, 0, 0, 1.0532, 0, 0)",
+      "again": "matrix(1.0275, 0, 0, 1.0275, 0, 0)",
+      "headlines": [
+        {
+          "text": "Tu estilo empieza aqu\u00ed",
+          "lines": 1,
+          "font": "84px"
+        },
+        {
+          "text": "Cada detalle cuenta",
+          "lines": 1,
+          "font": "92px"
+        },
+        {
+          "text": "Un momento para ti",
+          "lines": 1,
+          "font": "92px"
+        },
+        {
+          "text": "Estudio Demo",
+          "lines": 1,
+          "font": "64px"
+        },
+        {
+          "text": "Reserva tu hora",
+          "lines": 1,
+          "font": "78px"
+        }
+      ],
+      "media": [
+        {
+          "tag": "VIDEO",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "VIDEO",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "VIDEO",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        }
+      ]
+    },
+    {
+      "variant": "no-media",
+      "first": "none",
+      "last": "none",
+      "again": "none",
+      "headlines": [
+        {
+          "text": "Tu estilo empieza aqu\u00ed",
+          "lines": 1,
+          "font": "84px"
+        },
+        {
+          "text": "Tu estilo empieza aqu\u00ed",
+          "lines": 1,
+          "font": "84px"
+        },
+        {
+          "text": "Cada detalle cuenta",
+          "lines": 1,
+          "font": "92px"
+        },
+        {
+          "text": "Un momento para ti",
+          "lines": 1,
+          "font": "92px"
+        },
+        {
+          "text": "Estudio Demo",
+          "lines": 1,
+          "font": "64px"
+        },
+        {
+          "text": "Reserva tu hora",
+          "lines": 1,
+          "font": "78px"
+        }
+      ],
+      "media": []
+    },
+    {
+      "variant": "long-copy",
+      "first": "matrix(1.0275, 0, 0, 1.0275, 0, 0)",
+      "last": "matrix(1.0532, 0, 0, 1.0532, 0, 0)",
+      "again": "matrix(1.0275, 0, 0, 1.0275, 0, 0)",
+      "headlines": [
+        {
+          "text": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+          "lines": 2,
+          "font": "25px"
+        },
+        {
+          "text": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+          "lines": 2,
+          "font": "25px"
+        },
+        {
+          "text": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+          "lines": 2,
+          "font": "25px"
+        },
+        {
+          "text": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+          "lines": 2,
+          "font": "25px"
+        },
+        {
+          "text": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+          "lines": 2,
+          "font": "25px"
+        },
+        {
+          "text": "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+          "lines": 2,
+          "font": "25px"
+        }
+      ],
+      "media": [
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "VIDEO",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        },
+        {
+          "tag": "IMG",
+          "fit": "cover",
+          "width": 1080,
+          "height": 1920
+        }
+      ]
+    }
+  ]
+}

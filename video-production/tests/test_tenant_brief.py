@@ -41,6 +41,7 @@ class TenantBriefTests(unittest.TestCase):
             )
 
         self.assertEqual(config["product"], "custom-client-video")
+        self.assertEqual(config["template"], "local-business-promo-v2")
         self.assertEqual(config["brand"]["businessName"], "Negocio Demo")
         self.assertNotIn("hook", config)
         self.assertNotIn("secondaryHook", config)
@@ -400,6 +401,38 @@ class VisualDirectorTests(unittest.TestCase):
         with patch.dict(os.environ, {"CITAYA_AI_PROVIDER": "local"}), patch.object(tenant_brief, "gateway_call", side_effect=choose):
             config, _, _ = tenant_brief.direct_tenant_config(config=self.config, assets=self.assets, visual_inventory=self.inventory)
         self.assertEqual(config["scenes"][0]["video"], "asset:" + self.assets[1]["id"])
+        self.assertEqual(config["template"], "local-business-promo-v2")
+
+    def test_explicit_external_template_preserved_with_creator_media(self):
+        for template in ("local-business-promo-v1", "local-business-promo-v2", "creator-led-v1", "offer-promo-v1"):
+            with self.subTest(template=template):
+                self.config["template"] = template
+                self.config["media"] = {"creatorIntro": "asset:" + self.assets[0]["id"]}
+                result, _ = self.direct()
+                self.assertEqual(result[0]["template"], template)
+
+    def test_selected_asset_compiles_to_modern_fullscreen(self):
+        import tempfile
+        from compose import compile_composition
+        from production import validate
+        self.config["timing"]["intro"] = 2.5
+        self.config["project"]["targetDurationSeconds"] = 8
+        self.config["mediaApproved"] = True
+        self.assets[0]["durationMs"] = 3000
+        self.proposal["outroSeconds"] = 2.5
+        self.proposal["scenes"][0].update(durationSeconds=3, assetId=self.assets[0]["id"])
+        result, _ = self.direct(self.inventory)
+        config = result[0]
+        # Emulate the worker's approved asset-ID -> local-path projection.
+        config["scenes"][0]["video"] = "inputs/test-fixtures/intro.mp4"
+        normalized, _, ctx = validate(config)
+        with tempfile.TemporaryDirectory() as d:
+            comp, _ = compile_composition(normalized, ctx, Path(d), "preview")
+            source = (comp / "index.html").read_text()
+            self.assertIn('class="clip modern-media"', source)
+            self.assertIn('class="modern-headline"', source)
+            self.assertNotIn('class="screen', source)
+            self.assertIn('data-duration="3.000000"', source)
 
     def test_nonexistent_or_unapproved_asset_rejected(self):
         for identifier in ("invented", "ffffffff-1111-1111-1111-111111111111"):

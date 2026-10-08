@@ -1,0 +1,43 @@
+{
+  "base": "befa4400827ea515302153f2b9c7dacc9447c9cc",
+  "fullSuite": {
+    "tests": 262,
+    "passed": 261,
+    "knownBaselineFailures": [
+      "test_brief.BriefTests.test_duration_not_silently_defaulted_and_readability_gate"
+    ]
+  },
+  "focusedSuites": {
+    "businessModern": 12,
+    "tenantBrief": 18
+  },
+  "preview": {
+    "path": "video-production/outputs/20261008T120418.982617Z-custom-client-video-preview-ec9221/final.mp4",
+    "sha256": "bbb37c70ed5c8c8cc55226be02f121988b9f3042dac5c5f28c0773d080765152"
+  },
+  "frames": {
+    "initial": {
+      "time": 0,
+      "sha256": "72742e0c821d3b3c4a8a0a1abe50592de43b5120fa0194f5ccdf7d4253115284"
+    },
+    "middle": {
+      "time": 5,
+      "sha256": "cb1d809fddf0538e3325a33d8fe6b9a568e8de66fab28dca74928b3d0524b0da"
+    },
+    "final": {
+      "time": 9.9,
+      "sha256": "099d3d081637f243d845d9c00afc718f9f939a7498308800cc0968fafec0960b"
+    }
+  },
+  "realBusinessMediaReviewed": false,
+  "finalDeliveryRendered": false,
+  "finalCompilationCheck": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "sourceVideoFps": 24,
+    "ok": true,
+    "layoutFindings": 0,
+    "contrastFindings": 0
+  }
+}

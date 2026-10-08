@@ -344,7 +344,7 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
     config = {
         "schemaVersion": 1,
         "product": "custom-client-video",
-        "template": "local-business-promo-v1",
+        "template": "local-business-promo-v1" if business_name.strip().casefold() == "citaya" else "local-business-promo-v2",
         "stylePreset": style,
         "niche": niche,
         "videoType": "promotion",
@@ -635,15 +635,18 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
         scene["mode"] in {"service", "calendar", "customers", "payments", "campaign-preview"}
         for scene in scenes
     )
-    current["template"] = (
-        "creator-led-v1"
-        if media.get("creatorIntro")
-        or media.get("creatorOutro")
-        or media.get("clientVoiceover")
-        or media.get("creatorVoiceover")
-        or uses_citaya_product_ui
-        else current.get("template", "local-business-promo-v1")
-    )
+    # External projects retain explicit templates, including persisted V1.
+    # CITAYA's existing product-UI routing remains on the legacy renderer.
+    if visual_intents is CITAYA_VISUAL_INTENTS:
+        current["template"] = (
+            "creator-led-v1"
+            if any(media.get(key) for key in (
+                "creatorIntro", "creatorOutro", "clientVoiceover", "creatorVoiceover"
+            )) or uses_citaya_product_ui
+            else current.get("template", "local-business-promo-v1")
+        )
+    else:
+        current.setdefault("template", "local-business-promo-v2")
     current["capabilities"] = ["provided_business_content"]
     current["scenes"] = scenes
     current["timing"] = {"intro": intro, "demo": demo, "outro": outro}

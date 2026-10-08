@@ -1,0 +1,38 @@
+/* Isolated V2 canvas. No legacy preset, SaaS, website or card rules. */
+@font-face{font-family:Geist;src:url('assets/branding/geist.woff2');font-weight:100 900;font-display:block}
+*{box-sizing:border-box}
+html,body{margin:0;overflow:hidden;background:#111416;color:#fff;font-family:Geist,sans-serif}
+#root{position:relative;width:100%;height:100%;overflow:hidden}
+.stage{position:absolute;inset:0;width:1080px;height:1920px;transform-origin:top left;overflow:hidden;background:#111416;--shade-mid:.15;--shade-end:.76;--copy-bottom:350px}
+.clip{position:absolute;inset:0}
+.modern-background,.modern-camera{position:absolute;inset:0;z-index:0}
+.modern-media{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0;border-radius:0;display:block}
+.modern-fallback{position:absolute;inset:0;background:radial-gradient(ellipse at 80% 20%,#32474b 0%,#17242b 45%,#111416 85%)}
+.modern-editorial{z-index:2}
+.modern-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.15),transparent 28%,rgba(0,0,0,var(--shade-mid)) 48%,rgba(0,0,0,var(--shade-end)) 82%,rgba(0,0,0,.82))}
+.modern-copy{position:absolute;left:84px;right:108px;bottom:var(--copy-bottom);text-shadow:0 2px 16px rgba(0,0,0,.5)}
+.modern-headline{font-size:84px;font-weight:800;line-height:1.1;letter-spacing:-2.4px;margin:0;overflow-wrap:anywhere;white-space:normal}
+.modern-secondary{font-size:37px;line-height:1.25;font-weight:500;margin:24px 0 0;overflow-wrap:anywhere}
+.modern-feature{font-size:30px;line-height:1.25;font-weight:600;margin:22px 0 0;overflow-wrap:anywhere}
+.modern-offer{display:table;max-width:100%;font-size:29px;line-height:1.25;font-weight:650;margin:22px 0 0;padding:12px 20px;background:rgba(0,0,0,.5);border:1px solid #ffffff50;border-radius:24px;overflow-wrap:anywhere}
+.modern-branding{z-index:4;pointer-events:none}
+.modern-brand{position:absolute;left:84px;top:148px;max-width:480px}
+.modern-logo{display:block;max-width:180px;max-height:76px;object-fit:contain;filter:drop-shadow(0 2px 8px #0006)}
+.modern-brand-name{display:block;font-size:27px;line-height:1.2;font-weight:650;max-width:440px;padding:10px 16px;border-radius:16px;background:rgba(0,0,0,.45);overflow-wrap:anywhere}
+.modern-end{--shade-mid:.28;--shade-end:.86}
+.modern-end .modern-headline{font-size:64px;font-weight:600}
+.modern-cta{font-size:78px;font-weight:800;line-height:1.1;letter-spacing:-2px;margin:28px 0 0;overflow-wrap:anywhere}
+.modern-contact{font-size:28px;line-height:1.3;margin:28px 0 0;overflow-wrap:anywhere}
+.modern-captions{z-index:8}
+.modern-caption{position:absolute;left:84px;right:108px;bottom:265px;text-align:center;background:rgba(0,0,0,.85);padding:14px 20px;border-radius:12px;font-size:34px;line-height:1.2}
+.with-captions{--copy-bottom:470px}
+.preset-minimal{--shade-mid:.12;--shade-end:.76}
+.preset-dynamic{--shade-mid:.18;--shade-end:.79}
+.preset-dynamic .modern-headline{font-size:92px;font-weight:850;letter-spacing:-3px}
+.preset-dynamic .modern-feature{border-left:4px solid #fff;padding-left:16px}
+.preset-premium{--shade-mid:.10;--shade-end:.76}
+.preset-premium .modern-headline{font-size:80px;font-weight:650;letter-spacing:-1.8px}
+.preset-premium .modern-secondary{font-weight:400}
+.preset-premium .modern-offer{border-radius:8px;background:rgba(0,0,0,.35)}
+
+.business-modern .modern-end .modern-headline{font-size:64px;font-weight:600;letter-spacing:-1.5px}
