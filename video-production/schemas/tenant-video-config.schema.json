@@ -197,6 +197,57 @@
         },
         "duckMusicDuringVoice": {
           "type": "boolean"
+        },
+        "tts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1200
+            },
+            "voice": {
+              "enum": [
+                "es-male-1"
+              ]
+            },
+            "speed": {
+              "type": "number",
+              "minimum": 0.9,
+              "maximum": 1.1
+            },
+            "start": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 120
+            }
+          },
+          "required": [
+            "enabled"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "enabled": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "then": {
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          ]
         }
       },
       "required": []

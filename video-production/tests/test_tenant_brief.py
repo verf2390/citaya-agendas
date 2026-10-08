@@ -48,10 +48,22 @@ class TenantBriefTests(unittest.TestCase):
         self.assertNotIn("cta", config)
         self.assertEqual(config["stylePreset"], "dynamic")
         self.assertFalse(config["mediaApproved"])
+        self.assertNotIn("tts", config.get("audio", {}))
         self.assertEqual(config["project"]["creativeBrief"], "Video corto mostrando nuestro trabajo real.")
         self.assertEqual(config["project"]["targetDurationSeconds"], 15)
         self.assertEqual(report["duration"], 15)
         self.assertEqual(usage["totalTokens"], 30)
+
+    def test_explicit_narration_preserved_outside_model_response(self):
+        response = {"text": json.dumps({"hook":"Tu negocio", "secondaryHook":"Conoce nuestro trabajo", "benefit":"Nuestro servicio", "cta":"Reserva"}), "toolCalls":[]}
+        narration = "Tu próximo corte tiene nombre: Estudio Demo. Reserva tu hora."
+        with patch.object(tenant_brief, "gateway_call", return_value=response):
+            config, report, _ = tenant_brief.generate_tenant_config(
+                brief="Anuncio vertical.\nVOZ: masculina joven-adulta\nLOCUCIÓN: “"+narration+"”\nCTA: Reserva",
+                business_name="Estudio Demo", niche="local-business", style="minimal", duration_seconds=15)
+        self.assertEqual(config["audio"]["tts"]["text"], narration)
+        self.assertEqual(config["audio"]["tts"]["start"], 0)
+        self.assertEqual(report["ttsValidation"], "pending-synthesis")
 
     def test_accepts_extra_keys_and_normalizes_long_creation_copy_without_repair(self):
         response = {
@@ -433,6 +445,14 @@ class VisualDirectorTests(unittest.TestCase):
             self.assertIn('class="modern-headline"', source)
             self.assertNotIn('class="screen', source)
             self.assertIn('data-duration="3.000000"', source)
+
+    def test_director_preserves_explicit_narration_and_start(self):
+        self.config["project"]["creativeBrief"] += "\nLOCUCIÓN: Cada detalle cuenta.\nVOZ: masculina"
+        self.config["audio"] = {"tts":{"enabled":True,"text":"Anterior","start":1,"speed":.95}}
+        result, _ = self.direct()
+        self.assertEqual(result[0]["audio"]["tts"]["text"], "Cada detalle cuenta.")
+        self.assertEqual(result[0]["audio"]["tts"]["start"], 1)
+        self.assertEqual(result[0]["audio"]["tts"]["speed"], .95)
 
     def test_nonexistent_or_unapproved_asset_rejected(self):
         for identifier in ("invented", "ffffffff-1111-1111-1111-111111111111"):

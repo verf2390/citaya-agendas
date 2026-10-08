@@ -270,6 +270,8 @@ def usage_of(response):
 
 
 def generate_config(brief, endpoint, token, model, run_dir, timeout=70, style=None):
+    from tts_contract import extract_narration, apply_brief_narration
+    narration = extract_narration(brief)
     catalog = catalog_context()
     metrics = {"provider": "local", "model": model, "status": "running", "calls": [],
                "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "usageComplete": True}
@@ -329,6 +331,9 @@ def generate_config(brief, endpoint, token, model, run_dir, timeout=70, style=No
         print(f"IA: redactando config con {len(capabilities)} capacidades candidatas...", flush=True)
         normalized, report = step("config", config_prompt(brief, route, capabilities),
                                   lambda data: normalize_proposal(data, route, capabilities, style))
+        if narration is not None:
+            apply_brief_narration(normalized, brief)
+            normalized, report, _ = validate(normalized)
         write_json(run_dir / "generated-config.json", normalized)
         write_json(run_dir / "validation-report.json", report)
         metrics["status"] = "complete"

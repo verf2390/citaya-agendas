@@ -233,6 +233,14 @@ class BriefTests(unittest.TestCase):
         self.assertFalse(self.metrics()["usageComplete"])
         self.assertEqual(self.metrics()["totalTokens"], 150)
 
+    def test_explicit_narration_is_added_after_model_config(self):
+        narration = "Tu próxima reserva empieza aquí."
+        with gateway([(200, response(ROUTE)), (200, response(PROPOSAL))]) as (url, _):
+            with contextlib.redirect_stdout(io.StringIO()):
+                config, report = brief.generate_config(BRIEF+"\nLOCUCIÓN: "+narration+"\nVOZ: joven", url, "test-credential", brief.MODEL, self.out)
+        self.assertEqual(config["audio"]["tts"]["text"], narration)
+        self.assertEqual(report["ttsValidation"], "pending-synthesis")
+
     def test_duration_not_silently_defaulted_and_readability_gate(self):
         caps = brief.relevant_capabilities(BRIEF, ROUTE, CATALOG)
         config, report = brief.normalize_proposal(PROPOSAL, dict(ROUTE, durationSeconds=30), caps)

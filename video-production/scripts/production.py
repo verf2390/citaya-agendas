@@ -181,9 +181,12 @@ def validate(config,mode='preview'):
     if subtitles['enabled'] and not captions: fail('MISSING_SRT','Enabled subtitles require a local SRT file.')
     cues=parse_srt(ROOT/captions,duration) if subtitles['enabled'] else []
     if captions:media.append(captions)
-    audio=c.setdefault('audio',{});shape(audio,['music','sfx','duckMusicDuringVoice'],'audio')
+    audio=c.setdefault('audio',{});shape(audio,['music','sfx','duckMusicDuringVoice','tts'],'audio')
     for k in ['music','sfx','duckMusicDuringVoice']:audio[k]=boolean(audio.get(k,True),'audio.'+k)
-    if speech and audio['music'] and not audio['duckMusicDuringVoice']: fail('VOICE_DUCKING_REQUIRED','Music under speech requires duckMusicDuringVoice=true.')
+    from tts_contract import validate_tts_config
+    tts=validate_tts_config(c,duration)
+    if tts is not None:audio['tts']=tts
+    if (speech or (tts and tts['enabled'])) and audio['music'] and not audio['duckMusicDuringVoice']: fail('VOICE_DUCKING_REQUIRED','Music under speech requires duckMusicDuringVoice=true.')
     project=c.setdefault('project',{});shape(project,['name','category','creativeBrief','targetDurationSeconds'],'project');project['name']=text(project.get('name','Estudio Demo' if c['niche']=='architecture' else 'Negocio Demo'),32,'project.name');project['category']=text(project.get('category',niches[c['niche']]['name']),35,'project.category')
     for s in scenes:
         media.extend(s[k] for k in ['media','video','beforeMedia','afterMedia'] if s[k])
@@ -197,9 +200,12 @@ def validate(config,mode='preview'):
     c['shareCopy']=text(c.get('shareCopy',f'{c["hook"]} {c["secondaryHook"]} {c["cta"]}'),320,'shareCopy')
     if c['videoType']=='roadmap' and not c['shareCopy'].startswith('Concepto / hoja de ruta.'):c['shareCopy']='Concepto / hoja de ruta. Las funciones planificadas no están disponibles. '+c['shareCopy']
     report={'valid':True,'schemaVersion':1,'mode':mode,'duration':round(duration,6),'resolution':MODES[mode],'stylePreset':c['stylePreset'],'capabilities':checked,'warnings':['Copy and supplied media still require human factual/privacy review; validation is not semantic or biometric inspection.'],'catalogSha256':{n:digest(ROOT/'catalog'/f'{n}.json') for n in catalogs},'mediaSha256':{m:digest(ROOT/m) for m in sorted(set(media))},'productionDataAccess':False}
+    if tts and tts['enabled']:report['ttsValidation']='pending-synthesis'
     return c,report,{'product':p,'niche':niches[c['niche']],'caps':caps,'template':template,'speech':speech,'cues':cues}
 
 def schema_validate(c):
+    from tts_contract import validate_tts_config
+    validate_tts_config(c)
     from jsonschema import Draft202012Validator
     schema=read_json(ROOT/'schemas/video-config.schema.json')
     errors=sorted(Draft202012Validator(schema).iter_errors(c),key=lambda e:str(list(e.path)))
@@ -276,6 +282,8 @@ def inspect_media(path):
     return {'type':kind,'bytes':p.stat().st_size,'durationMs':round(float(info.get('format',{}).get('duration',0))*1000),'width':s.get('width'),'height':s.get('height'),'codec':s.get('codec_name'),'sha256':digest(p)}
 
 def tenant_schema_validate(c):
+    from tts_contract import validate_tts_config
+    validate_tts_config(c)
     from jsonschema import Draft202012Validator
     errors=list(Draft202012Validator(read_json(ROOT/'schemas/tenant-video-config.schema.json')).iter_errors(c))
     if errors:fail('TENANT_SCHEMA_VALIDATION',str(list(errors[0].path))+': '+'invalid '+str(errors[0].validator)+' rule')

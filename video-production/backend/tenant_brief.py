@@ -17,6 +17,7 @@ import urllib.request
 from urllib.parse import urlsplit
 
 from production import ROOT, read_json, validate
+from tts_contract import apply_brief_narration, extract_narration
 
 DEFAULT_MODEL = "Qwen/Qwen3-4B-GGUF:Q4_K_M"
 MAX_BRIEF_BYTES = 12000
@@ -281,6 +282,7 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
         niche_label or niche_row["name"], 60, "INVALID_NICHE"
     )
 
+    extract_narration(brief)
     prompt = (
         'JSON exacto: {"hook":"texto","secondaryHook":"texto","benefit":"texto","cta":"texto"}. '
         "Limites: hook 74, secondaryHook 90, benefit 65, cta 40 caracteres. "
@@ -369,6 +371,7 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
             "category": niche_label[:35],
         },
     }
+    apply_brief_narration(config, brief)
     _, report, _ = validate(config, "preview")
     return config, report, _combined_usage(responses, model, elapsed)
 
@@ -438,6 +441,7 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     chosen_brief = brief if isinstance(brief, str) and brief.strip() else stored_brief
     chosen_brief = check_brief(chosen_brief, token)
     project["creativeBrief"] = chosen_brief
+    apply_brief_narration(current, chosen_brief)
 
     timing = current.get("timing") if isinstance(current.get("timing"), dict) else {}
     previous_duration = sum(
