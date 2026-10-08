@@ -406,6 +406,83 @@ def _finite_number(value, minimum, maximum, code="AI_INVALID_PROPOSAL"):
     return value
 
 
+def _validate_director_proposal(response, token, visual_intents, available_visual):
+    if response.get("toolCalls"):
+        raise TenantBriefError("AI_UNEXPECTED_TOOLS")
+    proposal = parse_json_object(response["text"])
+    required = {"hook", "secondaryHook", "benefit", "cta", "scenes", "outroSeconds"}
+    if set(proposal) != required:
+        raise TenantBriefError("AI_INVALID_PROPOSAL")
+    if token and token in json.dumps(proposal, ensure_ascii=False):
+        raise TenantBriefError("AI_UNSAFE_RESPONSE")
+
+    hook = clean_text(proposal["hook"], 74, "AI_INVALID_PROPOSAL")
+    secondary = clean_text(proposal["secondaryHook"], 90, "AI_INVALID_PROPOSAL")
+    benefit = clean_text(proposal["benefit"], 64, "AI_INVALID_PROPOSAL")
+    cta = clean_text(proposal["cta"], 40, "AI_INVALID_PROPOSAL")
+    planned_outro = _finite_number(proposal["outroSeconds"], 1.5, 10)
+
+    raw_scenes = proposal["scenes"]
+    if not isinstance(raw_scenes, list) or not 1 <= len(raw_scenes) <= 8:
+        raise TenantBriefError("AI_INVALID_PROPOSAL")
+
+    scenes = []
+    for item in raw_scenes:
+        required_scene = {"headline", "visualIntent", "durationSeconds"}
+        if not isinstance(item, dict) or set(item) not in (required_scene, required_scene | {"assetId"}):
+            raise TenantBriefError("AI_INVALID_PROPOSAL")
+        selected = None
+        if "assetId" in item:
+            if not isinstance(item["assetId"], str) or item["assetId"] not in available_visual or item["visualIntent"] != "media":
+                raise TenantBriefError("AI_INVALID_PROPOSAL")
+            selected = available_visual[item["assetId"]]
+            if selected["type"] not in ("image", "video"):
+                raise TenantBriefError("AI_INVALID_PROPOSAL")
+        headline = clean_text(item["headline"], 64, "AI_INVALID_PROPOSAL")
+        visual_intent = clean_text(item["visualIntent"], 30, "AI_INVALID_PROPOSAL")
+        if visual_intent not in visual_intents:
+            raise TenantBriefError("AI_INVALID_PROPOSAL")
+        seconds = _finite_number(item["durationSeconds"], 1.0, 30)
+        scene = {
+            "capability": "provided_business_content",
+            "mode": visual_intents[visual_intent],
+            "headline": headline,
+            "duration": round(seconds, 6),
+        }
+        if selected is not None:
+            scene["video" if selected["type"] == "video" else "media"] = "asset:" + selected["id"]
+        scenes.append(scene)
+
+    return hook, secondary, benefit, cta, planned_outro, scenes
+
+
+def _safe_director_fallback(*, current, chosen_brief, visual_intents):
+    brand = current.get("brand") if isinstance(current.get("brand"), dict) else {}
+    project = current.get("project") if isinstance(current.get("project"), dict) else {}
+    business_name = str(brand.get("businessName") or "Negocio").strip() or "Negocio"
+    niche_label = str(project.get("category") or current.get("niche") or "Negocio local").strip() or "Negocio local"
+    hook, secondary, benefit, cta = _safe_creation_fallback(
+        brief=chosen_brief,
+        business_name=business_name,
+        niche_label=niche_label,
+    )
+    timing = current.get("timing") if isinstance(current.get("timing"), dict) else {}
+    raw_outro = timing.get("outro", 2.5)
+    planned_outro = (
+        float(raw_outro)
+        if type(raw_outro) in (int, float) and math.isfinite(raw_outro) and 1.5 <= float(raw_outro) <= 10
+        else 2.5
+    )
+    headline = _normalize_creation_text(benefit, 64)
+    scenes = [{
+        "capability": "provided_business_content",
+        "mode": visual_intents["generic"],
+        "headline": headline,
+        "duration": 3.0,
+    }]
+    return hook, secondary, benefit, cta, planned_outro, scenes
+
+
 def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     """Create a guarded edit plan from the creative brief and real asset durations."""
     if not isinstance(config, dict) or config.get("product") != "custom-client-video":
@@ -553,51 +630,51 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
 
     started = time.monotonic()
     response = gateway_call(endpoint, token, payload)
+    responses = [response]
+    try:
+        hook, secondary, benefit, cta, planned_outro, scenes = _validate_director_proposal(
+            response, token, visual_intents, available_visual
+        )
+    except TenantBriefError as exc:
+        if exc.code not in ("AI_INVALID_JSON", "AI_INVALID_PROPOSAL"):
+            raise
+        repair_prompt = (
+            'Repara la propuesta anterior. Devuelve SOLO JSON exacto con estas claves: '
+            '{"hook":"texto","secondaryHook":"texto","benefit":"texto","cta":"texto",'
+            '"scenes":[{"headline":"texto","visualIntent":"generic","durationSeconds":3.0}],'
+            '"outroSeconds":2.5}. '
+            "Limites estrictos: hook 74, secondaryHook 90, benefit 64, cta 40, headline 64 caracteres. "
+            "Usa entre 1 y 8 escenas; durationSeconds entre 1.0 y 30; outroSeconds entre 1.5 y 10. "
+            "visualIntent permitidos: " + json.dumps(list(visual_intents)) + ". "
+            "No agregues claves nuevas ni afirmaciones, precios, ofertas o datos no presentes. "
+            "Si no estas seguro de un assetId, omitelo. "
+            "PROPUESTA_ANTERIOR: " + json.dumps(str(response.get("text", ""))[:5000], ensure_ascii=False)
+            + "\n/no_think"
+        )
+        repair_payload = {
+            "contractVersion": "citaya-ai-provider-v1",
+            "model": model,
+            "instructions": SYSTEM,
+            "input": [{"type": "user", "text": repair_prompt}],
+            "tools": [],
+            "maxOutputTokens": 700,
+            "continuation": None,
+        }
+        repaired = gateway_call(endpoint, token, repair_payload)
+        responses.append(repaired)
+        try:
+            hook, secondary, benefit, cta, planned_outro, scenes = _validate_director_proposal(
+                repaired, token, visual_intents, available_visual
+            )
+        except TenantBriefError as repair_exc:
+            if repair_exc.code not in ("AI_INVALID_JSON", "AI_INVALID_PROPOSAL"):
+                raise
+            hook, secondary, benefit, cta, planned_outro, scenes = _safe_director_fallback(
+                current=current,
+                chosen_brief=chosen_brief,
+                visual_intents=visual_intents,
+            )
     elapsed = time.monotonic() - started
-    if response.get("toolCalls"):
-        raise TenantBriefError("AI_UNEXPECTED_TOOLS")
-    proposal = parse_json_object(response["text"])
-    required = {"hook", "secondaryHook", "benefit", "cta", "scenes", "outroSeconds"}
-    if set(proposal) != required:
-        raise TenantBriefError("AI_INVALID_PROPOSAL")
-    if token and token in json.dumps(proposal, ensure_ascii=False):
-        raise TenantBriefError("AI_UNSAFE_RESPONSE")
-
-    hook = clean_text(proposal["hook"], 74, "AI_INVALID_PROPOSAL")
-    secondary = clean_text(proposal["secondaryHook"], 90, "AI_INVALID_PROPOSAL")
-    benefit = clean_text(proposal["benefit"], 65, "AI_INVALID_PROPOSAL")
-    cta = clean_text(proposal["cta"], 40, "AI_INVALID_PROPOSAL")
-    planned_outro = _finite_number(proposal["outroSeconds"], 1.5, 10)
-
-    raw_scenes = proposal["scenes"]
-    if not isinstance(raw_scenes, list) or not 1 <= len(raw_scenes) <= 8:
-        raise TenantBriefError("AI_INVALID_PROPOSAL")
-    scenes = []
-    for item in raw_scenes:
-        required_scene = {"headline", "visualIntent", "durationSeconds"}
-        if not isinstance(item, dict) or set(item) not in (required_scene, required_scene | {"assetId"}):
-            raise TenantBriefError("AI_INVALID_PROPOSAL")
-        selected = None
-        if "assetId" in item:
-            if not isinstance(item["assetId"], str) or item["assetId"] not in available_visual or item["visualIntent"] != "media":
-                raise TenantBriefError("AI_INVALID_PROPOSAL")
-            selected = available_visual[item["assetId"]]
-            if selected["type"] not in ("image", "video"):
-                raise TenantBriefError("AI_INVALID_PROPOSAL")
-        headline = clean_text(item["headline"], 64, "AI_INVALID_PROPOSAL")
-        visual_intent = clean_text(item["visualIntent"], 30, "AI_INVALID_PROPOSAL")
-        if visual_intent not in visual_intents:
-            raise TenantBriefError("AI_INVALID_PROPOSAL")
-        seconds = _finite_number(item["durationSeconds"], 1.0, 30)
-        scenes.append({
-            "capability": "provided_business_content",
-            "mode": visual_intents[visual_intent],
-            "headline": headline,
-            "duration": round(seconds, 6),
-        })
-
-        if selected is not None:
-            scenes[-1]["video" if selected["type"] == "video" else "media"] = "asset:" + selected["id"]
 
     intro = intro_seconds
     if intro is None:
@@ -686,4 +763,4 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
         "sceneCount": len(scenes),
         "preservedMedia": True,
     }
-    return current, report, usage_from_response(response, model, elapsed)
+    return current, report, _combined_usage(responses, model, elapsed)
