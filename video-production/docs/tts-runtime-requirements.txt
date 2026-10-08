@@ -6,9 +6,9 @@
 #
 # Do not use this file to provision the active Chatterbox runtime.
 piper-tts==1.8.0 --hash=sha256:25b4d3f31ff70c8fa7151908e00aaa5650cbdf16bca8fcf21299f3941b89a7d3
-onnxruntime==1.30.0 --hash=sha256:fa688e7891a6aa20663622fd4eafc67fec12e
+onnxruntime==1.30.0 --hash=sha256:fa688e7891a6aa206636fe7372e27ee75fd17713289f6b4fc7b190e0a7de9328
 pathvalidate==3.3.1 --hash=sha256:5263baab691f8e1af96092fa5137ee17df5bdfbd6cff1fcac4d6ef4bc2e1735f
 numpy==2.5.3 --hash=sha256:b7e18c623bb5c95acb3b3328861272816ba199fb531921c5d6d0b675f1fde9e3
 flatbuffers==25.12.19 --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
-packaging==26.3 --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0adad44cb553c87339b23cd1c
+packaging==26.3 --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
 protobuf==7.36.2 --hash=sha256:89f23aa53c24553a2416fd4fd1ec06f74fa42b14b546d8883128813f775bbfd2
