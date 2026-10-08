@@ -68,6 +68,20 @@ def validate_tts_config(config, duration=None):
     return tts
 
 
+def estimate_tts_seconds(text, speed=1.0):
+    """Conservative planning budget; measured synthesis remains authoritative."""
+    safe = narration_text(text)
+    if type(speed) not in (int, float) or not math.isfinite(speed) or not .9 <= speed <= 1.1:
+        reject()
+    words = len(safe.split())
+    # Chatterbox duration varies with punctuation, numbers and pronunciation. This
+    # deliberately budgets slower than normal speech so Director timelines do not
+    # routinely fail after the expensive synthesis step. The actual WAV duration
+    # is still checked by tts_provider and is never truncated to fit this estimate.
+    seconds = max(len(safe) / 10.0, words / 1.8) + 0.75
+    return round(seconds / float(speed), 3)
+
+
 NARRATION = re.compile(r'^\s*(?:#{1,6}\s*)?(?:\*\*)?(LOCUCI[ÓO]N|NARRACI[ÓO]N|VOICEOVER)(?:\*\*)?\s*:(?:\*\*)?\s*(.*)$', re.I)
 HEADING = re.compile(r'^\s*(?:#{1,6}\s*)?(?:\*\*)?([\wÁÉÍÓÚÜÑáéíóúüñ -]{1,60})(?:\*\*)?\s*:(?:\*\*)?\s*(.*)$')
 SECTION = re.compile(r'^(?:voz|estilo|m[uú]sica|audio|cta|escenas?(?: \d+)?|visual(?:es)?|duraci[oó]n|formato|objetivo|cierre|intro|outro|branding|texto|oferta|precio|contacto|notas|instrucciones)$', re.I)
