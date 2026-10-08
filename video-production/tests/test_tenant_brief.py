@@ -566,6 +566,7 @@ class VisualDirectorTests(unittest.TestCase):
         )
         brief = (
             "Crea un Reel vertical moderno para HDR Barber Studio.\n"
+            "Servicio destacado: Corte degradado: $14.000 pesos, 45 minutos.\n"
             "LOCUCIÓN:\n" + narration
         )
         result, _ = self.direct(brief=brief)
@@ -576,7 +577,10 @@ class VisualDirectorTests(unittest.TestCase):
             sum(directed["timing"].values()),
             directed["audio"]["tts"]["start"] + estimated,
         )
-        self.assertEqual(directed["audio"]["tts"]["text"], narration)
+        self.assertEqual(
+            directed["audio"]["tts"]["text"],
+            narration.replace("$14.000", "catorce mil pesos"),
+        )
         self.assertGreater(report["plannedDurationSeconds"], 15)
 
     def test_nonexistent_or_unapproved_asset_rejected(self):
