@@ -534,6 +534,10 @@ export default function AdminVideosPage() {
       config.audio && typeof config.audio === "object"
         ? (config.audio as Record<string, unknown>)
         : {};
+    const existingTts =
+      existingAudio.tts && typeof existingAudio.tts === "object"
+        ? (existingAudio.tts as Record<string, unknown>)
+        : {};
     const refs = mediaReferences(
       project.assets,
       introAssetId,
@@ -578,7 +582,9 @@ export default function AdminVideosPage() {
       ...existingAudio,
       music: Boolean(musicAssetId),
       sfx: false,
-      duckMusicDuringVoice: Boolean(musicAssetId && voiceAssetId),
+      duckMusicDuringVoice: Boolean(
+        musicAssetId && (voiceAssetId || existingTts.enabled === true),
+      ),
     };
     config.mediaApproved = project.assets.length > 0 ? rightsApproved : false;
 
