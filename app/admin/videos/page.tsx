@@ -166,13 +166,18 @@ function mediaReferences(
   assets: VideoAsset[],
   introAssetId: string,
   outroAssetId: string,
+  logoAssetId: string,
 ) {
   const reservedVideos = new Set(
     [introAssetId, outroAssetId].filter(Boolean),
   );
+  const reservedImages = new Set([logoAssetId].filter(Boolean));
   return {
     images: assets
-      .filter((asset) => asset.assetType === "image")
+      .filter(
+        (asset) =>
+          asset.assetType === "image" && !reservedImages.has(asset.id),
+      )
       .map((asset) => "asset:" + asset.id),
     videos: assets
       .filter(
@@ -214,6 +219,7 @@ export default function AdminVideosPage() {
   const [rightsApproved, setRightsApproved] = useState(false);
   const [introAssetId, setIntroAssetId] = useState("");
   const [outroAssetId, setOutroAssetId] = useState("");
+  const [logoAssetId, setLogoAssetId] = useState("");
   const [voiceAssetId, setVoiceAssetId] = useState("");
   const [musicAssetId, setMusicAssetId] = useState("");
   const [useClipAudio, setUseClipAudio] = useState(true);
@@ -316,6 +322,10 @@ export default function AdminVideosPage() {
       next.config.media && typeof next.config.media === "object"
         ? (next.config.media as Record<string, unknown>)
         : {};
+    const brand =
+      next.config.brand && typeof next.config.brand === "object"
+        ? (next.config.brand as Record<string, unknown>)
+        : {};
     const creator =
       next.config.creator && typeof next.config.creator === "object"
         ? (next.config.creator as Record<string, unknown>)
@@ -323,6 +333,7 @@ export default function AdminVideosPage() {
 
     setIntroAssetId(assetId(media.creatorIntro));
     setOutroAssetId(assetId(media.creatorOutro));
+    setLogoAssetId(assetId(brand.logo));
     setVoiceAssetId(
       assetId(media.clientVoiceover || media.creatorVoiceover),
     );
@@ -530,6 +541,10 @@ export default function AdminVideosPage() {
       config.creator && typeof config.creator === "object"
         ? (config.creator as Record<string, unknown>)
         : {};
+    const existingBrand =
+      config.brand && typeof config.brand === "object"
+        ? (config.brand as Record<string, unknown>)
+        : {};
     const existingAudio =
       config.audio && typeof config.audio === "object"
         ? (config.audio as Record<string, unknown>)
@@ -542,6 +557,7 @@ export default function AdminVideosPage() {
       project.assets,
       introAssetId,
       outroAssetId,
+      logoAssetId,
     );
     const voiceoverStart =
       introAssetId && config.timing && typeof config.timing === "object"
@@ -562,6 +578,10 @@ export default function AdminVideosPage() {
     config.project = {
       ...existingProjectMeta,
       category: niche.trim() || "Negocio local",
+    };
+    config.brand = {
+      ...existingBrand,
+      logo: logoAssetId ? "asset:" + logoAssetId : null,
     };
     config.media = {
       ...existingMedia,
@@ -1105,6 +1125,35 @@ export default function AdminVideosPage() {
                           />
                           Conservar el audio original de los clips de inicio/cierre.
                         </label>
+                      </div>
+                    ) : null}
+
+                    {project.assets.some(
+                      (asset) => asset.assetType === "image",
+                    ) ? (
+                      <div className="mt-4 grid gap-3">
+                        <label className="grid gap-1 text-xs font-black text-slate-600">
+                          Logo / imagen de marca
+                          <select
+                            value={logoAssetId}
+                            onChange={(event) =>
+                              setLogoAssetId(event.target.value)
+                            }
+                            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950"
+                          >
+                            <option value="">Sin logo</option>
+                            {project.assets
+                              .filter((asset) => asset.assetType === "image")
+                              .map((asset, index) => (
+                                <option key={asset.id} value={asset.id}>
+                                  {"Imagen " + String(index + 1) + " · " + formatBytes(asset.sizeBytes)}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        <p className="text-[11px] font-medium leading-4 text-slate-500">
+                          El logo seleccionado se reserva para el branding y el cierre; no se usa como b-roll.
+                        </p>
                       </div>
                     ) : null}
 
