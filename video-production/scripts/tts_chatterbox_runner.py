@@ -38,7 +38,7 @@ def deny_network():
 
 def text_chunks(text, limit=300):
     """Split without truncation, preferring sentence boundaries and then words."""
-    sentences = [x.strip() for x in re.split(r'(?<=[.!?])\\s+', text.strip()) if x.strip()]
+    sentences = [x.strip() for x in re.split(r'(?<=[.!?])\s+', text.strip()) if x.strip()]
     chunks = []
     current = ''
 
