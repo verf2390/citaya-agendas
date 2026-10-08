@@ -17,7 +17,7 @@ import urllib.request
 from urllib.parse import urlsplit
 
 from production import ROOT, read_json, validate
-from tts_contract import apply_brief_narration, extract_narration
+from tts_contract import apply_brief_narration, estimate_tts_seconds, extract_narration, validate_tts_config
 
 DEFAULT_MODEL = "Qwen/Qwen3-4B-GGUF:Q4_K_M"
 MAX_BRIEF_BYTES = 12000
@@ -520,6 +520,12 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     chosen_brief = check_brief(chosen_brief, token)
     project["creativeBrief"] = chosen_brief
     apply_brief_narration(current, chosen_brief)
+    tts_config = validate_tts_config(current)
+    estimated_tts_seconds = (
+        estimate_tts_seconds(tts_config["text"], tts_config["speed"])
+        if tts_config and tts_config.get("enabled")
+        else None
+    )
 
     timing = current.get("timing") if isinstance(current.get("timing"), dict) else {}
     previous_duration = sum(
@@ -542,6 +548,7 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
         "creatorIntroSeconds": intro_seconds,
         "voiceoverSeconds": voice_seconds,
         "creatorOutroSeconds": outro_seconds_asset,
+        "estimatedTtsSeconds": estimated_tts_seconds,
         "availableAssets": [
             {
                 "id": asset.get("id"),
@@ -696,6 +703,13 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
         else:
             minimum_demo = max(minimum_demo, max(3.0, voice_seconds - outro))
 
+    if estimated_tts_seconds is not None:
+        tts_start = float(tts_config.get("start", 0.0))
+        minimum_demo = max(
+            minimum_demo,
+            max(3.0, tts_start + estimated_tts_seconds - intro - outro),
+        )
+
     minimum_demo = max(minimum_demo, max(3.0, target - intro - outro))
     demo = round(minimum_demo, 6)
 
@@ -761,6 +775,7 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
         "creatorIntroSeconds": intro_seconds,
         "voiceoverSeconds": voice_seconds,
         "creatorOutroSeconds": outro_seconds_asset,
+        "estimatedTtsSeconds": estimated_tts_seconds,
         "sceneCount": len(scenes),
         "preservedMedia": True,
     }
