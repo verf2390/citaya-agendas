@@ -1,12 +1,18 @@
-"""FFmpeg-only recorded speech, dynamic ducking/carving, music and SFX. No TTS."""
-from production import ROOT,process,write_json
+"""FFmpeg speech mixer: recorded and trusted generated segments share one pipeline."""
+from production import ROOT,process,write_json,fail
+from tts_provider import generated_path
 
 def mix_audio(c,ctx,out,comp):
-    duration=sum(c['timing'].values());tmp=out/'audio-work';tmp.mkdir()
+    if c['audio'].get('tts',{}).get('enabled') and (not ctx.get('ttsMetadata') or not any(s.get('generatedPath') for s in ctx['speech'])):
+        fail('TTS_SYNTHESIS_FAILED','TTS_SYNTHESIS_FAILED')
+    duration=sum(c['timing'].values());tmp=out/'audio-work';tmp.mkdir(exist_ok=True,mode=0o700)
     speech=[]
     for i,s in enumerate(ctx['speech']):
         p=tmp/f'voice-{i}.wav'
-        process(['ffmpeg','-y','-v','error','-protocol_whitelist','file,pipe','-ss',s['offset'],'-t',s['duration'],'-i',ROOT/s['path'],'-vn','-af','highpass=f=80,loudnorm=I=-16:TP=-2:LRA=7','-ar','48000','-ac','2',p],timeout=120)
+        source=ROOT/s['path'] if 'generatedPath' not in s else generated_path(s['generatedPath'],out)
+        # Generated narration has already passed the duration gate; read it whole.
+        trim=['-ss',s['offset'],'-t',s['duration']] if 'generatedPath' not in s else []
+        process(['ffmpeg','-y','-v','error','-protocol_whitelist','file,pipe',*trim,'-i',source,'-vn','-af','highpass=f=80,loudnorm=I=-16:TP=-2:LRA=7','-ar','48000','-ac','2',p],timeout=120)
         speech.append((p,s['start']))
     args=['ffmpeg','-y','-v','error'];filters=[];tracks=[];index=0
     # Always finite silence so a no-music/no-voice configuration still exports valid audio.
@@ -40,4 +46,4 @@ def mix_audio(c,ctx,out,comp):
     script=tmp/'mix.ffscript';script.write_text(';\n'.join(filters))
     args+=['-filter_complex_script',script,'-map','[master]','-t',duration,'-ar','48000','-ac','2',comp/'assets/master.wav']
     process(args,timeout=180)
-    write_json(out/'audio-metadata.json',{'speechSegments':[{'start':s['start'],'duration':s['duration']} for s in ctx['speech']],'ducking':'speech-driven sidechain with 700ms release' if speech and c['audio']['music'] else None,'spectralCarve':'250–3200 Hz, dynamic 650ms release' if speech and c['audio']['music'] else None,'voiceProvider':None,'music':c['audio']['music'],'sfx':c['audio']['sfx']})
+    write_json(out/'audio-metadata.json',{'speechSegments':[{'start':s['start'],'duration':s['duration']} for s in ctx['speech']],'ducking':'speech-driven sidechain with 700ms release' if speech and c['audio']['music'] else None,'spectralCarve':'250–3200 Hz, dynamic 650ms release' if speech and c['audio']['music'] else None,'voiceProvider':None,'music':c['audio']['music'],'sfx':c['audio']['sfx'],**ctx.get('ttsMetadata',{})})

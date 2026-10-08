@@ -7,11 +7,12 @@ from production import *
 from compose import compile_composition
 from audio_mix import mix_audio
 from finalize_video import finalize
+from tts_provider import prepare_tts
 
-def main():
+def main(argv=None, *, tts_provider=None):
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--approve-final',action='store_true',help='Human operator approval; never accepted inside AI JSON.');p.add_argument('--tenant-id',default='00000000-0000-0000-0000-000000000001',help='Trusted worker/internal operator context, never AI JSON.');p.add_argument('--config',required=True);p.add_argument('--mode',choices=MODES,default='preview');p.add_argument('--validate-only',action='store_true');p.add_argument('--prepare-only',action='store_true',help='Compile and mix locally without invoking the renderer.')
-    a=p.parse_args()
+    a=p.parse_args(argv)
     if a.mode=='final' and not (a.approve_final or a.validate_only):fail('FINAL_APPROVAL_REQUIRED','Final render requires explicit --approve-final from the operator or approved queue worker.')
     uuid.UUID(a.tenant_id)
     c,r,ctx=validate(read_json(a.config),a.mode)
@@ -19,7 +20,10 @@ def main():
     binary=ROOT/'node_modules/.bin/hyperframes'
     if not binary.is_file():fail('DEPENDENCY_MISSING','Run npm ci --prefix video-production once. Rendering never installs packages or calls a cloud model.')
     start=time.monotonic();cpu_start=resource.getrusage(resource.RUSAGE_CHILDREN);stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ');out=ROOT/'outputs'/f'{stamp}-{c["product"]}-{a.mode}-{uuid.uuid4().hex[:6]}'
-    out.mkdir(parents=True,exist_ok=False)
+    # Job outputs (including narration/config) are private even from the CLI.
+    import os
+    os.umask(0o077)
+    out.mkdir(parents=True,exist_ok=False,mode=0o700)
     write_json(out/'normalized-config.json',c);write_json(out/'validation-report.json',r)
     # Store an immutable truth snapshot, not just a hash pointing at a mutable catalog.
     write_json(out/'capability-snapshot.json',{i:ctx['caps'][i] for i in c['capabilities']})
@@ -27,7 +31,12 @@ def main():
     write_json(out/'render-metadata.json',metadata)
     print('Output: '+str(out),flush=True)
     try:
+        tts_metadata=prepare_tts(c,ctx,out,provider=tts_provider)
+        if tts_metadata:
+            r.update(ttsValidation='measured',ttsDurationSeconds=tts_metadata['voiceDurationSeconds'])
+            write_json(out/'validation-report.json',r)
         comp,proof=compile_composition(c,ctx,out,a.mode);mix_audio(c,ctx,out,comp)
+        if ctx.get('ttsMetadata'):metadata['tts']=ctx['ttsMetadata']
         metadata['compositionSha256']=digest(comp/'index.html');metadata['posterTime']=round(min(c['timing']['intro']-.2,max(.4,c['timing']['intro']*.6)),3)
         (out/'share-copy.txt').write_text(c['shareCopy']+'\n',encoding='utf-8')
         (out/'instagram-caption.txt').write_text(c['shareCopy']+'\n',encoding='utf-8')
@@ -53,7 +62,7 @@ def main():
         metadata.update(status='complete',elapsedSeconds=round(time.monotonic()-start,2),outputSha256=digest(out/'final.mp4'),media=final)
         print('Complete: '+str(out/'final.mp4'),flush=True)
     except Exception as e:
-        metadata.update(status='failed',error=type(e).__name__,message=str(e)[:800]);raise
+        metadata.update(status='failed',error=getattr(e,'code',type(e).__name__),message=str(e)[:800]);raise
     finally:
         cpu_end=resource.getrusage(resource.RUSAGE_CHILDREN)
         metadata.update(wallSeconds=round(time.monotonic()-start,3),cpuSeconds=round(cpu_end.ru_utime+cpu_end.ru_stime-cpu_start.ru_utime-cpu_start.ru_stime,3),ai={'provider':None,'mode':None,'inputTokens':0,'outputTokens':0},outputBytes=(out/'final.mp4').stat().st_size if (out/'final.mp4').exists() else 0)

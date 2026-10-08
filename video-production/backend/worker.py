@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Private pull worker. No HTTP listener. One process per render node; SQLite for one host."""
-import argparse,json,os,resource,shutil,sys,time
+import argparse,json,os,resource,shutil,sys,time,subprocess
 from pathlib import Path
 from studio import Studio,Actor,fingerprint
-from production import ROOT,process,write_json,read_json
+from production import ROOT,process,write_json,read_json,fail
+from tts_contract import TTS_ERRORS
 
 def run_one(studio,node):
     job=studio.claim(node)
@@ -21,9 +22,20 @@ def run_one(studio,node):
             config=work/'worker-config.json';write_json(config,local)
             cmd=[sys.executable,ROOT/'scripts/generate-video.py','--config',config,'--mode',job['mode'],'--tenant-id',job['tenant_id']]
             if job['mode']=='final':cmd+=['--approve-final'] # Only claimable after server-side approval gate.
-            result=process(cmd,capture_output=True,text=True,timeout=1500)
+            try:
+                result=process(cmd,capture_output=True,text=True,timeout=1500)
+            except subprocess.CalledProcessError as exc:
+                # Only bounded engine codes cross the worker boundary; no raw stderr.
+                line=next((x[8:] for x in (exc.stdout or '').splitlines() if x.startswith('Output: ')),None)
+                candidate=Path(line) if line else None
+                if candidate and candidate.resolve().parent==(ROOT/'outputs').resolve():out=candidate
+                code=(exc.stderr or '').split(':',1)[0].strip()
+                if code in TTS_ERRORS | {'OVERLAPPING_SPEECH','VOICE_DUCKING_REQUIRED'}:fail(code,code)
+                raise
             line=next(x for x in result.stdout.splitlines() if x.startswith('Output: '));out=Path(line[8:])
         metadata=read_json(out/'render-metadata.json');media=read_json(out/'media-verification.json')
+        if metadata.get('tts'):
+            report.update(ttsValidation='measured',ttsDurationSeconds=metadata['tts']['voiceDurationSeconds'])
         # Public artifacts use opaque asset IDs, never staging filesystem paths.
         write_json(out/'normalized-config.json',normalized)
         write_json(out/'validation-report.json',report)
