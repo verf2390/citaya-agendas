@@ -205,7 +205,7 @@ def _validate_creation_proposal(response, token):
         raise TenantBriefError("AI_INVALID_PROPOSAL")
     hook = _normalize_creation_text(proposal["hook"], 74)
     secondary = _normalize_creation_text(proposal["secondaryHook"], 90)
-    benefit = _normalize_creation_text(proposal["benefit"], 65)
+    benefit = _normalize_creation_text(proposal["benefit"], 64)
     cta = _normalize_creation_text(proposal["cta"], 40)
     return hook, secondary, benefit, cta
 
@@ -217,7 +217,7 @@ def _safe_creation_fallback(*, brief, business_name, niche_label):
         (line.strip() for line in re.split(r"[\r\n]+", brief) if line.strip()),
         business_name,
     )
-    benefit = _normalize_creation_text(first_line, 65)
+    benefit = _normalize_creation_text(first_line, 64)
     cta_match = re.search(
         r"(?im)^\s*(?:cta|llamado a la acci[oó]n)\s*:\s*[“\"']?([^\r\n”\"']+)",
         brief,
@@ -285,7 +285,7 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
     extract_narration(brief)
     prompt = (
         'JSON exacto: {"hook":"texto","secondaryHook":"texto","benefit":"texto","cta":"texto"}. '
-        "Limites: hook 74, secondaryHook 90, benefit 65, cta 40 caracteres. "
+        "Limites: hook 74, secondaryHook 90, benefit 64, cta 40 caracteres. "
         "Usa solo afirmaciones presentes en el brief. No inventes ofertas ni precios. "
         "Nombre del negocio: " + json.dumps(business_name, ensure_ascii=False) + ". "
         "Rubro: " + json.dumps(niche_label, ensure_ascii=False) + ". "
@@ -312,7 +312,7 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
         repair_prompt = (
             'Repara la propuesta anterior. Devuelve SOLO JSON exacto con estas cuatro claves: '
             '{"hook":"texto","secondaryHook":"texto","benefit":"texto","cta":"texto"}. '
-            "Limites estrictos: hook 74, secondaryHook 90, benefit 65, cta 40 caracteres. "
+            "Limites estrictos: hook 74, secondaryHook 90, benefit 64, cta 40 caracteres. "
             "No agregues afirmaciones nuevas, precios, ofertas ni datos. Conserva solo el significado ya presente. "
             "PROPUESTA_ANTERIOR: " + json.dumps(str(response.get("text", ""))[:1800], ensure_ascii=False)
             + "\n/no_think"
