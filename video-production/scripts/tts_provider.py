@@ -14,12 +14,11 @@ from typing import Protocol
 from production import ConfigError, probe
 from tts_contract import normalize_tts, reject, validate_tts_config
 
-# Operator-installed Chatterbox evaluation runtime. This path is intentionally
-# code-owned and not tenant configurable. Promote to a final runtime path only
-# after the end-to-end Video Studio test passes.
-RUNTIME = Path('/home/verf/apps/citaya-chatterbox-eval')
+# Operator-installed, self-contained Chatterbox runtime. The path and model
+# cache are code-owned and never tenant configurable.
+RUNTIME = Path('/home/verf/apps/citaya-chatterbox-runtime')
 HF_HOME = RUNTIME / 'hf-home'
-HF_HUB_CACHE = Path('/home/verf/.cache/huggingface/hub')
+HF_HUB_CACHE = HF_HOME / 'hub'
 MODEL = 'chatterbox-es-mx-latam-v3'
 
 
