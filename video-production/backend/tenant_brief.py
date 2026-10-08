@@ -598,8 +598,9 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     prompt = (
         'Actua como director/editor de video. Devuelve JSON exacto: '
         '{"hook":"texto","secondaryHook":"texto","benefit":"texto","cta":"texto",'
-        '"scenes":[{"headline":"texto","visualIntent":"agenda","durationSeconds":1.2}],'
+        '"scenes":[{"headline":"texto","visualIntent":"generic","durationSeconds":1.2}],'
         '"outroSeconds":1.6}. '
+        "Limites estrictos: hook 74, secondaryHook 90, benefit 64, cta 40, headline 64 caracteres. "
         "Respeta el orden, textos y tiempos explicitos del brief cuando existan. "
         "No inventes precios, resultados, testimonios ni funciones. "
         "Los medios seleccionados son restricciones duras: no los recortes para forzar la duracion objetivo. "
