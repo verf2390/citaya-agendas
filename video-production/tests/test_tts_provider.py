@@ -302,6 +302,7 @@ class ProviderTests(unittest.TestCase):
                 self.assertEqual(kwargs['env']['HF_HUB_DISABLE_IMPLICIT_TOKEN'], '1')
                 self.assertNotIn('HF_TOKEN', kwargs['env'])
                 self.assertTrue(kwargs['env']['HF_TOKEN_PATH'].endswith('/no-hf-token'))
+                self.assertTrue(kwargs['env']['HF_HUB_CACHE'].endswith('/hf-home/hub'))
                 self.assertTrue(str(args[2]).endswith('tts_chatterbox_runner.py'))
                 tts = json.loads(kwargs['input'])
                 FakeTTSProvider().synthesize(tts['text'], tts['voice'], tts['speed'], Path(args[3]))
