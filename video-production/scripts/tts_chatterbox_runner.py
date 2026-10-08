@@ -103,6 +103,17 @@ def _apply_speed(raw_path, output_path, speed):
         raise RuntimeError('speed processing failed')
 
 
+def generation_kwargs(reference):
+    """Stable LATAM voice conditioning for every generated chunk."""
+    return {
+        'language_id': 'es',
+        'exaggeration': 0.5,
+        'temperature': 0.8,
+        'cfg_weight': 0.5,
+        'audio_prompt_path': str(reference),
+    }
+
+
 def main():
     if len(sys.argv) != 3:
         return 2
@@ -135,16 +146,9 @@ def main():
             chunks = text_chunks(value['text'])
             pieces = []
             for chunk in chunks:
-                kwargs = {
-                    'language_id': 'es',
-                    'exaggeration': 0.5,
-                    'temperature': 0.8,
-                    'cfg_weight': 0.5,
-                    # Re-apply the approved local reference on every chunk so a
-                    # long narration cannot drift to a different voice.
-                    'audio_prompt_path': str(reference),
-                }
-                wav = model.generate(chunk, **kwargs)
+                # Re-apply the approved local reference on every chunk so a
+                # long narration cannot drift to a different voice.
+                wav = model.generate(chunk, **generation_kwargs(reference))
                 pieces.append(wav.squeeze(0).detach().cpu())
 
             audio = torch.cat(pieces).numpy()
