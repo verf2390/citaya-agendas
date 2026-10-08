@@ -434,10 +434,10 @@ def _validate_director_proposal(response, token, visual_intents, available_visua
         selected = None
         if "assetId" in item:
             if not isinstance(item["assetId"], str) or item["assetId"] not in available_visual or item["visualIntent"] != "media":
-                raise TenantBriefError("AI_INVALID_PROPOSAL")
+                raise TenantBriefError("DIRECTOR_MEDIA_INVALID")
             selected = available_visual[item["assetId"]]
             if selected["type"] not in ("image", "video"):
-                raise TenantBriefError("AI_INVALID_PROPOSAL")
+                raise TenantBriefError("DIRECTOR_MEDIA_INVALID")
         headline = clean_text(item["headline"], 64, "AI_INVALID_PROPOSAL")
         visual_intent = clean_text(item["visualIntent"], 30, "AI_INVALID_PROPOSAL")
         if visual_intent not in visual_intents:
