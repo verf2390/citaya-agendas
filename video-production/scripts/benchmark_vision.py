@@ -15,7 +15,7 @@ import extract_frames as extraction
 from vision_provider import VisionProvider
 
 
-def benchmark(inputs, provider, max_frames=6, server_pid=None):
+def benchmark(inputs, provider, max_frames=3, server_pid=None):
     if not 1 <= len(inputs) <= 8 or type(max_frames) is not int or not 1 <= max_frames <= 6:
         raise ValueError("Use 1–8 inputs and 1–6 frames")
     if server_pid is not None and (type(server_pid) is not int or server_pid <= 0):
@@ -38,7 +38,8 @@ def benchmark(inputs, provider, max_frames=6, server_pid=None):
     try:
         for index, source in enumerate(inputs, 1):
             before = time.monotonic()
-            record = {"assetNumber": index, "frames": 0}
+            record = {"assetNumber": index, "frames": 0, "inferenceAttempts": 0}
+            inference = None
             try:
                 with tempfile.TemporaryDirectory(prefix="citaya-vision-benchmark-") as stage:
                     directory = Path(stage) / "frames"
@@ -50,10 +51,15 @@ def benchmark(inputs, provider, max_frames=6, server_pid=None):
                                 images.append(stream.read(8 * 1024 * 1024 + 1))
                     record["frames"] = len(images)
                     inference = time.monotonic()
-                    result = provider.analyze_asset(images)
-                    record.update(status=result["status"], inferenceSeconds=round(time.monotonic() - inference, 3))
+                    try:
+                        result = provider.analyze_asset(images)
+                    finally:
+                        record["inferenceSeconds"] = round(time.monotonic() - inference, 3)
+                    record.update(status=result["status"], inferenceAttempts=result.get("inferenceAttempts", 1))
             except Exception as exc:
                 record.update(status="failed", errorCode=getattr(exc, "code", "BENCHMARK_ERROR"))
+                if inference is not None:
+                    record["inferenceAttempts"] = getattr(exc, "inference_attempts", 1)
             record["totalSeconds"] = round(time.monotonic() - before, 3)
             records.append(record)
     finally:
@@ -61,6 +67,7 @@ def benchmark(inputs, provider, max_frames=6, server_pid=None):
         if thread:
             thread.join()
     return {"model": provider.model, "provider": provider.provider, "assets": len(inputs),
+            "inferenceAttempts": sum(r["inferenceAttempts"] for r in records),
             "frames": sum(r["frames"] for r in records), "totalSeconds": round(time.monotonic() - started, 3),
             "counts": {status: sum(r["status"] == status for r in records) for status in ("unknown", "partial", "complete", "failed")},
             "clientLifetimePeakRssKiB": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
@@ -71,7 +78,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, action="append", type=Path)
     parser.add_argument("--endpoint", default="http://127.0.0.1:8788/v1/chat/completions")
-    parser.add_argument("--max-frames", default=6, type=int, choices=range(1, 7))
+    parser.add_argument("--max-frames", default=3, type=int, choices=range(1, 7))
     parser.add_argument("--server-pid", type=int)
     args = parser.parse_args()
     os.umask(0o077)

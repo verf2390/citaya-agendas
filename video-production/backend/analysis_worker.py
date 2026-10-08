@@ -15,7 +15,7 @@ import extract_frames as extraction
 from production import fail
 from vision_provider import VisionProvider, SCHEMA_VERSION
 
-STRATEGY_VERSION = "visual-local-v1-frames6"
+STRATEGY_VERSION = "visual-local-v2-frames3"
 EXTRACTOR_VERSION = "frames-v1"
 
 
@@ -95,7 +95,7 @@ def run_one(studio, node, provider, *, lease_seconds=600):
                 directory = workspace / asset["id"]
                 # Respect the existing 256-frame atomic publication ceiling,
                 # reserving at least one frame for every remaining asset.
-                limit = min(6, 256 - len(frames) - (len(assets) - position - 1))
+                limit = min(3, 256 - len(frames) - (len(assets) - position - 1))
                 manifest = extraction.extract_frames(source, directory, max_frames=limit)
                 source.unlink()
                 images, hashes = [], []
