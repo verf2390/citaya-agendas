@@ -45,8 +45,14 @@ def text_chunks(text, limit=300):
     def add_words(value):
         nonlocal current
         for word in value.split():
-            if len(word) > limit:
-                raise ValueError('word exceeds synthesis limit')
+            while len(word) > limit:
+                if current:
+                    chunks.append(current)
+                    current = ''
+                chunks.append(word[:limit])
+                word = word[limit:]
+            if not word:
+                continue
             candidate = f'{current} {word}'.strip()
             if len(candidate) <= limit:
                 current = candidate
