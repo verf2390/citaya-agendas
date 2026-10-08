@@ -83,6 +83,16 @@ class ModernTests(unittest.TestCase):
         self.assertEqual(images[-1], images[-2])
         self.assertTrue(any(a.get('id') == 'outro-background' for _, a in nodes))
 
+    def test_brand_logo_is_reserved_for_prominent_outro(self):
+        raw = self.config()
+        source, nodes, _ = self.compile(raw)
+        end_logo = next(a for _, a in nodes if a.get('id') == 'end-logo')
+        duration = sum(raw['timing'].values())
+        self.assertEqual(float(end_logo['data-start']), duration - raw['timing']['outro'])
+        self.assertEqual(float(end_logo['data-duration']), raw['timing']['outro'])
+        self.assertIn('class="modern-end-logo"', source)
+        self.assertIn('max-width:420px', source)
+
     def test_video_bookends_hold_source_frames_without_retiming(self):
         raw = self.config()
         raw['scenes'] = [raw['scenes'][1]]
