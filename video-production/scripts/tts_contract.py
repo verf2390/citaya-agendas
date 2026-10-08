@@ -35,6 +35,91 @@ def narration_text(value):
     return value.strip()
 
 
+_SMALL_ES = {
+    0: 'cero', 1: 'uno', 2: 'dos', 3: 'tres', 4: 'cuatro', 5: 'cinco',
+    6: 'seis', 7: 'siete', 8: 'ocho', 9: 'nueve', 10: 'diez',
+    11: 'once', 12: 'doce', 13: 'trece', 14: 'catorce', 15: 'quince',
+    16: 'dieciséis', 17: 'diecisiete', 18: 'dieciocho', 19: 'diecinueve',
+    20: 'veinte', 21: 'veintiuno', 22: 'veintidós', 23: 'veintitrés',
+    24: 'veinticuatro', 25: 'veinticinco', 26: 'veintiséis',
+    27: 'veintisiete', 28: 'veintiocho', 29: 'veintinueve',
+}
+_TENS_ES = {30: 'treinta', 40: 'cuarenta', 50: 'cincuenta', 60: 'sesenta', 70: 'setenta', 80: 'ochenta', 90: 'noventa'}
+_HUNDREDS_ES = {200: 'doscientos', 300: 'trescientos', 400: 'cuatrocientos', 500: 'quinientos', 600: 'seiscientos', 700: 'setecientos', 800: 'ochocientos', 900: 'novecientos'}
+
+
+def _spanish_integer(value):
+    if not isinstance(value, int) or value < 0 or value > 999_999_999:
+        return None
+    if value < 30:
+        return _SMALL_ES[value]
+    if value < 100:
+        ten = value // 10 * 10
+        rest = value % 10
+        return _TENS_ES[ten] if not rest else _TENS_ES[ten] + ' y ' + _SMALL_ES[rest]
+    if value == 100:
+        return 'cien'
+    if value < 200:
+        return 'ciento ' + _spanish_integer(value - 100)
+    if value < 1000:
+        hundred = value // 100 * 100
+        rest = value % 100
+        return _HUNDREDS_ES[hundred] if not rest else _HUNDREDS_ES[hundred] + ' ' + _spanish_integer(rest)
+    if value < 1_000_000:
+        thousands = value // 1000
+        rest = value % 1000
+        prefix = 'mil' if thousands == 1 else _spanish_integer(thousands) + ' mil'
+        return prefix if not rest else prefix + ' ' + _spanish_integer(rest)
+    millions = value // 1_000_000
+    rest = value % 1_000_000
+    prefix = 'un millón' if millions == 1 else _spanish_integer(millions) + ' millones'
+    return prefix if not rest else prefix + ' ' + _spanish_integer(rest)
+
+
+def _currency_amounts(brief):
+    """Return only currency facts explicitly stated in the tenant brief."""
+    if not isinstance(brief, str):
+        return {}
+    found = {}
+    amount = r'(\d{1,3}(?:[. ]\d{3})+|\d{4,9})'
+    patterns = (
+        (rf'\$\s*{amount}\s*(?:pesos?|CLP)\b', 'pesos'),
+        (rf'\b(?:CLP|pesos?)\s*\$?\s*{amount}\b', 'pesos'),
+        (rf'\$\s*{amount}\s*(?:d[oó]lares?|USD)\b', 'dólares'),
+        (rf'\b(?:USD|d[oó]lares?)\s*\$?\s*{amount}\b', 'dólares'),
+    )
+    for pattern, unit in patterns:
+        for match in re.finditer(pattern, brief, re.I):
+            raw = match.group(1)
+            digits = re.sub(r'[^0-9]', '', raw)
+            if digits:
+                found[int(digits)] = unit
+    return found
+
+
+def normalize_narration_currency(text, brief):
+    """Speak an explicitly declared currency without changing visual copy."""
+    safe = narration_text(text)
+    facts = _currency_amounts(brief)
+    if not facts:
+        return safe
+
+    pattern = re.compile(r'\$\s*(\d{1,3}(?:[. ]\d{3})+|\d{4,9})(?:\s*(?:pesos?|CLP|d[oó]lares?|USD))?', re.I)
+
+    def replace(match):
+        digits = re.sub(r'[^0-9]', '', match.group(1))
+        if not digits:
+            return match.group(0)
+        value = int(digits)
+        unit = facts.get(value)
+        words = _spanish_integer(value)
+        if not unit or not words:
+            return match.group(0)
+        return f'{words} {unit}'
+
+    return narration_text(pattern.sub(replace, safe))
+
+
 def normalize_tts(value):
     if not isinstance(value, dict) or set(value) - {'enabled', 'text', 'voice', 'speed', 'start'}:
         reject()
@@ -115,7 +200,8 @@ def extract_narration(brief):
 def apply_brief_narration(config, brief):
     text = extract_narration(brief)
     if text is not None:
+        speech_text = normalize_narration_currency(text, brief)
         audio = config.setdefault('audio', {})
         previous = normalize_tts(audio['tts']) if 'tts' in audio else {}
-        audio['tts'] = normalize_tts({**previous, 'enabled': True, 'text': text})
+        audio['tts'] = normalize_tts({**previous, 'enabled': True, 'text': speech_text})
     validate_tts_config(config)
