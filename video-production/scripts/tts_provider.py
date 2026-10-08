@@ -18,7 +18,8 @@ from tts_contract import normalize_tts, reject, validate_tts_config
 # code-owned and not tenant configurable. Promote to a final runtime path only
 # after the end-to-end Video Studio test passes.
 RUNTIME = Path('/home/verf/apps/citaya-chatterbox-eval')
-HF_HOME = Path('/home/verf/.cache/huggingface')
+HF_HOME = RUNTIME / 'hf-home'
+HF_HUB_CACHE = Path('/home/verf/.cache/huggingface/hub')
 MODEL = 'chatterbox-es-mx-latam-v3'
 
 
@@ -98,7 +99,9 @@ class LocalTTSProvider:
                 stderr=subprocess.DEVNULL, timeout=900, check=False, close_fds=True,
                 env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8',
                      'OMP_NUM_THREADS': '4', 'OPENBLAS_NUM_THREADS': '4',
-                     'HF_HOME': str(HF_HOME), 'HF_HUB_OFFLINE': '1',
+                     'HF_HOME': str(HF_HOME), 'HF_HUB_CACHE': str(HF_HUB_CACHE),
+                     'HF_TOKEN_PATH': str(RUNTIME / 'no-hf-token'),
+                     'HF_HUB_DISABLE_IMPLICIT_TOKEN': '1', 'HF_HUB_OFFLINE': '1',
                      'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1'},
             )
             if result.returncode != 0:
