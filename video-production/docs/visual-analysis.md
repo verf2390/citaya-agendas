@@ -1,6 +1,6 @@
 # CIT-126 — análisis visual privado
 
-Base: merge `e9c64ec6ab4701ac8fb2fe38bf6b41a324a42bb9` (PR #108).
+Base del parche de cierre: `a18f91ea9ccd5654278cddba5c6f246f882ad806` (PR #109).
 Esta implementación no instala modelos, servicios ni cambios de producción.
 
 ## Arquitectura y autorización
@@ -11,14 +11,16 @@ Esta implementación no instala modelos, servicios ni cambios de producción.
   No hay migración SQL ni otra identidad para el asset.
 - `analysis_worker.run_one` reclama un job y trabaja secuencialmente. La CLI usa
   `flock` por storage root para impedir dos workers locales simultáneos.
-- Solo procesa `strategy_version=visual-local-v1-frames6` y
+- Solo procesa `strategy_version=visual-local-v2-frames3` y
   `extractor_version=frames-v1`. Enqueue sigue separado de la ejecución.
 - Comprueba aprobación/hashes antes de extraer, después de extraer y al publicar.
   Copia el original a staging privado y verifica su SHA antes de extraer; el
   extractor no puede leer una versión cambiada del original durante la inferencia.
-- Usa el extractor existente, máximo 6 frames por asset, 1 para imágenes,
-  proxies de hasta 1280 px. Conserva el máximo de 256 frames por publicación;
-  en conjuntos grandes reserva al menos uno por asset y reduce el muestreo.
+- Usa el extractor existente, máximo 3 frames por asset, 1 para imágenes,
+  proxies de hasta 1280 px. Conserva el máximo de 256 frames por publicación.
+  Los jobs anteriores `visual-local-v1-frames6` no se reinterpretan: este worker
+  los rechaza con `ANALYSIS_VERSION_UNSUPPORTED`; encolar un job con estrategia
+  nueva y otra idempotency key para ejecutar tres frames.
 - Un heartbeat con conexión SQLite propia renueva el lease cada tercio del
   intervalo. La publicación conserva el fencing transaccional del Bloque 2.
 - El worker solo acepta imágenes/videos. Audio/captions en el approval producen
@@ -128,7 +130,22 @@ La única conexión visual permitida es HTTP a `127.0.0.1`, puerto explícito,
 `/v1/chat/completions`. Por defecto 8788; rechaza 3000, 3001 y 8787.
 Usa `http.client`: sin DNS, proxies de entorno, redirects, credenciales ni fallback.
 Hasta 6 JPEG, 8 MiB por frame, 16 MiB en total, respuesta máxima 64 KiB,
-1600 tokens de salida y timeout de socket 180 segundos. Concurrencia inicial 1.
+1600 tokens de salida y timeout de socket 180 segundos por intento. Concurrencia inicial 1.
+El worker usa **3 frames como máximo por video**; el proveedor permite hasta 6
+para comparaciones mediante benchmark. Las imágenes siguen produciendo un frame.
+
+Se permite **un único segundo intento** solo para `VISION_INVALID_JSON`,
+`VISION_INVALID_CONTRACT`, `VISION_INVALID_RESPONSE` o `VISION_INCOMPLETE_RESPONSE`.
+Reutiliza los mismos frames, referencias y schema; añade una instrucción breve
+indicando que la respuesta anterior fue inválida. No guarda, loggea ni reenvía
+esa respuesta. Timeout, unavailable, HTTP error, unsafe text, tools y errores de
+lease/integridad no habilitan retry. Si falla el segundo intento, propaga su error.
+El schema y el fencing de publicación permanecen sin cambios.
+
+`inferenceAttempts` cuenta las solicitudes intentadas (no garantiza que un servidor
+indisponible haya inferido). El benchmark lo reporta por asset y total, también si
+fallan ambos intentos; `inferenceSeconds` incluye el tiempo acumulado del retry.
+Un segundo intento puede casi duplicar la latencia; no garantiza JSON válido.
 
 Una vez disponible un servidor visual local aprobado, desde un checkout de prueba:
 
@@ -136,8 +153,24 @@ Una vez disponible un servidor visual local aprobado, desde un checkout de prueb
 python3 video-production/scripts/benchmark_vision.py \
   --input video-production/inputs/test-fixtures/business.png \
   --input video-production/inputs/test-fixtures/intro.mp4 \
-  --max-frames 6
+  --max-frames 3
 ```
+
+El default de la función y de la CLI es 3. Usar `--max-frames 6` solo para comparar.
+
+Benchmarks reales **reportados por el propietario**, Qwen3-VL-2B Q4_K_M en CPU
+(no repetidos durante este parche):
+
+| Caso | Inferencia | Total | Resultado | RSS reportado |
+| --- | --- | --- | --- | --- |
+| 1 frame | ~22.4 s estable, sin desglose | no informado | complete | ~3.9 GiB |
+| Video, 6 frames | 136.4 s | 139.2 s | partial | no informado |
+| Video, 3 frames, corrida 1 | 61.8 s reportados sin desglose | no informado | VISION_INVALID_CONTRACT | no informado |
+| Video, 3 frames, corrida 2 | 40.57 s | 43.12 s | partial | ~4.63 GiB peak |
+
+El diagnóstico inmediato después del contrato inválido produjo JSON correcto.
+Estos datos motivan el default de tres frames y el retry limitado; no prueban
+que el retry siempre repare el contrato ni generalizan el rendimiento a otros videos.
 
 Para material privado usar copias expresamente aprobadas. El benchmark no crea
 approvals ni persiste resultados; solo imprime conteos, errores y latencias por
@@ -153,9 +186,12 @@ python3 video-production/backend/analysis_worker.py \
   --storage /tmp/citaya-visual-test-private --once
 ```
 
-## Runtime propuesto: pendiente de aprobación
+## Referencia histórica de instalación del Bloque 3
 
-Inspección local: Intel i5-8400T, 6 núcleos, 15860 MiB RAM, aproximadamente
+La inspección y comandos siguientes pertenecen a la implementación inicial, antes
+del benchmark real reportado arriba. No describen una nueva instalación en este parche.
+
+Inspección local inicial: Intel i5-8400T, 6 núcleos, 15860 MiB RAM, aproximadamente
 12300 MiB disponibles en ese momento, 910 MiB swap usados. No se encontró
 `llama-server` en PATH ni llama.cpp/GGUF en los directorios locales revisados.
 La versión local de llama.cpp no está confirmada. No se inspeccionaron secretos
@@ -222,8 +258,9 @@ Verificar estos flags con el binario elegido antes de la prueba aprobada:
 
 El futuro servicio `citaya-video-analysis-worker.service` tendrá una instancia,
 storage privado y red restringida a loopback. No se añadieron/instalaron units.
-No se ha descargado el modelo ni ejecutado un benchmark real. El código y las
-pruebas permiten hacerlo después de revisión, con un límite de memoria explícito.
+Durante la implementación inicial no se descargó el modelo ni se ejecutó un
+benchmark real. El benchmark reportado posteriormente por el propietario figura
+arriba. Este parche no descarga modelos ni cambia servicios o producción.
 
 ## Verificación y límites
 
@@ -242,11 +279,16 @@ python3 -m unittest discover -s video-production/tests -v
 python3 -m py_compile video-production/backend/*.py video-production/scripts/benchmark_vision.py
 ```
 
-Resultado verificado: suite Python general **239 tests: 237 aprobados y los 2
+Verificación del parche de cierre frames3/retry: **248 tests, 246 aprobados y
+los mismos 2 fallos baseline**, reproducidos también en un checkout limpio de
+`a18f91ea9ccd5654278cddba5c6f246f882ad806`. Provider: 24/24; worker: 27/27.
+`py_compile` y `git diff --check` GREEN. Sin nuevas inferencias contra el modelo real.
+
+Resultado de la implementación inicial: suite Python general **239 tests: 237 aprobados y los 2
 fallos baseline indicados abajo**. Las cuatro suites directamente relacionadas
 suman 128 tests aprobados (provider 18, worker 24, persistencia 70, Director 16).
 Hay 55 tests nuevos respecto de la base. `py_compile`, `git diff --check` y 11
-pruebas Node de boundary/upload/render están GREEN. No se midió Qwen-VL real.
+pruebas Node de boundary/upload/render están GREEN en esa verificación inicial.
 
 Dos fallos baseline se reprodujeron en un checkout limpio del merge PR #108:
 `test_brief.BriefTests.test_duration_not_silently_defaulted_and_readability_gate`

@@ -44,7 +44,10 @@ class VisionProviderTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, code)
 
     def test_valid_json(self):
-        self.assertEqual(self.analyze()["status"], "complete")
+        result = self.analyze()
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["inferenceAttempts"], 1)
+        self.connection.request.assert_called_once()
 
     def test_invalid_json(self):
         self.response.read.return_value = b"not json"
@@ -93,13 +96,16 @@ class VisionProviderTests(unittest.TestCase):
 
     def test_tools_rejected(self):
         for key in ("tool_calls", "function_call"):
+            self.connection.reset_mock()
             self.envelope(observation(), **{key: [{"name": "fetch"}]})
             self.error("VISION_UNEXPECTED_TOOLS")
+            self.connection.request.assert_called_once()
 
     def test_timeout(self):
         self.connection.getresponse.side_effect = socket.timeout()
         self.error("VISION_TIMEOUT")
         self.connection.close.assert_called_once()
+        self.connection.request.assert_called_once()
 
     def test_http_and_redirect_do_not_retry(self):
         for code in (400, 429, 500, 302, 307):
@@ -156,6 +162,69 @@ class VisionProviderTests(unittest.TestCase):
         data["quality"]["stability"] = "good"
         normalized, _ = vision.validate_semantic(data, ["evidence-1"])
         self.assertEqual(normalized["quality"]["stability"], "unknown")
+
+    def test_invalid_contract_then_valid_retries_same_frames_without_invalid_output(self):
+        valid = self.response.read.return_value
+        invalid = observation()
+        invalid["private_invalid_marker"] = "do not echo this response"
+        self.envelope(invalid)
+        self.response.read.side_effect = [self.response.read.return_value, valid]
+        result = self.analyze()
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["inferenceAttempts"], 2)
+        self.assertEqual(self.connection.request.call_count, 2)
+        first, second = [json.loads(call.args[2]) for call in self.connection.request.call_args_list]
+        self.assertEqual(first["messages"][1], second["messages"][1])
+        self.assertEqual(second["messages"][0]["content"], vision.SYSTEM + vision.RETRY_INSTRUCTION)
+        self.assertEqual(len(second["messages"]), 2)
+        self.assertNotIn("private_invalid_marker", json.dumps(second))
+        self.assertNotIn("tools", second)
+        self.assertEqual(first["model"], second["model"])
+
+    def test_two_invalid_contracts_fail_without_third_attempt(self):
+        valid = self.response.read.return_value
+        self.envelope({})
+        invalid = self.response.read.return_value
+        self.response.read.side_effect = [invalid, invalid, valid]
+        with self.assertRaises(vision.VisionError) as caught:
+            self.analyze()
+        self.assertEqual(caught.exception.code, "VISION_INVALID_CONTRACT")
+        self.assertEqual(caught.exception.inference_attempts, 2)
+        self.assertEqual(self.connection.request.call_count, 2)
+
+    def test_other_retryable_response_errors_can_recover(self):
+        valid = self.response.read.return_value
+        invalid_responses = [b"not JSON", b'{}', json.dumps({"choices": [
+            {"message": {"content": "{}"}, "finish_reason": "length"}]}).encode()]
+        for invalid in invalid_responses:
+            with self.subTest(invalid=invalid):
+                self.connection.reset_mock()
+                self.response.read.side_effect = [invalid, valid]
+                self.assertEqual(self.analyze()["inferenceAttempts"], 2)
+                self.assertEqual(self.connection.request.call_count, 2)
+
+    def test_unsafe_text_does_not_retry(self):
+        value = observation()
+        value["summary"] = "eval(data)"
+        self.envelope(value)
+        self.error("VISION_UNSAFE_TEXT")
+        self.connection.request.assert_called_once()
+
+    def test_retry_allowlist_excludes_authorization_and_integrity_errors(self):
+        for code in ("LEASE_EXPIRED", "ASSET_INTEGRITY", "ANALYSIS_EVIDENCE_MISMATCH",
+                     "VISION_RESPONSE_TOO_LARGE"):
+            with self.subTest(code=code), patch.object(self.provider, "_infer", side_effect=vision.VisionError(code)) as infer:
+                self.error(code)
+                infer.assert_called_once()
+
+    def test_second_failure_preserves_its_error(self):
+        with patch.object(self.provider, "_infer", side_effect=[
+                vision.VisionError("VISION_INVALID_JSON"), vision.VisionError("VISION_TIMEOUT")]) as infer:
+            with self.assertRaises(vision.VisionError) as caught:
+                self.analyze()
+            self.assertEqual(caught.exception.code, "VISION_TIMEOUT")
+            self.assertEqual(caught.exception.inference_attempts, 2)
+            self.assertEqual(infer.call_count, 2)
 
 
 if __name__ == "__main__":

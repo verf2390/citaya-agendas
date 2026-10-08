@@ -24,7 +24,7 @@ class FakeProvider:
 
     def analyze_asset(self, frames):
         assert all(isinstance(frame, bytes) for frame in frames)
-        assert 1 <= len(frames) <= 6
+        assert 1 <= len(frames) <= 3
         self.calls += 1
         if self.callback:
             self.callback()
@@ -58,6 +58,7 @@ class AnalysisWorkerTests(unittest.TestCase):
         self.assertTrue(self.run_job())
         self.assertEqual(self.s.analysis_job(self.a, self.job)["status"], "completed")
         frames = self.s.analysis_frames(self.a, self.job)
+        self.assertEqual(len(frames), 1)  # Images remain a single evidence frame.
         result = self.s.analysis_results(self.a, self.job)[0]
         body = json.loads(result["result_json"])
         self.assertEqual(result["provider"], PROVIDER)
@@ -225,10 +226,12 @@ class AnalysisWorkerTests(unittest.TestCase):
                 self.value = observation()
                 self.value["evidence"][0]["frameRef"] = f"evidence-{len(frames)}"
                 return super().analyze_asset(frames)
-        self.run_job(LastEvidence())
+        with patch.object(worker.extraction, "extract_frames", wraps=worker.extraction.extract_frames) as extract:
+            self.run_job(LastEvidence())
+        self.assertEqual(extract.call_args.kwargs["max_frames"], 3)
         frames = sorted(self.s.analysis_frames(self.a, self.job), key=lambda f: f["frame_index"])
         self.assertGreater(len(frames), 1)
-        self.assertLessEqual(len(frames), 6)
+        self.assertLessEqual(len(frames), 3)
         self.assertGreater(frames[-1]["timestamp_ms"], 0)
         body = json.loads(self.s.analysis_results(self.a, self.job)[0]["result_json"])
         self.assertEqual(body["evidence"][0]["timestampMs"], frames[-1]["timestamp_ms"])
@@ -305,6 +308,45 @@ class AnalysisWorkerTests(unittest.TestCase):
         self.run_job(FakeProvider(value=value))
         self.assertEqual(self.s.visual_inventory(self.a, self.pa)[self.asset]["status"], "unknown")
         self.assertEqual(self.s.visual_inventory(self.a, self.pa)[self.asset]["actions"], [])
+
+    def test_new_strategy_rejects_legacy_frames6_job(self):
+        self.assertEqual(worker.STRATEGY_VERSION, "visual-local-v2-frames3")
+        approval = self.approve()
+        job = self.s.enqueue_analysis(self.a, self.pa, approval, "legacy",
+                                      strategy_version="visual-local-v1-frames6",
+                                      extractor_version=worker.EXTRACTOR_VERSION)
+        with patch.object(worker.extraction, "extract_frames") as extract:
+            self.run_job()
+            extract.assert_not_called()
+        self.assertEqual(self.s.analysis_job(self.a, job)["error_code"], "ANALYSIS_VERSION_UNSUPPORTED")
+        # A distinct strategy can use the same approval without mutating the old job.
+        new_job = self.s.enqueue_analysis(self.a, self.pa, approval, "new-strategy",
+                                          strategy_version=worker.STRATEGY_VERSION,
+                                          extractor_version=worker.EXTRACTOR_VERSION)
+        self.assertNotEqual(job, new_job)
+
+    def test_benchmark_defaults_to_three_and_allows_six(self):
+        import benchmark_vision
+        for options, expected in (({}, 3), ({"max_frames": 6}, 6)):
+            with patch.object(worker.extraction, "extract_frames", wraps=worker.extraction.extract_frames) as extract:
+                result = benchmark_vision.benchmark([self.jpeg], FakeProvider(), **options)
+            self.assertEqual(extract.call_args.kwargs["max_frames"], expected)
+            self.assertEqual(result["inferenceAttempts"], 1)
+
+    def test_benchmark_counts_both_inferences_on_success_and_failure(self):
+        import benchmark_vision
+        from vision_provider import VisionProvider
+        provider = VisionProvider()
+        with patch.object(provider, "_infer", side_effect=[
+                VisionError("VISION_INVALID_CONTRACT"), {"semantic": observation(), "status": "complete"},
+                VisionError("VISION_INVALID_CONTRACT"), VisionError("VISION_INVALID_CONTRACT")]):
+            result = benchmark_vision.benchmark([self.jpeg, self.jpeg], provider)
+        self.assertEqual(result["inferenceAttempts"], 4)
+        self.assertEqual([row["inferenceAttempts"] for row in result["perAsset"]], [2, 2])
+        self.assertEqual(result["counts"]["complete"], 1)
+        self.assertEqual(result["counts"]["failed"], 1)
+        self.assertEqual(result["perAsset"][1]["errorCode"], "VISION_INVALID_CONTRACT")
+        self.assertTrue(all("inferenceSeconds" in row for row in result["perAsset"]))
 
 
 if __name__ == "__main__":
