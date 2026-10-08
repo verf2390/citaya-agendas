@@ -63,11 +63,13 @@ class Studio(AnalysisMixin):
         if config['product']!='custom-client-video':fail('TENANT_PRODUCT','Self-service uses custom-client-video. Internal CLI supports Citaya products.')
         id=uid();now=time.time()
         self.db.execute('INSERT INTO video_projects(id,tenant_id,created_by,template_id,status,title,video_type,niche,config_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(id,actor.tenant_id,actor.user_id,config.get('template','local-business-promo-v1'),'draft',title,config.get('videoType','promotion'),config.get('niche','professional-services'),canonical(config),now,now));return id
-    def update_project(self,actor,id,config):
+    def update_project(self,actor,id,config,*,expected_visual_inventory=None):
         schema_validate(config)
         if config['product']!='custom-client-video':fail('TENANT_PRODUCT','Self-service uses custom-client-video.')
         with self.tx():
             self.project(actor,id)
+            if expected_visual_inventory is not None and expected_visual_inventory != self._visual_inventory(actor,id):
+                fail('DIRECTOR_VISUAL_STALE','Visual inventory changed during direction.')
             if self.db.execute("SELECT 1 FROM video_jobs WHERE tenant_id=? AND project_id=? AND status IN ('queued','rendering')",(actor.tenant_id,id)).fetchone():fail('PROJECT_BUSY','Cancel or finish queued jobs before editing.')
             self.db.execute("UPDATE video_projects SET config_json=?,normalized_config_json=NULL,revision=revision+1,status='draft',template_id=?,video_type=?,niche=?,updated_at=? WHERE tenant_id=? AND id=?",(canonical(config),config.get('template','local-business-promo-v1'),config.get('videoType','promotion'),config.get('niche','professional-services'),time.time(),actor.tenant_id,id))
     def limit(self,actor,name,value):

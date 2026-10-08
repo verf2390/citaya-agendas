@@ -655,6 +655,63 @@ class MediaAnalysisTests(unittest.TestCase):
             with self.assertRaises(sqlite3.IntegrityError):
                 self.insert_row("video_analysis_results", dict(corrected, **change))
 
+    def semantic_result(self, frames, status="complete"):
+        from test_vision_provider import observation
+        from vision_provider import SCHEMA_VERSION, MODEL, PROVIDER
+        return {"asset_id": self.asset, "schema_version": SCHEMA_VERSION, "status": status,
+                "provider": PROVIDER, "model": MODEL, "semantic": observation(),
+                "evidence_sha256": [hashlib.sha256(self.jpeg.read_bytes()).hexdigest() for _ in frames]}
+
+    def test_semantic_evidence_uses_persisted_frame_identity(self):
+        job = self.running()
+        frame = self.frame(job)
+        result = self.semantic_result([frame])
+        self.finish(job, frames=[frame], results=[result])
+        body = json.loads(self.rows("video_analysis_results")[0]["result_json"])
+        stored = self.rows("video_analysis_frames")[0]
+        self.assertEqual(body["evidence"], [{"frameId": stored["id"], "timestampMs": stored["timestamp_ms"], "supports": ["tool_work"]}])
+
+    def test_semantic_changed_evidence_bytes_roll_back_publication(self):
+        job = self.running()
+        frame = self.frame(job)
+        result = self.semantic_result([frame])
+        result["evidence_sha256"] = ["0" * 64]
+        self.assert_error("ANALYSIS_EVIDENCE_MISMATCH", lambda: self.finish(job, frames=[frame], results=[result]))
+        self.assertEqual(self.rows("video_analysis_frames"), [])
+        self.assertEqual(self.rows("video_analysis_results"), [])
+        self.assertFalse(list(self.root.glob("**/analysis/*/*/frame-*.jpg")))
+
+    def test_semantic_cannot_change_frame_metadata(self):
+        job = self.running()
+        frame = self.frame(job)
+        for key in ("timestampMs", "frameId", "sha256", "path"):
+            result = self.semantic_result([frame])
+            result["semantic"]["evidence"][0][key] = "invented"
+            self.assert_error("INVALID_ANALYSIS_RESULT", lambda: self.finish(job, frames=[frame], results=[result]))
+
+    def test_semantic_must_have_matching_frames_and_status(self):
+        job = self.running()
+        result = self.semantic_result([{}])
+        self.assert_error("ANALYSIS_EVIDENCE_MISMATCH", lambda: self.finish(job, results=[result]))
+        frame = self.frame(job)
+        result["status"] = "unknown"
+        self.assert_error("INVALID_ANALYSIS_RESULT", lambda: self.finish(job, frames=[frame], results=[result]))
+
+    def test_semantic_correction_preserves_original(self):
+        job = self.running()
+        frame = self.frame(job)
+        self.finish(job, frames=[frame], results=[self.semantic_result([frame])])
+        original = self.rows("video_analysis_results")[0]
+        corrected = self.correction(original)
+        body = json.loads(original["result_json"])
+        body["semantic"]["summary"] = "Observación corregida por una persona."
+        body["status"] = corrected["status"]
+        corrected["result_json"] = json.dumps(body)
+        self.insert_row("video_analysis_results", corrected)
+        rows = self.rows("video_analysis_results")
+        self.assertEqual(rows[1]["original_result_json"], original["result_json"])
+        self.assertEqual(self.s.visual_inventory(self.a, self.pa)[self.asset]["summary"], body["semantic"]["summary"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,4 @@
-"""Private analysis persistence. No extraction loop, provider, semantic AI or UI.
+"""Private analysis persistence and validated semantic evidence publication.
 
 Actor methods are tenant scoped. Worker methods require the current opaque lease
 token and reload all authority from SQLite; never pass a caller-supplied job dict.
@@ -17,6 +17,7 @@ import uuid
 
 import extract_frames as extraction
 from production import ConfigError, fail
+from vision_provider import SCHEMA_VERSION, PROVIDER, MODEL, validate_semantic, VisionError
 
 
 def _id():
@@ -325,8 +326,26 @@ class AnalysisMixin:
             fail("INVALID_ANALYSIS_RESULT", "At most 64 results are accepted.")
         seen = set()
         for result in descriptors:
-            if not isinstance(result, dict) or set(result) != {"asset_id", "schema_version", "status"}:
-                fail("INVALID_ANALYSIS_RESULT", "Only asset, schema version and status are supported in this block.")
+            base = {"asset_id", "schema_version", "status"}
+            semantic_keys = {"semantic", "provider", "model", "evidence_sha256"}
+            if not isinstance(result, dict) or set(result) not in (base, base | semantic_keys):
+                fail("INVALID_ANALYSIS_RESULT", "Unsupported result descriptor.")
+            if "semantic" in result:
+                if (result["schema_version"] != SCHEMA_VERSION or result["provider"] != PROVIDER
+                        or result["model"] != MODEL):
+                    fail("INVALID_ANALYSIS_RESULT", "Unsupported semantic provenance/version.")
+                hashes = result["evidence_sha256"]
+                if (not isinstance(hashes, list) or not 1 <= len(hashes) <= 6
+                        or any(not isinstance(h, str) or len(h) != 64
+                               or any(c not in "0123456789abcdef" for c in h) for h in hashes)):
+                    fail("INVALID_ANALYSIS_RESULT", "Trusted evidence hashes required.")
+                try:
+                    _, status = validate_semantic(result["semantic"], [f"evidence-{n}" for n in range(1, len(hashes) + 1)])
+                except VisionError:
+                    fail("INVALID_ANALYSIS_RESULT", "Invalid semantic contract.")
+                # Partial may retain uncertainty from discarded references.
+                if result["status"] != status and not (result["status"] == "partial" and status == "complete"):
+                    fail("INVALID_ANALYSIS_RESULT", "Semantic status mismatch.")
             if not isinstance(result["asset_id"], str) or result["asset_id"] not in assets:
                 fail("ANALYSIS_ASSET_MISMATCH", "Result asset is outside the approved job.")
             _text(result["schema_version"], "INVALID_ANALYSIS_RESULT")
@@ -379,7 +398,7 @@ class AnalysisMixin:
                         + ") VALUES(" + ",".join("?" for _ in columns) + ")", tuple(frame.values()))
 
     def finish_analysis(self, job_id, lease_token, *, frames=(), results=(), error=None):
-        """Publish evidence + metadata in one fenced transaction. No semantic data.
+        """Publish evidence and versioned results in one fenced transaction.
 
         Temporary filenames and all final paths, dimensions and hashes are derived
         server-side. A stale/revoked worker gets False and cannot publish anything.
@@ -412,12 +431,28 @@ class AnalysisMixin:
                     for result in results:
                         manifest = [{k: f[k] for k in ("id", "frame_index", "timestamp_ms", "width", "height", "sha256")}
                                     for f in copies if f["asset_id"] == result["asset_id"]]
-                        body = json.dumps({"status": result["status"], "manifest": manifest}, sort_keys=True, separators=(",", ":"))
+                        body_value = {"status": result["status"], "manifest": manifest}
+                        provider, model = "none", None
+                        if "semantic" in result:
+                            if [f["sha256"] for f in manifest] != result["evidence_sha256"]:
+                                fail("ANALYSIS_EVIDENCE_MISMATCH", "Published frames differ from inference evidence.")
+                            refs = {f"evidence-{n}": f for n, f in enumerate(manifest, 1)}
+                            semantic, _ = validate_semantic(result["semantic"], refs)
+                            # Only the server can bind real IDs/timestamps. Keep the
+                            # original ephemeral contract for validation/audit.
+                            body_value["semantic"] = semantic
+                            body_value["evidence"] = [
+                                {"frameId": refs[e["frameRef"]]["id"],
+                                 "timestampMs": refs[e["frameRef"]]["timestamp_ms"],
+                                 "supports": e["supports"]}
+                                for e in semantic["evidence"]]
+                            provider, model = result["provider"], result["model"]
+                        body = json.dumps(body_value, sort_keys=True, separators=(",", ":"))
                         self.db.execute(
                             "INSERT INTO video_analysis_results(id,tenant_id,project_id,analysis_job_id,approval_id,asset_id,"
-                            "schema_version,provider,model,status,result_json,created_at) VALUES(?,?,?,?,?,?,?,'none',NULL,?,?,?)",
+                            "schema_version,provider,model,status,result_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                             (_id(), job["tenant_id"], job["project_id"], job_id, job["approval_id"], result["asset_id"],
-                             result["schema_version"], result["status"], body, time.time()))
+                             result["schema_version"], provider, model, result["status"], body, time.time()))
                     changed = self.db.execute(
                         "UPDATE video_analysis_jobs SET status='completed',finished_at=?,lease_token=NULL,lease_until=NULL "
                         "WHERE id=? AND status='running' AND lease_token=? AND lease_until>?",
@@ -456,3 +491,48 @@ class AnalysisMixin:
 
     def analysis_results(self, actor, job_id):
         return self._read_analysis(actor, job_id, "video_analysis_results")
+
+    def visual_inventory(self, actor, project_id):
+        """Trusted Director projection; no storage paths, hashes or tenant identifiers.
+
+        Historical results remain stored, but revoked/stale approvals are never
+        usable. A newer unknown supersedes an older confident observation.
+        """
+        with self.tx():
+            return self._visual_inventory(actor, project_id)
+
+    def _visual_inventory(self, actor, project_id):
+        """Caller holds BEGIN IMMEDIATE, including Director's final save."""
+        self.project(actor, project_id)
+        rows = self.db.execute(
+            "SELECT r.*,j.finished_at FROM video_analysis_results r JOIN video_analysis_jobs j "
+            "ON j.tenant_id=r.tenant_id AND j.project_id=r.project_id AND j.id=r.analysis_job_id "
+            "WHERE r.tenant_id=? AND r.project_id=? AND j.status='completed' AND r.schema_version=? "
+            "ORDER BY j.finished_at DESC,r.revision DESC,r.created_at DESC,r.id DESC",
+            (actor.tenant_id, project_id, SCHEMA_VERSION)).fetchall()
+        inventory, checked = {}, {}
+        for row in rows:
+            approval_id = row["approval_id"]
+            if approval_id not in checked:
+                try:
+                    self._check_approval(actor, approval_id, project_id)
+                    checked[approval_id] = True
+                except ConfigError:
+                    checked[approval_id] = False
+            if not checked[approval_id] or row["asset_id"] in inventory:
+                continue
+            body = json.loads(row["result_json"])
+            if "semantic" not in body:
+                continue
+            frames = self.db.execute(
+                "SELECT id,timestamp_ms FROM video_analysis_frames WHERE tenant_id=? AND project_id=? "
+                "AND analysis_job_id=? AND asset_id=? ORDER BY frame_index",
+                (actor.tenant_id, project_id, row["analysis_job_id"], row["asset_id"])).fetchall()
+            try:
+                semantic, status = validate_semantic(body["semantic"],
+                                                    [f"evidence-{n}" for n in range(1, len(frames) + 1)])
+            except VisionError:
+                continue
+            semantic.pop("evidence")
+            inventory[row["asset_id"]] = {**semantic, "status": "partial" if row["status"] == "partial" and status == "complete" else status}
+        return inventory

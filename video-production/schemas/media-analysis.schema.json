@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Media visual observation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "shotType",
+    "orientation",
+    "setting",
+    "subjects",
+    "actions",
+    "quality",
+    "roleCandidates",
+    "evidence",
+    "unknowns"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 400,
+      "pattern": "^[^<>`/\\\\\\x00-\\x1f]*$"
+    },
+    "shotType": {
+      "enum": [
+        "close_up",
+        "medium",
+        "wide",
+        "detail",
+        "mixed",
+        "unknown"
+      ]
+    },
+    "orientation": {
+      "enum": [
+        "vertical",
+        "horizontal",
+        "square",
+        "unknown"
+      ]
+    },
+    "setting": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 60,
+        "pattern": "^(?=.*\\S)[^<>`/\\\\\\x00-\\x1f]*$",
+        "minLength": 1
+      }
+    },
+    "subjects": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 60,
+        "pattern": "^(?=.*\\S)[^<>`/\\\\\\x00-\\x1f]*$",
+        "minLength": 1
+      }
+    },
+    "actions": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 60,
+        "pattern": "^(?=.*\\S)[^<>`/\\\\\\x00-\\x1f]*$",
+        "minLength": 1
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lighting",
+        "focus",
+        "stability"
+      ],
+      "properties": {
+        "lighting": {
+          "enum": [
+            "good",
+            "acceptable",
+            "poor",
+            "unknown"
+          ]
+        },
+        "focus": {
+          "enum": [
+            "good",
+            "acceptable",
+            "poor",
+            "unknown"
+          ]
+        },
+        "stability": {
+          "enum": [
+            "good",
+            "acceptable",
+            "poor",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "roleCandidates": {
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "hook",
+          "process",
+          "result",
+          "environment",
+          "service",
+          "branding",
+          "cta",
+          "irrelevant"
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "frameRef",
+          "supports"
+        ],
+        "properties": {
+          "frameRef": {
+            "type": "string",
+            "pattern": "^evidence-[1-9][0-9]?$"
+          },
+          "supports": {
+            "type": "array",
+            "maxItems": 12,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "maxLength": 60,
+              "pattern": "^(?=.*\\S)[^<>`/\\\\\\x00-\\x1f]*$",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 140,
+        "pattern": "^(?=.*\\S)[^<>`/\\\\\\x00-\\x1f]*$",
+        "minLength": 1
+      }
+    }
+  }
+}

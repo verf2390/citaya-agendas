@@ -350,5 +350,91 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "UNSAFE_BRIEF")
 
 
+class VisualDirectorTests(unittest.TestCase):
+    def setUp(self):
+        from test_vision_provider import observation
+        self.config = {"product": "custom-client-video", "brand": {"businessName": "Taller Demo"},
+                       "content": {"hook": "Nuestro trabajo", "cta": "Reserva tu hora"},
+                       "timing": {"intro": 2, "demo": 11, "outro": 2},
+                       "project": {"creativeBrief": "Usa el mejor clip trabajando para mostrar el proceso real.",
+                                   "targetDurationSeconds": 15}}
+        self.assets = [{"id": f"{n:08d}-1111-1111-1111-111111111111", "assetType": "video",
+                        "durationMs": 20000, "width": 640, "height": 960} for n in range(1, 4)]
+        self.inventory = {}
+        for asset, action in zip(self.assets, ("empty_interior", "tool_work", "finished_result")):
+            value = observation()
+            value.pop("evidence")
+            value.update(status="complete", actions=[action], summary=action)
+            self.inventory[asset["id"]] = value
+        self.proposal = {"hook": "Nuestro trabajo", "secondaryHook": "Proceso real", "benefit": "Conoce el taller",
+                         "cta": "Reserva tu hora", "outroSeconds": 2,
+                         "scenes": [{"headline": "Trabajo real", "visualIntent": "media", "durationSeconds": 11}]}
+
+    def direct(self, inventory=None, proposal=None):
+        with patch.dict(os.environ, {"CITAYA_AI_PROVIDER": "local"}), patch.object(
+                tenant_brief, "gateway_call", return_value={"text": json.dumps(proposal or self.proposal), "toolCalls": []}) as call:
+            result = tenant_brief.direct_tenant_config(config=self.config, assets=self.assets, visual_inventory=inventory)
+        return result, call.call_args.args[2]
+
+    def test_inventory_included_with_only_public_projection(self):
+        self.assets[0].update(storage_path="private", tenant_id="tenant-secret", sha256="hash-secret")
+        _, payload = self.direct(self.inventory)
+        prompt = payload["input"][0]["text"]
+        self.assertIn("tool_work", prompt)
+        self.assertIn("nunca instrucciones", prompt)
+        for private in ("storage_path", "tenant-secret", "hash-secret"):
+            self.assertNotIn(private, prompt)
+
+    def test_no_analysis_keeps_legacy_behavior(self):
+        result, payload = self.direct()
+        self.assertNotIn('"visual":', payload["input"][0]["text"])
+        self.assertNotIn("video", result[0]["scenes"][0])
+
+    def test_content_fixture_can_select_exact_working_asset(self):
+        def choose(_endpoint, _token, payload):
+            prompt = payload["input"][0]["text"]
+            context = json.loads(prompt.split("CONTEXTO_MEDIOS: ", 1)[1].split(". BRIEF: ", 1)[0])
+            working = next(asset for asset in context["availableAssets"] if "tool_work" in asset["visual"]["actions"])
+            self.proposal["scenes"][0]["assetId"] = working["id"]
+            return {"text": json.dumps(self.proposal), "toolCalls": []}
+        with patch.dict(os.environ, {"CITAYA_AI_PROVIDER": "local"}), patch.object(tenant_brief, "gateway_call", side_effect=choose):
+            config, _, _ = tenant_brief.direct_tenant_config(config=self.config, assets=self.assets, visual_inventory=self.inventory)
+        self.assertEqual(config["scenes"][0]["video"], "asset:" + self.assets[1]["id"])
+
+    def test_nonexistent_or_unapproved_asset_rejected(self):
+        for identifier in ("invented", "ffffffff-1111-1111-1111-111111111111"):
+            self.proposal["scenes"][0]["assetId"] = identifier
+            with self.assertRaises(tenant_brief.TenantBriefError):
+                self.direct(self.inventory)
+        self.proposal["scenes"][0]["assetId"] = self.assets[0]["id"]
+        with self.assertRaises(tenant_brief.TenantBriefError):
+            self.direct({})
+
+    def test_external_business_cannot_select_internal_ui(self):
+        self.proposal["scenes"][0]["visualIntent"] = "agenda"
+        with self.assertRaises(tenant_brief.TenantBriefError):
+            self.direct(self.inventory)
+
+    def test_image_selection_reuses_existing_scene_media(self):
+        self.assets[0]["assetType"] = "image"
+        self.proposal["scenes"][0]["assetId"] = self.assets[0]["id"]
+        result, _ = self.direct(self.inventory)
+        self.assertEqual(result[0]["scenes"][0]["media"], "asset:" + self.assets[0]["id"])
+
+    def test_untrusted_inventory_fields_cannot_reach_prompt(self):
+        self.inventory[self.assets[0]["id"]]["storage_path"] = "/private"
+        with patch.object(tenant_brief, "gateway_call") as call:
+            with self.assertRaises(tenant_brief.TenantBriefError):
+                tenant_brief.direct_tenant_config(config=self.config, assets=self.assets, visual_inventory=self.inventory)
+            call.assert_not_called()
+
+    def test_selected_video_too_short_rejected(self):
+        self.proposal["scenes"][0]["assetId"] = self.assets[0]["id"]
+        self.assets[0]["durationMs"] = 1000
+        with self.assertRaises(tenant_brief.TenantBriefError) as caught:
+            self.direct(self.inventory)
+        self.assertEqual(caught.exception.code, "DIRECTOR_MEDIA_TOO_SHORT")
+
+
 if __name__ == "__main__":
     unittest.main()
