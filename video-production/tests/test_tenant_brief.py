@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import sys
@@ -339,7 +340,57 @@ class TenantBriefTests(unittest.TestCase):
         )
 
 
-    def test_external_brand_cannot_request_citaya_product_ui(self):
+    def test_director_repairs_invalid_proposal_once_and_enforces_64_char_benefit(self):
+        first = {
+            "text": json.dumps({
+                "hook": "HDR Barber Studio",
+                "secondaryHook": "Corte clásico, degradado o corte más barba",
+                "benefit": "x" * 65,
+                "cta": "Reserva tu hora online",
+                "scenes": [
+                    {"headline": "Tu próximo corte", "visualIntent": "generic", "durationSeconds": 3},
+                ],
+                "outroSeconds": 2,
+            }),
+            "toolCalls": [],
+            "usage": {"inputTokens": 10, "outputTokens": 10, "totalTokens": 20},
+        }
+        repaired = copy.deepcopy(first)
+        repaired["text"] = json.dumps({
+            "hook": "HDR Barber Studio",
+            "secondaryHook": "Corte clásico, degradado o corte más barba",
+            "benefit": "x" * 64,
+            "cta": "Reserva tu hora online",
+            "scenes": [
+                {"headline": "Tu próximo corte", "visualIntent": "generic", "durationSeconds": 3},
+            ],
+            "outroSeconds": 2,
+        })
+        config = {
+            "schemaVersion": 1,
+            "product": "custom-client-video",
+            "template": "local-business-promo-v2",
+            "stylePreset": "dynamic",
+            "niche": "barber",
+            "videoType": "promotion",
+            "brand": {"businessName": "HDR Barber Studio"},
+            "capabilities": ["provided_business_content"],
+            "content": {"hook": "Hook", "secondaryHook": "Segundo", "benefit": "Beneficio", "cta": "CTA"},
+            "media": {},
+            "creator": {"useClipAudio": False, "voiceoverStart": 0},
+            "mediaPolicy": {"useOnlyProvidedAssets": True, "allowStockMedia": False, "allowGeneratedMedia": False},
+            "mediaApproved": False,
+            "timing": {"intro": 2, "demo": 16, "outro": 2},
+            "project": {"creativeBrief": "Video HDR Barber Studio. CTA: Reserva tu hora online.", "targetDurationSeconds": 20},
+        }
+        with patch.object(tenant_brief, "gateway_call", side_effect=[first, repaired]) as gateway:
+            directed, _, usage = tenant_brief.direct_tenant_config(config=config, assets=[])
+        self.assertEqual(gateway.call_count, 2)
+        self.assertEqual(len(directed["content"]["benefit"]), 64)
+        self.assertEqual(usage["totalTokens"], 40)
+        self.assertIn("Repara la propuesta anterior", gateway.call_args.args[2]["input"][0]["text"])
+
+    def test_external_brand_invalid_internal_ui_falls_back_to_generic(self):
         response = {
             "text": json.dumps({
                 "hook": "Tu negocio",
@@ -357,7 +408,7 @@ class TenantBriefTests(unittest.TestCase):
         config = {
             "schemaVersion": 1,
             "product": "custom-client-video",
-            "template": "creator-led-v1",
+            "template": "local-business-promo-v2",
             "stylePreset": "dynamic",
             "niche": "local-business",
             "videoType": "promotion",
@@ -371,10 +422,13 @@ class TenantBriefTests(unittest.TestCase):
             "timing": {"intro": 2, "demo": 11, "outro": 2},
             "project": {"creativeBrief": "Muestra una agenda.", "targetDurationSeconds": 15},
         }
-        with patch.object(tenant_brief, "gateway_call", return_value=response):
-            with self.assertRaises(tenant_brief.TenantBriefError) as caught:
-                tenant_brief.direct_tenant_config(config=config, assets=[])
-        self.assertEqual(caught.exception.code, "AI_INVALID_PROPOSAL")
+        with patch.object(tenant_brief, "gateway_call", return_value=response) as gateway:
+            directed, _, usage = tenant_brief.direct_tenant_config(config=config, assets=[])
+        self.assertEqual(gateway.call_count, 2)
+        self.assertEqual(directed["scenes"][0]["mode"], "benefit")
+        self.assertEqual(directed["content"]["hook"], "Negocio Externo")
+        self.assertEqual(directed["content"]["benefit"], "Muestra una agenda.")
+        self.assertEqual(usage["totalTokens"], 40)
 
     def test_rejects_secret_like_brief(self):
         with self.assertRaises(tenant_brief.TenantBriefError) as caught:
@@ -430,7 +484,10 @@ class VisualDirectorTests(unittest.TestCase):
 
     def test_no_analysis_keeps_legacy_behavior(self):
         result, payload = self.direct()
-        self.assertNotIn('"visual":', payload["input"][0]["text"])
+        prompt = payload["input"][0]["text"]
+        self.assertNotIn('"visual":', prompt)
+        self.assertIn('"visualIntent":"generic"', prompt)
+        self.assertIn("benefit 64", prompt)
         self.assertNotIn("video", result[0]["scenes"][0])
 
     def test_new_brief_drops_stale_optional_commercial_copy(self):
