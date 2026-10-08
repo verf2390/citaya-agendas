@@ -46,9 +46,13 @@ test("Video Studio media controls wire supported audio and creator roles", () =>
   assert.match(page, /creatorOutro/);
   assert.match(page, /clientVoiceover/);
   assert.match(page, /backgroundMusic/);
+  assert.match(page, /Logo \/ imagen de marca/);
+  assert.match(page, /logoAssetId/);
+  assert.match(page, /logo: logoAssetId \? "asset:" \+ logoAssetId : null/);
   assert.match(page, /duckMusicDuringVoice/);
   assert.match(page, /existingTts\.enabled === true/);
   assert.match(page, /useClipAudio/);
+  assert.match(page, /reservedImages/);
   assert.match(page, /\.wav,.mp3,.m4a,.ogg/);
 });
 
