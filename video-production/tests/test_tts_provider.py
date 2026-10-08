@@ -290,6 +290,9 @@ class ProviderTests(unittest.TestCase):
                 self.assertNotIn('HOME', kwargs['env'])
                 self.assertEqual(kwargs['env']['HF_HUB_OFFLINE'], '1')
                 self.assertEqual(kwargs['env']['TRANSFORMERS_OFFLINE'], '1')
+                self.assertEqual(kwargs['env']['HF_HUB_DISABLE_IMPLICIT_TOKEN'], '1')
+                self.assertNotIn('HF_TOKEN', kwargs['env'])
+                self.assertTrue(kwargs['env']['HF_TOKEN_PATH'].endswith('/no-hf-token'))
                 self.assertTrue(str(args[2]).endswith('tts_chatterbox_runner.py'))
                 tts = json.loads(kwargs['input'])
                 FakeTTSProvider().synthesize(tts['text'], tts['voice'], tts['speed'], Path(args[3]))
@@ -297,7 +300,7 @@ class ProviderTests(unittest.TestCase):
             real_run = subprocess.run
             def route(args, **kwargs):
                 return run(args, **kwargs) if str(args[0]) == str(runtime/'.venv/bin/python') else real_run(args, **kwargs)
-            with patch.object(tts_provider, 'RUNTIME', runtime), patch.object(tts_provider, 'HF_HOME', runtime/'hf-cache'), patch.object(tts_provider.subprocess, 'run', side_effect=route):
+            with patch.object(tts_provider, 'RUNTIME', runtime), patch.object(tts_provider, 'HF_HOME', runtime/'hf-home'), patch.object(tts_provider, 'HF_HUB_CACHE', runtime/'hub'), patch.object(tts_provider.subprocess, 'run', side_effect=route):
                 _, _, _, meta = self.prepare(LocalTTSProvider())
                 self.assertEqual(meta['voiceProvider'], 'local-tts')
                 self.assertEqual(meta['voiceModel'], 'chatterbox-es-mx-latam-v3')
