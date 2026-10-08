@@ -185,15 +185,17 @@ def main():
                     (actor.tenant_id, project_id),
                 )
             ]
+            visual_inventory = studio.visual_inventory(actor, project_id)
             directed, director_report, usage = direct_tenant_config(
                 config=config,
                 assets=assets,
                 brief=payload.get("brief"),
+                visual_inventory=visual_inventory,
             )
             _, validation_report = studio.validated(
                 actor, project_id, directed, "preview"
             )
-            studio.update_project(actor, project_id, directed)
+            studio.update_project(actor, project_id, directed, expected_visual_inventory=visual_inventory)
             if usage is not None:
                 try:
                     studio.record_ai_usage(
