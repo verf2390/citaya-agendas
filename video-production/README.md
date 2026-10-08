@@ -153,3 +153,7 @@ Para ampliar producto/plantilla/nicho/nodo, seguir [arquitectura](docs/architect
 Ejemplo de despliegue con usuario dedicado y red privada: `ops/citaya-video-worker.service.example` (no instalado ni activado; validar límites y cache de Chromium antes de usarlo). Los videos de contenido/b-roll están silenciados; el audio de intro/outro y la voz se mezclan explícitamente.
 
 Resultado de esta entrega: **37 pruebas aprobadas**, previews reales de Agendas, web, creator-led y negocio externo mediante cola privada; ningún final 1080p generado durante desarrollo. Evidencia: [resumen](tests/verification-summary.json), [previews](tests/preview-results.json), [tests](tests/test-results.txt). V1/V2 conservan todos sus hashes y el mismo conjunto de archivos.
+
+## Renderer moderno de negocios externos (CIT-127)
+
+`local-business-promo-v2` usa media fullscreen y overlays con CSS/renderer aislados. Nuevos briefs IA externos lo seleccionan; templates explícitos y defaults legacy conservan V1. Ver [arquitectura, preview, evidencia y límites](docs/modern-business-renderer.md).

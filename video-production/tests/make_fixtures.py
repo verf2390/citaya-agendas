@@ -5,6 +5,8 @@ def run(*args):subprocess.run(['ffmpeg','-y','-v','error',*map(str,args)],check=
 run('-f','lavfi','-i','color=c=0x186A61:s=540x660','-vf',"drawtext=text='NEGOCIO DEMO':fontcolor=white:fontsize=38:x=(w-tw)/2:y=h/2",'-frames:v','1','-threads','1',F/'business.png')
 run('-f','lavfi','-i','color=c=0xffffff:s=400x160','-vf',"drawtext=text='DEMO':fontcolor=0x186A61:fontsize=60:x=(w-tw)/2:y=(h-th)/2",'-frames:v','1','-threads','1',F/'logo.png')
 run('-f','lavfi','-i','color=c=0x334155:s=360x640:r=24','-f','lavfi','-i','sine=frequency=220:sample_rate=48000','-t','3','-vf',"drawtext=text='INTRO DE PRUEBA':fontcolor=white:fontsize=25:x=(w-tw)/2:y=h/2",'-c:v','libx264','-preset','ultrafast','-c:a','aac','-pix_fmt','yuv420p',F/'intro.mp4')
+# V2's second image is a frame of existing test footage, not new imagery.
+run('-i',F/'intro.mp4','-frames:v','1','-threads','1',F/'modern-video-still.png')
 run('-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','4','-af',"volume='if(between(t,1,2),0,0.25)':eval=frame",F/'voice.wav')
 (F/'captions.srt').write_text('1\n00:00:00,000 --> 00:00:02,900\nIntroducción de demostración\n\n2\n00:00:03,000 --> 00:00:06,900\nContenido de prueba\n')
 (F/'captions.vtt').write_text('WEBVTT\n\n00:00:00.000 --> 00:00:02.900\nIntroducción de demostración\n')

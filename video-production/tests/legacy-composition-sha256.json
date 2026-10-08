@@ -1,0 +1,18 @@
+{
+  "v1": {
+    "config": "configs/examples/local-business.json",
+    "sha256": "1879f401f08893043ba3b3dd125824bbc4ed699d807a310e1d1afbe2280f9f41"
+  },
+  "creator": {
+    "config": "configs/examples/creator-led.json",
+    "sha256": "20243b0c423f1bbfd9dd7d1eeaed1954c3c611d6aee0da6ce3129350c5643d46"
+  },
+  "saas": {
+    "config": "configs/veterinary.json",
+    "sha256": "8bbe87a25212281fe981641242da68f6f2aa3abef075a99160d9f9b0fb3e3802"
+  },
+  "website": {
+    "config": "configs/examples/website-services.json",
+    "sha256": "28cc431ebf9ddf2e3f08b9c93cce59182b164932940f6f2d981b422cb467d74c"
+  }
+}

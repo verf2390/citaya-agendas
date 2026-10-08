@@ -135,6 +135,18 @@
         "benefit",
         "media"
       ]
+    },
+    {
+      "id": "local-business-promo-v2",
+      "version": 2,
+      "renderer": "business-modern",
+      "formats": [
+        "vertical"
+      ],
+      "sceneModes": [
+        "media",
+        "benefit"
+      ]
     }
   ]
 }

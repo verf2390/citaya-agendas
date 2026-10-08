@@ -1,0 +1,17 @@
+{
+  "width": 720,
+  "height": 1280,
+  "duration": 10.0,
+  "frames": 240,
+  "fps": "24/1",
+  "videoCodec": "h264",
+  "audioCodec": "aac",
+  "audioChannels": 2,
+  "posterTime": 0.9,
+  "posterBakedIntoFrameZero": true,
+  "decode": "pass",
+  "audioLevels": [
+    "mean_volume: -91.0 dB",
+    "max_volume: -91.0 dB"
+  ]
+}
