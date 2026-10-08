@@ -155,8 +155,19 @@ def compile_business_modern(c, ctx, out, mode):
         extras += f'<p class="modern-contact">{escape(contact)}</p>'
     editorial('end', clock, t['outro'], content.get('finalTagline') or brand['businessName'], extras=extras, end=True)
     logo = brand.get('logoLight') or brand.get('logo') or brand.get('logoDark')
-    branding = (f'<img class="modern-logo" src="{escape(media(logo, "image"))}" alt="{escape(brand["businessName"])}">'
-                if logo else f'<span class="modern-brand-name">{escape(brand["businessName"])}</span>')
+    logo_src = media(logo, "image") if logo else None
+    if logo_src:
+        clip(
+            'end-logo',
+            clock,
+            t['outro'],
+            f'<div class="modern-end-logo-wrap"><img class="modern-end-logo" '
+            f'src="{escape(logo_src)}" alt="{escape(brand["businessName"])}"></div>',
+            'modern-end-branding',
+            3,
+        )
+    branding = (f'<img class="modern-logo" src="{escape(logo_src)}" alt="{escape(brand["businessName"])}">'
+                if logo_src else f'<span class="modern-brand-name">{escape(brand["businessName"])}</span>')
     clip('branding', 0, duration, f'<div class="modern-brand">{branding}</div>', 'modern-branding', 4)
     for i, cue in enumerate(ctx['cues']):
         clip(f'caption-{i}', cue['start'], cue['end'] - cue['start'],
