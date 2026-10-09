@@ -246,8 +246,12 @@ class BriefTests(unittest.TestCase):
         config, report = brief.normalize_proposal(PROPOSAL, dict(ROUTE, durationSeconds=30), caps)
         self.assertEqual(report["duration"], 30)
         self.assertAlmostEqual(sum(s["duration"] for s in config["scenes"]), config["timing"]["demo"])
+        # Production permits one-second scenes; verify the current boundary.
+        short, _ = brief.normalize_proposal(PROPOSAL, dict(ROUTE, durationSeconds=8), caps)
+        self.assertEqual([s["duration"] for s in short["scenes"]], [1, 1, 1])
+        short["scenes"][0]["duration"] = .99
         with self.assertRaises(brief.ConfigError):
-            brief.normalize_proposal(PROPOSAL, dict(ROUTE, durationSeconds=8), caps)
+            brief.validate(short)
         for value in (True, -1, 121, "20"):
             with self.subTest(value=value), self.assertRaises(brief.BriefError):
                 brief.validate_classification(dict(ROUTE, durationSeconds=value), CATALOG)

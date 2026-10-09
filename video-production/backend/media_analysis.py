@@ -194,16 +194,16 @@ class AnalysisMixin:
             self._fail_analysis(job["id"], error.code)
             return None
 
-    def claim_analysis(self, node, lease_seconds=1800):
+    def claim_analysis(self, node, lease_seconds=1800, *, job_id=None):
         _text(node)
         if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
             fail("INVALID_LEASE", "Lease must be between 1 and 3600 seconds.")
         with self.tx():
             self.db.execute(
                 "UPDATE video_analysis_jobs SET status='failed',finished_at=?,error_code='LEASE_EXPIRED',"
-                "lease_token=NULL,lease_until=NULL WHERE status='running' AND lease_until<=?",
-                (time.time(), time.time()))
-            for row in self.db.execute("SELECT * FROM video_analysis_jobs WHERE status='queued' ORDER BY queued_at,id").fetchall():
+                "lease_token=NULL,lease_until=NULL WHERE status='running' AND lease_until<=? AND (? IS NULL OR id=?)",
+                (time.time(), time.time(), job_id, job_id))
+            for row in self.db.execute("SELECT * FROM video_analysis_jobs WHERE status='queued' AND (? IS NULL OR id=?) ORDER BY queued_at,id", (job_id, job_id)).fetchall():
                 job = dict(row)
                 if self._check_analysis_approval(job) is None:
                     continue

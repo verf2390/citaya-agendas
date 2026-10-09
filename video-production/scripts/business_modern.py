@@ -51,10 +51,11 @@ def compile_business_modern(c, ctx, out, mode):
         # Decode the last second and keep its last available frame. Seeking by
         # output fps can miss the final source frame (e.g. 24 fps media / 30 fps
         # export). This extraction never changes the scene's playback window.
-        at = max(0, scene['duration'] - 1) if last else 0
-        end = scene['duration'] if last else 0
+        offset = scene.get('videoOffset', 0)
+        at = offset + (max(0, scene['duration'] - 1) if last else 0)
+        end = offset + (scene['duration'] if last else 0)
         name = f'{digest(ROOT / path)[:16]}-hold-{end:.6f}.png'
-        frame_args = ['-t', scene['duration'] - at, '-update', '1'] if last else ['-frames:v', '1']
+        frame_args = ['-t', end - at, '-update', '1'] if last else ['-frames:v', '1']
         process(['ffmpeg', '-y', '-v', 'error', '-protocol_whitelist', 'file,pipe',
                  '-ss', f'{at:.6f}', '-i', ROOT / path, *frame_args,
                  '-threads', '1', inputs / name], timeout=60)
@@ -130,7 +131,7 @@ def compile_business_modern(c, ctx, out, mode):
         id, length = f'scene-{i}', scene['duration']
         video = media(scene['video'], 'video') if scene.get('video') else None
         image = media(scene['media'], 'image') if scene.get('media') and not video else None
-        background(id, clock, length, i, image=image, video=video)
+        background(id, clock, length, i, image=image, video=video, offset=scene.get('videoOffset', 0))
         extras = ''
         labels = content.get('featureLabels', [])
         if labels:

@@ -43,12 +43,12 @@ class ConfigTests(unittest.TestCase):
  def test_no_invented_client_imagery(self):
   c=self.config('local-business');c['scenes']=[{'capability':'provided_business_content','mode':'desktop','duration':5}];self.bad(c,'PROVIDED_MEDIA_REQUIRED')
  def test_citaya_owned_ui_uses_internal_product_visuals_only(self):
-  c=self.config('local-business');c['brand']['businessName']='Citaya';c['template']='creator-led-v1';c['timing']={'intro':2,'demo':5,'outro':2};c['scenes']=[{'capability':'provided_business_content','mode':'payments','duration':5}]
+  c=self.config('local-business');c['brand']['businessName']='Citaya';c['project']={'productContext':'citaya-agendas'};c['template']='creator-led-v1';c['timing']={'intro':2,'demo':5,'outro':2};c['scenes']=[{'capability':'provided_business_content','mode':'payments','duration':5}]
   normalized,_,ctx=validate(c)
   with tempfile.TemporaryDirectory() as d:
    comp,_=compile_composition(normalized,ctx,Path(d),'preview');html=(comp/'index.html').read_text()
    self.assertIn('Pagos pendientes',html);self.assertIn('Facturación',html)
-  external=self.config('local-business');external['template']='creator-led-v1';external['timing']={'intro':2,'demo':5,'outro':2};external['scenes']=[{'capability':'provided_business_content','mode':'payments','duration':5}];self.bad(external,'PROVIDED_MEDIA_REQUIRED')
+  external=self.config('local-business');external['template']='creator-led-v1';external['timing']={'intro':2,'demo':5,'outro':2};external['scenes']=[{'capability':'provided_business_content','mode':'payments','duration':5}];self.bad(external,'PRODUCT_CONTEXT_REQUIRED')
  def test_ducking_required(self):
   c=self.config('creator-led');c['audio']={'music':True,'duckMusicDuringVoice':False};self.bad(c,'VOICE_DUCKING_REQUIRED')
  def test_final_contract(self):

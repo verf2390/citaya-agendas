@@ -14,6 +14,7 @@ from pathlib import Path
 
 from studio import Actor, Studio, uid
 from tenant_brief import direct_tenant_config, generate_tenant_config
+from director_analysis import prepare_direction, direction_analysis_status, visual_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STORAGE = ROOT / "storage" / "private"
@@ -149,6 +150,8 @@ def main():
                 niche_label=payload.get("nicheLabel"),
                 style=payload.get("style"),
                 duration_seconds=payload.get("durationSeconds"),
+                video_type=payload.get("videoType", "promotion"),
+                product_context=payload.get("productContext", "external"),
             )
             project_id = studio.create_project(actor, config, title)
             if usage is not None:
@@ -167,6 +170,13 @@ def main():
                 "report": report,
                 "usage": usage,
             }
+        elif action == "prepare_direction":
+            result = prepare_direction(studio, actor, str(payload.get("projectId", "")),
+                                       approved_ids=payload.get("assetIds"),
+                                       analysis_consent=payload.get("analysisConsent"))
+        elif action == "direction_analysis_status":
+            result = direction_analysis_status(studio, actor, str(payload.get("projectId", "")),
+                                               str(payload.get("analysisJobId", "")))
         elif action == "direct_project":
             project_id = str(payload.get("projectId", ""))
             project = studio.project(actor, project_id)
@@ -185,17 +195,21 @@ def main():
                     (actor.tenant_id, project_id),
                 )
             ]
+            # Never silently direct selected visuals without analysis, even outside media-first.
+            prepare_direction(studio, actor, project_id)
             visual_inventory = studio.visual_inventory(actor, project_id)
+            required_ids = visual_inputs(studio, actor, project_id, config)
+            selected_assets = [a for a in assets if a["id"] in required_ids or a["assetType"] == "audio"]
             directed, director_report, usage = direct_tenant_config(
                 config=config,
-                assets=assets,
+                assets=selected_assets,
                 brief=payload.get("brief"),
                 visual_inventory=visual_inventory,
             )
             _, validation_report = studio.validated(
                 actor, project_id, directed, "preview"
             )
-            studio.update_project(actor, project_id, directed, expected_visual_inventory=visual_inventory)
+            studio.update_project(actor, project_id, directed, expected_visual_inventory=visual_inventory, expected_revision=project["revision"])
             if usage is not None:
                 try:
                     studio.record_ai_usage(

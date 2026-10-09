@@ -251,9 +251,25 @@ export async function POST(req: Request) {
           nicheLabel: body?.nicheLabel,
           style: body?.style,
           durationSeconds: body?.durationSeconds,
+          videoType: body?.videoType,
+          productContext: body?.productContext,
         },
       });
       return NextResponse.json({ ok: true, ...result }, { status: 201 });
+    }
+    if (action === "prepare_direction" || action === "direction_analysis_status") {
+      const result = await callVideoStudio<Record<string, unknown>>({
+        action,
+        tenantId: access.tenantId,
+        userId: access.userId,
+        payload: {
+          projectId: body?.projectId,
+          assetIds: body?.assetIds,
+          analysisConsent: body?.analysisConsent,
+          analysisJobId: body?.analysisJobId,
+        },
+      });
+      return NextResponse.json({ ok: true, ...result });
     }
     if (action === "direct") {
       const projectId = String(body?.projectId ?? "").trim();

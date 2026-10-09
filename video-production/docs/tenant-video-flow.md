@@ -1,6 +1,11 @@
 # Autoservicio y contrato del adaptador Citaya
 
-Futura ruta `/admin/videos`: Crear video, Mis videos, Plantillas, Borradores, Procesando, Listos, Uso del mes.
+La ruta `/admin/videos` implementa creación, uploads, análisis autorizado, dirección,
+preview, aprobación y final. El contrato activo y los estados están descritos en
+[Director con medios reales](media-first-director.md).
+
+La tabla histórica siguiente describe la separación de operaciones; el adaptador
+actual las sirve mediante acciones en `/api/admin/videos`.
 
 1. Elegir tipo (promoción, servicio, campaña, sitio web, oferta, antes/después, educativo, creator-led).
 2. Elegir plantilla registrada.

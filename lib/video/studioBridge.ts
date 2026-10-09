@@ -12,6 +12,8 @@ export type VideoStudioAction =
   | "list_projects"
   | "create_from_brief"
   | "direct_project"
+  | "prepare_direction"
+  | "direction_analysis_status"
   | "project_detail"
   | "create_project"
   | "update_project"

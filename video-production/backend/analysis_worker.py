@@ -70,9 +70,9 @@ def _snapshot(studio, asset, workspace):
     return target
 
 
-def run_one(studio, node, provider, *, lease_seconds=600):
+def run_one(studio, node, provider, *, lease_seconds=600, job_id=None):
     """One claim, sequential assets, one atomic publication. Returns whether claimed."""
-    job = studio.claim_analysis(node, lease_seconds=lease_seconds)
+    job = studio.claim_analysis(node, lease_seconds=lease_seconds, job_id=job_id)
     if not job:
         return False
     workspace = None
@@ -148,6 +148,7 @@ def main():
     parser.add_argument("--node", default="local-analysis-1")
     parser.add_argument("--endpoint", default="http://127.0.0.1:8788/v1/chat/completions")
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--job-id", default=None)
     args = parser.parse_args()
     os.umask(0o077)
     provider = VisionProvider(args.endpoint)
@@ -155,7 +156,7 @@ def main():
     try:
         with worker_lock(studio.root):
             while True:
-                worked = run_one(studio, args.node, provider)
+                worked = run_one(studio, args.node, provider, job_id=args.job_id)
                 if args.once:
                     break
                 if not worked:

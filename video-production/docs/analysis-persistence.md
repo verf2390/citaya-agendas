@@ -109,3 +109,11 @@ identifiers are required metadata; no runtime/extractor is launched or selected
 from them. This block adds no automatic quota billing, retention, worker service,
 model validation, or deployment. All schema changes are additive/idempotent in
 the local SQLite backend; no production database is modified by development.
+
+## Integración con el panel
+
+El Director del panel reutiliza estas tablas y approvals exactos mediante
+`director_analysis.prepare_direction`, con consentimiento separado de derechos.
+El worker existente acepta `--job-id` para reclamar únicamente el trabajo
+solicitado; conserva lock, leases, hashes y fencing. Ver
+[media-first-director.md](media-first-director.md) para estados y límites.

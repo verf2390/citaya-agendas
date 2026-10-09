@@ -1,4 +1,5 @@
 "use client";
+import { directAfterAnalysis } from "@/lib/video/directorFlow.mjs";
 
 import {
   CheckCircle2,
@@ -102,6 +103,13 @@ const NICHES = [
 ] as const;
 
 const ERROR_LABELS: Record<string, string> = {
+  VISUAL_ANALYSIS_REQUIRED: "Análisis visual requerido. Revisa los medios seleccionados y vuelve a autorizar su análisis.",
+  ANALYSIS_APPROVAL_REQUIRED: "Autoriza el análisis local de las imágenes y videos seleccionados.",
+  VISUAL_ANALYSIS_FAILED: "Falló análisis visual. No se generó un montaje; vuelve a intentarlo.",
+  DIRECTOR_VISUAL_STALE: "Los medios o el proyecto cambiaron. Vuelve a dirigir el video.",
+  DIRECTOR_MEDIA_INVALID: "El Director no seleccionó medios analizados válidos. Vuelve a intentarlo.",
+  DIRECTOR_MEDIA_TOO_SHORT: "El material seleccionado no alcanza para el montaje. Añade imágenes o clips más largos.",
+  DIRECTOR_SEGMENT_UNSUPPORTED: "El análisis no permite justificar ese corte. Usa el video desde el inicio.",
   INVALID_ORIGIN: "La solicitud no proviene de este panel.",
   RATE_LIMITED: "Demasiadas solicitudes. Intenta nuevamente en un momento.",
   INVALID_UPLOAD: "El archivo no es válido o supera el límite permitido.",
@@ -216,6 +224,9 @@ export default function AdminVideosPage() {
   const [secondaryHook, setSecondaryHook] = useState("");
   const [benefit, setBenefit] = useState("");
   const [cta, setCta] = useState("");
+  const [analysisConsent, setAnalysisConsent] = useState(false);
+  const [directionStatus, setDirectionStatus] = useState("");
+  const [projectKind, setProjectKind] = useState("external");
   const [rightsApproved, setRightsApproved] = useState(false);
   const [introAssetId, setIntroAssetId] = useState("");
   const [outroAssetId, setOutroAssetId] = useState("");
@@ -340,6 +351,8 @@ export default function AdminVideosPage() {
     setMusicAssetId(assetId(media.backgroundMusic));
     setUseClipAudio(creator.useClipAudio !== false);
     setRightsApproved(next.config.mediaApproved === true);
+    setAnalysisConsent(false);
+    setProjectKind(projectMeta.productContext === "citaya-agendas" ? "citaya-agendas" : next.config.videoType === "website_showcase" ? "website_showcase" : "external");
   }, []);
 
   const loadPreview = useCallback(async (next: VideoProject) => {
@@ -477,6 +490,8 @@ export default function AdminVideosPage() {
         nicheLabel: niche.trim(),
         style,
         durationSeconds: duration,
+        videoType: projectKind === "website_showcase" ? "website_showcase" : "promotion",
+        productContext: projectKind === "citaya-agendas" ? "citaya-agendas" : "external",
         brief: brief.trim(),
       });
       const created = payload.project as VideoProject;
@@ -578,7 +593,10 @@ export default function AdminVideosPage() {
     config.project = {
       ...existingProjectMeta,
       category: niche.trim() || "Negocio local",
+      creativeBrief: brief.trim(),
+      productContext: projectKind === "citaya-agendas" ? "citaya-agendas" : "external",
     };
+    config.videoType = projectKind === "website_showcase" ? "website_showcase" : "promotion";
     config.brand = {
       ...existingBrand,
       logo: logoAssetId ? "asset:" + logoAssetId : null,
@@ -632,17 +650,17 @@ export default function AdminVideosPage() {
     setWorking("direct");
     setError("");
     try {
-      await saveConfig();
-      const payload = await apiJson({
-        action: "direct",
-        projectId: project.id,
-        brief: brief.trim(),
+      const payload = await directAfterAnalysis({
+        save: saveConfig, request: apiJson, projectId: project.id,
+        brief: brief.trim(), analysisConsent, onStatus: setDirectionStatus,
       });
+      setDirectionStatus("Montaje listo para preview.");
       const directed = payload.project as VideoProject;
       setProject(directed);
       syncEditor(directed);
       await loadProjects();
     } catch (caught) {
+      setDirectionStatus("");
       setError(
         caught instanceof Error
           ? caught.message
@@ -914,7 +932,8 @@ export default function AdminVideosPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => void selectProject(item.id)}
+                      disabled={Boolean(working)}
+                      onClick={() => { setDirectionStatus(""); void selectProject(item.id); }}
                       className={
                         "rounded-xl border p-3 text-left transition " +
                         (project?.id === item.id
@@ -1039,7 +1058,22 @@ export default function AdminVideosPage() {
                       )}
                       Dirigir con IA
                     </button>
+                    <label className="grid gap-1 text-xs font-black text-slate-600">
+                      Contenido del proyecto
+                      <select value={projectKind} disabled={Boolean(working)} onChange={(event) => setProjectKind(event.target.value)}>
+                        <option value="external">Contenido externo / cliente / portafolio</option>
+                        <option value="website_showcase">Showcase de sitio web real</option>
+                        <option value="citaya-agendas">Demo del producto CITAYA Agenda</option>
+                      </select>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
+                      <input type="checkbox" checked={analysisConsent} disabled={Boolean(working)}
+                        onChange={(event) => setAnalysisConsent(event.target.checked)} />
+                      Autorizo a Qwen Visual local a analizar las imágenes y videos seleccionados de este proyecto. No incluye audio.
+                    </label>
+                    <p role="status" aria-live="polite" className="text-xs font-bold text-blue-800">{directionStatus}</p>
                     <p className="text-xs font-medium leading-5 text-slate-500">
+                      El análisis visual se realiza después de esta autorización; subir archivos no significa que Qwen los haya visto.
                       El Director usa tu brief y las duraciones reales de los medios.
                       Si voz o video no caben en el tiempo objetivo, prioriza no cortarlos.
                     </p>

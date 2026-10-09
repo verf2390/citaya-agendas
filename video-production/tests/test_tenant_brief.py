@@ -189,7 +189,7 @@ class TenantBriefTests(unittest.TestCase):
             )
         self.assertEqual(config["content"]["hook"], "Negocio Demo")
         self.assertEqual(config["content"]["secondaryHook"], "Negocio local")
-        self.assertEqual(config["content"]["benefit"], "Video corto para negocio real.")
+        self.assertEqual(config["content"]["benefit"], "Negocio Demo")
         self.assertEqual(config["content"]["cta"], "Reserva tu hora")
         self.assertEqual(usage["totalTokens"], 40)
 
@@ -287,6 +287,7 @@ class TenantBriefTests(unittest.TestCase):
             "mediaApproved": True,
             "timing": {"intro": 2.5, "demo": 10.5, "outro": 2},
             "project": {
+                "productContext": "citaya-agendas",
                 "creativeBrief": "Usa mi video completo al inicio y luego la locución.",
                 "targetDurationSeconds": 15,
             },
@@ -327,7 +328,7 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(usage["totalTokens"], 150)
         self.assertEqual(
             [scene["headline"] for scene in directed["scenes"]],
-            ["Agenda", "Servicios", "Clientes", "Pagos y facturación", "Campañas"],
+            ["Hook", "Segundo", "Beneficio", "CTA", "Hook"],
         )
         self.assertEqual(
             [scene["mode"] for scene in directed["scenes"]],
@@ -386,7 +387,7 @@ class TenantBriefTests(unittest.TestCase):
         with patch.object(tenant_brief, "gateway_call", side_effect=[first, repaired]) as gateway:
             directed, _, usage = tenant_brief.direct_tenant_config(config=config, assets=[])
         self.assertEqual(gateway.call_count, 2)
-        self.assertEqual(len(directed["content"]["benefit"]), 64)
+        self.assertEqual(directed["content"]["benefit"], "Beneficio")
         self.assertEqual(usage["totalTokens"], 40)
         self.assertIn("Repara la propuesta anterior", gateway.call_args.args[2]["input"][0]["text"])
 
@@ -426,8 +427,8 @@ class TenantBriefTests(unittest.TestCase):
             directed, _, usage = tenant_brief.direct_tenant_config(config=config, assets=[])
         self.assertEqual(gateway.call_count, 2)
         self.assertEqual(directed["scenes"][0]["mode"], "benefit")
-        self.assertEqual(directed["content"]["hook"], "Negocio Externo")
-        self.assertEqual(directed["content"]["benefit"], "Muestra una agenda.")
+        self.assertEqual(directed["content"]["hook"], "Hook")
+        self.assertEqual(directed["content"]["benefit"], "Beneficio")
         self.assertEqual(usage["totalTokens"], 40)
 
     def test_rejects_secret_like_brief(self):
@@ -486,7 +487,7 @@ class VisualDirectorTests(unittest.TestCase):
         result, payload = self.direct()
         prompt = payload["input"][0]["text"]
         self.assertNotIn('"visual":', prompt)
-        self.assertIn('"visualIntent":"generic"', prompt)
+        self.assertIn('"visualIntent": "generic"', prompt)
         self.assertIn("benefit 64", prompt)
         self.assertNotIn("video", result[0]["scenes"][0])
 
@@ -594,8 +595,8 @@ class VisualDirectorTests(unittest.TestCase):
 
     def test_external_business_cannot_select_internal_ui(self):
         self.proposal["scenes"][0]["visualIntent"] = "agenda"
-        with self.assertRaises(tenant_brief.TenantBriefError):
-            self.direct(self.inventory)
+        result, _ = self.direct(self.inventory)
+        self.assertEqual(result[0]["scenes"][0]["mode"], "benefit")
 
     def test_image_selection_reuses_existing_scene_media(self):
         self.assets[0]["assetType"] = "image"

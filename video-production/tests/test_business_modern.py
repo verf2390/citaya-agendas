@@ -110,6 +110,37 @@ class ModernTests(unittest.TestCase):
                 self.assertEqual(len(holds), 2)
                 self.assertTrue(all(p.stat().st_size > 100 for p in holds))
 
+    def test_scene_offsets_reused_video_and_bookends(self):
+        raw = self.config()
+        video_scene = raw['scenes'][1]
+        raw['scenes'] = [{**video_scene, 'duration': 1.5, 'videoOffset': 0},
+                         {**video_scene, 'duration': 1.5, 'videoOffset': 1.5}]
+        raw['timing']['demo'] = 3
+        for template in ('local-business-promo-v2', 'creator-led-v1'):
+            raw['template'] = template
+            source, nodes, _ = self.compile(raw)
+            videos = [a for tag, a in nodes if tag == 'video']
+            self.assertEqual([float(v['data-media-start']) for v in videos], [0, 1.5])
+            self.assertEqual([float(v['data-duration']) for v in videos], [1.5, 1.5])
+            self.assertEqual(videos[0]['src'], videos[1]['src'])
+        raw['template'] = 'local-business-promo-v2'
+        c, _, ctx = validate(raw)
+        with tempfile.TemporaryDirectory() as d:
+            comp, _ = compile_composition(c, ctx, Path(d), 'preview')
+            self.assertTrue(list((comp / 'assets/inputs').glob('*-hold-3.000000.png')))
+
+    def test_invalid_offsets_and_segments_fail_production_validation(self):
+        for offset, duration in [(-1, 3), (float('nan'), 3), (True, 3), (1, 3), (4, 1), (0, 0)]:
+            with self.subTest(offset=offset, duration=duration):
+                raw = self.config()
+                raw['scenes'][1].update(videoOffset=offset, duration=duration)
+                with self.assertRaises(ConfigError):
+                    validate(raw)
+        raw = self.config()
+        raw['scenes'][0]['videoOffset'] = 0
+        with self.assertRaises(ConfigError):
+            validate(raw)
+
     def test_no_media_safe_fallback_and_no_invented_contact(self):
         raw = self.config()
         raw.pop('media')

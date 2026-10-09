@@ -63,11 +63,12 @@ class Studio(AnalysisMixin):
         if config['product']!='custom-client-video':fail('TENANT_PRODUCT','Self-service uses custom-client-video. Internal CLI supports Citaya products.')
         id=uid();now=time.time()
         self.db.execute('INSERT INTO video_projects(id,tenant_id,created_by,template_id,status,title,video_type,niche,config_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(id,actor.tenant_id,actor.user_id,config.get('template','local-business-promo-v1'),'draft',title,config.get('videoType','promotion'),config.get('niche','professional-services'),canonical(config),now,now));return id
-    def update_project(self,actor,id,config,*,expected_visual_inventory=None):
+    def update_project(self,actor,id,config,*,expected_visual_inventory=None,expected_revision=None):
         schema_validate(config)
         if config['product']!='custom-client-video':fail('TENANT_PRODUCT','Self-service uses custom-client-video.')
         with self.tx():
-            self.project(actor,id)
+            project=self.project(actor,id)
+            if expected_revision is not None and project["revision"]!=expected_revision:fail("DIRECTOR_VISUAL_STALE","Project changed during direction.")
             if expected_visual_inventory is not None and expected_visual_inventory != self._visual_inventory(actor,id):
                 fail('DIRECTOR_VISUAL_STALE','Visual inventory changed during direction.')
             if self.db.execute("SELECT 1 FROM video_jobs WHERE tenant_id=? AND project_id=? AND status IN ('queued','rendering')",(actor.tenant_id,id)).fetchone():fail('PROJECT_BUSY','Cancel or finish queued jobs before editing.')
@@ -124,6 +125,11 @@ class Studio(AnalysisMixin):
         schema_validate(config)
         if config.get('commercialProfile'):fail('TENANT_COMMERCIAL_PROFILE','Tenant AI cannot select internal operational profiles.')
         if config['product']!='custom-client-video':fail('TENANT_PRODUCT','Self-service supports reviewed business content only.')
+        from editorial_contract import media_first, selected_visual_ids
+        if media_first(config):
+            inventory=self.visual_inventory(actor,project_id)
+            if not config.get('scenes') or any(a not in inventory or inventory[a]['status'] not in ('partial','complete') for a in selected_visual_ids(config)):
+                fail('VISUAL_ANALYSIS_REQUIRED','Approved visual analysis is required.')
         with self.materialize(actor,project_id,config) as local:
             normalized,report,_=validate(local,mode)
         def restore(x):

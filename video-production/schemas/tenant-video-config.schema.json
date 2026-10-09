@@ -281,6 +281,12 @@
           "type": "number",
           "minimum": 8,
           "maximum": 60
+        },
+        "productContext": {
+          "enum": [
+            "external",
+            "citaya-agendas"
+          ]
         }
       },
       "required": []
@@ -459,6 +465,9 @@
         },
         "allowGeneratedMedia": {
           "type": "boolean"
+        },
+        "mediaFirst": {
+          "type": "boolean"
         }
       },
       "required": []
@@ -587,6 +596,11 @@
             ],
             "maxLength": 250,
             "pattern": "^asset:[a-f0-9-]{36}$"
+          },
+          "videoOffset": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 86400
           }
         },
         "required": []
