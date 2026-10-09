@@ -239,6 +239,14 @@ export async function POST(req: Request) {
     if (!allowed) return NextResponse.json({ ok: false, code: "RATE_LIMITED" }, { status: 429 });
 
     if (action === "create_from_brief") {
+      const rawMediaPolicy = body?.mediaPolicy;
+      const mediaPolicy =
+        rawMediaPolicy !== null &&
+        typeof rawMediaPolicy === "object" &&
+        !Array.isArray(rawMediaPolicy)
+          ? (rawMediaPolicy as Record<string, unknown>)
+          : undefined;
+
       const result = await callVideoStudio<Record<string, unknown>>({
         action: "create_from_brief",
         tenantId: access.tenantId,
@@ -253,7 +261,7 @@ export async function POST(req: Request) {
           durationSeconds: body?.durationSeconds,
           videoType: body?.videoType,
           productContext: body?.productContext,
-          mediaPolicy: { mediaFirst: body?.mediaPolicy?.mediaFirst ?? false },
+          mediaPolicy: { mediaFirst: mediaPolicy?.mediaFirst ?? false },
         },
       });
       return NextResponse.json({ ok: true, ...result }, { status: 201 });
