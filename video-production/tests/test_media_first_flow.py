@@ -425,6 +425,105 @@ class StructuredPolicyFlowTests(unittest.TestCase):
                 brief='Presenta el proyecto.', niche='local-business', style='minimal',
                 durationSeconds=15, **options)
 
+    def test_update_preserves_omitted_flag_and_accepts_explicit_booleans(self):
+        base = {'product': 'custom-client-video', 'brand': {'businessName': 'CITAYA'},
+                'content': dict(COPY), 'project': {'creativeBrief': 'Presenta el proyecto.'}}
+        for previous in (True, False, None):
+            for payload_policy in (None, {}, {'allowStockMedia': False},
+                                   {'mediaFirst': True}, {'mediaFirst': False}):
+                with self.subTest(previous=previous, payload_policy=payload_policy):
+                    original = copy.deepcopy(base)
+                    if previous is not None:
+                        original['mediaPolicy'] = {'mediaFirst': previous, 'allowGeneratedMedia': False}
+                    project = self.call('create_project', config=original)
+                    update = copy.deepcopy(base)
+                    # Other fields retain replacement semantics, not a deep merge.
+                    update['content'] = {'hook': 'Nuevo hook'}
+                    if payload_policy is not None:
+                        update['mediaPolicy'] = copy.deepcopy(payload_policy)
+                    untouched = copy.deepcopy(update)
+                    saved = self.call('update_project', projectId=project['id'], config=update)['config']
+                    expected = (payload_policy or {}).get('mediaFirst', previous)
+                    if expected is None:
+                        self.assertNotIn('mediaFirst', saved.get('mediaPolicy', {}))
+                    else:
+                        self.assertIs(saved['mediaPolicy']['mediaFirst'], expected)
+                    self.assertEqual(saved['content'], {'hook': 'Nuevo hook'})
+                    self.assertNotIn('allowGeneratedMedia', saved.get('mediaPolicy', {}))
+                    if payload_policy and 'allowStockMedia' in payload_policy:
+                        self.assertFalse(saved['mediaPolicy']['allowStockMedia'])
+                    self.assertEqual(update, untouched)
+        # A new legacy config does not inherit policy from another project.
+        new_project = self.call('create_project', config=base)
+        self.assertNotIn('mediaPolicy', new_project['config'])
+        self.assertFalse(media_first(new_project['config']))
+
+    def test_update_without_policy_cannot_disable_agenda_or_external_fail_closed(self):
+        for context in ('citaya-agendas', 'external'):
+            for empty_container in (False, True):
+                with self.subTest(context=context, empty_container=empty_container):
+                    project = self.create(productContext=context, mediaPolicy={'mediaFirst': True})['project']
+                    pid = project['id']
+                    with patch.object(tenant_brief, 'gateway_call') as model:
+                        with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                            self.call('direct_project', projectId=pid)
+                        self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+                        model.assert_not_called()
+                    update = copy.deepcopy(project['config'])
+                    update.pop('mediaPolicy')
+                    if empty_container:
+                        update['mediaPolicy'] = {}
+                    update['content']['hook'] = 'Otro hook'
+                    saved = self.call('update_project', projectId=pid, config=update)
+                    self.assertTrue(saved['config']['mediaPolicy']['mediaFirst'])
+                    reloaded = self.call('project_detail', projectId=pid)
+                    self.assertTrue(reloaded['config']['mediaPolicy']['mediaFirst'])
+                    with patch.object(tenant_brief, 'gateway_call') as model:
+                        with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                            self.call('direct_project', projectId=pid)
+                        self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+                        model.assert_not_called()
+
+    def test_explicit_false_disables_normal_policy_but_not_website_requirement(self):
+        for video_type in ('promotion', 'website_showcase'):
+            with self.subTest(video_type=video_type):
+                project = self.create(videoType=video_type, productContext='citaya-agendas',
+                                      mediaPolicy={'mediaFirst': True})['project']
+                config = copy.deepcopy(project['config'])
+                config['mediaPolicy']['mediaFirst'] = False
+                saved = self.call('update_project', projectId=project['id'], config=config)
+                self.assertIs(saved['config']['mediaPolicy']['mediaFirst'], False)
+                self.assertEqual(media_first(saved['config']), video_type == 'website_showcase')
+                if video_type == 'website_showcase':
+                    with patch.object(tenant_brief, 'gateway_call') as model:
+                        with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                            self.call('direct_project', projectId=project['id'])
+                        self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+                        model.assert_not_called()
+                else:
+                    proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+                        {'headline': COPY['secondaryHook'], 'visualIntent': 'agenda', 'durationSeconds': 3}]}
+                    with patch.object(tenant_brief, 'gateway_call', return_value={'text': json.dumps(proposal)}):
+                        directed = self.call('direct_project', projectId=project['id'])
+                    self.assertEqual(directed['project']['config']['scenes'][0]['mode'], 'calendar')
+                    self.assertTrue(directed['report']['valid'])
+
+    def test_update_rejects_invalid_policy_without_altering_saved_decision(self):
+        project = self.create(mediaPolicy={'mediaFirst': True})['project']
+        pid = project['id']
+        policies = [None, [], 'true', 0, {'unexpected': True}]
+        policies += [{'mediaFirst': value} for value in ('true', 'false', 0, 1, None, [], {})]
+        for policy in policies:
+            with self.subTest(policy=policy):
+                config = copy.deepcopy(project['config'])
+                config['mediaPolicy'] = policy
+                with self.assertRaises(ConfigError) as error:
+                    self.call('update_project', projectId=pid, config=config)
+                self.assertEqual(error.exception.code, 'SCHEMA_VALIDATION')
+                reloaded = self.call('project_detail', projectId=pid)
+                self.assertEqual(reloaded['config'], project['config'])
+                self.assertEqual(reloaded['revision'], project['revision'])
+
     def test_explicit_checkbox_create_reload_edit_and_direct_fail_closed(self):
         for context in ('external', 'citaya-agendas'):
             with self.subTest(context=context):

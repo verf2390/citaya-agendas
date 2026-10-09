@@ -72,6 +72,14 @@ class Studio(AnalysisMixin):
             if expected_visual_inventory is not None and expected_visual_inventory != self._visual_inventory(actor,id):
                 fail('DIRECTOR_VISUAL_STALE','Visual inventory changed during direction.')
             if self.db.execute("SELECT 1 FROM video_jobs WHERE tenant_id=? AND project_id=? AND status IN ('queued','rendering')",(actor.tenant_id,id)).fetchone():fail('PROJECT_BUSY','Cancel or finish queued jobs before editing.')
+            # Updates replace config, but omission must not disable the saved
+            # explicit media-first decision. Read it under the same write lock.
+            policy=config.get('mediaPolicy',{})
+            if 'mediaFirst' not in policy:
+                previous_policy=json.loads(project['config_json']).get('mediaPolicy',{})
+                if 'mediaFirst' in previous_policy:
+                    config={**config,'mediaPolicy':{**policy,'mediaFirst':previous_policy['mediaFirst']}}
+                    schema_validate(config)
             self.db.execute("UPDATE video_projects SET config_json=?,normalized_config_json=NULL,revision=revision+1,status='draft',template_id=?,video_type=?,niche=?,updated_at=? WHERE tenant_id=? AND id=?",(canonical(config),config.get('template','local-business-promo-v1'),config.get('videoType','promotion'),config.get('niche','professional-services'),time.time(),actor.tenant_id,id))
     def limit(self,actor,name,value):
         n=self.limits.get(actor.tenant_id,{}).get(name)

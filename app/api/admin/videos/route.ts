@@ -299,6 +299,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, project }, { status: 201 });
     }
     if (action === "update") {
+      // Config replacement: preserve omission for Studio to inherit the saved
+      // mediaPolicy.mediaFirst; an explicit false remains a distinct decision.
       const project = await callVideoStudio<unknown>({
         action: "update_project",
         tenantId: access.tenantId,

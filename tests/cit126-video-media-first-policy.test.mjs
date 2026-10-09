@@ -52,3 +52,11 @@ test('panel and create API wire the canonical policy without substituting analys
   assert.match(page, /checked=\{analysisConsent\}/);
   assert.match(route, /mediaPolicy: \{ mediaFirst: body\?\.mediaPolicy\?\.mediaFirst \?\? false \}/);
 });
+
+test('update API forwards omission and explicit false without applying creation defaults', () => {
+  const route = readFileSync('app/api/admin/videos/route.ts', 'utf8');
+  const update = route.slice(route.indexOf('if (action === "update")'), route.indexOf('if (action === "validate")'));
+  assert.match(update, /action: "update_project"/);
+  assert.match(update, /payload: \{ projectId: body\?\.projectId, config: body\?\.config \}/);
+  assert.doesNotMatch(update, /mediaFirst:\s*[^\n]*\?\?|JSON\.stringify|Object\.assign/);
+});

@@ -71,6 +71,16 @@ conserva su significado histórico (no stock ni generación); no equivale a
 media-first. La casilla tampoco autoriza análisis: ese consentimiento sigue
 siendo separado y sujeto a aprobación exacta, hashes y aislamiento de Studio.
 
+Las actualizaciones API reemplazan la config; no son un deep-merge general.
+La excepción es `mediaPolicy.mediaFirst`: si se omite el contenedor, el campo
+o se envía `mediaPolicy={}`, se conserva el valor guardado (`true` o `false`).
+Solo un booleano explícito cambia esa decisión; tipos inválidos se rechazan
+antes de escribir. La lectura/preservación sucede dentro de la transacción
+de update, con los mismos controles de tenant, revisión e inventario.
+Los demás campos mantienen la semántica de reemplazo. En creación no se hereda
+estado: la ausencia del flag conserva el default normal. `website_showcase`
+sigue siendo obligatorio, incluso después de guardar `mediaFirst=false`.
+
 El parser de lenguaje natural **no es una frontera de seguridad** ni garantiza
 entender todas las paráfrasis, negaciones o recomendaciones del español. El
 detector existente conserva sus casos soportados y sus límites; puede tener
