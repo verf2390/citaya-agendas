@@ -12,6 +12,7 @@ import math
 import os
 import re
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -50,14 +51,64 @@ def _director_visual_intents(config):
     return CITAYA_VISUAL_INTENTS if agenda_project(config) else GENERIC_VISUAL_INTENTS
 
 
+_COPY_ALIASES = {"hook": "hook", "secondary": "secondaryHook", "secondaryhook": "secondaryHook",
+                 "segundo mensaje": "secondaryHook", "benefit": "benefit", "beneficio": "benefit", "cta": "cta"}
+_COPY_HEADER = re.compile(r'^([^:\r\n]+):[ \t]*(.*)$')
+_EDITORIAL_SECTIONS = {
+    "negocio", "datos reales", "datos reales / fuente de verdad", "fuente de verdad",
+    "objetivo", "objetivo del video", "direccion visual", "estilo", "guardias",
+    "locucion", "narracion", "voiceover", "voz", "texto", "texto / cta",
+    "audio", "musica", "visuales", "visual", "escena", "escenas", "formato",
+    "duracion", "intro", "outro", "cierre", "branding", "notas", "instrucciones",
+}
+
+
+def _copy_label(value):
+    value = ''.join(c for c in unicodedata.normalize('NFKD', value.casefold())
+                    if not unicodedata.combining(c))
+    return re.sub(r'[ \t]+', ' ', value.replace('/', ' / ')).strip()
+
+
+def _copy_boundary(line, aliases, *, uppercase=True):
+    if re.match(r'^#{1,6}[ \t]+', line):
+        return True
+    header = _COPY_HEADER.fullmatch(line)
+    if not header:
+        return False
+    label = _copy_label(header[1])
+    # Known sections are case/accent independent; uppercase headings also fence
+    # future sections. A colon inside ordinary copy ("Proyecto: ...") is valid.
+    return (label in aliases or label in _COPY_ALIASES or
+            label.strip('* ') in _EDITORIAL_SECTIONS or (uppercase and header[1].isupper()))
+
+
+def _brief_copy_fields(brief, aliases, *, quote_chars='“”"'):
+    """One value line per explicit label; a new heading cancels an empty label."""
+    pending = None
+    for line in brief.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        header = _COPY_HEADER.fullmatch(line)
+        key = aliases.get(_copy_label(header[1])) if header else None
+        if key:
+            pending = key
+            line = header[2].strip()
+        elif _copy_boundary(line, aliases):
+            pending = None
+            continue
+        if pending and line:
+            value = line.strip(quote_chars)
+            if value and not _copy_boundary(value, aliases, uppercase=not bool(key)):
+                yield pending, value
+            pending = None
+
+
 def authorized_copy(config, brief):
     """Editorial prose never becomes copy. Only named fields authorize text."""
     result = {k: v for k, v in config.get("content", {}).items()
               if k in ("hook", "secondaryHook", "benefit", "cta") and isinstance(v, str) and v.strip()}
-    aliases = {"hook": "hook", "secondaryhook": "secondaryHook", "segundo mensaje": "secondaryHook",
-               "benefit": "benefit", "beneficio": "benefit", "cta": "cta"}
-    for match in re.finditer(r'(?im)^\s*(hook|secondaryHook|segundo mensaje|benefit|beneficio|cta)\s*:\s*([^\r\n]+)', brief):
-        result[aliases[match[1].lower()]] = match[2].strip().strip('“”"')
+    result.update(_brief_copy_fields(brief, _COPY_ALIASES))
     return result
 
 
@@ -261,12 +312,10 @@ def _safe_creation_fallback(*, brief, business_name, niche_label):
     hook = _normalize_creation_text(business_name, 74)
     secondary = _normalize_creation_text(niche_label, 90)
     benefit = _normalize_creation_text(business_name, 64)
-    cta_match = re.search(
-        r"(?im)^\s*(?:cta|llamado a la acci[oó]n)\s*:\s*[“\"']?([^\r\n”\"']+)",
-        brief,
-    )
+    cta_value = next((value for _, value in _brief_copy_fields(
+        brief, {"cta": "cta", "llamado a la accion": "cta"}, quote_chars='“”"\'')), "Conoce más")
     cta = _normalize_creation_text(
-        cta_match.group(1) if cta_match else "Conoce más",
+        cta_value,
         40,
     )
     return hook, secondary, benefit, cta
