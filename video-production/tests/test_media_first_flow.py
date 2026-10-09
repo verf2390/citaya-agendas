@@ -397,12 +397,23 @@ class EditorialContractTests(unittest.TestCase):
             'Utilizar exclusivamente el archivo enviado.',
             'Trabajar solamente con la imagen adjunta.',
             'USA ÚNICAMENTE\nLOS MEDIOS ENTREGADOS.',
+            'Usa únicamente estos videos proporcionados.',
+            'Usa solo mis imágenes proporcionadas.',
+            'Usa solamente los medios entregados.',
+            'Usa solo mis imágenes.',
         ]
         vague = [
             'Usa imágenes para mostrar el proyecto.', 'Puedes usar los videos proporcionados.',
             'Inspírate en los archivos adjuntos.', 'Muestra el material.',
             'Usa imágenes.', 'Puedes usar los videos.',
             'Solo quiero un anuncio. Inspírate en los archivos adjuntos.',
+            'No uses solo los archivos adjuntos.',
+            'No uses únicamente las imágenes entregadas.',
+            'No utilices exclusivamente ese material.',
+            'No use exclusivamente el material adjunto.',
+            'No usar solo los archivos adjuntos.',
+            'No te limites a usar solo los archivos adjuntos.',
+            'Puedes usar solo los videos proporcionados.',
         ]
         for brief in restricted + vague:
             with self.subTest(brief=brief):
@@ -436,6 +447,43 @@ class EditorialContractTests(unittest.TestCase):
                         assets=[{'id': 'approved', 'assetType': 'image'}],
                         visual_inventory={'approved': visual})
                 self.assertEqual(model.call_count, 1)
+
+    def test_new_restriction_blocks_agenda_ui_and_requires_approved_media(self):
+        brief = 'Usa únicamente estos videos proporcionados.'
+        asset_id = str(uuid.uuid4())
+        config = {'product': 'custom-client-video', 'template': 'creator-led-v1',
+                  'brand': {'businessName': 'CITAYA'}, 'content': COPY,
+                  'project': {'creativeBrief': brief, 'productContext': 'citaya-agendas'},
+                  'media': {'videos': ['asset:' + asset_id]}}
+        assets = [{'id': asset_id, 'assetType': 'video', 'durationMs': 20000}]
+        with patch.object(tenant_brief, 'gateway_call') as model:
+            with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                tenant_brief.direct_tenant_config(config=config, assets=assets, visual_inventory={})
+            self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+            model.assert_not_called()
+
+        visual = observation(); visual.pop('evidence'); visual['status'] = 'complete'
+        for intent in ('generic', 'agenda'):
+            proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+                {'headline': 'Diseño con identidad', 'visualIntent': intent, 'durationSeconds': 3}]}
+            with self.subTest(intent=intent), patch.object(tenant_brief, 'gateway_call',
+                    return_value={'text': json.dumps(proposal)}) as model:
+                with self.assertRaises(tenant_brief.TenantBriefError):
+                    tenant_brief.direct_tenant_config(config=config, assets=assets,
+                        visual_inventory={asset_id: visual})
+                self.assertEqual(model.call_count, 1)
+
+        proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+            {'headline': 'Diseño con identidad', 'visualIntent': 'media',
+             'assetId': asset_id, 'durationSeconds': 3}]}
+        with patch.object(tenant_brief, 'gateway_call', return_value={'text': json.dumps(proposal)}):
+            directed, _, _ = tenant_brief.direct_tenant_config(config=config, assets=assets,
+                visual_inventory={asset_id: visual})
+        self.assertTrue(directed['mediaPolicy']['mediaFirst'])
+        self.assertEqual(directed['template'], 'local-business-promo-v2')
+        self.assertTrue(all(s['mode'] == 'media' and
+                            (s.get('media') or s.get('video')) == 'asset:' + asset_id
+                            for s in directed['scenes']))
 
     def test_non_media_first_legacy_creator_clips_are_preserved(self):
         ids = [str(uuid.uuid4()), str(uuid.uuid4())]

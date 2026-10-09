@@ -60,6 +60,8 @@ conserva el comportamiento previo y no desactiva restricciones del brief ni el
 modo website showcase. La detección en español combina exclusividad
 (solo/solamente/únicamente/exclusivamente), material visual y procedencia
 (adjunto/proporcionado/suministrado/entregado/enviado), incluyendo «que te envié».
+Evalúa órdenes de uso por oración, acepta determinantes como «mis» y «estos»,
+y descarta órdenes de uso negadas o permisivas («no uses», «puedes usar»).
 También reconoce prohibiciones explícitas de inventar pantallas o agregar
 contenido ajeno a los archivos. «Usa imágenes» o «inspírate en los archivos
 adjuntos» no bastan por sí solos. No es un clasificador semántico general.
