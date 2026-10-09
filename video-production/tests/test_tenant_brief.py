@@ -12,6 +12,118 @@ sys.path[:0] = [str(ROOT / "backend"), str(ROOT / "scripts")]
 import tenant_brief
 
 
+COPY_FIELDS = {
+    "hook": "¿Tu web se ve igual que todas las demás?",
+    "secondaryHook": "Diseño con identidad",
+    "benefit": "Proyecto: Diego Videla Arquitectos",
+    "cta": "Hablemos de tu próxima web",
+}
+COPY_BLOCK = "\n".join(("TEXTO / CTA:", "Hook: " + COPY_FIELDS["hook"],
+                        "Secondary: " + COPY_FIELDS["secondaryHook"],
+                        "Benefit: " + COPY_FIELDS["benefit"], "CTA: " + COPY_FIELDS["cta"]))
+COPY_SECTION_CASES = (
+    ("Hook: Texto real", {"hook": "Texto real"}),
+    ("Hook:\nTexto real", {"hook": "Texto real"}),
+    ("Hook:\nDIRECCIÓN VISUAL: mostrar portada", {}),
+    ("Secondary:\nESTILO: premium", {}),
+    ("Benefit:\nGUARDIAS: no inventar", {}),
+    ("CTA:\nLOCUCIÓN: agenda ahora", {}),
+    (COPY_BLOCK, COPY_FIELDS),
+    ("DIRECCIÓN VISUAL:\nmostrar portada\n\nTEXTO / CTA:\nHook: Diseño con identidad",
+     {"hook": "Diseño con identidad"}),
+    ("Hook:", {}),
+    ("Presenta nuestro trabajo real.", {}),
+)
+
+
+class AuthorizedCopyTests(unittest.TestCase):
+    def test_required_copy_editorial_matrix(self):
+        for number, (brief, expected) in enumerate(COPY_SECTION_CASES, 1):
+            with self.subTest(case=number):
+                self.assertEqual(tenant_brief.authorized_copy({}, brief), expected)
+
+    def test_sections_fence_empty_copy_independent_of_case_accents_and_line_endings(self):
+        for header in ("NEGOCIO", "DATOS REALES / FUENTE DE VERDAD", "OBJETIVO DEL VIDEO",
+                       "DIRECCIÓN VISUAL", "ESTILO", "TEXTO / CTA", "GUARDIAS", "LOCUCIÓN",
+                       "NARRACIÓN", "VOZ", "AUDIO", "MÚSICA", "INSTRUCCIONES"):
+            for label in ("Hook", "Secondary", "Benefit", "CTA"):
+                for variant in (header, header.lower(), header.lower().replace('ó', 'o')):
+                    brief = label + ":  \r\n\r\n" + variant + ": instrucciones\r\nMás instrucciones"
+                    with self.subTest(label=label, header=variant):
+                        self.assertEqual(tenant_brief.authorized_copy({}, brief), {})
+        for heading in ("OTRA SECCIÓN: instrucciones", "## Dirección editorial", "**estilo:** premium"):
+            self.assertEqual(tenant_brief.authorized_copy({}, "Hook:\n" + heading + "\nmostrar portada"), {})
+
+    def test_next_copy_label_cancels_empty_field_and_still_parses_its_own_value(self):
+        brief = "Hook:\nSecondary:\nBenefit: Beneficio real\nCTA: Reserva"
+        self.assertEqual(tenant_brief.authorized_copy({}, brief), {"benefit": "Beneficio real", "cta": "Reserva"})
+        self.assertEqual(tenant_brief._safe_creation_fallback(
+            brief="CTA:\nHook: Hook real", business_name="CITAYA", niche_label="Arquitectura")[-1], "Conoce más")
+
+    def test_existing_copy_precedence_and_duplicate_labels_remain_compatible(self):
+        original = {"content": dict(COPY_FIELDS)}
+        brief = "Hook: Primero\nHook: Segundo\nHook:\nESTILO: premium\nBenefit:\n\nCTA:\n"
+        self.assertEqual(tenant_brief.authorized_copy(original, brief), {**COPY_FIELDS, "hook": "Segundo"})
+        self.assertEqual(original, {"content": COPY_FIELDS})
+        self.assertEqual(tenant_brief.authorized_copy(original, "Sin copy explícito."), COPY_FIELDS)
+
+    def test_existing_aliases_quotes_and_single_value_line_remain_supported(self):
+        brief = '  hOoK : “Hook real”\nTexto editorial adicional\nSecondaryHook: Segundo\nbeneficio: Beneficio\ncta:\n\n"Reserva"'
+        self.assertEqual(tenant_brief.authorized_copy({}, brief),
+                         {"hook": "Hook real", "secondaryHook": "Segundo", "benefit": "Beneficio", "cta": "Reserva"})
+        self.assertEqual(tenant_brief.authorized_copy({}, "Segundo mensaje:\nSegundo"), {"secondaryHook": "Segundo"})
+        self.assertEqual(tenant_brief.authorized_copy({}, "Benefit:\nProyecto: Diego Videla Arquitectos"),
+                         {"benefit": COPY_FIELDS["benefit"]})
+        self.assertEqual(tenant_brief.authorized_copy({}, "Benefit: PROYECTO: Diego Videla Arquitectos"),
+                         {"benefit": "PROYECTO: Diego Videla Arquitectos"})
+
+    def test_empty_and_inline_editorial_values_never_authorize_copy(self):
+        for label in ("Hook", "Secondary", "Benefit", "CTA"):
+            for value in ('', '   ', '""', '\n\n', 'DIRECCIÓN VISUAL: mostrar portada'):
+                with self.subTest(label=label, value=value):
+                    self.assertEqual(tenant_brief.authorized_copy({}, label + ':' + value), {})
+
+    def test_full_studio_brief_only_authorizes_the_four_copy_fields(self):
+        brief = ("NEGOCIO:\nCITAYA\n\nDATOS REALES / FUENTE DE VERDAD:\nProyecto real\n"
+                 "OBJETIVO DEL VIDEO:\nMostrar trabajo\nDIRECCIÓN VISUAL:\nmostrar portada\n"
+                 "ESTILO:\npremium\n\n" + COPY_BLOCK +
+                 "\n\nGUARDIAS:\nno inventar precios\nLOCUCIÓN:\nNuestra web tiene identidad.")
+        self.assertEqual(tenant_brief.authorized_copy({}, brief), COPY_FIELDS)
+
+    def test_fallback_cta_uses_the_same_boundaries_and_preserves_existing_alias(self):
+        for brief, expected in (("CTA:\nESTILO: premium", "Conoce más"),
+                                ("CTA:\nNARRACIÓN: agenda ahora", "Conoce más"),
+                                ("CTA: 'Estilo: premium'", "Conoce más"),
+                                ("CTA:", "Conoce más"),
+                                ("CTA:\nReserva", "Reserva"),
+                                ("Llamado a la acción: 'Reserva'", "Reserva"),
+                                ("CTA: Primero\nCTA: Segundo", "Primero")):
+            with self.subTest(brief=brief):
+                self.assertEqual(tenant_brief._safe_creation_fallback(
+                    brief=brief, business_name="CITAYA", niche_label="Arquitectura")[-1], expected)
+
+    def test_creation_fallback_does_not_surface_the_next_editorial_section(self):
+        response = {"text": "{}", "toolCalls": []}
+        with patch.object(tenant_brief, "gateway_call", return_value=response):
+            config, report, _ = tenant_brief.generate_tenant_config(
+                brief="Presenta nuestro trabajo.\nCTA:\nESTILO: premium", business_name="CITAYA",
+                niche="architecture", style="minimal", duration_seconds=15)
+        self.assertEqual(config['content']['cta'], 'Conoce más')
+        self.assertTrue(report['valid'])
+        self.assertNotIn('ESTILO', json.dumps(config['content']))
+
+    def test_media_first_draft_does_not_authorize_an_editorial_section_after_empty_copy(self):
+        response = {"text": json.dumps(COPY_FIELDS), "toolCalls": []}
+        with patch.object(tenant_brief, "gateway_call", return_value=response):
+            config, report, _ = tenant_brief.generate_tenant_config(
+                brief="Hook:\nDIRECCIÓN VISUAL: mostrar portada\nCTA: Hablemos", business_name="CITAYA",
+                niche="architecture", style="minimal", duration_seconds=15, media_first_requested=True)
+        self.assertEqual(config['content']['hook'], 'CITAYA')
+        self.assertEqual(config['content']['cta'], 'Hablemos')
+        self.assertEqual(report['code'], 'VISUAL_ANALYSIS_REQUIRED')
+        self.assertNotIn('DIRECCIÓN VISUAL', json.dumps(config['content'], ensure_ascii=False))
+
+
 class TenantBriefTests(unittest.TestCase):
     def test_builds_valid_custom_client_config_without_media(self):
         response = {
@@ -189,7 +301,7 @@ class TenantBriefTests(unittest.TestCase):
             )
         self.assertEqual(config["content"]["hook"], "Negocio Demo")
         self.assertEqual(config["content"]["secondaryHook"], "Negocio local")
-        self.assertEqual(config["content"]["benefit"], "Video corto para negocio real.")
+        self.assertEqual(config["content"]["benefit"], "Negocio Demo")
         self.assertEqual(config["content"]["cta"], "Reserva tu hora")
         self.assertEqual(usage["totalTokens"], 40)
 
@@ -287,6 +399,7 @@ class TenantBriefTests(unittest.TestCase):
             "mediaApproved": True,
             "timing": {"intro": 2.5, "demo": 10.5, "outro": 2},
             "project": {
+                "productContext": "citaya-agendas",
                 "creativeBrief": "Usa mi video completo al inicio y luego la locución.",
                 "targetDurationSeconds": 15,
             },
@@ -327,7 +440,7 @@ class TenantBriefTests(unittest.TestCase):
         self.assertEqual(usage["totalTokens"], 150)
         self.assertEqual(
             [scene["headline"] for scene in directed["scenes"]],
-            ["Agenda", "Servicios", "Clientes", "Pagos y facturación", "Campañas"],
+            ["Hook", "Segundo", "Beneficio", "CTA", "Hook"],
         )
         self.assertEqual(
             [scene["mode"] for scene in directed["scenes"]],
@@ -386,7 +499,7 @@ class TenantBriefTests(unittest.TestCase):
         with patch.object(tenant_brief, "gateway_call", side_effect=[first, repaired]) as gateway:
             directed, _, usage = tenant_brief.direct_tenant_config(config=config, assets=[])
         self.assertEqual(gateway.call_count, 2)
-        self.assertEqual(len(directed["content"]["benefit"]), 64)
+        self.assertEqual(directed["content"]["benefit"], "Beneficio")
         self.assertEqual(usage["totalTokens"], 40)
         self.assertIn("Repara la propuesta anterior", gateway.call_args.args[2]["input"][0]["text"])
 
@@ -426,8 +539,8 @@ class TenantBriefTests(unittest.TestCase):
             directed, _, usage = tenant_brief.direct_tenant_config(config=config, assets=[])
         self.assertEqual(gateway.call_count, 2)
         self.assertEqual(directed["scenes"][0]["mode"], "benefit")
-        self.assertEqual(directed["content"]["hook"], "Negocio Externo")
-        self.assertEqual(directed["content"]["benefit"], "Muestra una agenda.")
+        self.assertEqual(directed["content"]["hook"], "Hook")
+        self.assertEqual(directed["content"]["benefit"], "Beneficio")
         self.assertEqual(usage["totalTokens"], 40)
 
     def test_rejects_secret_like_brief(self):
@@ -486,7 +599,7 @@ class VisualDirectorTests(unittest.TestCase):
         result, payload = self.direct()
         prompt = payload["input"][0]["text"]
         self.assertNotIn('"visual":', prompt)
-        self.assertIn('"visualIntent":"generic"', prompt)
+        self.assertIn('"visualIntent": "generic"', prompt)
         self.assertIn("benefit 64", prompt)
         self.assertNotIn("video", result[0]["scenes"][0])
 
@@ -505,6 +618,19 @@ class VisualDirectorTests(unittest.TestCase):
         self.assertNotIn("offer", redirected[0]["content"])
         self.assertNotIn("price", redirected[0]["content"])
         self.assertNotIn("featureLabels", redirected[0]["content"])
+
+    def test_director_keeps_existing_copy_when_empty_labels_meet_editorial_sections(self):
+        self.config['content'] = dict(COPY_FIELDS)
+        original = dict(self.config['content'])
+        for brief in ("Hook:\nDIRECCIÓN VISUAL: mostrar portada", "Secondary:\nESTILO: premium",
+                      "Benefit:\nGUARDIAS: no inventar", "CTA:\nLOCUCIÓN: agenda ahora"):
+            with self.subTest(brief=brief):
+                (directed, _, _), _ = self.direct(brief=brief)
+                for key in ('hook', 'secondaryHook', 'benefit', 'cta'):
+                    self.assertEqual(directed['content'][key], original[key])
+                self.assertTrue(all(scene['headline'] in original.values() for scene in directed['scenes']))
+                if 'LOCUCIÓN' in brief:
+                    self.assertEqual(directed['audio']['tts']['text'], 'agenda ahora')
 
     def test_content_fixture_can_select_exact_working_asset(self):
         def choose(_endpoint, _token, payload):
@@ -594,8 +720,8 @@ class VisualDirectorTests(unittest.TestCase):
 
     def test_external_business_cannot_select_internal_ui(self):
         self.proposal["scenes"][0]["visualIntent"] = "agenda"
-        with self.assertRaises(tenant_brief.TenantBriefError):
-            self.direct(self.inventory)
+        result, _ = self.direct(self.inventory)
+        self.assertEqual(result[0]["scenes"][0]["mode"], "benefit")
 
     def test_image_selection_reuses_existing_scene_media(self):
         self.assets[0]["assetType"] = "image"

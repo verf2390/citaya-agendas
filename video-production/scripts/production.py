@@ -2,6 +2,7 @@
 from pathlib import Path
 from datetime import date
 import copy, hashlib, json, math, re, subprocess, shutil
+from editorial_contract import agenda_project, media_first, PRODUCT_UI_MODES
 ROOT = Path(__file__).resolve().parents[1]
 TYPES = ['product_demo','sales_ad','feature_highlight','niche_specific_ad','website_showcase','before_after','portfolio','educational','roadmap','concept','promotion','service_highlight','appointment_campaign','seasonal_offer','creator_led']
 MODES = {'preview': {'width':720,'height':1280,'fps':24,'quality':'draft'}, 'final':{'width':1080,'height':1920,'fps':30,'quality':'delivery'}}
@@ -142,7 +143,7 @@ def validate(config,mode='preview'):
     scenes=c.get('scenes',[{'capability':i} for i in ids])
     if not isinstance(scenes,list) or not 1<=len(scenes)<=12: fail('INVALID_SCENES','Use 1–12 scenes.')
     for s in scenes:
-        shape(s,['capability','mode','headline','duration','media','video','beforeMedia','afterMedia'],'scene')
+        shape(s,['capability','mode','headline','duration','media','video','beforeMedia','afterMedia','videoOffset'],'scene')
         if s.get('capability') not in ids: fail('UNVALIDATED_SCENE','Every scene must reference a selected capability.')
         cap=caps[s['capability']];s['mode']=s.get('mode',cap['suggestedScenes'][0])
         if s['mode'] not in template['sceneModes']: fail('INVALID_SCENE_MODE','Unsupported scene mode for template.')
@@ -152,7 +153,9 @@ def validate(config,mode='preview'):
         s['duration']=number(s.get('duration',timing['demo']/len(scenes)),1.0,30,'scene.duration')
         for key in ['media','beforeMedia','afterMedia']: s[key]=asset(s.get(key),'image')
         s['video']=asset(s.get('video'),'video')
-        if s['video'] and float(probe(ROOT/s['video'])['format']['duration'])+.04<s['duration']: fail('MEDIA_DURATION','Scene video is shorter than its scene.')
+        offset=number(s.get('videoOffset',0),0,86400,'scene.videoOffset')
+        if 'videoOffset' in s and not s['video']: fail('MEDIA_DURATION','Video offset requires a video.')
+        if s['video'] and float(probe(ROOT/s['video'])['format']['duration'])<s['duration']+offset: fail('MEDIA_DURATION','Scene segment exceeds source duration.')
         if s['mode']=='before_after' and bool(s['beforeMedia'])!=bool(s['afterMedia']): fail('BEFORE_AFTER_PAIR','Provide both beforeMedia and afterMedia or neither for a labeled concept.')
     if abs(sum(s['duration'] for s in scenes)-timing['demo'])>.001: fail('INVALID_TIMING','Scene durations must sum to timing.demo.')
     if set(ids)-{s['capability'] for s in scenes}: fail('MISSING_CAPABILITY_SCENE','Every selected capability must have a scene.')
@@ -187,7 +190,7 @@ def validate(config,mode='preview'):
     tts=validate_tts_config(c,duration)
     if tts is not None:audio['tts']=tts
     if (speech or (tts and tts['enabled'])) and audio['music'] and not audio['duckMusicDuringVoice']: fail('VOICE_DUCKING_REQUIRED','Music under speech requires duckMusicDuringVoice=true.')
-    project=c.setdefault('project',{});shape(project,['name','category','creativeBrief','targetDurationSeconds'],'project');project['name']=text(project.get('name','Estudio Demo' if c['niche']=='architecture' else 'Negocio Demo'),32,'project.name');project['category']=text(project.get('category',niches[c['niche']]['name']),35,'project.category')
+    project=c.setdefault('project',{});shape(project,['name','category','creativeBrief','targetDurationSeconds','productContext'],'project');project['name']=text(project.get('name',str(c.get('brand',{}).get('businessName',''))[:32] or ('Estudio Demo' if c['niche']=='architecture' else 'Negocio Demo')),32,'project.name');project['category']=text(project.get('category',niches[c['niche']]['name']),35,'project.category')
     for s in scenes:
         media.extend(s[k] for k in ['media','video','beforeMedia','afterMedia'] if s[k])
         for i,pat in forbidden.items():
@@ -237,10 +240,19 @@ def expand_inputs(c):
     if c.get('product')=='custom-client-video':
         if not c.get('brand',{}).get('businessName'):fail('MISSING_BRAND','Client videos require brand.businessName.')
         if not c['mediaPolicy']['useOnlyProvidedAssets']:fail('MEDIA_POLICY','Client videos must use only provided assets.')
-        citaya_owned_ui=str(c.get('brand',{}).get('businessName','')).strip().casefold()=='citaya'
+        citaya_owned_ui=agenda_project(c)
         citaya_ui_modes={'service','calendar','customers','payments','campaign-preview'}
+        strict=media_first(c)
+        if strict:
+            audio=c.setdefault('audio',{})
+            audio.setdefault('music',bool(m.get('backgroundMusic')))
+            audio.setdefault('sfx',bool(m.get('soundEffects')))
+            if (audio.get('music') and not m.get('backgroundMusic')) or (audio.get('sfx') and not m.get('soundEffects')):fail('MEDIA_POLICY','Media-first audio must also be supplied.')
+        if strict and c.get('template')!='local-business-promo-v2':fail('MEDIA_FIRST_RENDERER_REQUIRED','Provided-media projects require the fullscreen media renderer.')
         for scene in c['scenes']:
             mode=scene.get('mode')
+            if strict and (mode!='media' or not (scene.get('media') or scene.get('video'))):fail('VISUAL_ANALYSIS_REQUIRED','Every visual scene requires approved provided media.')
+            if mode in PRODUCT_UI_MODES and not citaya_owned_ui:fail('PRODUCT_CONTEXT_REQUIRED','Internal UI requires an explicit product context.')
             trusted_product_ui=citaya_owned_ui and mode in citaya_ui_modes
             if mode not in ['benefit','media','before_after'] and not scene.get('media') and not trusted_product_ui:fail('PROVIDED_MEDIA_REQUIRED','Client website scenes require a supplied screenshot; no invented business imagery.')
             if mode=='before_after' and not (scene.get('beforeMedia') and scene.get('afterMedia')):fail('PROVIDED_MEDIA_REQUIRED','Client before/after requires both reviewed images.')

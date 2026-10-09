@@ -10,6 +10,7 @@ Those files are not overwritten by retries; maintenance is a separate operation.
 from contextlib import ExitStack, contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import time
@@ -136,6 +137,37 @@ class AnalysisMixin:
     def analysis_job(self, actor, job_id):
         return self._analysis_row("video_analysis_jobs", actor, job_id)
 
+    def analysis_progress(self, actor, project_id, job_id):
+        """Settle lost progress atomically, without limiting a renewed lease.
+
+        Queued work gets its existing initial lease duration to obtain a claim.
+        Retry already resets queued_at. Running work uses only lease_until.
+        """
+        with self.tx():
+            job = self.analysis_job(actor, job_id)
+            if job['project_id'] != project_id:
+                fail('NOT_FOUND', 'Analysis not found.')
+            if job['status'] in ('queued', 'running') and self._check_analysis_approval(job) is not None:
+                now = time.time()
+                if job['status'] == 'running' and job['lease_until'] <= now:
+                    self._fail_analysis(job_id, 'LEASE_EXPIRED')
+                elif job['status'] == 'queued' and now >= job['queued_at'] + job['lease_seconds']:
+                    self._fail_analysis(job_id, 'ANALYSIS_QUEUE_TIMEOUT')
+            return self.analysis_job(actor, job_id)
+
+    def fail_analysis_start(self, job, code='ANALYSIS_START_FAILED'):
+        """Trusted launcher: fail only the still-unclaimed queue generation.
+
+        A late exit must never invalidate a successful claim or an explicit retry.
+        """
+        with self.tx():
+            return self.db.execute(
+                "UPDATE video_analysis_jobs SET status='failed',finished_at=?,error_code=? "
+                "WHERE tenant_id=? AND project_id=? AND id=? AND status='queued' "
+                "AND queued_at=? AND attempt=?",
+                (time.time(), code, job['tenant_id'], job['project_id'], job['id'],
+                 job['queued_at'], job['attempt'])).rowcount == 1
+
     def _active_equivalent(self, job):
         return self.db.execute(
             "SELECT id FROM video_analysis_jobs WHERE tenant_id=? AND project_id=? "
@@ -143,6 +175,27 @@ class AnalysisMixin:
             "AND status IN ('queued','running')",
             (job["tenant_id"], job["project_id"], job["approval_fingerprint"],
              job["strategy_version"], job["extractor_version"])).fetchone()
+
+    def reserve_analysis_launch(self, job, node):
+        """Trusted launcher MUST hold worker_lock before calling this method.
+
+        Queued worker_node records an assigned wake; running worker_node retains
+        its normal claim meaning. Retry already clears it. If the global lock
+        is free again but the assignment never claimed, that wake was lost.
+        """
+        _text(node)
+        with self.tx():
+            row = self.db.execute(
+                "SELECT * FROM video_analysis_jobs WHERE tenant_id=? AND project_id=? AND id=?",
+                (job['tenant_id'], job['project_id'], job['id'])).fetchone()
+            if (row is None or row['status'] != 'queued' or
+                    (row['queued_at'], row['attempt']) != (job['queued_at'], job['attempt'])):
+                return False
+            if row['worker_node'] is not None:
+                self._fail_analysis(job['id'], 'ANALYSIS_START_FAILED')
+                return False
+            self.db.execute('UPDATE video_analysis_jobs SET worker_node=? WHERE id=?', (node, job['id']))
+            return True
 
     def enqueue_analysis(self, actor, project_id, approval_id, idempotency_key, *,
                          strategy_version, extractor_version):
@@ -194,16 +247,16 @@ class AnalysisMixin:
             self._fail_analysis(job["id"], error.code)
             return None
 
-    def claim_analysis(self, node, lease_seconds=1800):
+    def claim_analysis(self, node, lease_seconds=1800, *, job_id=None):
         _text(node)
         if type(lease_seconds) is not int or not 1 <= lease_seconds <= 3600:
             fail("INVALID_LEASE", "Lease must be between 1 and 3600 seconds.")
         with self.tx():
             self.db.execute(
                 "UPDATE video_analysis_jobs SET status='failed',finished_at=?,error_code='LEASE_EXPIRED',"
-                "lease_token=NULL,lease_until=NULL WHERE status='running' AND lease_until<=?",
-                (time.time(), time.time()))
-            for row in self.db.execute("SELECT * FROM video_analysis_jobs WHERE status='queued' ORDER BY queued_at,id").fetchall():
+                "lease_token=NULL,lease_until=NULL WHERE status='running' AND lease_until<=? AND (? IS NULL OR id=?)",
+                (time.time(), time.time(), job_id, job_id))
+            for row in self.db.execute("SELECT * FROM video_analysis_jobs WHERE status='queued' AND (? IS NULL OR id=?) ORDER BY queued_at,id", (job_id, job_id)).fetchall():
                 job = dict(row)
                 if self._check_analysis_approval(job) is None:
                     continue
@@ -263,10 +316,13 @@ class AnalysisMixin:
             self._check_approval(actor, job["approval_id"], job["project_id"])
             if self._active_equivalent(job):
                 fail("ANALYSIS_ALREADY_ACTIVE", "Equivalent analysis is active.")
+            # Distinguish queue generations even with a frozen/backward clock;
+            # late startup failures are fenced against this existing timestamp.
+            queued_at = max(time.time(), math.nextafter(job['queued_at'], math.inf))
             self.db.execute(
                 "UPDATE video_analysis_jobs SET status='queued',queued_at=?,started_at=NULL,finished_at=NULL,"
                 "worker_node=NULL,error_code=NULL,lease_token=NULL,lease_until=NULL WHERE tenant_id=? AND id=?",
-                (time.time(), actor.tenant_id, job_id))
+                (queued_at, actor.tenant_id, job_id))
         return job_id
 
     @contextmanager

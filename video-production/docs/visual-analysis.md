@@ -41,8 +41,9 @@ job_id = studio.enqueue_analysis(
 )
 ```
 
-No se expone approve/enqueue a Next ni se considera `mediaApproved` autorización
-de análisis. Esa bandera anterior sigue siendo una aprobación separada del render.
+El panel ahora expone la orquestación `prepare_direction` / `direction_analysis_status`
+a través del bridge autenticado. Se mantiene `mediaApproved` separado de la
+autorización explícita de análisis. Ver [flujo media-first](media-first-director.md).
 
 ## Contrato del modelo y evidencia
 

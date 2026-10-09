@@ -176,7 +176,8 @@ def estimate_tts_seconds(text, speed=1.0):
     # routinely fail after the expensive synthesis step. The actual WAV duration
     # is still checked by tts_provider and is never truncated to fit this estimate.
     seconds = max(len(safe) / 10.0, words / 1.8) + 0.75
-    return round(seconds / float(speed), 3)
+    # Round planning budgets upward to a tenth; never round away headroom.
+    return math.ceil(seconds / float(speed) * 10) / 10
 
 
 NARRATION = re.compile(r'^\s*(?:#{1,6}\s*)?(?:\*\*)?(LOCUCI[ÓO]N|NARRACI[ÓO]N|VOICEOVER)(?:\*\*)?\s*:(?:\*\*)?\s*(.*)$', re.I)

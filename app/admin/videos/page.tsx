@@ -1,4 +1,6 @@
 "use client";
+import { directAfterAnalysis } from "@/lib/video/directorFlow.mjs";
+import { structuredMediaFirst, mediaFirstPolicy, mediaFirstDraft, requestMediaFirstState, mediaFirstStatus } from "@/lib/video/mediaFirstPolicy.mjs";
 
 import {
   CheckCircle2,
@@ -37,6 +39,23 @@ type VideoAsset = {
   height: number | null;
   createdAt: number;
 };
+
+type MediaFirstState = {
+  structured: boolean;
+  effectiveMediaFirst: boolean;
+  source: "website_showcase" | "structured" | "brief" | "none";
+};
+
+function useMediaFirstStatus(config: Record<string, unknown> | null,
+  request: (body: Record<string, unknown>) => Promise<Record<string, unknown>>) {
+  const inputKey = config ? JSON.stringify(config) : null;
+  const [result, setResult] = useState<{ key: string; state: MediaFirstState | null; error: boolean } | null>(null);
+  useEffect(() => {
+    if (!inputKey) return;
+    return requestMediaFirstState({ config: JSON.parse(inputKey), request, onResult: setResult });
+  }, [inputKey, request]);
+  return mediaFirstStatus(result, inputKey);
+}
 
 type VideoJob = {
   id: string;
@@ -102,6 +121,16 @@ const NICHES = [
 ] as const;
 
 const ERROR_LABELS: Record<string, string> = {
+  VISUAL_ANALYSIS_REQUIRED: "Análisis visual requerido. Revisa los medios seleccionados y vuelve a autorizar su análisis.",
+  ANALYSIS_APPROVAL_REQUIRED: "Autoriza el análisis local de las imágenes y videos seleccionados.",
+  VISUAL_ANALYSIS_FAILED: "Falló análisis visual. No se generó un montaje; vuelve a intentarlo.",
+  ANALYSIS_START_FAILED: "No se pudo iniciar el análisis visual. Reintenta Dirigir con IA.",
+  ANALYSIS_QUEUE_TIMEOUT: "El análisis visual no pudo obtener turno. Reintenta Dirigir con IA.",
+  LEASE_EXPIRED: "El worker dejó de responder. Reintenta la operación.",
+  DIRECTOR_VISUAL_STALE: "Los medios o el proyecto cambiaron. Vuelve a dirigir el video.",
+  DIRECTOR_MEDIA_INVALID: "El Director no seleccionó medios analizados válidos. Vuelve a intentarlo.",
+  DIRECTOR_MEDIA_TOO_SHORT: "El material seleccionado no alcanza para el montaje. Añade imágenes o clips más largos.",
+  DIRECTOR_SEGMENT_UNSUPPORTED: "El análisis no permite justificar ese corte. Usa el video desde el inicio.",
   INVALID_ORIGIN: "La solicitud no proviene de este panel.",
   RATE_LIMITED: "Demasiadas solicitudes. Intenta nuevamente en un momento.",
   INVALID_UPLOAD: "El archivo no es válido o supera el límite permitido.",
@@ -211,11 +240,17 @@ export default function AdminVideosPage() {
   const [style, setStyle] = useState("dynamic");
   const [duration, setDuration] = useState(15);
   const [brief, setBrief] = useState("");
+  const [createProjectKind, setCreateProjectKind] = useState("external");
+  const [createMediaFirst, setCreateMediaFirst] = useState(false);
 
   const [hook, setHook] = useState("");
   const [secondaryHook, setSecondaryHook] = useState("");
   const [benefit, setBenefit] = useState("");
   const [cta, setCta] = useState("");
+  const [analysisConsent, setAnalysisConsent] = useState(false);
+  const [directionStatus, setDirectionStatus] = useState("");
+  const [projectKind, setProjectKind] = useState("external");
+  const [mediaFirst, setMediaFirst] = useState(false);
   const [rightsApproved, setRightsApproved] = useState(false);
   const [introAssetId, setIntroAssetId] = useState("");
   const [outroAssetId, setOutroAssetId] = useState("");
@@ -293,6 +328,9 @@ export default function AdminVideosPage() {
     [router],
   );
 
+  const createPolicyStatus = useMediaFirstStatus(mediaFirstDraft(brief, createProjectKind, createMediaFirst), apiJson);
+  const editPolicyStatus = useMediaFirstStatus(project ? mediaFirstDraft(brief, projectKind, mediaFirst) : null, apiJson);
+
   const syncEditor = useCallback((next: VideoProject) => {
     const content =
       next.config.content && typeof next.config.content === "object"
@@ -340,6 +378,9 @@ export default function AdminVideosPage() {
     setMusicAssetId(assetId(media.backgroundMusic));
     setUseClipAudio(creator.useClipAudio !== false);
     setRightsApproved(next.config.mediaApproved === true);
+    setAnalysisConsent(false);
+    setProjectKind(next.config.videoType === "website_showcase" ? "website_showcase" : projectMeta.productContext === "citaya-agendas" ? "citaya-agendas" : "external");
+    setMediaFirst(structuredMediaFirst(next.config));
   }, []);
 
   const loadPreview = useCallback(async (next: VideoProject) => {
@@ -477,6 +518,9 @@ export default function AdminVideosPage() {
         nicheLabel: niche.trim(),
         style,
         durationSeconds: duration,
+        videoType: createProjectKind === "website_showcase" ? "website_showcase" : "promotion",
+        productContext: createProjectKind === "citaya-agendas" ? "citaya-agendas" : "external",
+        mediaPolicy: mediaFirstPolicy({ videoType: createProjectKind }, createMediaFirst),
         brief: brief.trim(),
       });
       const created = payload.project as VideoProject;
@@ -578,7 +622,11 @@ export default function AdminVideosPage() {
     config.project = {
       ...existingProjectMeta,
       category: niche.trim() || "Negocio local",
+      creativeBrief: brief.trim(),
+      productContext: projectKind === "citaya-agendas" ? "citaya-agendas" : "external",
     };
+    config.videoType = projectKind === "website_showcase" ? "website_showcase" : "promotion";
+    config.mediaPolicy = mediaFirstPolicy(config, mediaFirst);
     config.brand = {
       ...existingBrand,
       logo: logoAssetId ? "asset:" + logoAssetId : null,
@@ -632,17 +680,17 @@ export default function AdminVideosPage() {
     setWorking("direct");
     setError("");
     try {
-      await saveConfig();
-      const payload = await apiJson({
-        action: "direct",
-        projectId: project.id,
-        brief: brief.trim(),
+      const payload = await directAfterAnalysis({
+        save: saveConfig, request: apiJson, projectId: project.id,
+        brief: brief.trim(), analysisConsent, onStatus: setDirectionStatus,
       });
+      setDirectionStatus("Montaje listo para preview.");
       const directed = payload.project as VideoProject;
       setProject(directed);
       syncEditor(directed);
       await loadProjects();
     } catch (caught) {
+      setDirectionStatus("");
       setError(
         caught instanceof Error
           ? caught.message
@@ -873,6 +921,24 @@ export default function AdminVideosPage() {
                 </div>
 
                 <label className="grid gap-1 text-xs font-black text-slate-600">
+                  Contenido del proyecto
+                  <select value={createProjectKind} disabled={Boolean(working)} onChange={(event) => setCreateProjectKind(event.target.value)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950">
+                    <option value="external">Contenido externo / cliente / portafolio</option>
+                    <option value="website_showcase">Showcase de sitio web real</option>
+                    <option value="citaya-agendas">Demo del producto CITAYA Agenda</option>
+                  </select>
+                </label>
+                <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
+                  <input type="checkbox" checked={createMediaFirst || createProjectKind === "website_showcase"}
+                    disabled={Boolean(working) || createProjectKind === "website_showcase"}
+                    onChange={(event) => setCreateMediaFirst(event.target.checked)} />
+                  Usar únicamente los medios proporcionados
+                  {createProjectKind === "website_showcase" && " (obligatorio para showcase web)"}
+                </label>
+                <p role="status" aria-live="polite" className="text-xs font-medium text-blue-800">{createPolicyStatus}</p>
+
+                <label className="grid gap-1 text-xs font-black text-slate-600">
                   ¿Qué video quieres?
                   <textarea
                     value={brief}
@@ -914,7 +980,8 @@ export default function AdminVideosPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => void selectProject(item.id)}
+                      disabled={Boolean(working)}
+                      onClick={() => { setDirectionStatus(""); void selectProject(item.id); }}
                       className={
                         "rounded-xl border p-3 text-left transition " +
                         (project?.id === item.id
@@ -1039,7 +1106,30 @@ export default function AdminVideosPage() {
                       )}
                       Dirigir con IA
                     </button>
+                    <label className="grid gap-1 text-xs font-black text-slate-600">
+                      Contenido del proyecto
+                      <select value={projectKind} disabled={Boolean(working)} onChange={(event) => setProjectKind(event.target.value)}>
+                        <option value="external">Contenido externo / cliente / portafolio</option>
+                        <option value="website_showcase">Showcase de sitio web real</option>
+                        <option value="citaya-agendas">Demo del producto CITAYA Agenda</option>
+                      </select>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
+                      <input type="checkbox" checked={mediaFirst || projectKind === "website_showcase"}
+                        disabled={Boolean(working) || projectKind === "website_showcase"}
+                        onChange={(event) => setMediaFirst(event.target.checked)} />
+                      Usar únicamente los medios proporcionados
+                      {projectKind === "website_showcase" && " (obligatorio para showcase web)"}
+                    </label>
+                    <p role="status" aria-live="polite" className="text-xs font-medium text-blue-800">{editPolicyStatus}</p>
+                    <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
+                      <input type="checkbox" checked={analysisConsent} disabled={Boolean(working)}
+                        onChange={(event) => setAnalysisConsent(event.target.checked)} />
+                      Autorizo a Qwen Visual local a analizar las imágenes y videos seleccionados de este proyecto. No incluye audio.
+                    </label>
+                    <p role="status" aria-live="polite" className="text-xs font-bold text-blue-800">{directionStatus}</p>
                     <p className="text-xs font-medium leading-5 text-slate-500">
+                      El análisis visual se realiza después de esta autorización; subir archivos no significa que Qwen los haya visto.
                       El Director usa tu brief y las duraciones reales de los medios.
                       Si voz o video no caben en el tiempo objetivo, prioriza no cortarlos.
                     </p>

@@ -239,6 +239,14 @@ export async function POST(req: Request) {
     if (!allowed) return NextResponse.json({ ok: false, code: "RATE_LIMITED" }, { status: 429 });
 
     if (action === "create_from_brief") {
+      const rawMediaPolicy = body?.mediaPolicy;
+      const mediaPolicy =
+        rawMediaPolicy !== null &&
+        typeof rawMediaPolicy === "object" &&
+        !Array.isArray(rawMediaPolicy)
+          ? (rawMediaPolicy as Record<string, unknown>)
+          : undefined;
+
       const result = await callVideoStudio<Record<string, unknown>>({
         action: "create_from_brief",
         tenantId: access.tenantId,
@@ -251,9 +259,35 @@ export async function POST(req: Request) {
           nicheLabel: body?.nicheLabel,
           style: body?.style,
           durationSeconds: body?.durationSeconds,
+          videoType: body?.videoType,
+          productContext: body?.productContext,
+          mediaPolicy: { mediaFirst: mediaPolicy?.mediaFirst ?? false },
         },
       });
       return NextResponse.json({ ok: true, ...result }, { status: 201 });
+    }
+    if (action === "media_first_state") {
+      const result = await callVideoStudio<Record<string, unknown>>({
+        action: "media_first_state",
+        tenantId: access.tenantId,
+        userId: access.userId,
+        payload: { config: body?.config },
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+    if (action === "prepare_direction" || action === "direction_analysis_status") {
+      const result = await callVideoStudio<Record<string, unknown>>({
+        action,
+        tenantId: access.tenantId,
+        userId: access.userId,
+        payload: {
+          projectId: body?.projectId,
+          assetIds: body?.assetIds,
+          analysisConsent: body?.analysisConsent,
+          analysisJobId: body?.analysisJobId,
+        },
+      });
+      return NextResponse.json({ ok: true, ...result });
     }
     if (action === "direct") {
       const projectId = String(body?.projectId ?? "").trim();
@@ -282,6 +316,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, project }, { status: 201 });
     }
     if (action === "update") {
+      // Config replacement: preserve omission for Studio to inherit the saved
+      // mediaPolicy.mediaFirst; an explicit false remains a distinct decision.
       const project = await callVideoStudio<unknown>({
         action: "update_project",
         tenantId: access.tenantId,

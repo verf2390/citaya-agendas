@@ -13,7 +13,8 @@ import sys
 from pathlib import Path
 
 from studio import Actor, Studio, uid
-from tenant_brief import direct_tenant_config, generate_tenant_config
+from tenant_brief import TenantBriefError, direct_tenant_config, generate_tenant_config
+from director_analysis import prepare_direction, direction_analysis_status, visual_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STORAGE = ROOT / "storage" / "private"
@@ -135,6 +136,14 @@ def main():
         raise ValueError("INVALID_REQUEST")
 
     actor = Actor(tenant_id, user_id)
+    if action == "media_first_state":
+        # Draft policy inspection: no storage, models, analysis, or mutation.
+        from production import tenant_schema_validate
+        from editorial_contract import media_first_state
+        config = payload.get("config")
+        tenant_schema_validate(config)
+        emit({"ok": True, "result": {"mediaFirstState": media_first_state(config)}})
+        return
     storage = Path(os.environ.get("CITAYA_VIDEO_STORAGE_ROOT", str(DEFAULT_STORAGE))).resolve()
     studio = Studio(storage)
     try:
@@ -142,6 +151,9 @@ def main():
             result = studio.list_projects(actor)
         elif action == "create_from_brief":
             title = str(payload.get("title") or "Nuevo video")
+            policy = payload.get("mediaPolicy", {})
+            if not isinstance(policy, dict):
+                raise TenantBriefError("INVALID_MEDIA_POLICY")
             config, report, usage = generate_tenant_config(
                 brief=payload.get("brief"),
                 business_name=payload.get("businessName"),
@@ -149,6 +161,9 @@ def main():
                 niche_label=payload.get("nicheLabel"),
                 style=payload.get("style"),
                 duration_seconds=payload.get("durationSeconds"),
+                video_type=payload.get("videoType", "promotion"),
+                product_context=payload.get("productContext", "external"),
+                media_first_requested=policy.get("mediaFirst", False),
             )
             project_id = studio.create_project(actor, config, title)
             if usage is not None:
@@ -167,6 +182,13 @@ def main():
                 "report": report,
                 "usage": usage,
             }
+        elif action == "prepare_direction":
+            result = prepare_direction(studio, actor, str(payload.get("projectId", "")),
+                                       approved_ids=payload.get("assetIds"),
+                                       analysis_consent=payload.get("analysisConsent"))
+        elif action == "direction_analysis_status":
+            result = direction_analysis_status(studio, actor, str(payload.get("projectId", "")),
+                                               str(payload.get("analysisJobId", "")))
         elif action == "direct_project":
             project_id = str(payload.get("projectId", ""))
             project = studio.project(actor, project_id)
@@ -185,17 +207,21 @@ def main():
                     (actor.tenant_id, project_id),
                 )
             ]
+            # Never silently direct selected visuals without analysis, even outside media-first.
+            prepare_direction(studio, actor, project_id)
             visual_inventory = studio.visual_inventory(actor, project_id)
+            required_ids = visual_inputs(studio, actor, project_id, config)
+            selected_assets = [a for a in assets if a["id"] in required_ids or a["assetType"] == "audio"]
             directed, director_report, usage = direct_tenant_config(
                 config=config,
-                assets=assets,
+                assets=selected_assets,
                 brief=payload.get("brief"),
                 visual_inventory=visual_inventory,
             )
             _, validation_report = studio.validated(
                 actor, project_id, directed, "preview"
             )
-            studio.update_project(actor, project_id, directed, expected_visual_inventory=visual_inventory)
+            studio.update_project(actor, project_id, directed, expected_visual_inventory=visual_inventory, expected_revision=project["revision"])
             if usage is not None:
                 try:
                     studio.record_ai_usage(

@@ -2,6 +2,7 @@
 from pathlib import Path
 import html,json,shutil
 from production import ROOT,MODES,digest,write_json
+from editorial_contract import agenda_project
 E=lambda s:html.escape(str(s),quote=True)
 UI={'service':'service','professional':'professional','date':'date','confirmed':'confirm-selected','calendar':'calendar-selected','customers':'customers-selected','reminder':'reminder-selected'}
 STATUS={'live':'Disponible','demo':'Demo · No implica disponibilidad','in_progress':'En desarrollo · No disponible','planned':'Planificado · No disponible'}
@@ -17,7 +18,7 @@ def compile_composition(c,ctx,out,mode):
             src=ROOT/path;name=digest(src)[:16]+src.suffix.lower();dest=comp/'assets'/'inputs'/name;dest.parent.mkdir(exist_ok=True);shutil.copy2(src,dest);imported[path]='assets/inputs/'+name
         return imported[path]
     brand=c.get('brand',{});custom=c['product']=='custom-client-video';content=c.get('content',{});
-    citaya_owned_ui=custom and str(brand.get('businessName','')).strip().casefold()=='citaya'
+    citaya_owned_ui=custom and agenda_project(c)
     t=c['timing'];duration=sum(t.values());r=MODES[mode];scale=r['width']/1080
     css=(ROOT/'templates/citaya-saas-vertical-v1/layout.css').read_text()
     css+='\n'+(ROOT/'templates/presets.css').read_text()
@@ -101,7 +102,7 @@ def compile_composition(c,ctx,out,mode):
         id=f'scene-{i}';m=s['mode'];cap=ctx['caps'][s['capability']]
         if s.get('video'):
             body=''
-            vp=media(s['video']);pieces.append(f'<video id="scene-video-{i}" class="clip creator-video" src="{vp}" muted playsinline data-start="{clock}" data-duration="{s["duration"]}" data-track-index="0"></video>')
+            vp=media(s['video']);pieces.append(f'<video id="scene-video-{i}" class="clip creator-video" src="{vp}" muted playsinline data-start="{clock}" data-duration="{s["duration"]}" data-media-start="{s.get('videoOffset',0)}" data-track-index="0"></video>')
         elif ctx['template']['renderer']=='website':body=website(s)
         elif s['media']:body=f'<img src="{media(s["media"])}" alt="Material revisado">'
         elif citaya_owned_ui and m in ['payments','campaign-preview']:
