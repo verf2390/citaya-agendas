@@ -136,6 +136,14 @@ def main():
         raise ValueError("INVALID_REQUEST")
 
     actor = Actor(tenant_id, user_id)
+    if action == "media_first_state":
+        # Draft policy inspection: no storage, models, analysis, or mutation.
+        from production import tenant_schema_validate
+        from editorial_contract import media_first_state
+        config = payload.get("config")
+        tenant_schema_validate(config)
+        emit({"ok": True, "result": {"mediaFirstState": media_first_state(config)}})
+        return
     storage = Path(os.environ.get("CITAYA_VIDEO_STORAGE_ROOT", str(DEFAULT_STORAGE))).resolve()
     studio = Studio(storage)
     try:

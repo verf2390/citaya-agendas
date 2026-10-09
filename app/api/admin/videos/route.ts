@@ -258,6 +258,15 @@ export async function POST(req: Request) {
       });
       return NextResponse.json({ ok: true, ...result }, { status: 201 });
     }
+    if (action === "media_first_state") {
+      const result = await callVideoStudio<Record<string, unknown>>({
+        action: "media_first_state",
+        tenantId: access.tenantId,
+        userId: access.userId,
+        payload: { config: body?.config },
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
     if (action === "prepare_direction" || action === "direction_analysis_status") {
       const result = await callVideoStudio<Record<string, unknown>>({
         action,

@@ -71,6 +71,23 @@ conserva su significado histórico (no stock ni generación); no equivale a
 media-first. La casilla tampoco autoriza análisis: ese consentimiento sigue
 siendo separado y sujeto a aprobación exacta, hashes y aislamiento de Studio.
 
+La casilla representa la decisión estructurada guardada; un mensaje separado
+indica la política efectiva y su fuente. `editorial_contract.media_first_state`
+calcula ese resumen con el mismo `media_first` que usa el pipeline, con precedencia
+de presentación `website_showcase > structured > brief > none`. Si solo el brief
+activa la política, la casilla permanece desmarcada y el mensaje explica esa
+activación. Para showcase la casilla se muestra marcada y bloqueada; esa obligación
+no sobrescribe un `false` estructurado al editar otros campos.
+
+El panel consulta la acción autenticada `media_first_state` del bridge con el
+brief, tipo y decisión explícita del borrador al cargar o editar. Es una lectura
+derivada sin abrir Studio, guardar config, analizar medios ni llamar a modelos.
+No hay detector textual en JavaScript. La consulta se agrupa tras 400 ms sin
+cambios; mientras se recalcula se muestra **Comprobando uso de medios…**, se
+descartan respuestas de borradores anteriores y un fallo se muestra como error
+de comprobación, nunca como política desactivada. El resumen no se persiste
+como una segunda política.
+
 Las actualizaciones API reemplazan la config; no son un deep-merge general.
 La excepción es `mediaPolicy.mediaFirst`: si se omite el contenedor, el campo
 o se envía `mediaPolicy={}`, se conserva el valor guardado (`true` o `false`).

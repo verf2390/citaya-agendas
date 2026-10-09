@@ -1,6 +1,6 @@
 "use client";
 import { directAfterAnalysis } from "@/lib/video/directorFlow.mjs";
-import { mediaFirstEnabled, mediaFirstPolicy } from "@/lib/video/mediaFirstPolicy.mjs";
+import { structuredMediaFirst, mediaFirstPolicy, mediaFirstDraft, requestMediaFirstState, mediaFirstStatus } from "@/lib/video/mediaFirstPolicy.mjs";
 
 import {
   CheckCircle2,
@@ -39,6 +39,23 @@ type VideoAsset = {
   height: number | null;
   createdAt: number;
 };
+
+type MediaFirstState = {
+  structured: boolean;
+  effectiveMediaFirst: boolean;
+  source: "website_showcase" | "structured" | "brief" | "none";
+};
+
+function useMediaFirstStatus(config: Record<string, unknown> | null,
+  request: (body: Record<string, unknown>) => Promise<Record<string, unknown>>) {
+  const inputKey = config ? JSON.stringify(config) : null;
+  const [result, setResult] = useState<{ key: string; state: MediaFirstState | null; error: boolean } | null>(null);
+  useEffect(() => {
+    if (!inputKey) return;
+    return requestMediaFirstState({ config: JSON.parse(inputKey), request, onResult: setResult });
+  }, [inputKey, request]);
+  return mediaFirstStatus(result, inputKey);
+}
 
 type VideoJob = {
   id: string;
@@ -308,6 +325,9 @@ export default function AdminVideosPage() {
     [router],
   );
 
+  const createPolicyStatus = useMediaFirstStatus(mediaFirstDraft(brief, createProjectKind, createMediaFirst), apiJson);
+  const editPolicyStatus = useMediaFirstStatus(project ? mediaFirstDraft(brief, projectKind, mediaFirst) : null, apiJson);
+
   const syncEditor = useCallback((next: VideoProject) => {
     const content =
       next.config.content && typeof next.config.content === "object"
@@ -357,7 +377,7 @@ export default function AdminVideosPage() {
     setRightsApproved(next.config.mediaApproved === true);
     setAnalysisConsent(false);
     setProjectKind(next.config.videoType === "website_showcase" ? "website_showcase" : projectMeta.productContext === "citaya-agendas" ? "citaya-agendas" : "external");
-    setMediaFirst(mediaFirstEnabled(next.config));
+    setMediaFirst(structuredMediaFirst(next.config));
   }, []);
 
   const loadPreview = useCallback(async (next: VideoProject) => {
@@ -913,6 +933,7 @@ export default function AdminVideosPage() {
                   Usar únicamente los medios proporcionados
                   {createProjectKind === "website_showcase" && " (obligatorio para showcase web)"}
                 </label>
+                <p role="status" aria-live="polite" className="text-xs font-medium text-blue-800">{createPolicyStatus}</p>
 
                 <label className="grid gap-1 text-xs font-black text-slate-600">
                   ¿Qué video quieres?
@@ -1097,6 +1118,7 @@ export default function AdminVideosPage() {
                       Usar únicamente los medios proporcionados
                       {projectKind === "website_showcase" && " (obligatorio para showcase web)"}
                     </label>
+                    <p role="status" aria-live="polite" className="text-xs font-medium text-blue-800">{editPolicyStatus}</p>
                     <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
                       <input type="checkbox" checked={analysisConsent} disabled={Boolean(working)}
                         onChange={(event) => setAnalysisConsent(event.target.checked)} />

@@ -64,6 +64,15 @@ def media_first(config, brief=None):
     return False
 
 
+def media_first_state(config):
+    """Read-only presentation of the same policy used by direction/render."""
+    structured = config.get('mediaPolicy', {}).get('mediaFirst') is True
+    effective = media_first(config)
+    source = ('website_showcase' if config.get('videoType') == 'website_showcase' else
+              'structured' if structured else 'brief' if effective else 'none')
+    return {'structured': structured, 'effectiveMediaFirst': effective, 'source': source}
+
+
 def selected_visual_ids(config):
     """Exactly the visual inputs chosen by the editor; audio never enters vision."""
     media = config.get('media', {})

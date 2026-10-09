@@ -17,6 +17,7 @@ export type VideoStudioAction =
   | "project_detail"
   | "create_project"
   | "update_project"
+  | "media_first_state"
   | "upload"
   | "validate"
   | "enqueue"

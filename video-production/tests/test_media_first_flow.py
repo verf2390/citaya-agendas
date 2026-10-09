@@ -24,7 +24,7 @@ from studio import Actor, Studio
 from production import ConfigError, validate, probe, schema_validate, tenant_schema_validate, digest
 from compose import compile_composition
 from audio_mix import mix_audio
-from editorial_contract import media_first, selected_visual_ids
+from editorial_contract import media_first, media_first_state, selected_visual_ids
 from test_analysis_worker import FakeProvider
 from test_vision_provider import observation
 
@@ -424,6 +424,63 @@ class StructuredPolicyFlowTests(unittest.TestCase):
             return self.call('create_from_brief', title='Policy draft', businessName='CITAYA',
                 brief='Presenta el proyecto.', niche='local-business', style='minimal',
                 durationSeconds=15, **options)
+
+    def test_draft_policy_projection_is_canonical_and_never_opens_storage_or_models(self):
+        for flag, video_type, brief, source in (
+                (True, 'promotion', 'Texto neutro.', 'structured'),
+                (False, 'promotion', 'Usa solo los archivos adjuntos.', 'brief'),
+                (False, 'promotion', 'Texto neutro.', 'none'),
+                (False, 'website_showcase', 'Texto neutro.', 'website_showcase'),
+                (True, 'promotion', 'Usa solo los archivos adjuntos.', 'structured'),
+                (True, 'website_showcase', 'Usa solo los archivos adjuntos.', 'website_showcase')):
+            with self.subTest(flag=flag, video_type=video_type, source=source):
+                config = {'product': 'custom-client-video', 'videoType': video_type,
+                          'project': {'creativeBrief': brief}, 'mediaPolicy': {'mediaFirst': flag}}
+                original = copy.deepcopy(config)
+                with patch.object(bridge, 'Studio') as storage, \
+                     patch.object(tenant_brief, 'gateway_call') as model:
+                    state = self.call('media_first_state', config=config)['mediaFirstState']
+                    storage.assert_not_called()
+                    model.assert_not_called()
+                self.assertEqual(state, media_first_state(config))
+                self.assertIs(state['structured'], flag)
+                self.assertEqual(state['source'], source)
+                self.assertEqual(state['effectiveMediaFirst'], media_first(config))
+                self.assertEqual(config, original)
+        for config in ({'product': 'custom-client-video'},
+                       {'product': 'custom-client-video', 'videoType': 'website_showcase'}):
+            state = self.call('media_first_state', config=config)['mediaFirstState']
+            self.assertFalse(state['structured'])
+            self.assertEqual(state['effectiveMediaFirst'], config.get('videoType') == 'website_showcase')
+
+    def test_projection_recalculates_brief_without_changing_explicit_saved_policy(self):
+        config = {'product': 'custom-client-video', 'videoType': 'promotion',
+                  'mediaPolicy': {'mediaFirst': False}, 'project': {'creativeBrief': 'Texto neutro.'}}
+        project = self.call('create_project', config=config)
+        for brief, source in (('Usa solo los archivos adjuntos.', 'brief'),
+                              ('Texto neutro.', 'none'),
+                              ('Usa solo los archivos adjuntos.', 'brief')):
+            draft = copy.deepcopy(config)
+            draft['project']['creativeBrief'] = brief
+            state = self.call('media_first_state', config=draft)['mediaFirstState']
+            self.assertEqual(state['source'], source)
+            self.assertEqual(state['effectiveMediaFirst'], source == 'brief')
+            self.assertFalse(state['structured'])
+            # Reading draft state must not save it implicitly.
+            self.assertEqual(self.call('project_detail', projectId=project['id'])['config'], config)
+            saved = self.call('update_project', projectId=project['id'], config=draft)
+            reopened = self.call('project_detail', projectId=project['id'])
+            self.assertEqual(saved['config'], reopened['config'])
+            self.assertEqual(self.call('media_first_state', config=reopened['config'])['mediaFirstState'], state)
+            config = draft
+
+    def test_projection_rejects_malformed_policy_before_storage(self):
+        for policy in (None, [], 'x', {'mediaFirst': None}, {'mediaFirst': 'true'}, {'mediaFirst': 1}):
+            with self.subTest(policy=policy), patch.object(bridge, 'Studio') as storage:
+                with self.assertRaises(ConfigError) as error:
+                    self.call('media_first_state', config={'product': 'custom-client-video', 'mediaPolicy': policy})
+                self.assertEqual(error.exception.code, 'TENANT_SCHEMA_VALIDATION')
+                storage.assert_not_called()
 
     def test_update_preserves_omitted_flag_and_accepts_explicit_booleans(self):
         base = {'product': 'custom-client-video', 'brand': {'businessName': 'CITAYA'},
