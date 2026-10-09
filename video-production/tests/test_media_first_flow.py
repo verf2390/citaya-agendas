@@ -21,7 +21,7 @@ import bridge
 import director_analysis
 import tenant_brief
 from studio import Actor, Studio
-from production import ConfigError, validate, probe, schema_validate, tenant_schema_validate
+from production import ConfigError, validate, probe, schema_validate, tenant_schema_validate, digest
 from compose import compile_composition
 from audio_mix import mix_audio
 from editorial_contract import media_first, selected_visual_ids
@@ -56,6 +56,13 @@ class WebsiteFlowTests(unittest.TestCase):
         subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=330:sample_rate=48000',
                         '-t','10.13',str(voice)],check=True,capture_output=True)
         cls.files.append(voice)
+        cls.creator_files = []
+        for label, color in [('intro', 'purple'), ('outro', 'orange')]:
+            path = Path(cls.fixtures.name) / (label + '.mp4')
+            subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i',
+                            f'color={color}:s=144x256:r=12', '-t', '2', '-c:v', 'libx264',
+                            '-threads', '1', str(path)], check=True, capture_output=True)
+            cls.creator_files.append(path)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -98,7 +105,7 @@ class WebsiteFlowTests(unittest.TestCase):
                 return super().analyze_asset(frames)
         provider=WebsiteProvider()
         self.assertTrue(analysis_worker.run_one(studio,'test-ui',provider,job_id=job_id))
-        self.assertEqual(provider.calls,5)
+        self.assertEqual(provider.calls,len(members))
 
     def analyze(self):
         with patch.object(director_analysis,'launch_analysis',side_effect=self.run_analysis):
@@ -117,6 +124,160 @@ class WebsiteFlowTests(unittest.TestCase):
         scenes=[{'headline':'Vista atractiva de la portada', 'visualIntent':'media','assetId':lookup[label],
                  'durationSeconds':3} for label in ['homepage','projects','about','contact','navigation']]
         return {'text':json.dumps({**COPY,'scenes':scenes,'outroSeconds':1.5}),'toolCalls':[]}
+
+    def add_legacy_clips(self, slots=('introVideo', 'outroVideo')):
+        ids = [self.s.upload(self.actor, self.pid, path) for path in self.creator_files]
+        self.labels.update(zip(ids, ('intro', 'outro')))
+        self.config['creator'] = {slot: 'asset:' + aid for slot, aid in
+                                  zip(('introVideo', 'outroVideo'), ids) if slot in slots}
+        self.s.update_project(self.actor, self.pid, self.config)
+        return ids
+
+    def analyze_selected(self):
+        ids = selected_visual_ids(self.config)
+        with patch.object(director_analysis, 'launch_analysis', side_effect=self.run_analysis):
+            result = self.call('prepare_direction', assetIds=ids, analysisConsent=True)
+        self.assertEqual(self.call('direction_analysis_status', analysisJobId=result['analysisJobId'])['status'], 'ready')
+        return result['analysisJobId']
+
+    def test_legacy_intro_and_outro_require_analysis_in_studio_and_director(self):
+        self.analyze()
+        for slot in ('introVideo', 'outroVideo'):
+            with self.subTest(slot=slot):
+                self.add_legacy_clips((slot,))
+                # A renderable main scene cannot hide an unanalysed bookend.
+                config = {**self.config, 'scenes': [{'mode': 'media', 'media': 'asset:' + self.ids[0],
+                            'capability': 'provided_business_content', 'duration': 16}]}
+                with self.assertRaises(ConfigError) as error:
+                    self.s.validated(self.actor, self.pid, config, 'preview')
+                self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+                with patch.object(tenant_brief, 'gateway_call') as model:
+                    with self.assertRaises(ConfigError) as error:
+                        self.call('direct_project')
+                    self.assertEqual(error.exception.code, 'ANALYSIS_APPROVAL_REQUIRED')
+                    model.assert_not_called()
+                with patch.object(director_analysis, 'launch_analysis') as launch:
+                    with self.assertRaises(ConfigError) as error:
+                        self.call('prepare_direction', assetIds=sorted(self.ids[:5]), analysisConsent=True)
+                    self.assertEqual(error.exception.code, 'ANALYSIS_APPROVAL_REQUIRED')
+                    launch.assert_not_called()
+                # Also exercise the Director's own guard, independently of bridge.
+                assets = [{'id': aid, 'assetType': self.s.row('video_assets', self.actor, aid)['asset_type'],
+                           'durationMs': self.s.row('video_assets', self.actor, aid)['duration_ms']}
+                          for aid in selected_visual_ids(config)]
+                with patch.object(tenant_brief, 'gateway_call') as model:
+                    with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                        tenant_brief.direct_tenant_config(config=config, assets=assets,
+                            visual_inventory=self.s.visual_inventory(self.actor, self.pid))
+                    self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+                    model.assert_not_called()
+
+    def test_legacy_clips_analyzed_directed_materialized_and_rendered(self):
+        intro, outro = self.add_legacy_clips()
+        job = self.analyze_selected()
+        members = self.s.media_approval(self.actor, self.s.analysis_job(self.actor, job)['approval_id'])['members']
+        self.assertEqual(sorted(m['asset_id'] for m in members), sorted(self.ids[:5] + [intro, outro]))
+        with patch.object(tenant_brief, 'gateway_call', side_effect=self.proposal):
+            c = self.call('direct_project')['project']['config']
+        self.assertEqual(c['media']['creatorIntro'], 'asset:' + intro)
+        self.assertEqual(c['media']['creatorOutro'], 'asset:' + outro)
+        self.assertTrue(self.s.validated(self.actor, self.pid, c, 'preview')[1]['valid'])
+        with self.s.materialize(self.actor, self.pid, c) as local, tempfile.TemporaryDirectory() as d:
+            normalized, _, ctx = validate(local)
+            comp, _ = compile_composition(normalized, ctx, Path(d), 'preview')
+            html = (comp / 'index.html').read_text()
+            self.assertIn('id="creator-intro-video"', html)
+            self.assertIn('id="outro-video"', html)
+            for aid in (intro, outro):
+                sha = self.s.row('video_assets', self.actor, aid)['sha256']
+                rendered_path = 'assets/inputs/' + sha[:16] + '.mp4'
+                self.assertIn(rendered_path, html)
+                self.assertEqual(digest(comp / rendered_path), sha)
+
+    def test_matching_legacy_and_public_slots_deduplicate_and_validate(self):
+        intro, outro = self.add_legacy_clips()
+        self.config['media'].update(creatorIntro='asset:' + intro, creatorOutro='asset:' + outro)
+        self.s.update_project(self.actor, self.pid, self.config)
+        self.assertEqual(selected_visual_ids(self.config), sorted(self.ids[:5] + [intro, outro]))
+        job = self.analyze_selected()
+        members = self.s.media_approval(self.actor, self.s.analysis_job(self.actor, job)['approval_id'])['members']
+        self.assertEqual(len(members), 7)
+        with patch.object(tenant_brief, 'gateway_call', side_effect=self.proposal):
+            c = self.call('direct_project')['project']['config']
+        c['creator'].update(self.config['creator'])
+        self.assertTrue(self.s.validated(self.actor, self.pid, c, 'preview')[1]['valid'])
+
+    def test_legacy_clip_revocation_and_stale_hash_fail_closed(self):
+        self.analyze()
+        intro, _ = self.add_legacy_clips()
+        job = self.analyze_selected()
+        with patch.object(tenant_brief, 'gateway_call', side_effect=self.proposal):
+            c = self.call('direct_project')['project']['config']
+        # Exercise the legacy-only API config, not just its normalized output.
+        c['creator'].update(self.config['creator'])
+        c['media'].pop('creatorIntro'); c['media'].pop('creatorOutro')
+        self.assertTrue(self.s.validated(self.actor, self.pid, c, 'preview')[1]['valid'])
+        source = self.s.root / self.s.row('video_assets', self.actor, intro)['storage_path']
+        original = source.read_bytes()
+        for invalidation in ('stale_hash', 'revoked'):
+            with self.subTest(invalidation=invalidation):
+                if invalidation == 'stale_hash':
+                    source.write_bytes(original + b'changed')
+                else:
+                    source.write_bytes(original)
+                    self.s.revoke_media_set(self.actor, self.s.analysis_job(self.actor, job)['approval_id'])
+                with self.assertRaises(ConfigError) as error:
+                    self.s.validated(self.actor, self.pid, c, 'preview')
+                self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+
+    def test_detected_restriction_without_website_type_requires_real_assets(self):
+        self.config['videoType'] = 'promotion'
+        brief = 'Usa únicamente los videos e imágenes que te proporcioné.'
+        self.config['project']['creativeBrief'] = brief
+        self.s.update_project(self.actor, self.pid, self.config)
+        with patch.object(tenant_brief, 'gateway_call') as model:
+            with self.assertRaises(ConfigError) as error:
+                self.call('direct_project')
+            self.assertEqual(error.exception.code, 'ANALYSIS_APPROVAL_REQUIRED')
+            model.assert_not_called()
+        self.analyze()
+        with patch.object(tenant_brief, 'gateway_call', side_effect=self.proposal):
+            c = self.call('direct_project')['project']['config']
+        self.assertTrue(c['mediaPolicy']['mediaFirst'])
+        self.assertTrue(all(s['mode'] == 'media' and (s.get('media') or s.get('video'))
+                            in {'asset:' + aid for aid in self.ids[:5]} for s in c['scenes']))
+        self.assertTrue(self.s.validated(self.actor, self.pid, c, 'preview')[1]['valid'])
+
+    def test_non_media_first_legacy_creator_render_needs_no_visual_approval(self):
+        intro, outro = self.add_legacy_clips()
+        c = copy.deepcopy(self.config)
+        c['videoType'] = 'promotion'
+        c['project']['creativeBrief'] = 'Presenta nuestros servicios.'
+        c['scenes'] = [{'mode': 'media', 'media': 'asset:' + self.ids[0],
+                        'capability': 'provided_business_content', 'duration': 16}]
+        self.assertEqual(self.s.visual_inventory(self.actor, self.pid), {})
+        self.assertTrue(self.s.validated(self.actor, self.pid, c, 'preview')[1]['valid'])
+        with self.s.materialize(self.actor, self.pid, c) as local, tempfile.TemporaryDirectory() as d:
+            normalized, _, ctx = validate(local)
+            comp, _ = compile_composition(normalized, ctx, Path(d), 'preview')
+            html = (comp / 'index.html').read_text()
+            for aid in (intro, outro):
+                sha = self.s.row('video_assets', self.actor, aid)['sha256']
+                rendered_path = 'assets/inputs/' + sha[:16] + '.mp4'
+                self.assertIn(rendered_path, html)
+                self.assertEqual(digest(comp / rendered_path), sha)
+
+    def test_legacy_creator_assets_remain_project_and_tenant_scoped(self):
+        for actor in (self.actor, Actor(str(uuid.uuid4()), str(uuid.uuid4()))):
+            with self.subTest(tenant=actor == self.actor):
+                other = self.s.create_project(actor, self.config)
+                aid = self.s.upload(actor, other, self.creator_files[0])
+                config = {**self.config, 'creator': {'introVideo': 'asset:' + aid}}
+                self.s.update_project(self.actor, self.pid, config)
+                with patch.object(director_analysis, 'launch_analysis') as launch:
+                    with self.assertRaises(ConfigError):
+                        self.call('prepare_direction', assetIds=selected_visual_ids(config), analysisConsent=True)
+                    launch.assert_not_called()
 
     def test_diego_videla_upload_analysis_director_materialization_renderer_audio(self):
         job_id=self.analyze()
@@ -222,6 +383,78 @@ class WebsiteFlowTests(unittest.TestCase):
 
 
 class EditorialContractTests(unittest.TestCase):
+    def test_explicit_spanish_restrictions_and_vague_requests(self):
+        restricted = [
+            'No inventes ninguna pantalla. Usa solo los archivos adjuntos.',
+            'Usa únicamente los videos e imágenes que te proporcioné.',
+            'Utiliza exclusivamente el material suministrado.',
+            'Trabaja solo con el material que te envié.',
+            'Usa solamente los videos proporcionados.',
+            'Usa únicamente las imágenes entregadas.',
+            'No inventes ninguna pantalla; usa los medios suministrados.',
+            'No inventes contenido; usa los archivos adjuntos.',
+            'No agregues contenido que no esté en los archivos proporcionados.',
+            'Utilizar exclusivamente el archivo enviado.',
+            'Trabajar solamente con la imagen adjunta.',
+            'USA ÚNICAMENTE\nLOS MEDIOS ENTREGADOS.',
+        ]
+        vague = [
+            'Usa imágenes para mostrar el proyecto.', 'Puedes usar los videos proporcionados.',
+            'Inspírate en los archivos adjuntos.', 'Muestra el material.',
+            'Usa imágenes.', 'Puedes usar los videos.',
+            'Solo quiero un anuncio. Inspírate en los archivos adjuntos.',
+        ]
+        for brief in restricted + vague:
+            with self.subTest(brief=brief):
+                self.assertEqual(media_first({'project': {'creativeBrief': brief}}), brief in restricted)
+
+    def test_structured_policy_and_website_keep_their_existing_precedence(self):
+        self.assertTrue(media_first({'mediaPolicy': {'mediaFirst': True}}, 'Usa imágenes.'))
+        self.assertTrue(media_first({'videoType': 'website_showcase'}, 'Usa imágenes.'))
+        self.assertFalse(media_first({'mediaPolicy': {'mediaFirst': False}}, 'Usa imágenes.'))
+        # False is not an opt-out from an explicit restriction or website mode.
+        self.assertTrue(media_first({'mediaPolicy': {'mediaFirst': False}}, 'Usa solo los archivos adjuntos.'))
+        self.assertTrue(media_first({'mediaPolicy': {'mediaFirst': False}, 'videoType': 'website_showcase'}))
+
+    def test_detected_restriction_cannot_fallback_or_select_unapproved_assets(self):
+        config = {'product': 'custom-client-video', 'brand': {'businessName': 'Agency'},
+                  'project': {'creativeBrief': 'Trabaja solo con el material que te envié.'}}
+        with patch.object(tenant_brief, 'gateway_call') as model:
+            with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                tenant_brief.direct_tenant_config(config=config, assets=[], visual_inventory={})
+            self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+            model.assert_not_called()
+        visual = observation(); visual.pop('evidence'); visual['status'] = 'complete'
+        for scene in ({'visualIntent': 'generic'}, {'visualIntent': 'media'},
+                      {'visualIntent': 'media', 'assetId': 'unapproved'}):
+            proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+                {'headline': 'Diseño con identidad', 'durationSeconds': 3, **scene}]}
+            with self.subTest(scene=scene), patch.object(tenant_brief, 'gateway_call',
+                    return_value={'text': json.dumps(proposal)}) as model:
+                with self.assertRaises(tenant_brief.TenantBriefError):
+                    tenant_brief.direct_tenant_config(config=config,
+                        assets=[{'id': 'approved', 'assetType': 'image'}],
+                        visual_inventory={'approved': visual})
+                self.assertEqual(model.call_count, 1)
+
+    def test_non_media_first_legacy_creator_clips_are_preserved(self):
+        ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        config = {'product': 'custom-client-video', 'template': 'creator-led-v1',
+                  'brand': {'businessName': 'Agency'}, 'content': COPY,
+                  'project': {'creativeBrief': 'Presenta nuestros servicios.'},
+                  'creator': dict(zip(('introVideo', 'outroVideo'), ['asset:' + i for i in ids]))}
+        proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+            {'headline': 'Diseño con identidad', 'visualIntent': 'generic', 'durationSeconds': 3}]}
+        with patch.object(tenant_brief, 'gateway_call', return_value={'text': json.dumps(proposal)}):
+            directed, _, _ = tenant_brief.direct_tenant_config(config=config,
+                assets=[{'id': i, 'assetType': 'video', 'durationMs': 2000} for i in ids])
+        self.assertFalse(media_first(directed))
+        self.assertEqual(directed['media']['creatorIntro'], 'asset:' + ids[0])
+        self.assertEqual(directed['media']['creatorOutro'], 'asset:' + ids[1])
+        self.assertEqual(directed['timing']['intro'], 2)
+        self.assertEqual(directed['timing']['outro'], 2)
+        self.assertEqual(config['creator']['introVideo'], 'asset:' + ids[0])
+
     def test_media_first_phrases_are_general(self):
         for brief in ['usar únicamente los medios proporcionados','usar el video y pantallazos proporcionados',
                       'la página debe ser la protagonista','no inventar pantallas','Use only provided media']:

@@ -55,6 +55,21 @@ con nueva aprobación; no hay fallback a dirección sin análisis. Un inventario
 medios proporcionados, protagonismo de la página o no inventar pantallas activa
 media-first. `useOnlyProvidedAssets` conserva su significado histórico (no stock
 ni generación); no se cambia retroactivamente a todos los anuncios tipográficos.
+El flag `mediaFirst=true` impone la política aunque el brief sea vago; `false`
+conserva el comportamiento previo y no desactiva restricciones del brief ni el
+modo website showcase. La detección en español combina exclusividad
+(solo/solamente/únicamente/exclusivamente), material visual y procedencia
+(adjunto/proporcionado/suministrado/entregado/enviado), incluyendo «que te envié».
+También reconoce prohibiciones explícitas de inventar pantallas o agregar
+contenido ajeno a los archivos. «Usa imágenes» o «inspírate en los archivos
+adjuntos» no bastan por sí solos. No es un clasificador semántico general.
+
+El conjunto de medios visuales incluye tanto `media.creatorIntro/creatorOutro`
+como los aliases legacy `creator.introVideo/outroVideo`, deduplicados por asset ID.
+Todos pasan por la misma aprobación, análisis e integridad de Studio. El Director
+promueve un clip legacy al campo público cuando este no existe; los campos
+públicos explícitos conservan precedencia. Materialización y render siguen el
+contrato existente, sin accesos alternativos a archivos.
 
 En media-first cada escena es `mode=media` y refiere un asset aprobado con
 observación `partial` o `complete`. Un asset desconocido, sin observaciones o

@@ -576,6 +576,11 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
         current.pop(key, None)
     creator_public = current.get("creator")
     if isinstance(creator_public, dict):
+        # Preserve legacy-only visual slots before removing derived aliases.
+        # An explicitly set public slot (including null) remains authoritative.
+        for public, legacy in (("creatorIntro", "introVideo"), ("creatorOutro", "outroVideo")):
+            if creator_public.get(legacy):
+                current.setdefault("media", {}).setdefault(public, creator_public[legacy])
         for key in ("introVideo", "outroVideo", "voiceover"):
             creator_public.pop(key, None)
 
