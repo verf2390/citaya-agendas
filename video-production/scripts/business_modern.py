@@ -3,7 +3,9 @@
 Media placement is independent of editorial overlays. Video slots retain their
 validated timing; bookends hold extracted source frames rather than retime clips.
 """
+import hashlib
 import html
+import json
 import shutil
 
 from production import ROOT, MODES, asset, digest, process, write_json
@@ -11,6 +13,20 @@ from production import ROOT, MODES, asset, digest, process, write_json
 
 def escape(value):
     return html.escape(str(value), quote=True)
+
+
+def bookend_frame_name(source_digest, offset, duration, last=False):
+    """Identify the source, extraction role and complete segment, not just its end.
+
+    Lossless float keys normalize 2 and 2.0 without rounding distinct offsets
+    together. FFmpeg's existing six-decimal seek precision remains unchanged.
+    Only code-owned tokens and a digest enter the filename.
+    """
+    role = 'closing' if last else 'opening'
+    identity = json.dumps([source_digest, role, float(offset).hex(),
+                           float(duration).hex()], separators=(',', ':'))
+    key = hashlib.sha256(identity.encode('utf-8')).hexdigest()
+    return f'frame-hold-{role}-{key}.png'
 
 
 # These are code-owned poses, never configuration or model-provided CSS/JS.
@@ -54,7 +70,7 @@ def compile_business_modern(c, ctx, out, mode):
         offset = scene.get('videoOffset', 0)
         at = offset + (max(0, scene['duration'] - 1) if last else 0)
         end = offset + (scene['duration'] if last else 0)
-        name = f'{digest(ROOT / path)[:16]}-hold-{end:.6f}.png'
+        name = bookend_frame_name(digest(ROOT / path), offset, scene['duration'], last)
         frame_args = ['-t', end - at, '-update', '1'] if last else ['-frames:v', '1']
         process(['ffmpeg', '-y', '-v', 'error', '-protocol_whitelist', 'file,pipe',
                  '-ss', f'{at:.6f}', '-i', ROOT / path, *frame_args,

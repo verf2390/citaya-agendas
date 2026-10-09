@@ -11,7 +11,8 @@ from html.parser import HTMLParser
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / 'scripts'), str(ROOT / 'backend')]
 from compose import compile_composition
-from production import ConfigError, MODES, read_json, validate
+from business_modern import bookend_frame_name
+from production import ConfigError, MODES, digest, read_json, validate
 
 
 class Elements(HTMLParser):
@@ -127,7 +128,8 @@ class ModernTests(unittest.TestCase):
         c, _, ctx = validate(raw)
         with tempfile.TemporaryDirectory() as d:
             comp, _ = compile_composition(c, ctx, Path(d), 'preview')
-            self.assertTrue(list((comp / 'assets/inputs').glob('*-hold-3.000000.png')))
+            name = bookend_frame_name(digest(ROOT / video_scene['video']), 1.5, 1.5, last=True)
+            self.assertTrue((comp / 'assets/inputs' / name).is_file())
 
     def test_invalid_offsets_and_segments_fail_production_validation(self):
         for offset, duration in [(-1, 3), (float('nan'), 3), (True, 3), (1, 3), (4, 1), (0, 0)]:
