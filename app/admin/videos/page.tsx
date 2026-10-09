@@ -1,5 +1,6 @@
 "use client";
 import { directAfterAnalysis } from "@/lib/video/directorFlow.mjs";
+import { mediaFirstEnabled, mediaFirstPolicy } from "@/lib/video/mediaFirstPolicy.mjs";
 
 import {
   CheckCircle2,
@@ -219,6 +220,8 @@ export default function AdminVideosPage() {
   const [style, setStyle] = useState("dynamic");
   const [duration, setDuration] = useState(15);
   const [brief, setBrief] = useState("");
+  const [createProjectKind, setCreateProjectKind] = useState("external");
+  const [createMediaFirst, setCreateMediaFirst] = useState(false);
 
   const [hook, setHook] = useState("");
   const [secondaryHook, setSecondaryHook] = useState("");
@@ -227,6 +230,7 @@ export default function AdminVideosPage() {
   const [analysisConsent, setAnalysisConsent] = useState(false);
   const [directionStatus, setDirectionStatus] = useState("");
   const [projectKind, setProjectKind] = useState("external");
+  const [mediaFirst, setMediaFirst] = useState(false);
   const [rightsApproved, setRightsApproved] = useState(false);
   const [introAssetId, setIntroAssetId] = useState("");
   const [outroAssetId, setOutroAssetId] = useState("");
@@ -352,7 +356,8 @@ export default function AdminVideosPage() {
     setUseClipAudio(creator.useClipAudio !== false);
     setRightsApproved(next.config.mediaApproved === true);
     setAnalysisConsent(false);
-    setProjectKind(projectMeta.productContext === "citaya-agendas" ? "citaya-agendas" : next.config.videoType === "website_showcase" ? "website_showcase" : "external");
+    setProjectKind(next.config.videoType === "website_showcase" ? "website_showcase" : projectMeta.productContext === "citaya-agendas" ? "citaya-agendas" : "external");
+    setMediaFirst(mediaFirstEnabled(next.config));
   }, []);
 
   const loadPreview = useCallback(async (next: VideoProject) => {
@@ -490,8 +495,9 @@ export default function AdminVideosPage() {
         nicheLabel: niche.trim(),
         style,
         durationSeconds: duration,
-        videoType: projectKind === "website_showcase" ? "website_showcase" : "promotion",
-        productContext: projectKind === "citaya-agendas" ? "citaya-agendas" : "external",
+        videoType: createProjectKind === "website_showcase" ? "website_showcase" : "promotion",
+        productContext: createProjectKind === "citaya-agendas" ? "citaya-agendas" : "external",
+        mediaPolicy: mediaFirstPolicy({ videoType: createProjectKind }, createMediaFirst),
         brief: brief.trim(),
       });
       const created = payload.project as VideoProject;
@@ -597,6 +603,7 @@ export default function AdminVideosPage() {
       productContext: projectKind === "citaya-agendas" ? "citaya-agendas" : "external",
     };
     config.videoType = projectKind === "website_showcase" ? "website_showcase" : "promotion";
+    config.mediaPolicy = mediaFirstPolicy(config, mediaFirst);
     config.brand = {
       ...existingBrand,
       logo: logoAssetId ? "asset:" + logoAssetId : null,
@@ -891,6 +898,23 @@ export default function AdminVideosPage() {
                 </div>
 
                 <label className="grid gap-1 text-xs font-black text-slate-600">
+                  Contenido del proyecto
+                  <select value={createProjectKind} disabled={Boolean(working)} onChange={(event) => setCreateProjectKind(event.target.value)}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-950">
+                    <option value="external">Contenido externo / cliente / portafolio</option>
+                    <option value="website_showcase">Showcase de sitio web real</option>
+                    <option value="citaya-agendas">Demo del producto CITAYA Agenda</option>
+                  </select>
+                </label>
+                <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
+                  <input type="checkbox" checked={createMediaFirst || createProjectKind === "website_showcase"}
+                    disabled={Boolean(working) || createProjectKind === "website_showcase"}
+                    onChange={(event) => setCreateMediaFirst(event.target.checked)} />
+                  Usar únicamente los medios proporcionados
+                  {createProjectKind === "website_showcase" && " (obligatorio para showcase web)"}
+                </label>
+
+                <label className="grid gap-1 text-xs font-black text-slate-600">
                   ¿Qué video quieres?
                   <textarea
                     value={brief}
@@ -1065,6 +1089,13 @@ export default function AdminVideosPage() {
                         <option value="website_showcase">Showcase de sitio web real</option>
                         <option value="citaya-agendas">Demo del producto CITAYA Agenda</option>
                       </select>
+                    </label>
+                    <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
+                      <input type="checkbox" checked={mediaFirst || projectKind === "website_showcase"}
+                        disabled={Boolean(working) || projectKind === "website_showcase"}
+                        onChange={(event) => setMediaFirst(event.target.checked)} />
+                      Usar únicamente los medios proporcionados
+                      {projectKind === "website_showcase" && " (obligatorio para showcase web)"}
                     </label>
                     <label className="flex items-start gap-2 text-xs font-medium text-slate-600">
                       <input type="checkbox" checked={analysisConsent} disabled={Boolean(working)}

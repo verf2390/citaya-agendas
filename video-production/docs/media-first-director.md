@@ -49,22 +49,37 @@ válido o el job equivalente activo. Un fallo técnico permite reintento explíc
 con nueva aprobación; no hay fallback a dirección sin análisis. Un inventario
 `unknown` no autoriza selección: se solicita material con evidencia suficiente.
 
-## Media-first y copy
+## Fuentes de activación
 
-`mediaPolicy.mediaFirst=true`, `videoType=website_showcase` o un brief que exija
-medios proporcionados, protagonismo de la página o no inventar pantallas activa
-media-first. `useOnlyProvidedAssets` conserva su significado histórico (no stock
-ni generación); no se cambia retroactivamente a todos los anuncios tipográficos.
-El flag `mediaFirst=true` impone la política aunque el brief sea vago; `false`
-conserva el comportamiento previo y no desactiva restricciones del brief ni el
-modo website showcase. La detección en español combina exclusividad
-(solo/solamente/únicamente/exclusivamente), material visual y procedencia
-(adjunto/proporcionado/suministrado/entregado/enviado), incluyendo «que te envié».
-Evalúa órdenes de uso por oración, acepta determinantes como «mis» y «estos»,
-y descarta órdenes de uso negadas o permisivas («no uses», «puedes usar»).
-También reconoce prohibiciones explícitas de inventar pantallas o agregar
-contenido ajeno a los archivos. «Usa imágenes» o «inspírate en los archivos
-adjuntos» no bastan por sí solos. No es un clasificador semántico general.
+La única política canónica persistida es `mediaPolicy.mediaFirst`. La decisión
+efectiva es `mediaPolicy.mediaFirst === true OR videoType === website_showcase
+OR detector_textual(brief)`:
+
+1. **`mediaPolicy.mediaFirst=true` estructurado:** decisión explícita y
+   autoritativa. La casilla **Usar únicamente los medios proporcionados** está
+   disponible al crear y editar; se guarda en config, se restaura al reabrir y
+   se conserva al editar otros campos. El Director usa la config guardada.
+2. **`website_showcase`:** obligatorio incluso con flag ausente o `false` y
+   texto neutro. El panel muestra la casilla activa y bloqueada para ese tipo.
+3. **Detector textual:** ayuda de conveniencia / best effort para configs
+   anteriores y restricciones reconocidas. Solo puede activar adicionalmente
+   la política; ninguna frase puede desactivar las dos fuentes anteriores.
+
+`false` no es un opt-out del showcase ni de una restricción textual detectada.
+Las configs antiguas sin flag mantienen su comportamiento. `useOnlyProvidedAssets`
+conserva su significado histórico (no stock ni generación); no equivale a
+media-first. La casilla tampoco autoriza análisis: ese consentimiento sigue
+siendo separado y sujeto a aprobación exacta, hashes y aislamiento de Studio.
+
+El parser de lenguaje natural **no es una frontera de seguridad** ni garantiza
+entender todas las paráfrasis, negaciones o recomendaciones del español. El
+detector existente conserva sus casos soportados y sus límites; puede tener
+falsos positivos o negativos. Para garantizar la restricción del usuario debe
+activarse la casilla estructurada. Con esa política o con website showcase,
+la ausencia de inventario válido bloquea dirección/render y ninguna respuesta
+del modelo habilita escenas genéricas o UI ficticia, incluso en contexto Agenda.
+
+## Media-first y copy
 
 El conjunto de medios visuales incluye tanto `media.creatorIntro/creatorOutro`
 como los aliases legacy `creator.introVideo/outroVideo`, deduplicados por asset ID.

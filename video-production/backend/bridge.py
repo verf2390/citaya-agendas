@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from studio import Actor, Studio, uid
-from tenant_brief import direct_tenant_config, generate_tenant_config
+from tenant_brief import TenantBriefError, direct_tenant_config, generate_tenant_config
 from director_analysis import prepare_direction, direction_analysis_status, visual_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,6 +143,9 @@ def main():
             result = studio.list_projects(actor)
         elif action == "create_from_brief":
             title = str(payload.get("title") or "Nuevo video")
+            policy = payload.get("mediaPolicy", {})
+            if not isinstance(policy, dict):
+                raise TenantBriefError("INVALID_MEDIA_POLICY")
             config, report, usage = generate_tenant_config(
                 brief=payload.get("brief"),
                 business_name=payload.get("businessName"),
@@ -152,6 +155,7 @@ def main():
                 duration_seconds=payload.get("durationSeconds"),
                 video_type=payload.get("videoType", "promotion"),
                 product_context=payload.get("productContext", "external"),
+                media_first_requested=policy.get("mediaFirst", False),
             )
             project_id = studio.create_project(actor, config, title)
             if usage is not None:

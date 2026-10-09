@@ -253,6 +253,7 @@ export async function POST(req: Request) {
           durationSeconds: body?.durationSeconds,
           videoType: body?.videoType,
           productContext: body?.productContext,
+          mediaPolicy: { mediaFirst: body?.mediaPolicy?.mediaFirst ?? false },
         },
       });
       return NextResponse.json({ ok: true, ...result }, { status: 201 });

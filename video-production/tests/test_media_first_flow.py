@@ -365,6 +365,26 @@ class WebsiteFlowTests(unittest.TestCase):
         self.assertEqual(sorted(m['asset_id'] for m in members),sorted(self.ids[:5]))
         self.assertEqual(self.s.db.execute('SELECT count(*) FROM video_analysis_jobs').fetchone()[0],1)
 
+    def test_structured_policy_in_agenda_project_uses_real_analyzed_media(self):
+        self.config['videoType'] = 'promotion'
+        self.config['mediaPolicy'] = {'mediaFirst': True}
+        self.config['project'].update(creativeBrief='Presenta el proyecto.', productContext='citaya-agendas')
+        self.s.update_project(self.actor, self.pid, self.config)
+        self.analyze()
+        with patch.object(tenant_brief, 'gateway_call', side_effect=self.proposal):
+            directed = self.call('direct_project')['project']['config']
+        self.assertTrue(directed['mediaPolicy']['mediaFirst'])
+        self.assertTrue(all(s['mode'] == 'media' for s in directed['scenes']))
+        self.assertTrue(self.s.validated(self.actor, self.pid, directed, 'preview')[1]['valid'])
+        with self.s.materialize(self.actor, self.pid, directed) as local, tempfile.TemporaryDirectory() as d:
+            normalized, _, ctx = validate(local)
+            comp, _ = compile_composition(normalized, ctx, Path(d), 'preview')
+            self.assertFalse((comp / 'assets/ui').exists())
+            source = (comp / 'index.html').read_text()
+            for aid in self.ids[:5]:
+                sha = self.s.row('video_assets', self.actor, aid)['sha256']
+                self.assertIn(sha[:16], source)
+
     def test_foreign_tenant_cannot_poll_analysis(self):
         with patch.object(director_analysis,'launch_analysis'):
             job=self.call('prepare_direction',assetIds=sorted(self.ids[:5]),analysisConsent=True)['analysisJobId']
@@ -382,7 +402,139 @@ class WebsiteFlowTests(unittest.TestCase):
         self.assertEqual(caught.exception.code,'DIRECTOR_VISUAL_STALE')
 
 
+class StructuredPolicyFlowTests(unittest.TestCase):
+    """Canonical policy round-trip through the real bridge and temporary Studio."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.actor = Actor(str(uuid.uuid4()), str(uuid.uuid4()))
+
+    def call(self, action, **payload):
+        request = {'action': action, 'tenantId': self.actor.tenant_id,
+                   'userId': self.actor.user_id, 'payload': payload}
+        output = []
+        with patch.dict(os.environ, {'CITAYA_VIDEO_STORAGE_ROOT': self.temp.name}), \
+             patch.object(sys, 'stdin', io.StringIO(json.dumps(request))), \
+             patch.object(bridge, 'emit', side_effect=output.append):
+            bridge.main()
+        return output[0]['result']
+
+    def create(self, **options):
+        with patch.object(tenant_brief, 'gateway_call', return_value={'text': json.dumps(COPY)}):
+            return self.call('create_from_brief', title='Policy draft', businessName='CITAYA',
+                brief='Presenta el proyecto.', niche='local-business', style='minimal',
+                durationSeconds=15, **options)
+
+    def test_explicit_checkbox_create_reload_edit_and_direct_fail_closed(self):
+        for context in ('external', 'citaya-agendas'):
+            with self.subTest(context=context):
+                created = self.create(productContext=context, mediaPolicy={'mediaFirst': True})
+                self.assertEqual(created['report']['code'], 'VISUAL_ANALYSIS_REQUIRED')
+                project = created['project']
+                pid = project['id']
+                self.assertTrue(project['config']['mediaPolicy']['mediaFirst'])
+                reloaded = self.call('project_detail', projectId=pid)
+                self.assertTrue(reloaded['config']['mediaPolicy']['mediaFirst'])
+                config = reloaded['config']
+                config['content']['hook'] = 'Nuevo hook'
+                edited = self.call('update_project', projectId=pid, config=config)
+                self.assertTrue(edited['config']['mediaPolicy']['mediaFirst'])
+                with patch.object(tenant_brief, 'gateway_call') as model:
+                    with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                        self.call('direct_project', projectId=pid)
+                    self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+                    model.assert_not_called()
+
+    def test_website_creation_is_mandatory_even_when_flag_absent_or_false(self):
+        for policy in ({}, {'mediaFirst': False}):
+            created = self.create(videoType='website_showcase', mediaPolicy=policy)
+            self.assertTrue(created['project']['config']['mediaPolicy']['mediaFirst'])
+            self.assertEqual(created['report']['code'], 'VISUAL_ANALYSIS_REQUIRED')
+
+    def test_normal_legacy_create_and_reload_without_policy_remain_compatible(self):
+        created = self.create()
+        config = created['project']['config']
+        self.assertFalse(media_first(config))
+        self.assertTrue(created['report']['valid'])
+        reloaded = self.call('project_detail', projectId=created['project']['id'])
+        self.assertFalse(media_first(reloaded['config']))
+
+    def test_creation_rejects_non_boolean_policy_before_model(self):
+        for policy in ({'mediaFirst': 'true'}, {'mediaFirst': 1}, []):
+            with self.subTest(policy=policy), patch.object(tenant_brief, 'gateway_call') as model:
+                with self.assertRaises((ConfigError, tenant_brief.TenantBriefError)) as error:
+                    self.call('create_from_brief', mediaPolicy=policy)
+                self.assertEqual(error.exception.code, 'INVALID_MEDIA_POLICY')
+                model.assert_not_called()
+
+
 class EditorialContractTests(unittest.TestCase):
+    def test_explicit_agenda_without_media_first_still_allows_product_ui(self):
+        config = {'product': 'custom-client-video', 'brand': {'businessName': 'CITAYA'},
+                  'content': COPY, 'project': {'creativeBrief': 'Presenta el producto.',
+                                             'productContext': 'citaya-agendas'}}
+        proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+            {'headline': 'Diseño con identidad', 'visualIntent': 'agenda', 'durationSeconds': 3}]}
+        with patch.object(tenant_brief, 'gateway_call', return_value={'text': json.dumps(proposal)}):
+            directed, _, _ = tenant_brief.direct_tenant_config(config=config, assets=[])
+        self.assertFalse(media_first(directed))
+        self.assertEqual(directed['scenes'][0]['mode'], 'calendar')
+        self.assertTrue(validate(directed)[1]['valid'])
+
+    def test_structured_policy_is_independent_of_textual_detection(self):
+        texts = ['Presenta el proyecto.', 'Usa solamente el material que te mandé.',
+                 'No tienes que usar únicamente los archivos adjuntos.',
+                 'Trata de usar solamente las imágenes entregadas.',
+                 'No uses solo los archivos adjuntos.']
+        for brief in texts:
+            with self.subTest(brief=brief):
+                self.assertTrue(media_first({'mediaPolicy': {'mediaFirst': True}}, brief))
+                for policy in ({}, {'mediaFirst': False}):
+                    self.assertTrue(media_first({'videoType': 'website_showcase', 'mediaPolicy': policy}, brief))
+        self.assertFalse(media_first({'project': {'creativeBrief': texts[0]}}))
+
+    def test_structured_policy_blocks_missing_inventory_for_agenda_and_external(self):
+        for context in ('external', 'citaya-agendas'):
+            config = {'product': 'custom-client-video', 'brand': {'businessName': 'CITAYA'},
+                      'mediaPolicy': {'mediaFirst': True}, 'content': COPY,
+                      'project': {'creativeBrief': 'Usa solamente el material que te mandé.',
+                                  'productContext': context}}
+            with self.subTest(context=context), patch.object(tenant_brief, 'gateway_call') as model:
+                with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                    tenant_brief.direct_tenant_config(config=config, assets=[], visual_inventory={})
+                self.assertEqual(error.exception.code, 'VISUAL_ANALYSIS_REQUIRED')
+                model.assert_not_called()
+
+    def test_structured_policy_with_inventory_only_accepts_authorized_visual_scenes(self):
+        asset_id = str(uuid.uuid4())
+        config = {'product': 'custom-client-video', 'brand': {'businessName': 'CITAYA'},
+                  'mediaPolicy': {'mediaFirst': True}, 'content': COPY,
+                  'project': {'creativeBrief': 'Presenta el proyecto.', 'productContext': 'citaya-agendas'},
+                  'media': {'images': ['asset:' + asset_id]}}
+        assets = [{'id': asset_id, 'assetType': 'image'}]
+        visual = observation(); visual.pop('evidence'); visual['status'] = 'complete'
+        inventory = {asset_id: visual}
+        for scene in ({'visualIntent': 'generic'}, {'visualIntent': 'agenda'},
+                      {'visualIntent': 'media'}, {'visualIntent': 'media', 'assetId': 'unauthorized'},
+                      {'visualIntent': 'media', 'assetId': asset_id}):
+            valid = scene.get('assetId') == asset_id
+            proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+                {'headline': COPY['secondaryHook'], 'durationSeconds': 3, **scene}]}
+            with self.subTest(scene=scene), patch.object(tenant_brief, 'gateway_call',
+                    return_value={'text': json.dumps(proposal)}) as model:
+                if valid:
+                    directed, _, _ = tenant_brief.direct_tenant_config(config=config,
+                        assets=assets, visual_inventory=inventory)
+                    self.assertTrue(directed['mediaPolicy']['mediaFirst'])
+                    self.assertEqual(directed['template'], 'local-business-promo-v2')
+                    self.assertTrue(all(s['mode'] == 'media' and s.get('media') == 'asset:' + asset_id
+                                        for s in directed['scenes']))
+                else:
+                    with self.assertRaises(tenant_brief.TenantBriefError):
+                        tenant_brief.direct_tenant_config(config=config, assets=assets,
+                            visual_inventory=inventory)
+                self.assertEqual(model.call_count, 1)
+
     def test_explicit_spanish_restrictions_and_vague_requests(self):
         restricted = [
             'No inventes ninguna pantalla. Usa solo los archivos adjuntos.',

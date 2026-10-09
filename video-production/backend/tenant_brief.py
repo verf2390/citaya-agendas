@@ -295,7 +295,9 @@ def _combined_usage(responses, model, elapsed):
     }
 
 
-def generate_tenant_config(*, brief, business_name, niche, niche_label=None, style, duration_seconds, video_type="promotion", product_context="external"):
+def generate_tenant_config(*, brief, business_name, niche, niche_label=None, style, duration_seconds, video_type="promotion", product_context="external", media_first_requested=False):
+    if not isinstance(media_first_requested, bool):
+        raise TenantBriefError("INVALID_MEDIA_POLICY")
     token = os.environ.get("CITAYA_AI_LOCAL_AUTH_TOKEN", "").strip()
     endpoint = os.environ.get(
         "CITAYA_AI_LOCAL_ENDPOINT", "http://127.0.0.1:8787/v1/generate"
@@ -419,6 +421,8 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
             "category": niche_label[:35],
         },
     }
+    if media_first_requested:
+        config["mediaPolicy"]["mediaFirst"] = True
     apply_brief_narration(config, brief)
     if media_first(config):
         # Before uploads, this is only a draft. Free editorial prose cannot
