@@ -44,3 +44,46 @@ test('already analyzed set skips polling without claiming new analysis occurred'
     }});
   assert.deepEqual(calls, ['prepare_direction','direct']);
 });
+
+for (const status of ['failed', 'cancelled']) {
+  test(`terminal ${status} response stops polling and offers retry`, async () => {
+    const calls = [];
+    await assert.rejects(directAfterAnalysis({projectId: 'p', brief: 'b', analysisConsent: true,
+      save: async () => saved, onStatus: () => {}, wait: async () => {}, request: async (body) => {
+        calls.push(body.action);
+        return body.action === 'prepare_direction' ? {status: 'analyzing', analysisJobId: 'job'} :
+          {status, error: '/private/path and sensitive provider response'};
+      }}), /No se pudieron analizar los medios\. Reintenta/);
+    assert.deepEqual(calls, ['prepare_direction', 'direction_analysis_status']);
+  });
+}
+
+for (const code of ['ANALYSIS_START_FAILED', 'ANALYSIS_QUEUE_TIMEOUT', 'LEASE_EXPIRED']) {
+  test(`${code} from the backend ends the flow without a new enqueue or Director`, async () => {
+    const calls = [], states = [];
+    await assert.rejects(directAfterAnalysis({projectId: 'p', brief: 'b', analysisConsent: true,
+      save: async () => saved, onStatus: s => states.push(s), wait: async () => {}, request: async body => {
+        calls.push(body.action);
+        if (body.action === 'direction_analysis_status') throw new Error(`${code}: Reintenta Dirigir con IA.`);
+        return {status: 'analyzing', analysisJobId: 'job', analysisState: 'queued'};
+      }}), new RegExp(code));
+    assert.deepEqual(calls, ['prepare_direction', 'direction_analysis_status']);
+    assert.ok(states.includes('Analizando medios…'));
+  });
+}
+
+test('a legitimately running inference has no browser deadline and completes after many polls', async () => {
+  let polls = 0, prepares = 0, directs = 0;
+  await directAfterAnalysis({projectId: 'p', brief: 'b', analysisConsent: true,
+    save: async () => saved, onStatus: () => {}, wait: async () => {}, request: async body => {
+      if (body.action === 'prepare_direction') prepares++;
+      if (body.action === 'direction_analysis_status' && ++polls === 1000) {
+        return {status: 'ready', visualAssetCount: 2};
+      }
+      if (body.action === 'direct') { directs++; return {project: 'complete'}; }
+      return {status: 'analyzing', analysisJobId: 'job', analysisState: 'running'};
+    }});
+  assert.equal(polls, 1000);
+  assert.equal(prepares, 1);
+  assert.equal(directs, 1);
+});

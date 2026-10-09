@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Private sequential analysis worker. No HTTP listener or render queue access."""
 import argparse
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import fcntl
 import hashlib
+import logging
 import os
 from pathlib import Path
 import shutil
+import sys
 import threading
 import time
 
@@ -17,6 +19,10 @@ from vision_provider import VisionProvider, SCHEMA_VERSION
 
 STRATEGY_VERSION = "visual-local-v2-frames3"
 EXTRACTOR_VERSION = "frames-v1"
+DEFAULT_NODE = "local-analysis-1"
+# Existing daemon cadence; also bounds the HTTP launcher's startup observation.
+# Missing this acknowledgment window does NOT fail or kill a slow startup.
+WORKER_IDLE_SECONDS = 2
 
 
 class Heartbeat:
@@ -70,13 +76,15 @@ def _snapshot(studio, asset, workspace):
     return target
 
 
-def run_one(studio, node, provider, *, lease_seconds=600, job_id=None):
+def run_one(studio, node, provider, *, lease_seconds=600, job_id=None, on_claim=None):
     """One claim, sequential assets, one atomic publication. Returns whether claimed."""
     job = studio.claim_analysis(node, lease_seconds=lease_seconds, job_id=job_id)
     if not job:
         return False
     workspace = None
     try:
+        if on_claim is not None:
+            on_claim()
         if (job["strategy_version"], job["extractor_version"]) != (STRATEGY_VERSION, EXTRACTOR_VERSION):
             fail("ANALYSIS_VERSION_UNSUPPORTED", "Worker cannot execute this strategy version.")
         with Heartbeat(studio.root, job) as heartbeat:
@@ -133,34 +141,69 @@ def run_one(studio, node, provider, *, lease_seconds=600, job_id=None):
 
 
 @contextmanager
-def worker_lock(root):
-    fd = os.open(Path(root) / ".analysis-worker.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+def worker_lock(root, inherited_fd=None):
+    expected = os.open(Path(root) / ".analysis-worker.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fd = expected
     try:
+        if inherited_fd is not None:
+            original, inherited = os.fstat(expected), os.fstat(inherited_fd)
+            if (original.st_dev, original.st_ino) != (inherited.st_dev, inherited.st_ino):
+                fail('ANALYSIS_LOCK_INVALID', 'Worker lock handoff is invalid.')
+            os.close(expected)
+            fd = inherited_fd
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        yield
+        yield fd
     finally:
         os.close(fd)
+
+
+def report_startup(event):
+    # A fixed token, never provider output/paths. The requesting bridge may
+    # already have closed its pipe after the observation window.
+    try:
+        os.write(sys.stdout.fileno(), (event + '\n').encode('ascii'))
+    except OSError:
+        pass
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storage", required=True)
-    parser.add_argument("--node", default="local-analysis-1")
+    parser.add_argument("--node", default=DEFAULT_NODE)
     parser.add_argument("--endpoint", default="http://127.0.0.1:8788/v1/chat/completions")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--job-id", default=None)
+    parser.add_argument("--lock-fd", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--report-startup", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     os.umask(0o077)
-    provider = VisionProvider(args.endpoint)
     studio = Studio(args.storage)
+    row = studio.db.execute('SELECT * FROM video_analysis_jobs WHERE id=?', (args.job_id,)).fetchone()
+    initial = dict(row) if row is not None else None
     try:
-        with worker_lock(studio.root):
+        with ExitStack() as locks:
+            try:
+                locks.enter_context(worker_lock(studio.root, args.lock_fd))
+            except BlockingIOError:
+                # Lock contention alone is waiting, never a startup failure.
+                if args.report_startup:
+                    report_startup('busy')
+                return
+            provider = VisionProvider(args.endpoint)
             while True:
-                worked = run_one(studio, args.node, provider, job_id=args.job_id)
+                worked = run_one(studio, args.node, provider, job_id=args.job_id,
+                                 on_claim=(lambda: report_startup('claimed')) if args.report_startup else None)
                 if args.once:
+                    if args.report_startup and not worked:
+                        report_startup('unclaimed')
                     break
                 if not worked:
-                    time.sleep(2)
+                    time.sleep(WORKER_IDLE_SECONDS)
+    except Exception:
+        if initial is not None:
+            studio.fail_analysis_start(initial)
+        logging.getLogger(__name__).error('Visual analysis worker process failed.')
+        raise SystemExit(1) from None
     finally:
         studio.close()
 

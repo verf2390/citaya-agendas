@@ -30,9 +30,11 @@ contenido observado para ordenar los medios, no pantallas sintéticas.
    vigente. Para los assets faltantes llama a `approve_media_set` y
    `enqueue_analysis`, conservando snapshots SHA, aislamiento y versiones.
 5. Despierta **el mismo** `analysis_worker.py --once --job-id …`, en un proceso
-   separado de la petición, con el mismo lock global. Solo reclama ese job;
-   puede coexistir con el daemon existente. Polling cada 3 s reintenta despertar
-   jobs en cola si otro worker tiene el lock. No se inicia ni reinicia un servicio.
+   separado de la petición. El launcher reserva el lock global existente y
+   entrega su descriptor al worker: no hay hueco entre reserva y ejecución.
+   Solo reclama ese job; respeta el daemon y la serialización de inferencias.
+   Polling cada 3 s intenta despertar cola solo cuando el lock está libre;
+   con lock ocupado no crea otro proceso. No inicia ni reinicia servicios.
 6. El panel muestra **Analizando medios…**; consulta
    `direction_analysis_status` bajo autenticación/origen/rate limit existentes.
    No publica rutas, hashes, observaciones, lease tokens ni errores del proveedor.
@@ -44,10 +46,47 @@ contenido observado para ordenar los medios, no pantallas sintéticas.
    validación de Studio y el worker de render vuelven a verificar el inventario
    para proyectos media-first, incluidos approvals revocados y hashes cambiados.
 
-Cerrar el panel no cancela el análisis. Reintentar después reutiliza el inventario
-válido o el job equivalente activo. Un fallo técnico permite reintento explícito
-con nueva aprobación; no hay fallback a dirección sin análisis. Un inventario
+Cerrar el panel no cancela el análisis. Reabrir/pollear reutiliza inventario o job
+equivalente activo. Un nuevo clic con consentimiento explícito reintenta el mismo
+job fallido, approval e idempotency key si siguen vigentes; `retry_analysis`
+revalida hashes/approval y reinicia `queued_at`. Una aprobación revocada no se
+revive; autorizar de nuevo exige consentimiento y un nuevo snapshot válido.
+No hay fallback a dirección sin análisis. Un inventario
 `unknown` no autoriza selección: se solicita material con evidencia suficiente.
+
+### Progreso, fallos de arranque y espera acotada
+
+- El launcher observa un token fijo de claim durante **2 s**, la cadencia ya
+  existente del daemon. Es observación de arranque, **no timeout de inferencia**:
+  si tarda más, el hijo conserva el lock y sigue arrancando. El worker también
+  persiste fallos de inicialización posteriores a esa ventana.
+- Antes de crear el proceso se asigna el `worker_node` existente al job queued,
+  dentro de una transacción y bajo el lock global. Si después el mismo job sigue
+  queued pero el lock ya está libre, ese arranque murió sin claim: falla en el
+  siguiente poll y **no se relanza**. Esto cubre también salida/SIGKILL durante
+  imports, fuera del handler del worker. Retry ya limpia `worker_node`; no hay
+  nuevas tablas, campos, archivos de control ni migración de schema.
+- Error al crear el proceso, salida/EOF antes de claim o ejecución sin claim:
+  `ANALYSIS_START_FAILED`. Una transición condicionada a tenant/project, estado
+  queued y generación (`queued_at`, `attempt`) no puede sobrescribir un claim,
+  completion, cancelación o retry posterior. Los logs registran categoría y
+  código de salida disponible; nunca stderr, paths, observaciones ni narración.
+- Queued sin claim dispone de su **`lease_seconds` inicial existente** (1800 s
+  en enqueue; en retry conserva el intervalo del último intento) para obtener
+  turno. Es una ventana conservadora de espera de cola
+  bajo serialización, no un presupuesto para Qwen. Al consultarlo sin progreso
+  después de esa ventana, queda failed con `ANALYSIS_QUEUE_TIMEOUT`.
+- Running depende exclusivamente del **lease vigente**: la CLI conserva 600 s
+  y heartbeat cada 200 s. No hay límite absoluto por edad del job ni timeout de
+  navegador. Lease expirado usa el fencing existente y queda `LEASE_EXPIRED`;
+  no se renueva ni relanza automáticamente. Retry explícito obtiene otro token.
+- Polling revalida autorización/integridad y persiste transiciones dentro de
+  `BEGIN IMMEDIATE`. Solo ready llama al Director. Failed/cancelled/errores
+  detienen el flujo y el panel ofrece un mensaje seguro para reintentar.
+
+La recuperación de queued/stale se evalúa al consultar estado; no se añade otro
+daemon ni un scheduler. No hay ejecución de Qwen real en los tests: SQLite,
+locks, subprocess de prueba y extracción son reales; el provider es simulado.
 
 ## Fuentes de activación
 

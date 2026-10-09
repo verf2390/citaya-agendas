@@ -79,6 +79,19 @@ test("Video Studio exposes a post-upload guarded AI director", () => {
   assert.match(page, /prioriza no cortarlos/);
 });
 
+test("analysis startup, queue and lease failures have safe retry labels and clear the busy state", () => {
+  for (const code of ["ANALYSIS_START_FAILED", "ANALYSIS_QUEUE_TIMEOUT", "LEASE_EXPIRED"]) {
+    const label = page.match(new RegExp(code + ':\\s*"([^"\\n]+)"'))?.[1];
+    assert.ok(label, `Missing label for ${code}`);
+    assert.match(label, /Reintenta/);
+    assert.doesNotMatch(label, /\/private|stderr|8788/);
+  }
+  const start = page.indexOf("async function directWithAi()");
+  const handler = page.slice(start, page.indexOf("\n  async function ", start + 1));
+  assert.match(handler, /setDirectionStatus\(""\)/);
+  assert.match(handler, /finally\s*\{\s*setWorking\(""\)/);
+});
+
 
 test("Video Studio surfaces legacy ambiguous config errors clearly", () => {
   assert.match(page, /AMBIGUOUS_CONFIG/);
