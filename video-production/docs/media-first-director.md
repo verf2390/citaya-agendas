@@ -134,6 +134,34 @@ Al crear un draft media-first solo se toman campos explícitos o texto neutro de
 identidad, nunca las primeras líneas editoriales del brief. Los límites de copy
 y el validador de producción siguen siendo obligatorios.
 
+## Inventario autorizado y presupuesto del contexto
+
+El inventario completo de Studio sigue sujeto a aprobación, hashes, tenant/project
+y versiones. El Director valida ese inventario antes de construir el prompt;
+`authorized_visual_ids` incluye sus entradas válidas `partial`/`complete`.
+La ausencia de una entrada requerida o un estado `unknown` sí produce
+`VISUAL_ANALYSIS_REQUIRED`. Un límite del prompt nunca significa falta de análisis.
+
+`model_visual_context` es una representación separada, limitada a los mismos
+12.000 caracteres existentes, medidos sobre el JSON compacto realmente enviado.
+Primero conserva la proyección descriptiva habitual (resumen hasta 240 caracteres,
+listas hasta cuatro entradas). Si no cabe, conserva todos los IDs, tipos,
+dimensiones disponibles y duración real de videos; reduce las observaciones a
+estado, orientación y una etiqueta observada completa de subjects/actions/setting.
+Distribuye el espacio restante entre resúmenes, con una longitud común calculada
+determinísticamente hasta el tope anterior de 240 caracteres. No promueve estados
+`partial`/`unknown` ni considera las observaciones instrucciones.
+
+No se descartan assets por presupuesto. Si ni siquiera cabe esa representación
+mínima de todos los assets expuestos, `DIRECTOR_CONTEXT_TOO_LARGE` bloquea antes
+del modelo; hay que reducir la selección. No existe un nuevo límite por cantidad
+de assets. La autorización y el conjunto seleccionable siguen separados: solo se
+aceptan IDs autorizados y expuestos en esa llamada, con observaciones válidas.
+Un asset aprobado anteriormente pero fuera de la selección del editor no es
+seleccionable. La llamada de reparación no media-first recibe el mismo contexto
+limitado. Las duraciones se validan con metadata original, no con descripciones
+compactadas; análisis, frames, approvals y el fencing del guardado no cambian.
+
 ## Voz y duración
 
 La voz subida se conserva completa. Comienza en 0 salvo un clip de apertura,
