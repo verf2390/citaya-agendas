@@ -903,3 +903,84 @@ class EditorialContractTests(unittest.TestCase):
     def test_non_media_first_legacy_creator_clips_are_preserved(self):
         ids = [str(uuid.uuid4()), str(uuid.uuid4())]
         config = {'product': 'custom-client-video', 'template': 'creator-led-v1',
+                  'brand': {'businessName': 'Agency'}, 'content': COPY,
+                  'project': {'creativeBrief': 'Presenta nuestros servicios.'},
+                  'creator': dict(zip(('introVideo', 'outroVideo'), ['asset:' + i for i in ids]))}
+        proposal = {**COPY, 'outroSeconds': 2, 'scenes': [
+            {'headline': 'Diseño con identidad', 'visualIntent': 'generic', 'durationSeconds': 3}]}
+        with patch.object(tenant_brief, 'gateway_call', return_value={'text': json.dumps(proposal)}):
+            directed, _, _ = tenant_brief.direct_tenant_config(config=config,
+                assets=[{'id': i, 'assetType': 'video', 'durationMs': 2000} for i in ids])
+        self.assertFalse(media_first(directed))
+        self.assertEqual(directed['media']['creatorIntro'], 'asset:' + ids[0])
+        self.assertEqual(directed['media']['creatorOutro'], 'asset:' + ids[1])
+        self.assertEqual(directed['timing']['intro'], 2)
+        self.assertEqual(directed['timing']['outro'], 2)
+        self.assertEqual(config['creator']['introVideo'], 'asset:' + ids[0])
+
+    def test_media_first_phrases_are_general(self):
+        for brief in ['usar únicamente los medios proporcionados','usar el video y pantallazos proporcionados',
+                      'la página debe ser la protagonista','no inventar pantallas','Use only provided media']:
+            self.assertTrue(media_first({'project':{'creativeBrief':brief}}),brief)
+        self.assertFalse(media_first({'brand':{'businessName':'CITAYA'}}))
+
+    def test_explicit_product_routing_does_not_depend_on_brand(self):
+        for brand in ['CITAYA','Agencia externa']:
+            config={'brand':{'businessName':brand},'project':{'productContext':'citaya-agendas'}}
+            self.assertIn('agenda',tenant_brief._director_visual_intents(config))
+            config['project']['productContext']='external'
+            self.assertNotIn('agenda',tenant_brief._director_visual_intents(config))
+        self.assertNotIn('agenda',tenant_brief._director_visual_intents({'videoType':'website_showcase','project':{'productContext':'citaya-agendas'}}))
+
+    def test_copy_comes_from_explicit_fields_never_visual_direction(self):
+        explicit='\n'.join(k+': '+v for k,v in COPY.items())
+        self.assertEqual(tenant_brief.authorized_copy({},BRIEF+'\n'+explicit),COPY)
+        self.assertEqual(tenant_brief.authorized_copy({'content':COPY},BRIEF),COPY)
+
+    def test_create_media_first_draft_does_not_promote_editorial_prose(self):
+        response={'text':json.dumps(dict.fromkeys(COPY,'Vista atractiva de la portada'))}
+        with patch.object(tenant_brief,'gateway_call',return_value=response):
+            config,report,_=tenant_brief.generate_tenant_config(brief=BRIEF,business_name='CITAYA',
+                niche='architecture',style='minimal',duration_seconds=20,video_type='website_showcase')
+        self.assertEqual(config['template'],'website-showcase-v2')
+        self.assertTrue(config['mediaPolicy']['mediaFirst'])
+        self.assertEqual(report['code'],'VISUAL_ANALYSIS_REQUIRED')
+        self.assertNotIn('Vista atractiva',json.dumps(config['content']))
+        with self.assertRaises(ConfigError):validate(config)
+
+    def test_unknown_analysis_never_reaches_text_model(self):
+        c={'product':'custom-client-video','brand':{'businessName':'Agency'},'project':{'creativeBrief':BRIEF}}
+        value=observation();value.pop('evidence');value['status']='unknown'
+        with patch.object(tenant_brief,'gateway_call') as call:
+            with self.assertRaises(tenant_brief.TenantBriefError) as error:
+                tenant_brief.direct_tenant_config(config=c,assets=[{'id':'a','assetType':'image'}],visual_inventory={'a':value})
+        self.assertEqual(error.exception.code,'VISUAL_ANALYSIS_REQUIRED')
+        call.assert_not_called()
+
+    def test_balanced_extension_and_capacity_redistribution(self):
+        scenes=[{'duration':2,'video':'asset:a'},{'duration':2},{'duration':2}]
+        tenant_brief.distribute_scenes(scenes,15,{'a':{'durationSeconds':3}})
+        self.assertEqual([s['duration'] for s in scenes],[3,6,6])
+        with self.assertRaises(tenant_brief.TenantBriefError):
+            tenant_brief.distribute_scenes([{'duration':2,'video':'asset:a'}],8,{'a':{'durationSeconds':3}})
+
+    def test_model_offsets_are_conservative(self):
+        proposal={**COPY,'outroSeconds':2,'scenes':[{'headline':'Diseño con identidad','visualIntent':'media',
+                  'assetId':'video','durationSeconds':2,'videoOffset':1}]}
+        with self.assertRaises(tenant_brief.TenantBriefError) as caught:
+            tenant_brief._validate_director_proposal({'text':json.dumps(proposal)},'',{'media':'media'},
+                                                     {'video':{'id':'video','type':'video'}},True)
+        self.assertEqual(caught.exception.code,'DIRECTOR_SEGMENT_UNSUPPORTED')
+
+    def test_invalid_or_generic_media_first_proposal_cannot_fall_back(self):
+        value=observation();value.pop('evidence');value['status']='complete'
+        c={'product':'custom-client-video','brand':{'businessName':'CITAYA'},'content':COPY,
+           'project':{'creativeBrief':BRIEF},'mediaPolicy':{'mediaFirst':True}}
+        for response in ['not-json',json.dumps({**COPY,'outroSeconds':2,'scenes':[{'headline':'Mostrar proyectos','visualIntent':'generic','durationSeconds':3}]})]:
+            with patch.object(tenant_brief,'gateway_call',return_value={'text':response}) as model:
+                with self.assertRaises(tenant_brief.TenantBriefError):
+                    tenant_brief.direct_tenant_config(config=c,assets=[{'id':'visual','assetType':'image'}],visual_inventory={'visual':value})
+                self.assertEqual(model.call_count,1)
+
+
+if __name__=='__main__':unittest.main()
