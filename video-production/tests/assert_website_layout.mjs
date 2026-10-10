@@ -24,7 +24,7 @@ try {
   const samples = await page.evaluate(() => {
     const compositionId = document.querySelector('#root').dataset.compositionId;
     const timeline = window.__timelines[compositionId];
-    assert.ok(timeline, compositionId);
+    if (!timeline) throw new Error('Missing timeline: ' + compositionId);
     return [...document.querySelectorAll('.website-visual')].flatMap(el => {
       const clip = el.matches('.clip') ? el : el.closest('.clip');
       const start = Number(clip.dataset.start), duration = Number(clip.dataset.duration);
