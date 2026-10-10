@@ -113,19 +113,22 @@ def authorized_copy(config, brief):
     return result
 
 
-def distribute_scenes(scenes, total, available):
+def distribute_scenes(scenes, total, available, minimums=None):
     """Bounded proportional shortening / balanced extension; never stretch a clip."""
-    minimum = len(scenes) * 1.0
+    minimums = list(minimums) if minimums is not None else [1.0] * len(scenes)
+    if len(minimums) != len(scenes) or any(type(v) not in (int, float) or v < 1.0 for v in minimums):
+        raise TenantBriefError("DIRECTOR_MEDIA_INVALID")
+    minimum = sum(minimums)
     if total < minimum:
         total = minimum
     caps = [min(30.0, available[s["video"][6:]]["durationSeconds"] - s.get("videoOffset", 0))
             if s.get("video") else 30.0 for s in scenes]
-    if any(cap < 1 for cap in caps) or total > sum(caps) + .000001:
+    if any(cap + .000001 < floor for cap, floor in zip(caps, minimums)) or total > sum(caps) + .000001:
         raise TenantBriefError("DIRECTOR_MEDIA_TOO_SHORT")
-    weights = [max(0, s["duration"] - 1) for s in scenes]
+    weights = [max(0, s["duration"] - floor) for s, floor in zip(scenes, minimums)]
     proposed = sum(s["duration"] for s in scenes)
-    lengths = ([min(s["duration"], cap) for s, cap in zip(scenes, caps)]
-               if total >= proposed else [1.0] * len(scenes))
+    lengths = ([min(max(s["duration"], floor), cap) for s, floor, cap in zip(scenes, minimums, caps)]
+               if total >= proposed else list(minimums))
     remaining = total - sum(lengths)
     while remaining > .0000001:
         active = [i for i in range(len(scenes)) if caps[i] - lengths[i] > .0000001]
@@ -812,6 +815,8 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
         "Si existe un video de navegación observado, úsalo como escena normal cerca de la mitad del montaje, "
         "nunca como creatorIntro/creatorOutro ni como última escena. "
         "Termina el bloque de escenas con una captura estática útil para el CTA, preferentemente contacto si está observado. "
+        "Ritmo editorial: las capturas estáticas deben respirar; evita cambios de imagen cada segundo. "
+        "Da más permanencia al video de navegación que a una captura estática. "
         if current.get("videoType") == "website_showcase"
         else ""
     )
@@ -922,7 +927,18 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     outro = outro_seconds_asset if outro_seconds_asset is not None else planned_outro
     if outro < 1.5:
         raise TenantBriefError("DIRECTOR_MEDIA_TOO_SHORT")
-    if voice_seconds is not None:
+
+    website_showcase = current.get("videoType") == "website_showcase"
+    scene_minimums = None
+    if website_showcase:
+        # Golden editorial pacing validated on the real Diego showcase:
+        # stills need enough dwell to read the page; navigation needs time to feel intentional.
+        scene_minimums = [3.1 if scene.get("video") else 1.3 for scene in scenes]
+        if intro_seconds is None:
+            intro = min(intro, 2.2)
+        if outro_seconds_asset is None:
+            outro = min(outro, 1.5)
+    elif voice_seconds is not None:
         if intro_seconds is None:
             intro = min(intro, 2.5)
         if outro_seconds_asset is None:
@@ -931,15 +947,16 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     # Uploaded narration starts with the first frame unless a speaking intro
     # occupies that slot. Target is aspirational, never a minimum for real voice.
     voice_start = intro if intro_seconds is not None else 0.0
+    scene_floor = sum(scene_minimums) if scene_minimums is not None else max(3, len(scenes))
     if voice_seconds is not None:
         tail = outro if outro_seconds_asset is not None and creator.get("useClipAudio", True) else .5
-        desired_total = max(intro + outro + max(3, len(scenes)), voice_start + voice_seconds + tail)
+        desired_total = max(intro + outro + scene_floor, voice_start + voice_seconds + tail)
         demo = desired_total - intro - outro
     else:
-        demo = max(3.0, target - intro - outro, sum(s["duration"] for s in scenes))
+        demo = max(scene_floor, target - intro - outro, sum(s["duration"] for s in scenes))
     if estimated_tts_seconds is not None:
         demo = max(demo, float(tts_config.get("start", 0)) + estimated_tts_seconds - intro - outro)
-    demo = distribute_scenes(scenes, demo, available_visual)
+    demo = distribute_scenes(scenes, demo, available_visual, minimums=scene_minimums)
 
     total = round(intro + demo + outro, 6)
     if total > 120:
