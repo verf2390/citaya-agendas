@@ -274,3 +274,7 @@ eligiendo medios, copy y tiempos; el renderer decide la dirección de arte.
 Nunca usa `cover`, zoom o paneo sobre screenshots/videos del cliente.
 `website-showcase-v1` queda disponible solo para configuraciones históricas;
 guardar o redirigir un `website_showcase` desde el panel lo lleva a V2.
+El benchmark queda protegido por una prueba Chromium de geometría real: fondo
+cálido, marca en el tercio superior, viewport horizontal de más de 85% del ancho
+sin recorte y CTA por debajo del marco en el tramo final. La prueba usa estilos
+computados y no solo búsquedas de texto en CSS.

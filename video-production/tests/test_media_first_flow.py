@@ -398,7 +398,9 @@ class WebsiteFlowTests(unittest.TestCase):
                                     str(comp / 'index.html'), str(chrome)],
                                    capture_output=True, text=True, timeout=120)
             self.assertEqual(proof.returncode, 0, proof.stderr)
-            self.assertTrue(json.loads(proof.stdout)['fullViewportVisible'])
+            layout_proof = json.loads(proof.stdout)
+            self.assertTrue(layout_proof['fullViewportVisible'])
+            self.assertTrue(layout_proof['editorialBenchmark'])
             # Actual mixed PCM remains audible through the end of recorded voice.
             import wave
             import array

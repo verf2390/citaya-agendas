@@ -70,5 +70,31 @@ try {
       assert.ok(Number(sample.duration) < 19.167);
     }
   }
-  console.log(JSON.stringify({checked: samples.length, fullViewportVisible: true}));
+  let editorialBenchmark = false;
+  if (canvas.width && await page.$('.website-showcase-v2')) {
+    const layout = await page.evaluate(() => {
+      const root = document.querySelector('#root');
+      const timeline = window.__timelines[root.dataset.compositionId];
+      timeline.seek(Math.max(0, Number(root.dataset.duration) - .1));
+      const rect = selector => {
+        const r = document.querySelector(selector).getBoundingClientRect();
+        return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};
+      };
+      return {
+        stage: rect('.stage'),
+        frame: rect('.showcase-frame-shell'),
+        cta: rect('.showcase-cta'),
+        brand: rect('.showcase-brandline'),
+        background: getComputedStyle(document.querySelector('.stage')).backgroundColor,
+      };
+    });
+    assert.equal(layout.background, 'rgb(244, 240, 232)');
+    assert.ok(layout.brand.top / canvas.height < .08, JSON.stringify(layout));
+    assert.ok(layout.frame.width / canvas.width > .85, JSON.stringify(layout));
+    assert.ok(layout.frame.top / canvas.height > .30 && layout.frame.top / canvas.height < .40, JSON.stringify(layout));
+    assert.ok(layout.cta.top / canvas.height > .72 && layout.cta.bottom / canvas.height < .90, JSON.stringify(layout));
+    assert.ok(layout.cta.top > layout.frame.bottom, JSON.stringify(layout));
+    editorialBenchmark = true;
+  }
+  console.log(JSON.stringify({checked: samples.length, fullViewportVisible: true, editorialBenchmark}));
 } finally { await browser.close(); }
