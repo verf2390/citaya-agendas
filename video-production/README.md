@@ -123,7 +123,7 @@ Subtítulos: `{ "enabled":true, "srt":"inputs/captions.srt" }` o `vtt`. Tiempos 
 
 ## Sitios, antes/después y ofertas
 
-`website-showcase-v1` y la variante compatible `citaya-websites-vertical-v1`: desktop, mobile, homepage, services, about, portfolio, contact y technical. Para proyectos de clientes, suministrar screenshot por escena o grabación `scene.video`; no hay captura automática de URLs privadas. El esquema `scenes` enlaza cada escena con su capacidad. En custom-client-video usar `provided_business_content` y aportar medios aprobados.
+`website-showcase-v2` (editorial; V1 queda para configuraciones históricas) y la variante compatible `citaya-websites-vertical-v1`: desktop, mobile, homepage, services, about, portfolio, contact y technical. Para proyectos de clientes, suministrar screenshot por escena o grabación `scene.video`; no hay captura automática de URLs privadas. El esquema `scenes` enlaza cada escena con su capacidad. En custom-client-video usar `provided_business_content` y aportar medios aprobados.
 
 `before-after-v1`: dos imágenes `beforeMedia` y `afterMedia` obligatorias para clientes. Nunca inventa un “antes” del negocio. `offer-promo-v1`: content.offer, price, benefit, featureLabels y CTA suministrados/revisados; no inventa descuentos. `creator-led-v1` conserva el mismo contrato de medios y tiempos. Los presets reutilizan código de animación determinista; no son videos únicos.
 

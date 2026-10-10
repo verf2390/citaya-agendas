@@ -1,0 +1,22 @@
+{
+  "id": "website-showcase-v2",
+  "version": 2,
+  "renderer": "website-showcase-editorial",
+  "formats": [
+    "vertical"
+  ],
+  "foundation": "website-showcase-v2",
+  "sceneModes": [
+    "desktop",
+    "mobile",
+    "homepage",
+    "portfolio",
+    "services",
+    "about",
+    "contact",
+    "technical",
+    "before_after",
+    "benefit",
+    "media"
+  ]
+}

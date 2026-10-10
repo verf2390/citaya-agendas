@@ -7,6 +7,9 @@ E=lambda s:html.escape(str(s),quote=True)
 UI={'service':'service','professional':'professional','date':'date','confirmed':'confirm-selected','calendar':'calendar-selected','customers':'customers-selected','reminder':'reminder-selected'}
 STATUS={'live':'Disponible','demo':'Demo · No implica disponibilidad','in_progress':'En desarrollo · No disponible','planned':'Planificado · No disponible'}
 def compile_composition(c,ctx,out,mode):
+    if ctx['template']['renderer']=='website-showcase-editorial':
+        from website_showcase_v2 import compile_website_showcase_v2
+        return compile_website_showcase_v2(c,ctx,out,mode)
     if ctx['template']['renderer']=='business-modern':
         from business_modern import compile_business_modern
         return compile_business_modern(c,ctx,out,mode)

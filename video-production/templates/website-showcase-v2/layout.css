@@ -1,0 +1,32 @@
+@font-face{font-family:Geist;src:url('assets/branding/geist.woff2');font-weight:100 900;font-display:block}
+*{box-sizing:border-box}
+html,body{margin:0;overflow:hidden;background:#f4f0e8;font-family:Geist,Arial,sans-serif;color:#181714}
+#root{width:100%;height:100%;position:relative;overflow:hidden}
+.stage{position:absolute;left:0;top:0;width:1080px;height:1920px;transform-origin:top left;background:#f4f0e8;overflow:hidden}
+.stage::before{content:'';position:absolute;right:-145px;top:-60px;width:390px;height:2050px;background:linear-gradient(180deg,#ad603f22,#8d4b3220 55%,#b66d4825);transform:rotate(2deg);pointer-events:none}
+.stage::after{content:'';position:absolute;left:-170px;bottom:-110px;width:420px;height:760px;border-radius:50%;background:radial-gradient(circle at 70% 30%,#9b4b2f1f,transparent 68%);filter:blur(2px);pointer-events:none}
+.clip{position:absolute;inset:0}
+.showcase-brandline{position:absolute;left:70px;top:88px;width:940px;text-align:center;font-size:20px;line-height:1.2;font-weight:650;letter-spacing:4.5px;text-transform:uppercase;color:#5f5a52}
+.showcase-rule{position:absolute;left:480px;top:155px;width:120px;height:2px;background:#9a9387}
+.showcase-frame-shell{position:absolute;left:55px;top:660px;width:970px;height:590px;border-radius:34px;background:#171612;box-shadow:0 32px 85px #2c1d1530,0 8px 20px #2c1d1524;border:1px solid #2b2924}
+.showcase-frame-shell::before{content:'';position:absolute;left:18px;top:18px;right:18px;bottom:18px;background:#fafaf8}
+.showcase-frame-dot{position:absolute;top:9px;left:477px;width:16px;height:5px;border-radius:999px;background:#5a5751;z-index:2}
+.showcase-media-layer .website-visual,
+video.website-visual{position:absolute;inset:auto;left:73px;top:678px;width:934px;height:554px;object-fit:contain;object-position:center;display:block;background:#fafaf8;border:0;border-radius:0;transform:none}
+.showcase-copy-wrap{position:absolute;left:70px;top:220px;width:940px;max-height:370px}
+.showcase-kicker{font-size:22px;line-height:1.2;font-weight:650;letter-spacing:5px;text-transform:uppercase;color:#6e685f;margin-bottom:24px}
+.showcase-headline{font-size:68px;line-height:1.03;letter-spacing:-2.8px;font-weight:720;margin:0;color:#181714;max-width:940px}
+.showcase-secondary{font-size:42px;line-height:1.12;font-weight:620;margin:20px 0 0;color:var(--showcase-accent,#9b4b2f);max-width:900px}
+.showcase-editorial:not(#hook) .showcase-headline{font-size:58px;line-height:1.05}
+.showcase-end-copy{top:210px}
+.showcase-end-copy .showcase-headline{font-size:56px}
+.showcase-cta{display:inline-flex;align-items:center;justify-content:center;margin-top:30px;min-height:104px;max-width:900px;padding:25px 42px;border-radius:999px;background:#191815;color:#fff;font-size:38px;line-height:1.15;font-weight:680;box-shadow:0 16px 38px #17120f25}
+.showcase-cta::after{content:'→';font-size:46px;margin-left:28px;font-weight:400}
+.showcase-contact{margin-top:16px;font-size:24px;font-weight:560;letter-spacing:.5px;color:#6e685f}
+.creator-showcase-video{position:absolute;inset:auto;left:55px;top:300px;width:970px;height:1320px;object-fit:contain;object-position:center;background:#111;border-radius:30px;box-shadow:0 32px 85px #2c1d1530}
+.showcase-caption{position:absolute;left:70px;bottom:118px;width:940px;padding:20px 28px;border-radius:18px;background:#161512e8;color:#fff;text-align:center;font-size:38px;line-height:1.2;font-weight:650;z-index:20}
+.with-captions .showcase-frame-shell{top:625px;height:560px}
+.with-captions .showcase-media-layer .website-visual,
+.with-captions video.website-visual{top:643px;height:524px}
+.preset-dynamic .showcase-secondary{font-weight:720}
+.preset-premium .showcase-frame-shell{box-shadow:0 38px 100px #2c1d1538,0 8px 22px #2c1d1528}

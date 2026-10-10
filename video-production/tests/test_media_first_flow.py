@@ -333,7 +333,7 @@ class WebsiteFlowTests(unittest.TestCase):
         self.config = created['project']['config']
         self.pid = created['project']['id']
         self.assertEqual(self.config['videoType'], 'website_showcase')
-        self.assertEqual(self.config['template'], 'website-showcase-v1')
+        self.assertEqual(self.config['template'], 'website-showcase-v2')
         self.ids = [self.s.upload(self.actor, self.pid, path) for path in self.files]
         for aid, dimensions in zip(self.ids[:5], [(1600,823),(1600,756),(1600,809),(1600,779),(1876,900)]):
             asset = self.s.row('video_assets', self.actor, aid)
@@ -353,7 +353,7 @@ class WebsiteFlowTests(unittest.TestCase):
             result=self.call('direct_project',brief=BRIEF)
         c=result['project']['config']
         self.assertEqual(c['videoType'], 'website_showcase')
-        self.assertEqual(c['template'],'website-showcase-v1')
+        self.assertEqual(c['template'],'website-showcase-v2')
         self.assertFalse(c['media'].get('creatorIntro'))
         self.assertFalse(c['media'].get('creatorOutro'))
         self.assertEqual(c['media']['videos'], ['asset:' + self.ids[4]])
@@ -374,6 +374,11 @@ class WebsiteFlowTests(unittest.TestCase):
             self.assertEqual(ctx['speech'][0]['duration'],10.133)
             comp,_=compile_composition(normalized,ctx,Path(d),'preview')
             html=(comp/'index.html').read_text()
+            self.assertIn('data-composition-id="website-showcase-v2"', html)
+            self.assertIn('showcase-frame-shell', html)
+            self.assertIn('showcase-cta', html)
+            self.assertIn('object-fit:contain', html)
+            self.assertNotIn('object-fit:cover', html)
             for forbidden in ['Negocio Demo','Vista atractiva','Navegación por secciones','Interfaz Citaya','citaya-admin-demo','assets/ui/']:
                 self.assertNotIn(forbidden,html)
             self.assertIn('data-media-start="0.000000"',html)
@@ -928,7 +933,7 @@ class EditorialContractTests(unittest.TestCase):
         with patch.object(tenant_brief,'gateway_call',return_value=response):
             config,report,_=tenant_brief.generate_tenant_config(brief=BRIEF,business_name='CITAYA',
                 niche='architecture',style='minimal',duration_seconds=20,video_type='website_showcase')
-        self.assertEqual(config['template'],'website-showcase-v1')
+        self.assertEqual(config['template'],'website-showcase-v2')
         self.assertTrue(config['mediaPolicy']['mediaFirst'])
         self.assertEqual(report['code'],'VISUAL_ANALYSIS_REQUIRED')
         self.assertNotIn('Vista atractiva',json.dumps(config['content']))

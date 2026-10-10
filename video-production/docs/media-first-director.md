@@ -13,7 +13,7 @@ El valor por defecto es `external`. El CLI interno conserva su producto
 el contexto de Agenda en el panel; no se infiere ni migra automáticamente.
 
 `videoType=website_showcase` identifica un showcase de web real y usa
-`website-showcase-v1` / renderer `website`. Las imágenes y videos se adaptan con
+`website-showcase-v2` / renderer `website-showcase-editorial`. Las imágenes y videos se adaptan con
 `contain` al canvas vertical, sin zoom/paneo que recorte los bordes. La apertura
 y el cierre editorial muestran imágenes o frames de los mismos medios reales.
 Homepage, projects/portfolio, about, services y contact son
@@ -264,3 +264,13 @@ También prueba fallos, consentimiento separado, tenant y revisión concurrente.
 Los tests de business-modern verifican offsets en ambos renderers y los límites
 con ffprobe. Node ejecuta el mismo flujo que usa el panel, incluido fallo antes
 del Director. Todo usa storage temporal, sin medios/proyectos reales.
+
+### Website Showcase V2
+
+El renderer editorial V2 toma como benchmark el reel manual aprobado: canvas 9:16
+cálido, jerarquía tipográfica clara, captura o navegación horizontal completa
+dentro de un marco editorial, CTA en píldora y movimiento mínimo. La IA sigue
+eligiendo medios, copy y tiempos; el renderer decide la dirección de arte.
+Nunca usa `cover`, zoom o paneo sobre screenshots/videos del cliente.
+`website-showcase-v1` queda disponible solo para configuraciones históricas;
+guardar o redirigir un `website_showcase` desde el panel lo lleva a V2.
