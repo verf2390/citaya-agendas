@@ -100,7 +100,7 @@ def validate(config,mode='preview'):
     p=products[c['product']];c['template']=c.get('template',p['defaultTemplate'])
     if c['template'] not in p['allowedTemplates']: fail('INVALID_TEMPLATE','Template is not registered for this product.')
     template=read_json(ROOT/'templates'/c['template']/'template.json')
-    defaults={'creator-led-v1':'dynamic','website-showcase-v1':'premium','website-showcase-v2':'premium','citaya-websites-vertical-v1':'premium','local-business-promo-v1':'minimal','offer-promo-v1':'dynamic','before-after-v1':'premium'}
+    defaults={'creator-led-v1':'dynamic','website-showcase-v1':'premium','website-showcase-v2':'premium','master-video-remix-v1':'dynamic','citaya-websites-vertical-v1':'premium','local-business-promo-v1':'minimal','offer-promo-v1':'dynamic','before-after-v1':'premium'}
     c['stylePreset']=c.get('stylePreset',defaults.get(c['template'],'minimal'))
     if c['stylePreset'] not in STYLE_PRESETS: fail('INVALID_STYLE_PRESET','stylePreset must be minimal, dynamic or premium.')
     c['goal']=text(c.get('goal','lead_generation'),40,'goal')
@@ -175,6 +175,18 @@ def validate(config,mode='preview'):
         length=actual if slot is None else slot
         if actual+.04<length+offset or start+length>duration+.04: fail('MEDIA_DURATION','Creator clip/voice does not fit its configured timeline slot.')
         if has_audio and (key=='voiceover' or creator['useClipAudio']): speech.append({'path':creator[key],'start':start,'duration':length,'offset':offset})
+    if c['template']=='master-video-remix-v1':
+        if (not creator['introVideo'] or creator['outroVideo'] or creator['voiceover'] or
+                creator['introOffset'] != 0 or creator['useClipAudio'] or len(scenes) != 1 or
+                scenes[0].get('video') != creator['introVideo'] or scenes[0].get('videoOffset', 0) != 0):
+            fail('MASTER_REMIX_CONFIG','Master remix requires one untouched source video and no creator speech slots.')
+        master_info=probe(ROOT/creator['introVideo'])
+        master_duration=float(master_info['format']['duration'])
+        if abs(master_duration-duration)>.06:
+            fail('MEDIA_DURATION','Master remix timeline must match the source video duration.')
+        if not any(stream.get('codec_type')=='audio' for stream in master_info.get('streams',[])):
+            fail('MASTER_AUDIO_REQUIRED','Master remix source must contain an audio track.')
+
     # Accidental double narration is almost always a production mistake.
     speech.sort(key=lambda x:x['start'])
     if any(a['start']+a['duration']>b['start']+.04 for a,b in zip(speech,speech[1:])): fail('OVERLAPPING_SPEECH','Voiceover overlaps creator audio. Change voiceoverStart or useClipAudio.')
@@ -184,8 +196,16 @@ def validate(config,mode='preview'):
     if subtitles['enabled'] and not captions: fail('MISSING_SRT','Enabled subtitles require a local SRT file.')
     cues=parse_srt(ROOT/captions,duration) if subtitles['enabled'] else []
     if captions:media.append(captions)
-    audio=c.setdefault('audio',{});shape(audio,['music','sfx','duckMusicDuringVoice','tts'],'audio')
+    audio=c.setdefault('audio',{});shape(audio,['music','sfx','duckMusicDuringVoice','masterClipBed','tts'],'audio')
     for k in ['music','sfx','duckMusicDuringVoice']:audio[k]=boolean(audio.get(k,True),'audio.'+k)
+    audio['masterClipBed']=boolean(audio.get('masterClipBed',False),'audio.masterClipBed')
+    if audio['masterClipBed']:
+        if c['template']!='master-video-remix-v1' or not creator['introVideo'] or creator['useClipAudio']:
+            fail('MASTER_REMIX_CONFIG','Master clip audio bed is only valid for a muted master-video remix source.')
+        if not audio['music']:
+            fail('MASTER_AUDIO_REQUIRED','Master clip audio bed requires audio.music=true.')
+    elif c['template']=='master-video-remix-v1':
+        fail('MASTER_AUDIO_REQUIRED','Master remix requires the source audio bed.')
     from tts_contract import validate_tts_config
     tts=validate_tts_config(c,duration)
     if tts is not None:audio['tts']=tts
@@ -247,10 +267,11 @@ def expand_inputs(c):
             audio=c.setdefault('audio',{})
             audio.setdefault('music',bool(m.get('backgroundMusic')))
             audio.setdefault('sfx',bool(m.get('soundEffects')))
-            if (audio.get('music') and not m.get('backgroundMusic')) or (audio.get('sfx') and not m.get('soundEffects')):fail('MEDIA_POLICY','Media-first audio must also be supplied.')
+            master_bed = bool(audio.get('masterClipBed')) and bool(m.get('creatorIntro') or creator.get('introVideo'))
+            if (audio.get('music') and not (m.get('backgroundMusic') or master_bed)) or (audio.get('sfx') and not m.get('soundEffects')):fail('MEDIA_POLICY','Media-first audio must also be supplied.')
         required_templates = (('website-showcase-v1','website-showcase-v2')
                               if c.get('videoType') == 'website_showcase'
-                              else ('local-business-promo-v2',))
+                              else ('local-business-promo-v2','master-video-remix-v1'))
         if strict and c.get('template') not in required_templates:
             fail('MEDIA_FIRST_RENDERER_REQUIRED','Provided-media projects require '+ ' or '.join(required_templates)+'.')
         for scene in c['scenes']:
