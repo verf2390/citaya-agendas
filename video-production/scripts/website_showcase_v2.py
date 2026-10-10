@@ -203,7 +203,7 @@ def compile_website_showcase_v2(c, ctx, out, mode):
         visual('closing', clock, timing['outro'],
                still=hold(selected[-1] if selected else None, last=True))
 
-    end_headline = content.get('benefit') or content.get('finalTagline') or brand['businessName']
+    end_headline = c['cta']
     copy_layer('end', clock, timing['outro'], end_headline, kicker=brandline, end=True)
 
     for i, cue in enumerate(ctx['cues']):

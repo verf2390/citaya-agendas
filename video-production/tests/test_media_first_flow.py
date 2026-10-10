@@ -120,6 +120,8 @@ class WebsiteFlowTests(unittest.TestCase):
         self.assertEqual(payload['tools'],[])
         self.assertNotIn(str(self.s.root),prompt)
         self.assertNotIn(self.ids[5],prompt)
+        self.assertIn('WEBSITE_SHOWCASE_EDITORIAL', prompt)
+        self.assertIn('video de navegación', prompt)
         context=json.loads(prompt.split('CONTEXTO_MEDIOS: ',1)[1].split('. BRIEF: ',1)[0])
         lookup={a['visual']['subjects'][0]:a['id'] for a in context['availableAssets'] if 'visual' in a}
         scenes=[{'headline':'Vista atractiva de la portada', 'visualIntent':'media','assetId':lookup[label],

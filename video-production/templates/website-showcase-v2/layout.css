@@ -21,8 +21,10 @@ video.website-visual{position:absolute;inset:auto;left:73px;top:678px;width:934p
 .showcase-end-copy{top:210px}
 .showcase-end-copy .showcase-headline{font-size:56px}
 .showcase-cta{display:inline-flex;align-items:center;justify-content:center;margin-top:30px;min-height:104px;max-width:900px;padding:25px 42px;border-radius:999px;background:#191815;color:#fff;font-size:38px;line-height:1.15;font-weight:680;box-shadow:0 16px 38px #17120f25}
+.showcase-end-copy .showcase-cta{position:absolute;left:60px;top:1260px;width:820px;max-width:none;margin-top:0}
 .showcase-cta::after{content:'→';font-size:46px;margin-left:28px;font-weight:400}
 .showcase-contact{margin-top:16px;font-size:24px;font-weight:560;letter-spacing:.5px;color:#6e685f}
+.showcase-end-copy .showcase-contact{position:absolute;left:0;top:1395px;width:940px;text-align:center}
 .creator-showcase-video{position:absolute;inset:auto;left:55px;top:300px;width:970px;height:1320px;object-fit:contain;object-position:center;background:#111;border-radius:30px;box-shadow:0 32px 85px #2c1d1530}
 .showcase-caption{position:absolute;left:70px;bottom:118px;width:940px;padding:20px 28px;border-radius:18px;background:#161512e8;color:#fff;text-align:center;font-size:38px;line-height:1.2;font-weight:650;z-index:20}
 .with-captions .showcase-frame-shell{top:625px;height:560px}
