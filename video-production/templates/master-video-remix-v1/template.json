@@ -1,0 +1,12 @@
+{
+  "id": "master-video-remix-v1",
+  "version": 1,
+  "renderer": "master-video-remix",
+  "formats": [
+    "vertical"
+  ],
+  "foundation": "master-video-remix-v1",
+  "sceneModes": [
+    "media"
+  ]
+}
