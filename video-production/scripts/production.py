@@ -100,7 +100,7 @@ def validate(config,mode='preview'):
     p=products[c['product']];c['template']=c.get('template',p['defaultTemplate'])
     if c['template'] not in p['allowedTemplates']: fail('INVALID_TEMPLATE','Template is not registered for this product.')
     template=read_json(ROOT/'templates'/c['template']/'template.json')
-    defaults={'creator-led-v1':'dynamic','website-showcase-v1':'premium','citaya-websites-vertical-v1':'premium','local-business-promo-v1':'minimal','offer-promo-v1':'dynamic','before-after-v1':'premium'}
+    defaults={'creator-led-v1':'dynamic','website-showcase-v1':'premium','website-showcase-v2':'premium','citaya-websites-vertical-v1':'premium','local-business-promo-v1':'minimal','offer-promo-v1':'dynamic','before-after-v1':'premium'}
     c['stylePreset']=c.get('stylePreset',defaults.get(c['template'],'minimal'))
     if c['stylePreset'] not in STYLE_PRESETS: fail('INVALID_STYLE_PRESET','stylePreset must be minimal, dynamic or premium.')
     c['goal']=text(c.get('goal','lead_generation'),40,'goal')
@@ -248,8 +248,11 @@ def expand_inputs(c):
             audio.setdefault('music',bool(m.get('backgroundMusic')))
             audio.setdefault('sfx',bool(m.get('soundEffects')))
             if (audio.get('music') and not m.get('backgroundMusic')) or (audio.get('sfx') and not m.get('soundEffects')):fail('MEDIA_POLICY','Media-first audio must also be supplied.')
-        required_template = 'website-showcase-v1' if c.get('videoType') == 'website_showcase' else 'local-business-promo-v2'
-        if strict and c.get('template')!=required_template:fail('MEDIA_FIRST_RENDERER_REQUIRED','Provided-media projects require '+required_template+'.')
+        required_templates = (('website-showcase-v1','website-showcase-v2')
+                              if c.get('videoType') == 'website_showcase'
+                              else ('local-business-promo-v2',))
+        if strict and c.get('template') not in required_templates:
+            fail('MEDIA_FIRST_RENDERER_REQUIRED','Provided-media projects require '+ ' or '.join(required_templates)+'.')
         for scene in c['scenes']:
             mode=scene.get('mode')
             if strict and (mode!='media' or not (scene.get('media') or scene.get('video'))):fail('VISUAL_ANALYSIS_REQUIRED','Every visual scene requires approved provided media.')

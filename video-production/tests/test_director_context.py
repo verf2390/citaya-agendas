@@ -125,7 +125,7 @@ class DirectorContextTests(unittest.TestCase):
             (second, _, _), second_payload = self.direct(inventory=dict(reversed(list(self.inventory.items()))))
             self.assertEqual(first_payload, second_payload)
             self.assertEqual(first, second)
-            self.assertEqual(first['template'], 'website-showcase-v1' if video_type == 'website_showcase' else 'local-business-promo-v2')
+            self.assertEqual(first['template'], 'website-showcase-v2' if video_type == 'website_showcase' else 'local-business-promo-v2')
             self.assertTrue(all(s['mode'] == 'media' for s in first['scenes']))
 
     def test_missing_or_unknown_real_analysis_fails_before_model_even_in_large_context(self):

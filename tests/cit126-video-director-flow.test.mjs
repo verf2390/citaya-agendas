@@ -104,7 +104,7 @@ test('website selection survives refresh, saves before analysis and keeps naviga
       return {config, assets};
     }, request: async body => {
       assert.equal(config.videoType, 'website_showcase');
-      assert.equal(config.template, 'website-showcase-v1');
+      assert.equal(config.template, 'website-showcase-v2');
       assert.equal(config.media.clientVoiceover, 'asset:voice');
       assert.deepEqual(config.media.videos, ['asset:navigation']);
       assert.equal(config.media.creatorIntro, null);
@@ -122,7 +122,7 @@ test('only explicit creator assignments reserve a video; leaving website restore
   const assets = [{id: 'intro', assetType: 'video'}, {id: 'navigation', assetType: 'video'}];
   assert.deepEqual(mediaReferences(assets, '', '', '').videos, ['asset:intro','asset:navigation']);
   assert.deepEqual(mediaReferences(assets, 'intro', '', '').videos, ['asset:navigation']);
-  const config = {template: 'website-showcase-v1'};
+  const config = {template: 'website-showcase-v2'};
   applyProjectKind(config, 'external');
   assert.equal(config.videoType, 'promotion');
   assert.equal(config.template, 'local-business-promo-v2');

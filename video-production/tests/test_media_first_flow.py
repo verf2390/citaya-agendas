@@ -120,6 +120,8 @@ class WebsiteFlowTests(unittest.TestCase):
         self.assertEqual(payload['tools'],[])
         self.assertNotIn(str(self.s.root),prompt)
         self.assertNotIn(self.ids[5],prompt)
+        self.assertIn('WEBSITE_SHOWCASE_EDITORIAL', prompt)
+        self.assertIn('video de navegación', prompt)
         context=json.loads(prompt.split('CONTEXTO_MEDIOS: ',1)[1].split('. BRIEF: ',1)[0])
         lookup={a['visual']['subjects'][0]:a['id'] for a in context['availableAssets'] if 'visual' in a}
         scenes=[{'headline':'Vista atractiva de la portada', 'visualIntent':'media','assetId':lookup[label],
@@ -333,7 +335,7 @@ class WebsiteFlowTests(unittest.TestCase):
         self.config = created['project']['config']
         self.pid = created['project']['id']
         self.assertEqual(self.config['videoType'], 'website_showcase')
-        self.assertEqual(self.config['template'], 'website-showcase-v1')
+        self.assertEqual(self.config['template'], 'website-showcase-v2')
         self.ids = [self.s.upload(self.actor, self.pid, path) for path in self.files]
         for aid, dimensions in zip(self.ids[:5], [(1600,823),(1600,756),(1600,809),(1600,779),(1876,900)]):
             asset = self.s.row('video_assets', self.actor, aid)
@@ -353,7 +355,7 @@ class WebsiteFlowTests(unittest.TestCase):
             result=self.call('direct_project',brief=BRIEF)
         c=result['project']['config']
         self.assertEqual(c['videoType'], 'website_showcase')
-        self.assertEqual(c['template'],'website-showcase-v1')
+        self.assertEqual(c['template'],'website-showcase-v2')
         self.assertFalse(c['media'].get('creatorIntro'))
         self.assertFalse(c['media'].get('creatorOutro'))
         self.assertEqual(c['media']['videos'], ['asset:' + self.ids[4]])
@@ -364,8 +366,13 @@ class WebsiteFlowTests(unittest.TestCase):
         self.assertTrue(all(s['mode']=='media' and s['headline'] in COPY.values() for s in c['scenes']))
         self.assertEqual(c['media']['clientVoiceover'],'asset:'+self.ids[5])
         self.assertEqual(c['creator']['voiceoverStart'],0)
-        self.assertAlmostEqual(sum(c['timing'].values()),10.633,places=5)
-        self.assertLess(max(s['duration'] for s in c['scenes'])-min(s['duration'] for s in c['scenes']),.01)
+        self.assertAlmostEqual(sum(c['timing'].values()),12.0,places=5)
+        self.assertAlmostEqual(c['timing']['intro'],2.2,places=5)
+        self.assertAlmostEqual(c['timing']['outro'],1.5,places=5)
+        stills = [s['duration'] for s in c['scenes'] if s.get('media')]
+        videos = [s['duration'] for s in c['scenes'] if s.get('video')]
+        self.assertTrue(all(d >= 1.3 for d in stills))
+        self.assertTrue(all(d >= 3.1 for d in videos))
         schema_validate(c);tenant_schema_validate(c)
         self.assertTrue(self.s.validated(self.actor,self.pid,c,'preview')[1]['valid'])
         with self.s.materialize(self.actor,self.pid,c) as local, tempfile.TemporaryDirectory() as d:
@@ -374,12 +381,17 @@ class WebsiteFlowTests(unittest.TestCase):
             self.assertEqual(ctx['speech'][0]['duration'],10.133)
             comp,_=compile_composition(normalized,ctx,Path(d),'preview')
             html=(comp/'index.html').read_text()
+            self.assertIn('data-composition-id="website-showcase-v2"', html)
+            self.assertIn('showcase-frame-shell', html)
+            self.assertIn('showcase-cta', html)
+            self.assertIn('object-fit:contain', html)
+            self.assertNotIn('object-fit:cover', html)
             for forbidden in ['Negocio Demo','Vista atractiva','Navegación por secciones','Interfaz Citaya','citaya-admin-demo','assets/ui/']:
                 self.assertNotIn(forbidden,html)
             self.assertIn('data-media-start="0.000000"',html)
             mix_audio(normalized,ctx,Path(d),comp)
-            self.assertAlmostEqual(float(probe(comp/'assets/master.wav')['format']['duration']),10.633,places=2)
-            self.assertLess(report['duration']-ctx['speech'][0]['duration'],.6)
+            self.assertAlmostEqual(float(probe(comp/'assets/master.wav')['format']['duration']),12.0,places=2)
+            self.assertLess(report['duration']-ctx['speech'][0]['duration'],1.9)
             self.assertFalse((comp / 'assets/ui').exists())
             # Verify computed layout in a browser, including entrance/mid/end.
             import shutil
@@ -391,7 +403,9 @@ class WebsiteFlowTests(unittest.TestCase):
                                     str(comp / 'index.html'), str(chrome)],
                                    capture_output=True, text=True, timeout=120)
             self.assertEqual(proof.returncode, 0, proof.stderr)
-            self.assertTrue(json.loads(proof.stdout)['fullViewportVisible'])
+            layout_proof = json.loads(proof.stdout)
+            self.assertTrue(layout_proof['fullViewportVisible'])
+            self.assertTrue(layout_proof['editorialBenchmark'])
             # Actual mixed PCM remains audible through the end of recorded voice.
             import wave
             import array
@@ -928,7 +942,7 @@ class EditorialContractTests(unittest.TestCase):
         with patch.object(tenant_brief,'gateway_call',return_value=response):
             config,report,_=tenant_brief.generate_tenant_config(brief=BRIEF,business_name='CITAYA',
                 niche='architecture',style='minimal',duration_seconds=20,video_type='website_showcase')
-        self.assertEqual(config['template'],'website-showcase-v1')
+        self.assertEqual(config['template'],'website-showcase-v2')
         self.assertTrue(config['mediaPolicy']['mediaFirst'])
         self.assertEqual(report['code'],'VISUAL_ANALYSIS_REQUIRED')
         self.assertNotIn('Vista atractiva',json.dumps(config['content']))
