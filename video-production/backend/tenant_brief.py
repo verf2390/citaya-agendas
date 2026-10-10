@@ -113,6 +113,22 @@ def authorized_copy(config, brief):
     return result
 
 
+def _master_video_remix_requested(brief):
+    """Only explicit preserve-the-master language enables the non-destructive remix path."""
+    folded = ''.join(
+        c for c in unicodedata.normalize('NFKD', str(brief or '').casefold())
+        if not unicodedata.combining(c)
+    )
+    folded = re.sub(r'\s+', ' ', folded)
+    names_master = bool(re.search(r'\bvideo\s+(?:base|master)\b|\btimeline\s+principal\b', folded))
+    preserves_audio = bool(re.search(
+        r'\b(?:conservar|mantener)\b.{0,120}\b(?:musica|audio)\b|'
+        r'\bno\s+(?:quiero\s+que\s+)?(?:reconstruyas|reconstruir)\b',
+        folded,
+    ))
+    return names_master and preserves_audio
+
+
 def distribute_scenes(scenes, total, available, minimums=None):
     """Bounded proportional shortening / balanced extension; never stretch a clip."""
     minimums = list(minimums) if minimums is not None else [1.0] * len(scenes)
@@ -802,6 +818,65 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     # original metadata for validation/durations, never a compacted description.
     available_visual = {a["id"]: metadata[a["id"]] for a in model_visual_context["availableAssets"]
                         if a["id"] in authorized_visual_ids and "visual" in a}
+
+    # A master-video remix is an audio/post-production request, not a request to
+    # re-edit the supplied montage. Keep the exact source duration and visual
+    # timeline; only generate narration and mix the source audio as a ducked bed.
+    if _master_video_remix_requested(chosen_brief) and tts_config and tts_config.get("enabled"):
+        master_ref = media.get("creatorIntro")
+        master_seconds = intro_seconds
+        if not master_ref or master_seconds is None:
+            raise TenantBriefError("MASTER_VIDEO_REQUIRED")
+        if not 8 <= master_seconds <= 60:
+            raise TenantBriefError("INVALID_DURATION")
+        master_id = _asset_ref_id(master_ref)
+        if strict and master_id not in authorized_visual_ids:
+            raise TenantBriefError("VISUAL_ANALYSIS_REQUIRED")
+
+        intro = 1.5
+        outro = 1.5
+        demo = round(master_seconds - intro - outro, 6)
+        if demo < 3:
+            raise TenantBriefError("DIRECTOR_MEDIA_TOO_SHORT")
+
+        current["template"] = "master-video-remix-v1"
+        current.setdefault("mediaPolicy", {})["mediaFirst"] = True
+        current["capabilities"] = ["provided_business_content"]
+        current["timing"] = {"intro": intro, "demo": demo, "outro": outro}
+        current["scenes"] = [{
+            "capability": "provided_business_content",
+            "mode": "media",
+            "headline": str(current.get("brand", {}).get("businessName") or "Negocio")[:64],
+            "duration": demo,
+            "video": master_ref,
+            "videoOffset": 0,
+        }]
+        creator = current.setdefault("creator", {})
+        creator["useClipAudio"] = False
+        creator["voiceoverStart"] = 0
+        audio = current.setdefault("audio", {})
+        audio["music"] = True
+        audio["sfx"] = False
+        audio["duckMusicDuringVoice"] = True
+        audio["masterClipBed"] = True
+        project["targetDurationSeconds"] = master_seconds
+
+        from production import schema_validate
+        schema_validate(current)
+        report = {
+            "targetDurationSeconds": master_seconds,
+            "plannedDurationSeconds": master_seconds,
+            "creatorIntroSeconds": master_seconds,
+            "voiceoverSeconds": voice_seconds,
+            "creatorOutroSeconds": None,
+            "estimatedTtsSeconds": estimated_tts_seconds,
+            "mediaFirst": True,
+            "sceneCount": 1,
+            "preservedMedia": True,
+            "masterVideoRemix": True,
+        }
+        return current, report, _combined_usage([], model, 0.0)
+
     visual_intents = _director_visual_intents(current)
     visual_rules = (
         "Para el producto CITAYA Agenda explícito, elige visualIntent por significado: agenda/reservas/calendario -> agenda; "

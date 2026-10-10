@@ -248,6 +248,9 @@
               }
             }
           ]
+        },
+        "masterClipBed": {
+          "type": "boolean"
         }
       },
       "required": []
