@@ -49,6 +49,105 @@ class VisionProviderTests(unittest.TestCase):
         self.assertEqual(result["inferenceAttempts"], 1)
         self.connection.request.assert_called_once()
 
+    def test_long_evidence_support_is_truncated_before_strict_validation(self):
+        value = observation()
+        claim = "La imagen muestra arquitectura y una portada con proyectos visibles."
+        value["evidence"][0]["supports"] = [claim]
+        self.envelope(value)
+        result = self.analyze()
+        self.assertEqual(result["semantic"]["evidence"], [
+            {"frameRef": "evidence-1", "supports": [claim[:60]]}])
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["inferenceAttempts"], 1)
+        vision.VALIDATOR.validate(result["semantic"])
+
+    def test_duplicate_setting_preserves_first_occurrence_order(self):
+        value = observation()
+        value["setting"] = ["architecture", "interior", "architecture", "exterior", "interior"]
+        self.envelope(value)
+        self.assertEqual(self.analyze()["semantic"]["setting"], ["architecture", "interior", "exterior"])
+
+    def test_duplicate_roles_preserve_enums_and_order(self):
+        value = observation()
+        value["roleCandidates"] = ["service", "process", "service", "branding", "process"]
+        self.envelope(value)
+        self.assertEqual(self.analyze()["semantic"]["roleCandidates"], ["service", "process", "branding"])
+
+    def test_real_contract_failures_normalize_together_without_retry(self):
+        value = observation()
+        value["evidence"][0]["supports"] = ["Visible architectural project details " * 3]
+        value["setting"] = ["architecture", "architecture"]
+        value["roleCandidates"] = ["service", "service"]
+        self.assertEqual({error.validator for error in vision.VALIDATOR.iter_errors(value)},
+                         {"maxLength", "uniqueItems"})
+        original = copy.deepcopy(value)
+        self.envelope(value)
+        result = self.analyze()
+        expected = copy.deepcopy(original)
+        expected["evidence"][0]["supports"][0] = original["evidence"][0]["supports"][0][:60]
+        expected["setting"] = ["architecture"]
+        expected["roleCandidates"] = ["service"]
+        self.assertEqual(result["semantic"], expected)
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual(result["inferenceAttempts"], 1)
+        self.connection.request.assert_called_once()
+        vision.VALIDATOR.validate(result["semantic"])
+        self.assertEqual(value, original)
+        self.assertEqual(vision._normalize_observation(expected), expected)
+
+    def test_only_declared_text_fields_are_bounded_and_deduplicated_after_truncation(self):
+        value = observation()
+        value["summary"] = "á" * 401
+        for field, limit in (("setting", 60), ("subjects", 60), ("actions", 60), ("unknowns", 140)):
+            value[field] = ["ñ" * limit + "a", "ñ" * limit + "b", "otro", "otro"]
+        value["evidence"][0]["supports"] = ["é" * 61, "é" * 60, "otro", "otro"]
+        self.envelope(value)
+        result = self.analyze()
+        self.assertEqual(result["semantic"]["summary"], "á" * 400)
+        for field, limit in (("setting", 60), ("subjects", 60), ("actions", 60), ("unknowns", 140)):
+            self.assertEqual(result["semantic"][field], ["ñ" * limit, "otro"])
+        self.assertEqual(result["semantic"]["evidence"][0]["supports"], ["é" * 60, "otro"])
+        self.assertEqual(result["status"], "partial")
+        vision.VALIDATOR.validate(result["semantic"])
+
+    def test_normalization_never_repairs_other_contract_violations(self):
+        for invalid in ("enum", "frame_ref", "extra", "nested_extra", "type", "missing", "count"):
+            with self.subTest(invalid=invalid):
+                value = observation()
+                value["summary"] = "x" * 401
+                value["setting"] = ["architecture", "architecture"]
+                if invalid == "enum":
+                    value["roleCandidates"] = ["SERVICE", "SERVICE"]
+                elif invalid == "frame_ref":
+                    value["evidence"][0]["frameRef"] = " evidence-1 "
+                elif invalid == "extra":
+                    value["unexpected"] = "invented"
+                elif invalid == "nested_extra":
+                    value["evidence"][0]["unexpected"] = "invented"
+                elif invalid == "type":
+                    value["setting"] = [1, 1]
+                elif invalid == "missing":
+                    del value["quality"]
+                elif invalid == "count":
+                    value["subjects"] = [str(n) for n in range(13)]
+                self.envelope(value)
+                self.error("VISION_INVALID_CONTRACT")
+
+    def test_truncation_does_not_hide_unsafe_suffixes(self):
+        for tail, code in ((" eval(data)", "VISION_UNSAFE_TEXT"),
+                           ("<img>", "VISION_INVALID_CONTRACT"),
+                           ("/private/asset", "VISION_INVALID_CONTRACT")):
+            with self.subTest(tail=tail):
+                value = observation()
+                value["summary"] = "x" * 400 + tail
+                self.envelope(value)
+                self.error(code)
+
+    def test_persisted_semantic_validation_remains_strict(self):
+        value = observation()
+        value["summary"] = "x" * 401
+        self.error("VISION_INVALID_CONTRACT", lambda: vision.validate_semantic(value, ["evidence-1"]))
+
     def test_invalid_json(self):
         self.response.read.return_value = b"not json"
         self.error("VISION_INVALID_JSON")
@@ -88,7 +187,7 @@ class VisionProviderTests(unittest.TestCase):
         self.assertEqual(result["semantic"]["actions"], [])
 
     def test_limits(self):
-        for key, value in (("summary", "x" * 401), ("subjects", [str(n) for n in range(13)]), ("actions", [" "])):
+        for key, value in (("subjects", [str(n) for n in range(13)]), ("actions", [" "])):
             data = observation()
             data[key] = value
             self.envelope(data)
@@ -136,6 +235,7 @@ class VisionProviderTests(unittest.TestCase):
         self.assertEqual(user[1]["text"], "evidence-1")
         self.assertTrue(user[2]["image_url"]["url"].startswith("data:image/jpeg;base64,"))
         self.assertEqual(set(payload), {"model", "messages", "temperature", "seed", "max_tokens", "stream", "response_format"})
+        self.assertEqual(payload["response_format"], {"type": "json_object", "schema": vision.SCHEMA})
         for secret in ("storage_path", "tenant_id", "project_id", "sha256", str(ROOT)):
             self.assertNotIn(secret, json.dumps(payload))
 
