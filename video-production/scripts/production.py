@@ -248,7 +248,8 @@ def expand_inputs(c):
             audio.setdefault('music',bool(m.get('backgroundMusic')))
             audio.setdefault('sfx',bool(m.get('soundEffects')))
             if (audio.get('music') and not m.get('backgroundMusic')) or (audio.get('sfx') and not m.get('soundEffects')):fail('MEDIA_POLICY','Media-first audio must also be supplied.')
-        if strict and c.get('template')!='local-business-promo-v2':fail('MEDIA_FIRST_RENDERER_REQUIRED','Provided-media projects require the fullscreen media renderer.')
+        required_template = 'website-showcase-v1' if c.get('videoType') == 'website_showcase' else 'local-business-promo-v2'
+        if strict and c.get('template')!=required_template:fail('MEDIA_FIRST_RENDERER_REQUIRED','Provided-media projects require '+required_template+'.')
         for scene in c['scenes']:
             mode=scene.get('mode')
             if strict and (mode!='media' or not (scene.get('media') or scene.get('video'))):fail('VISUAL_ANALYSIS_REQUIRED','Every visual scene requires approved provided media.')

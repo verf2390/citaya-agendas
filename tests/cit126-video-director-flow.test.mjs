@@ -87,3 +87,43 @@ test('a legitimately running inference has no browser deadline and completes aft
   assert.equal(prepares, 1);
   assert.equal(directs, 1);
 });
+
+// These functions are also used by saveConfig and refresh in the actual panel.
+const { applyProjectKind, mediaReferences, shouldSyncEditor } = await import('../lib/video/directorFlow.mjs');
+test('website selection survives refresh, saves before analysis and keeps navigation as ordinary media', async () => {
+  const config = {videoType: 'promotion', template: 'local-business-promo-v2', media: {clientVoiceover: 'asset:voice'}};
+  assert.equal(shouldSyncEditor('project', 'project', 'website_showcase'), false);
+  assert.equal(shouldSyncEditor('project', 'other', 'website_showcase'), true);
+  assert.equal(shouldSyncEditor('project', 'project', 'external'), true);
+  const assets = [1,2,3,4].map(i => ({id: `image-${i}`, assetType: 'image'}))
+    .concat([{id: 'navigation', assetType: 'video', durationMs: 19167}, {id: 'voice', assetType: 'audio', durationMs: 10133}]);
+  await directAfterAnalysis({projectId: 'project', brief: 'Sitio web', analysisConsent: true, onStatus() {},
+    save: async () => {
+      applyProjectKind(config, 'website_showcase');
+      config.media = {...config.media, ...mediaReferences(assets, '', '', ''), creatorIntro: null, creatorOutro: null};
+      return {config, assets};
+    }, request: async body => {
+      assert.equal(config.videoType, 'website_showcase');
+      assert.equal(config.template, 'website-showcase-v1');
+      assert.equal(config.media.clientVoiceover, 'asset:voice');
+      assert.deepEqual(config.media.videos, ['asset:navigation']);
+      assert.equal(config.media.creatorIntro, null);
+      if (body.action === 'prepare_direction') {
+        assert.deepEqual(body.assetIds, ['image-1','image-2','image-3','image-4','navigation']);
+        assert.equal(body.analysisConsent, true);
+        return {status: 'ready', visualAssetCount: 5};
+      }
+      assert.equal(body.action, 'direct');
+      return {project: {config}};
+    }});
+});
+
+test('only explicit creator assignments reserve a video; leaving website restores business routing', () => {
+  const assets = [{id: 'intro', assetType: 'video'}, {id: 'navigation', assetType: 'video'}];
+  assert.deepEqual(mediaReferences(assets, '', '', '').videos, ['asset:intro','asset:navigation']);
+  assert.deepEqual(mediaReferences(assets, 'intro', '', '').videos, ['asset:navigation']);
+  const config = {template: 'website-showcase-v1'};
+  applyProjectKind(config, 'external');
+  assert.equal(config.videoType, 'promotion');
+  assert.equal(config.template, 'local-business-promo-v2');
+});

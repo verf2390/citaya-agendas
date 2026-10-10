@@ -52,7 +52,7 @@ test("Video Studio media controls wire supported audio and creator roles", () =>
   assert.match(page, /duckMusicDuringVoice/);
   assert.match(page, /existingTts\.enabled === true/);
   assert.match(page, /useClipAudio/);
-  assert.match(page, /reservedImages/);
+  assert.match(page, /mediaReferences/);
   assert.match(page, /\.wav,.mp3,.m4a,.ogg/);
 });
 
@@ -102,4 +102,12 @@ test("Video Studio surfaces legacy ambiguous config errors clearly", () => {
 test("Video Studio persists the editable niche as the rendered project category", () => {
   assert.match(page, /setNiche\(projectMeta\.category\)/);
   assert.match(page, /category: niche\.trim\(\) \|\| "Negocio local"/);
+});
+
+
+test("website draft survives upload/refresh and explicit saves use the website routing", () => {
+  assert.match(page, /editorProjectKind\.current = event\.target\.value/);
+  assert.match(page, /if \(shouldSyncEditor\(editorProjectId\.current, next\.id, editorProjectKind\.current\)\) syncEditor\(next\)/);
+  assert.match(page, /applyProjectKind\(config, projectKind\)/);
+  assert.match(page, /setProjectKind\(next\.config\.videoType === "website_showcase"/);
 });

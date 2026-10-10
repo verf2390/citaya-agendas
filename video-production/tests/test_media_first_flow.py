@@ -42,19 +42,20 @@ class WebsiteFlowTests(unittest.TestCase):
         cls.fixtures = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.fixtures.cleanup)
         cls.files = []
-        for label, color in [('homepage', 'red'), ('projects', 'blue'), ('about', 'green'), ('contact', 'yellow')]:
+        for label, color, height in [('homepage', 'red', 823), ('projects', 'blue', 756), ('about', 'green', 809), ('contact', 'yellow', 779)]:
             path = Path(cls.fixtures.name) / (label + '.png')
-            subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'color={color}:s=144x256',
-                            '-vf',f"drawtext=text='{label}':fontsize=14:fontcolor=white:x=10:y=80",
+            subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i',f'color={color}:s=1600x{height},format=rgb24',
+                            '-vf',f"drawbox=x=0:y=0:w=40:h=ih:color=magenta:t=fill,drawbox=x=iw-40:y=0:w=40:h=ih:color=cyan:t=fill,drawtext=text='{label}':fontsize=14:fontcolor=white:x=50:y=80",
                             '-frames:v','1','-threads','1',str(path)], check=True, capture_output=True)
             cls.files.append(path)
         video = Path(cls.fixtures.name) / 'navigation.mp4'
-        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=144x256:r=12','-t','20',
+        subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=s=1876x900:r=24',
+                        '-f','lavfi','-i','sine=frequency=220:sample_rate=48000','-t','19.167','-c:a','aac',
                         '-c:v','libx264','-preset','ultrafast','-threads','1',str(video)], check=True, capture_output=True)
         cls.files.append(video)
         voice = Path(cls.fixtures.name) / 'voice.wav'
         subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','sine=frequency=330:sample_rate=48000',
-                        '-t','10.13',str(voice)],check=True,capture_output=True)
+                        '-t','10.133',str(voice)],check=True,capture_output=True)
         cls.files.append(voice)
         cls.creator_files = []
         for label, color in [('intro', 'purple'), ('outro', 'orange')]:
@@ -186,8 +187,8 @@ class WebsiteFlowTests(unittest.TestCase):
             normalized, _, ctx = validate(local)
             comp, _ = compile_composition(normalized, ctx, Path(d), 'preview')
             html = (comp / 'index.html').read_text()
-            self.assertIn('id="creator-intro-video"', html)
-            self.assertIn('id="outro-video"', html)
+            self.assertIn('id="creator-intro"', html)
+            self.assertIn('id="creator-outro"', html)
             for aid in (intro, outro):
                 sha = self.s.row('video_assets', self.actor, aid)['sha256']
                 rendered_path = 'assets/inputs/' + sha[:16] + '.mp4'
@@ -279,33 +280,125 @@ class WebsiteFlowTests(unittest.TestCase):
                         self.call('prepare_direction', assetIds=selected_visual_ids(config), analysisConsent=True)
                     launch.assert_not_called()
 
-    def test_diego_videla_upload_analysis_director_materialization_renderer_audio(self):
+    def panel_save(self, intro=''):
+        script = """
+          import {readFileSync} from 'node:fs';
+          import {applyProjectKind, mediaReferences} from './lib/video/directorFlow.mjs';
+          const {config, assets, intro, voice} = JSON.parse(readFileSync(0, 'utf8'));
+          applyProjectKind(config, 'website_showcase');
+          config.media = {...config.media, ...mediaReferences(assets, intro, '', ''),
+            creatorIntro: intro ? 'asset:' + intro : null, creatorOutro: null,
+            clientVoiceover: 'asset:' + voice, creatorVoiceover: null};
+          config.mediaPolicy = {...config.mediaPolicy, mediaFirst: true};
+          config.creator = {...config.creator, useClipAudio: true, voiceoverStart: intro ? config.timing.intro : 0};
+          console.log(JSON.stringify(config));
+        """
+        assets = [{'id': aid, 'assetType': self.s.row('video_assets', self.actor, aid)['asset_type']}
+                  for aid in self.ids]
+        result = subprocess.run(['node', '--input-type=module', '-e', script], cwd=ROOT.parent,
+            input=json.dumps({'config': self.config, 'assets': assets, 'intro': intro, 'voice': self.ids[5]}),
+            text=True, capture_output=True, check=True)
+        self.config = json.loads(result.stdout)
+        self.call('update_project', config=self.config)
+        self.assertEqual(self.call('project_detail')['config']['videoType'], 'website_showcase')
+
+    def test_explicit_creator_intro_keeps_full_clip_and_delays_recorded_voice(self):
+        self.panel_save(intro=self.ids[4])
+        self.analyze_selected()
+        with patch.object(tenant_brief, 'gateway_call', side_effect=self.proposal):
+            c = self.call('direct_project')['project']['config']
+        self.assertEqual(c['media']['creatorIntro'], 'asset:' + self.ids[4])
+        self.assertEqual(c['media']['videos'], [])
+        self.assertAlmostEqual(c['timing']['intro'], 19.167, places=3)
+        self.assertEqual(c['creator']['voiceoverStart'], c['timing']['intro'])
+        self.assertTrue(c['creator']['useClipAudio'])
+        self.assertAlmostEqual(sum(c['timing'].values()), 29.8, places=3)
+        self.assertTrue(self.s.validated(self.actor, self.pid, c, 'preview')[1]['valid'])
+        with self.s.materialize(self.actor, self.pid, c) as local, tempfile.TemporaryDirectory() as d:
+            normalized, _, ctx = validate(local)
+            self.assertEqual(len(ctx['speech']), 2)
+            self.assertAlmostEqual(ctx['speech'][0]['duration'], 19.167, places=3)
+            self.assertAlmostEqual(ctx['speech'][1]['start'], 19.167, places=3)
+            self.assertAlmostEqual(ctx['speech'][1]['duration'], 10.133, places=3)
+            comp, _ = compile_composition(normalized, ctx, Path(d), 'preview')
+            mix_audio(normalized, ctx, Path(d), comp)
+            self.assertAlmostEqual(float(probe(comp / 'assets/master.wav')['format']['duration']), 29.8, places=3)
+
+    def test_horizontal_website_panel_director_materialization_renderer_audio(self):
+        # Creation -> upload -> actual panel save helpers -> analysis -> Director.
+        with patch.object(tenant_brief, 'gateway_call', return_value={'text': json.dumps(COPY)}):
+            created = self.call('create_from_brief', businessName='Estudio Sintético', brief=BRIEF,
+                niche='architecture', style='minimal', durationSeconds=20,
+                videoType='website_showcase', productContext='external', mediaPolicy={'mediaFirst': True})
+        self.config = created['project']['config']
+        self.pid = created['project']['id']
+        self.assertEqual(self.config['videoType'], 'website_showcase')
+        self.assertEqual(self.config['template'], 'website-showcase-v1')
+        self.ids = [self.s.upload(self.actor, self.pid, path) for path in self.files]
+        for aid, dimensions in zip(self.ids[:5], [(1600,823),(1600,756),(1600,809),(1600,779),(1876,900)]):
+            asset = self.s.row('video_assets', self.actor, aid)
+            self.assertEqual((asset['width'], asset['height']), dimensions)
+        self.labels = dict(zip(self.ids, ['homepage','projects','about','contact','navigation','voice']))
+        # Upload alone never assigns a creator role or changes project intent.
+        uploaded = self.call('project_detail')['config']
+        self.assertFalse(uploaded.get('media', {}).get('creatorIntro'))
+        self.assertEqual(uploaded['videoType'], 'website_showcase')
+        self.config['content'] = dict(COPY)
+        self.config['mediaApproved'] = True
+        self.panel_save()
         job_id=self.analyze()
         self.assertEqual(len(self.s.visual_inventory(self.actor,self.pid)),5)
         self.assertNotIn(self.ids[5],self.s.visual_inventory(self.actor,self.pid))
         with patch.object(tenant_brief,'gateway_call',side_effect=self.proposal):
             result=self.call('direct_project',brief=BRIEF)
         c=result['project']['config']
-        self.assertEqual(c['template'],'local-business-promo-v2')
+        self.assertEqual(c['videoType'], 'website_showcase')
+        self.assertEqual(c['template'],'website-showcase-v1')
+        self.assertFalse(c['media'].get('creatorIntro'))
+        self.assertFalse(c['media'].get('creatorOutro'))
+        self.assertEqual(c['media']['videos'], ['asset:' + self.ids[4]])
+        self.assertLess(c['timing']['intro'], 3)
+        self.assertEqual(c['scenes'][-1].get('videoOffset', 0), 0)
+        self.assertLess(c['scenes'][-1]['duration'], 19.167)
         self.assertEqual([s.get('media') or s.get('video') for s in c['scenes']],['asset:'+i for i in self.ids[:5]])
         self.assertTrue(all(s['mode']=='media' and s['headline'] in COPY.values() for s in c['scenes']))
         self.assertEqual(c['media']['clientVoiceover'],'asset:'+self.ids[5])
         self.assertEqual(c['creator']['voiceoverStart'],0)
-        self.assertAlmostEqual(sum(c['timing'].values()),10.63,places=5)
+        self.assertAlmostEqual(sum(c['timing'].values()),10.633,places=5)
         self.assertLess(max(s['duration'] for s in c['scenes'])-min(s['duration'] for s in c['scenes']),.01)
         schema_validate(c);tenant_schema_validate(c)
         self.assertTrue(self.s.validated(self.actor,self.pid,c,'preview')[1]['valid'])
         with self.s.materialize(self.actor,self.pid,c) as local, tempfile.TemporaryDirectory() as d:
             normalized,report,ctx=validate(local)
-            self.assertEqual(ctx['speech'][0]['duration'],10.13)
+            self.assertEqual(len(ctx['speech']), 1)  # Navigation audio is not creator speech.
+            self.assertEqual(ctx['speech'][0]['duration'],10.133)
             comp,_=compile_composition(normalized,ctx,Path(d),'preview')
             html=(comp/'index.html').read_text()
             for forbidden in ['Negocio Demo','Vista atractiva','Navegación por secciones','Interfaz Citaya','citaya-admin-demo','assets/ui/']:
                 self.assertNotIn(forbidden,html)
             self.assertIn('data-media-start="0.000000"',html)
             mix_audio(normalized,ctx,Path(d),comp)
-            self.assertAlmostEqual(float(probe(comp/'assets/master.wav')['format']['duration']),10.63,places=2)
+            self.assertAlmostEqual(float(probe(comp/'assets/master.wav')['format']['duration']),10.633,places=2)
             self.assertLess(report['duration']-ctx['speech'][0]['duration'],.6)
+            self.assertFalse((comp / 'assets/ui').exists())
+            # Verify computed layout in a browser, including entrance/mid/end.
+            import shutil
+            chrome = os.environ.get('CHROME_PATH') or shutil.which('chromium') or shutil.which('google-chrome')
+            if not chrome:
+                chrome = next(iter(sorted((Path.home() / '.cache').glob('ms-playwright/chromium-*/chrome-*/chrome'), reverse=True)), None)
+            self.assertTrue(chrome, 'Install Chromium or set CHROME_PATH for the renderer regression')
+            proof = subprocess.run(['node', str(ROOT / 'tests/assert_website_layout.mjs'),
+                                    str(comp / 'index.html'), str(chrome)],
+                                   capture_output=True, text=True, timeout=120)
+            self.assertEqual(proof.returncode, 0, proof.stderr)
+            self.assertTrue(json.loads(proof.stdout)['fullViewportVisible'])
+            # Actual mixed PCM remains audible through the end of recorded voice.
+            import wave
+            import array
+            with wave.open(str(comp / 'assets/master.wav')) as wav:
+                wav.setpos(round(10.03 * wav.getframerate()))
+                tail = array.array('h', wav.readframes(round(.09 * wav.getframerate())))
+                self.assertGreater(max(abs(sample) for sample in tail), 100)
         # Preview and final approval contract still applies to this actual config.
         with self.assertRaises(ConfigError) as caught:
             self.s.enqueue(self.actor,self.pid,'final','no-preview')
@@ -835,7 +928,7 @@ class EditorialContractTests(unittest.TestCase):
         with patch.object(tenant_brief,'gateway_call',return_value=response):
             config,report,_=tenant_brief.generate_tenant_config(brief=BRIEF,business_name='CITAYA',
                 niche='architecture',style='minimal',duration_seconds=20,video_type='website_showcase')
-        self.assertEqual(config['template'],'local-business-promo-v2')
+        self.assertEqual(config['template'],'website-showcase-v1')
         self.assertTrue(config['mediaPolicy']['mediaFirst'])
         self.assertEqual(report['code'],'VISUAL_ANALYSIS_REQUIRED')
         self.assertNotIn('Vista atractiva',json.dumps(config['content']))

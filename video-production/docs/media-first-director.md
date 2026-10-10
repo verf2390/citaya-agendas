@@ -12,10 +12,23 @@ El valor por defecto es `external`. El CLI interno conserva su producto
 `citaya-agendas`. Los proyectos antiguos que dependían del nombre deben elegir
 el contexto de Agenda en el panel; no se infiere ni migra automáticamente.
 
-`videoType=website_showcase` identifica un showcase de web real. No requiere
-otra plantilla: utiliza `local-business-promo-v2` / `business-modern` con imágenes
-y videos reales. Homepage, projects/portfolio, about, services y contact son
+`videoType=website_showcase` identifica un showcase de web real y usa
+`website-showcase-v1` / renderer `website`. Las imágenes y videos se adaptan con
+`contain` al canvas vertical, sin zoom/paneo que recorte los bordes. La apertura
+y el cierre editorial muestran imágenes o frames de los mismos medios reales.
+Homepage, projects/portfolio, about, services y contact son
 contenido observado para ordenar los medios, no pantallas sintéticas.
+
+Los videos de navegación permanecen en `media.videos` y se reproducen desde
+offset 0 por la duración editorial de su escena. Sólo las asignaciones explícitas
+de inicio/cierre usan `creatorIntro/creatorOutro` y conservan el clip completo.
+Sin intro asignado, la voz grabada empieza en 0; una voz de 10.133 s con este
+inventario produce 10.633 s incluyendo la cola. Un intro explícito conserva el
+desplazamiento de la voz y `useClipAudio`. No se reinterpretan roles legacy.
+
+La selección web pendiente en el panel sobrevive al upload/refresh del mismo
+proyecto. Guardar y dirigir persisten tipo y template; cambiar de proyecto carga
+su propia selección. Los negocios externos normales siguen en business-modern.
 
 ## Flujo de /admin/videos
 

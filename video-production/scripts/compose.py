@@ -10,7 +10,12 @@ def compile_composition(c,ctx,out,mode):
     if ctx['template']['renderer']=='business-modern':
         from business_modern import compile_business_modern
         return compile_business_modern(c,ctx,out,mode)
-    comp=out/'composition';comp.mkdir();shutil.copytree(ROOT/'assets',comp/'assets')
+    showcase=c.get('videoType')=='website_showcase' and c['template']=='website-showcase-v1'
+    comp=out/'composition';comp.mkdir()
+    if showcase and c['product']=='custom-client-video':
+        for relative in ('vendor/gsap.min.js','branding/geist.woff2'):
+            dest=comp/'assets'/relative;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/'assets'/relative,dest)
+    else:shutil.copytree(ROOT/'assets',comp/'assets')
     imported={}
     def media(path):
         if not path:return None
@@ -23,6 +28,7 @@ def compile_composition(c,ctx,out,mode):
     css=(ROOT/'templates/citaya-saas-vertical-v1/layout.css').read_text()
     css+='\n'+(ROOT/'templates/presets.css').read_text()
     if ctx['template']['renderer']=='website':css+='\n'+(ROOT/'templates/citaya-websites-vertical-v1/layout.css').read_text()
+    if showcase:css+='\n'+(ROOT/'templates/website-showcase-v1/layout.css').read_text()
     css+=f'\nhtml,body{{width:{r["width"]}px;height:{r["height"]}px}}.stage{{transform:scale({scale})}}'
     pieces=[];motions=[];proof=[]
     if brand.get('primaryColor'):css+=f'\n.fill{{background:{brand["primaryColor"]}}}.screen{{border-color:{brand["primaryColor"]}}}'
@@ -40,13 +46,36 @@ def compile_composition(c,ctx,out,mode):
     def clip(id,start,length,content,cls='',track=2):
         pieces.append(f'<section id="{id}" class="clip {cls}" data-start="{start:.6f}" data-duration="{length:.6f}" data-track-index="{track}">{content}</section>')
     def enter(id,start):
+        if showcase:
+            # Keep the entire web viewport visible throughout the entrance.
+            motions.append(f"tl.fromTo('#{id} .headline',{{opacity:0}},{{opacity:1,duration:.22}},{start});")
+            return
         motions.append(f"tl.fromTo('#{id} .screen-motion',{{scale:1.055,y:16,opacity:0}},{{scale:1,y:0,opacity:1,duration:.28,ease:'power3.out'}},{start});tl.fromTo('#{id} .headline',{{x:23,opacity:0}},{{x:0,opacity:1,duration:.22,ease:'power2.out'}},{start});")
+    def web_visual(id,start,length,scene,hold=False,last=False):
+        if scene.get('video') and not hold:
+            pieces.append(f'<video id="{id}" class="clip website-visual" src="{media(scene["video"])}" muted playsinline data-start="{start:.6f}" data-duration="{length:.6f}" data-media-start="{scene.get("videoOffset",0):.6f}" data-track-index="0"></video>')
+            return
+        if scene.get('video'):
+            # Editorial bookends hold a real frame, never extend scene playback.
+            from business_modern import bookend_frame_name
+            from production import process
+            source=ROOT/scene['video'];offset=scene.get('videoOffset',0)
+            at=offset+(max(0,scene['duration']-1) if last else 0)
+            name=bookend_frame_name(digest(source),offset,scene['duration'],last)
+            dest=comp/'assets'/'inputs'/name;dest.parent.mkdir(exist_ok=True)
+            args=['-t',offset+scene['duration']-at,'-update','1'] if last else ['-frames:v','1']
+            process(['ffmpeg','-y','-v','error','-protocol_whitelist','file,pipe','-ss',f'{at:.6f}','-i',source,*args,'-threads','1',dest],timeout=60)
+            path='assets/inputs/'+name
+        else:path=media(scene['media'])
+        clip(id,start,length,f'<img class="website-visual" src="{path}" alt="Material web revisado">',track=0)
     branding=f'<img class="brand" src="assets/branding/citaya-logo.svg" alt="Citaya"><div class="product-name">{E(ctx["product"]["name"])}</div><div class="niche">{E(ctx["niche"]["name"])}</div>'
     if custom:
         logo=brand.get('logoDark') or brand.get('logo') or brand.get('logoLight')
         branding=(f'<img class="brand" src="{media(logo)}" alt="Logo aprobado" style="object-fit:contain;background:white;border-radius:16px">' if logo else '')+f'<div class="product-name">{E(brand["businessName"])}</div><div class="niche">{E(c["project"]["category"])}</div>'
     if c['creator']['introVideo']:css+='\n.product-name,.niche{background:white;padding:12px;border-radius:12px}.brand{background:white;border-radius:14px}.demo{background:white;padding:6px}'
-    clip('brand-chrome',0,duration-t['outro'],branding+'<div class="demo">Demostración · Datos ficticios / material revisado</div><div class="progress" data-layout-ignore><div class="fill"></div></div>',track=1)
+    demo_label='' if showcase else '<div class="demo">Demostración · Datos ficticios / material revisado</div>'
+    clip('brand-chrome',0,duration-t['outro'],branding+demo_label+'<div class="progress" data-layout-ignore><div class="fill"></div></div>',track=1)
+    if showcase and not c['creator']['introVideo']:web_visual('website-opening',0,t['intro'],c['scenes'][0],hold=True)
     if c['creator']['introVideo']:
         p=media(c['creator']['introVideo']);offset=c['creator']['introOffset']
         pieces.append(f'<video id="creator-intro" class="clip creator-video" src="{p}" muted playsinline data-start="0" data-duration="{t["intro"]}" data-media-start="{offset}" data-track-index="0"></video>')
@@ -100,7 +129,9 @@ def compile_composition(c,ctx,out,mode):
     clock=t['intro']
     for i,s in enumerate(c['scenes']):
         id=f'scene-{i}';m=s['mode'];cap=ctx['caps'][s['capability']]
-        if s.get('video'):
+        if showcase:
+            body='';web_visual(f'scene-video-{i}' if s.get('video') else f'scene-image-{i}',clock,s['duration'],s)
+        elif s.get('video'):
             body=''
             vp=media(s['video']);pieces.append(f'<video id="scene-video-{i}" class="clip creator-video" src="{vp}" muted playsinline data-start="{clock}" data-duration="{s["duration"]}" data-media-start="{s.get('videoOffset',0)}" data-track-index="0"></video>')
         elif ctx['template']['renderer']=='website':body=website(s)
@@ -123,7 +154,8 @@ def compile_composition(c,ctx,out,mode):
         elif cap['status']=='demo':qualifier='<div class="qualifier">Demo · No implica disponibilidad comercial</div>'
         scene_headline=c['hook'] if c['creator']['introVideo'] and i==0 else s['headline']
         clip(id,clock,s['duration'],f'<h2 class="headline">{E(scene_headline)}</h2><div class="screen {"website-screen " if ctx["template"]["renderer"]=="website" else ""}{m}"><div class="screen-motion" data-layout-allow-overflow>{body}</div></div>{qualifier}')
-        if s.get('video'):css+=f'\n#{id} .screen{{display:none}}#{id} .headline{{background:#ecf2f8;padding:25px;border-radius:20px}}'
+        if showcase:css+=f'\n#{id} .screen{{display:none}}'
+        elif s.get('video'):css+=f'\n#{id} .screen{{display:none}}#{id} .headline{{background:#ecf2f8;padding:25px;border-radius:20px}}'
         if custom and content.get('offer'):
             offer=content['offer']+(' · '+content['price'] if content.get('price') else '')
             clip(id+'-offer',clock,s['duration'],f'<div style="position:absolute;left:100px;top:1440px;width:880px;background:#0f172a;color:white;padding:28px;border-radius:20px;font-size:39px">{E(offer)}</div>',track=4)
@@ -138,6 +170,7 @@ def compile_composition(c,ctx,out,mode):
         pieces.append(f'<video id="creator-outro" class="clip creator-video" src="{p}" muted playsinline data-start="{clock}" data-duration="{t["outro"]}" data-media-start="{offset}" data-track-index="0"></video>')
         clip('end',clock,t['outro'],f'<div class="creator-outro-title">{E(ctx["product"]["name"])}<p>{E(ctx["product"]["tagline"])}</p></div><div class="creator-outro-cta">{E(c["cta"])}</div>')
     else:
+        if showcase:web_visual('website-closing',clock,t['outro'],c['scenes'][-1],hold=True,last=True)
         title='Ideas para lo que viene' if c['videoType']=='roadmap' else content.get('finalTagline') or (brand['businessName'] if custom else ctx['product']['tagline'])
         clip('end',clock,t['outro'],f'<div class="end-logo">{E(brand['businessName']) if custom else ('CITAYA WEB' if ctx['template']['renderer']=='website' else 'CITAYA')}</div><h2 class="end-title">{E(title)}</h2><div class="end-cta">{E(c["cta"])}</div>','end',3)
         motions.append(f"tl.fromTo('#end .end-logo',{{scale:.9,opacity:0}},{{scale:1,opacity:1,duration:.2,ease:'power3.out'}},{clock+.05});tl.fromTo('#end .end-title,#end .end-cta',{{y:26,opacity:0}},{{y:0,opacity:1,duration:.24,ease:'power3.out'}},{clock+.04});")
@@ -149,7 +182,7 @@ def compile_composition(c,ctx,out,mode):
     # A pre-mixed local track provides identical voice/ducking in preview and export.
     pieces.append(f'<audio id="master-audio" src="assets/master.wav" data-start="0" data-duration="{duration}" data-volume="1" data-track-index="10"></audio>')
     document='<!doctype html><html lang="es"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\' data: blob:; script-src \'self\' \'unsafe-inline\' \'unsafe-eval\'; style-src \'self\' \'unsafe-inline\'; connect-src \'self\';"><title>Citaya Production</title><script src="assets/vendor/gsap.min.js"></script><style>'+css+'</style></head><body>'
-    stage_classes='stage preset-'+c['stylePreset']+(' with-captions' if ctx['cues'] else '')
+    stage_classes='stage preset-'+c['stylePreset']+(' with-captions' if ctx['cues'] else '')+(' website-showcase' if showcase else '')
     document+=f'<div id="root" data-composition-id="citaya-production" data-start="0" data-duration="{duration}" data-width="{r["width"]}" data-height="{r["height"]}" data-fps="{r["fps"]}"><div class="{stage_classes}" data-style-preset="{c["stylePreset"]}">'+''.join(pieces)+'</div></div><script>const tl=gsap.timeline({paused:true});'+''.join(motions)+"window.__timelines['citaya-production']=tl;</script></body></html>"
     (comp/'index.html').write_text(document,encoding='utf-8')
     write_json(comp/'package.json',{'private':True,'scripts':{'check':'hyperframes check','render':'hyperframes render'},'devDependencies':{'hyperframes':'0.8.114'}})

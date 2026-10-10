@@ -445,7 +445,7 @@ def generate_tenant_config(*, brief, business_name, niche, niche_label=None, sty
     config = {
         "schemaVersion": 1,
         "product": "custom-client-video",
-        "template": "local-business-promo-v2",
+        "template": "website-showcase-v1" if video_type == "website_showcase" else "local-business-promo-v2",
         "stylePreset": style,
         "niche": niche,
         "videoType": video_type,
@@ -942,7 +942,9 @@ def direct_tenant_config(*, config, assets, brief=None, visual_inventory=None):
     )
     # External projects retain explicit templates, including persisted V1.
     # CITAYA's existing product-UI routing remains on the legacy renderer.
-    if strict:
+    if current.get("videoType") == "website_showcase":
+        current["template"] = "website-showcase-v1"
+    elif strict:
         current["template"] = "local-business-promo-v2"
     elif visual_intents is CITAYA_VISUAL_INTENTS:
         current["template"] = (

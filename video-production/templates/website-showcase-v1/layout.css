@@ -1,0 +1,10 @@
+/* The complete uploaded web viewport stays inside the vertical canvas.
+   No camera scale/pan or rounded clipping is applied to these media elements. */
+.website-showcase .website-visual{position:absolute;inset:auto;left:70px;top:650px;width:940px;height:800px;object-fit:contain;object-position:center;display:block;background:#e7e9e7;border:0;border-radius:0;transform:none}
+.website-showcase .creator-video{object-fit:contain}
+.website-showcase .headline.hook{top:330px;font-size:64px}
+.website-showcase .secondary{top:1490px;font-size:40px}
+.website-showcase .end{background:transparent;color:#0f172a}
+.website-showcase .end-logo{top:180px}
+.website-showcase .end-title{top:350px;font-size:64px}
+.website-showcase .end-cta{top:1510px}
