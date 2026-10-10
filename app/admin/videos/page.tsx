@@ -1,5 +1,5 @@
 "use client";
-import { directAfterAnalysis } from "@/lib/video/directorFlow.mjs";
+import { directAfterAnalysis, mediaReferences, applyProjectKind, shouldSyncEditor } from "@/lib/video/directorFlow.mjs";
 import { structuredMediaFirst, mediaFirstPolicy, mediaFirstDraft, requestMediaFirstState, mediaFirstStatus } from "@/lib/video/mediaFirstPolicy.mjs";
 
 import {
@@ -191,32 +191,6 @@ function cloneConfig(project: VideoProject) {
   return structuredClone(project.config || {});
 }
 
-function mediaReferences(
-  assets: VideoAsset[],
-  introAssetId: string,
-  outroAssetId: string,
-  logoAssetId: string,
-) {
-  const reservedVideos = new Set(
-    [introAssetId, outroAssetId].filter(Boolean),
-  );
-  const reservedImages = new Set([logoAssetId].filter(Boolean));
-  return {
-    images: assets
-      .filter(
-        (asset) =>
-          asset.assetType === "image" && !reservedImages.has(asset.id),
-      )
-      .map((asset) => "asset:" + asset.id),
-    videos: assets
-      .filter(
-        (asset) =>
-          asset.assetType === "video" && !reservedVideos.has(asset.id),
-      )
-      .map((asset) => "asset:" + asset.id),
-  };
-}
-
 function assetId(value: unknown) {
   if (typeof value !== "string" || !value.startsWith("asset:")) return "";
   return value.slice(6);
@@ -224,6 +198,8 @@ function assetId(value: unknown) {
 
 export default function AdminVideosPage() {
   const router = useRouter();
+  const editorProjectId = useRef<string | null>(null);
+  const editorProjectKind = useRef("external");
   const previewUrlRef = useRef<string | null>(null);
 
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -332,6 +308,8 @@ export default function AdminVideosPage() {
   const editPolicyStatus = useMediaFirstStatus(project ? mediaFirstDraft(brief, projectKind, mediaFirst) : null, apiJson);
 
   const syncEditor = useCallback((next: VideoProject) => {
+    editorProjectId.current = next.id;
+    editorProjectKind.current = String(next.config.videoType);
     const content =
       next.config.content && typeof next.config.content === "object"
         ? (next.config.content as Record<string, unknown>)
@@ -418,7 +396,8 @@ export default function AdminVideosPage() {
       const next = await fetchProject(projectId);
       if (!next) return null;
       setProject(next);
-      syncEditor(next);
+      setAnalysisConsent(false);
+      if (shouldSyncEditor(editorProjectId.current, next.id, editorProjectKind.current)) syncEditor(next);
       await loadPreview(next);
       return next;
     },
@@ -623,9 +602,8 @@ export default function AdminVideosPage() {
       ...existingProjectMeta,
       category: niche.trim() || "Negocio local",
       creativeBrief: brief.trim(),
-      productContext: projectKind === "citaya-agendas" ? "citaya-agendas" : "external",
     };
-    config.videoType = projectKind === "website_showcase" ? "website_showcase" : "promotion";
+    applyProjectKind(config, projectKind);
     config.mediaPolicy = mediaFirstPolicy(config, mediaFirst);
     config.brand = {
       ...existingBrand,
@@ -1108,7 +1086,7 @@ export default function AdminVideosPage() {
                     </button>
                     <label className="grid gap-1 text-xs font-black text-slate-600">
                       Contenido del proyecto
-                      <select value={projectKind} disabled={Boolean(working)} onChange={(event) => setProjectKind(event.target.value)}>
+                      <select value={projectKind} disabled={Boolean(working)} onChange={(event) => { editorProjectKind.current = event.target.value; setProjectKind(event.target.value); }}>
                         <option value="external">Contenido externo / cliente / portafolio</option>
                         <option value="website_showcase">Showcase de sitio web real</option>
                         <option value="citaya-agendas">Demo del producto CITAYA Agenda</option>
@@ -1164,6 +1142,11 @@ export default function AdminVideosPage() {
                       (asset) => asset.assetType === "video",
                     ) ? (
                       <div className="mt-4 grid gap-3">
+                        {projectKind === "website_showcase" && (
+                          <p className="text-xs text-slate-600">
+                            Las grabaciones de navegación se usan como escenas. Asigna inicio o cierre sólo si son clips de presentación del creador; el inicio se reproduce antes de la narración.
+                          </p>
+                        )}
                         <label className="grid gap-1 text-xs font-black text-slate-600">
                           Video de inicio
                           <select

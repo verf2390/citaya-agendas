@@ -54,7 +54,9 @@ test('panel and create API wire the canonical policy without substituting analys
   assert.match(page, /setProjectKind\(next\.config\.videoType === "website_showcase" \? "website_showcase" : projectMeta\.productContext/);
   assert.match(page, /Usar únicamente los medios proporcionados/);
   assert.match(page, /checked=\{analysisConsent\}/);
-  assert.match(route, /mediaPolicy: \{ mediaFirst: body\?\.mediaPolicy\?\.mediaFirst \?\? false \}/);
+  assert.match(route, /typeof rawMediaPolicy === "object"/);
+  assert.match(route, /!Array\.isArray\(rawMediaPolicy\)/);
+  assert.match(route, /mediaPolicy: \{ mediaFirst: mediaPolicy\?\.mediaFirst \?\? false \}/);
 });
 
 test('update API forwards omission and explicit false without applying creation defaults', () => {
