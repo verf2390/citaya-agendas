@@ -582,10 +582,13 @@ export default function AdminVideosPage() {
       outroAssetId,
       logoAssetId,
     );
+    const usesMasterClipBed = existingAudio.masterClipBed === true;
     const voiceoverStart =
-      introAssetId && config.timing && typeof config.timing === "object"
-        ? Number((config.timing as Record<string, unknown>).intro || 0)
-        : 0;
+      usesMasterClipBed
+        ? Number(existingCreator.voiceoverStart || 0)
+        : introAssetId && config.timing && typeof config.timing === "object"
+          ? Number((config.timing as Record<string, unknown>).intro || 0)
+          : 0;
 
     config.content = {
       ...existingContent,
@@ -626,10 +629,11 @@ export default function AdminVideosPage() {
     };
     config.audio = {
       ...existingAudio,
-      music: Boolean(musicAssetId),
+      music: usesMasterClipBed || Boolean(musicAssetId),
       sfx: false,
       duckMusicDuringVoice: Boolean(
-        musicAssetId && (voiceAssetId || existingTts.enabled === true),
+        (usesMasterClipBed || musicAssetId) &&
+          (voiceAssetId || existingTts.enabled === true),
       ),
     };
     config.mediaApproved = project.assets.length > 0 ? rightsApproved : false;
