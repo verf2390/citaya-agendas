@@ -111,3 +111,11 @@ test("website draft survives upload/refresh and explicit saves use the website r
   assert.match(page, /applyProjectKind\(config, projectKind\)/);
   assert.match(page, /setProjectKind\(next\.config\.videoType === "website_showcase"/);
 });
+
+
+test("Video Studio preserves master remix audio controls when saving before preview", () => {
+  assert.match(page, /usesMasterClipBed = existingAudio\.masterClipBed === true/);
+  assert.match(page, /music: usesMasterClipBed \|\| Boolean\(musicAssetId\)/);
+  assert.match(page, /\(usesMasterClipBed \|\| musicAssetId\)[\s\S]*existingTts\.enabled === true/);
+  assert.match(page, /usesMasterClipBed[\s\S]*existingCreator\.voiceoverStart/);
+});
