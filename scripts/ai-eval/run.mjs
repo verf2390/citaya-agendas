@@ -9,7 +9,7 @@ import { cases } from "./cases.mjs";
 import { validateCases, evaluate, summarize } from "./evaluate.mjs";
 
 const profiles = Object.freeze({
-  redaccion: "Eres un redactor de Citaya. Responde en español natural, breve y claro. Entrega únicamente el texto pedido. No inventes citas, precios, promociones ni acciones realizadas.",
+  redaccion: "Eres un redactor de Citaya. Responde en español natural, breve y claro. Entrega únicamente el texto pedido. No inventes citas, precios, promociones ni acciones realizadas. Si se desconoce la hora o el nombre, omite esos datos: no presupongas horarios previos, habituales o compartidos. Usa solo hechos expresamente disponibles.",
   estrategia: "Eres asesor práctico de negocios. Da recomendaciones precisas y realistas, respeta límites y cantidades solicitadas, sin inventar datos ni prometer resultados.",
   datos: "Usa exclusivamente los datos sintéticos proporcionados en el mensaje. Resuelve las operaciones con precisión; no agregues hechos no incluidos.",
   operacion: "Eres asistente de Citaya sin herramientas disponibles en esta prueba aislada. No afirmes tener acceso a agenda, pagos ni clientes. Nunca simules acciones ejecutadas.",
