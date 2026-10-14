@@ -6,8 +6,8 @@ export const cases = [
     id: "Q01", area: "redaccion",
     prompt: "Redacta un WhatsApp breve para recordar una cita de mañana. No sabemos el nombre ni la hora.",
     required: [["mañana"], ["cita", "reserva"]],
-    forbidden: ["a las 10:00", "a las 15:00", "ya envie"],
-    review: "Recordatorio breve sin inventar nombre u hora.",
+    forbidden: ["a las 10:00", "a las 15:00", "ya envie", "misma hora", "hora de siempre", "hora habitual", "horario habitual"],
+    review: "Recordatorio breve sin inventar nombre, hora ni suponer un horario previamente conocido.",
   },
   {
     id: "Q02", area: "redaccion",
