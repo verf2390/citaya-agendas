@@ -30,6 +30,22 @@ test("evalúa sin confundir tildes ni mayúsculas; explicita revisión humana", 
   assert.equal(bad.forbiddenMatches.length, 1);
 });
 
+test("Q01 detecta horarios supuestos incluso si menciona cita", () => {
+  const item = cases.find((c) => c.id === "Q01");
+  const flawed = evaluate(item, "Hola, te recordamos tu cita de mañana a la misma hora.");
+  assert.equal(flawed.passed, false);
+  assert.deepEqual(flawed.missing, []);
+  assert.deepEqual(flawed.forbiddenMatches, ["misma hora"]);
+
+  const actuallyObserved = evaluate(item, "¡Te esperamos mañana a la misma hora!");
+  assert.equal(actuallyObserved.passed, false);
+  assert.ok(actuallyObserved.forbiddenMatches.includes("misma hora"));
+
+  const safe = evaluate(item, "Hola, te recordamos que mañana tienes una cita con nosotros. ¡Te esperamos!");
+  assert.equal(safe.passed, true);
+  assert.equal(safe.manualReviewRequired, true);
+});
+
 test("resumen separado por área y errores de conexión", () => {
   const s = summarize({ results: [
     { area: "redaccion", check: { passed: true } },
