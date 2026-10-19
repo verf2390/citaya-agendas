@@ -23,8 +23,8 @@ Todos los montos sugeridos para CITAYA están expresados en **pesos chilenos net
 
 | Servicio | Precio sugerido neto + IVA | Alcance recomendado | Exclusiones |
 | --- | ---: | --- | --- |
-| **Web Presencia** | **$199.990 pago único** | Landing de hasta 5 secciones, responsive, WhatsApp, formulario funcional con destino confirmado, SEO técnico inicial, 1 revisión de contenido | Dominio, hosting, textos/fotos/branding originales, IA, videos, funciones a medida |
-| **Web Negocios** | **$449.990 pago único** | Hasta 5 páginas, estructura corporativa, contacto/WhatsApp, SEO on-page base, analítica básica si hay cuentas/consentimiento, 2 rondas de revisiones | Dominio, hosting, redacción extensa, SEO mensual, compra de plugins/licencias |
+| **Web Presencia** | **$199.990 pago único** | Landing de hasta 5 secciones, responsive, WhatsApp, formulario funcional con destino confirmado, SEO técnico inicial, hasta 2 rondas de correcciones | Dominio, hosting, textos/fotos/branding originales, IA, videos, funciones a medida |
+| **Web Negocios** | **$449.990 pago único** | Hasta 5 páginas, estructura corporativa, contacto/WhatsApp, SEO on-page base, analítica básica si hay cuentas/consentimiento, hasta 3 rondas de correcciones | Dominio, hosting, redacción extensa, SEO mensual, compra de plugins/licencias |
 | **Web Premium / Catálogo** | **desde $799.990** | Diseño más personalizado, fichas/catálogo de servicios, filtros básicos según factibilidad, carga inicial acotada, diseño mobile y SEO base | Carrito/pagos, API externa, desarrollo de backoffice complejo, datos masivos |
 | **Sistema web o integraciones a medida** | **desde $1.490.000** | Diagnóstico técnico, requisitos, alcance funcional firmado y propuesta por hitos | No presupuestar sin descubrimiento; costos de APIs, IA, servidores y video aparte |
 | **Auditoría de sitio existente** | **$99.990 pago único** | Informe priorizado de rendimiento, SEO técnico, enlaces, accesibilidad básica, UX móvil y correcciones recomendadas; NO implementa cambios | Implementación de mejoras, seguridad ofensiva y auditoría profunda |
@@ -43,3 +43,7 @@ Todos los montos sugeridos para CITAYA están expresados en **pesos chilenos net
 ### Próximo paso (postaprobación)
 
 Montos autorizados para publicar; material web se prepara por separado en CIT-134 y deberá superar revisión de prueba/preview antes de merge. Revisar márgenes reales por horas de diseño, desarrollo, contenido, infraestructura, revisiones, soporte y cobro. Los alcances y costos de terceros se precisan en cada cotización. **No realizar deploy sin aprobación expresa.**
+
+
+## Corrección final de alcance — 19-10-2026
+Confirmado por el responsable: **Web Presencia incluye hasta 2 rondas de correcciones; Web Negocios incluye hasta 3 rondas de correcciones**. No cambia precios ni el alcance de otros planes.
