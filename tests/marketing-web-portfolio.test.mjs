@@ -38,6 +38,7 @@ test("CIT-134: offers declare exclusions and channel for real quotations", () =>
   assert.match(portfolio, /garantiza resultados de ventas/);
   assert.match(portfolio, /Hasta 2 rondas de correcciones/);
   assert.match(portfolio, /Hasta 3 rondas de correcciones/);
+  assert.doesNotMatch(portfolio, /Hasta 1 ronda de correcciones|Hasta 2 rondas de revisión/);
   assert.doesNotMatch(portfolio, /una ronda de revisión|Hasta 2 rondas de revisión/);
   assert.match(portfolio, /href=\{whatsappHref\}/);
   assert.match(portfolio, /href="\/planes"/);
