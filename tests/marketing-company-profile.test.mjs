@@ -11,6 +11,7 @@ test("company page identifies service provider and commercial offer", () => {
   assert.match(page, /mediante cotización/);
   assert.match(page, /WhatsAppFloatingButton/);
   assert.match(page, /href="\/demos"/);
+  assert.match(page, /Las demostraciones no representan resultados medidos de clientes/);
 });
 
 test("company page does not invent public-sector endorsements or case-study metrics", () => {
