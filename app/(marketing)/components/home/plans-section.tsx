@@ -8,7 +8,7 @@ import {
   formatBookingPriceCLP,
 } from "@/lib/commercial/booking-prices";
 
-const whatsappBase = "https://wa.me/56961425029";
+const whatsappBase = "https://wa.me/56996966059";
 
 type Plan = {
   title: string;
