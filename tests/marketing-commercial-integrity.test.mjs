@@ -8,7 +8,8 @@ const commercialInfo = readFileSync("app/(marketing)/components/home/social-proo
 
 test("marketing home does not promote the expired April 2026 offer", () => {
   assert.doesNotMatch(plans, /2026-04-30|30 de abril|Quiero esta promo|Implementación gratis por 1 mes|countdownTarget/);
-  assert.match(plans, /Consultar por este plan/);
+  assert.match(plans, /Consultar Plan Inicio/);
+  assert.match(plans, /Consultar Plan Profesional/);
   assert.match(plans, /Plan de entrada/);
 });
 
