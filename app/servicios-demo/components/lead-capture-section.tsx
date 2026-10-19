@@ -56,7 +56,7 @@ export function LeadCaptureSection() {
             <p className="mt-3 text-sm font-semibold text-indigo-700">Esta demostración no registra ni envía los datos que escribas.</p>
             <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">Consultar implementación real por WhatsApp</a>
             <p className="mt-4 rounded-2xl border border-indigo-100 bg-white p-4 text-sm leading-relaxed text-slate-600">
-              Planes desde $29.000 mensual según tamaño del negocio
+              CITAYA Agendas desde $14.990 + IVA al mes. Implementación desde $30.990 + IVA, según alcance acordado.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
               Este valor es referencial. La configuración final puede variar según servicios, volumen y nivel de
