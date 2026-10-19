@@ -19,7 +19,7 @@ const particles = [
 ] as const;
 
 const whatsappMessage = "Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.";
-const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsappMessage)}`;
+const whatsappHref = `https://wa.me/56996966059?text=${encodeURIComponent(whatsappMessage)}`;
 
 export function BrandHeroSection() {
   return (
