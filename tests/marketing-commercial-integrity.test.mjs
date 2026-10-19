@@ -11,6 +11,8 @@ test("marketing home does not promote the expired April 2026 offer", () => {
   assert.match(plans, /Consultar Plan Inicio/);
   assert.match(plans, /Consultar Plan Profesional/);
   assert.match(plans, /Plan de entrada/);
+  assert.match(plans, /Conocer planes de desarrollo web/);
+  assert.doesNotMatch(plans, /Desde \$250\.000 a \$600\.000|Desde \$990\.000/);
 });
 
 test("marketing hero identifies illustrative data instead of asserting real results", () => {
