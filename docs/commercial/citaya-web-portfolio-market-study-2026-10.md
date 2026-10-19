@@ -1,6 +1,6 @@
 # CITAYA — benchmarking web y borrador de portafolio comercial (Chile, octubre 2026)
 
-**ESTADO: PROPUESTA COMERCIAL INTERNA. NO PUBLICAR COMO TARIFARIO APROBADO.**
+**ESTADO: PRECIOS APROBADOS POR EL RESPONSABLE DE CITAYA EL 19-10-2026.** Los alcances descritos son paquetes de referencia para **nuevas cotizaciones**; cada contrato requiere propuesta y condiciones específicas. No modificar automáticamente contratos preexistentes.
 Fecha de consulta: 19-10-2026. Zona principal: La Serena y Coquimbo, más referencias nacionales.
 Todos los montos sugeridos para CITAYA están expresados en **pesos chilenos netos, más IVA**. Los montos de la competencia se muestran como publicados: **no asumir uniformidad de IVA ni alcance.**
 
@@ -19,7 +19,7 @@ Todos los montos sugeridos para CITAYA están expresados en **pesos chilenos net
 
 **Precaución:** Es un muestreo no probabilístico de precios de publicación. La comparabilidad depende de contenido, número de páginas, diseño, CMS, SEO, hosting, dominio, soporte, experiencia, revisiones y modalidad de contratación.
 
-## Propuesta CITAYA (precio base o referencia, aún NO aprobada)
+## Tarifario CITAYA aprobado (precios base o desde, todos + IVA)
 
 | Servicio | Precio sugerido neto + IVA | Alcance recomendado | Exclusiones |
 | --- | ---: | --- | --- |
@@ -40,6 +40,6 @@ Todos los montos sugeridos para CITAYA están expresados en **pesos chilenos net
 - No prometer métricas, primeros lugares SEO, entrega en horas ni número de revisiones ilimitadas. Un resultado medible exige datos previos y acceso.
 - Para soluciones subsidiadas por Sercotec, el proyecto y gasto deben estar aprobados antes de ejecutar; nunca ajustar precios solo para agotar el financiamiento.
 
-### Próximo paso
+### Próximo paso (postaprobación)
 
-Revisar márgenes reales por horas de diseño, desarrollo, contenido, infraestructura, revisiones, soporte y cobro. Validar con propietario qué paquetes y montos se harán públicos. **No cambiar aún los precios de web en la home.**
+Montos autorizados para publicar; material web se prepara por separado en CIT-134 y deberá superar revisión de prueba/preview antes de merge. Revisar márgenes reales por horas de diseño, desarrollo, contenido, infraestructura, revisiones, soporte y cobro. Los alcances y costos de terceros se precisan en cada cotización. **No realizar deploy sin aprobación expresa.**
