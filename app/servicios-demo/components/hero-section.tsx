@@ -28,7 +28,7 @@ export function HeroSection() {
             <Link href="https://demo.citaya.online/" target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_20px_55px_-20px_rgba(79,70,229,0.85)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:from-indigo-500 hover:to-purple-500 hover:shadow-[0_28px_70px_-18px_rgba(79,70,229,0.9)]">
               Ver demo funcionando
             </Link>
-            <Link href={`https://wa.me/56961425029?text=${quickQuoteWhatsappMessage}`} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-6 py-3 text-sm font-semibold text-emerald-700 transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-emerald-100 hover:shadow-[0_20px_45px_-25px_rgba(16,185,129,0.8)]">
+            <Link href={`https://wa.me/56996966059?text=${quickQuoteWhatsappMessage}`} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-6 py-3 text-sm font-semibold text-emerald-700 transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-emerald-100 hover:shadow-[0_20px_45px_-25px_rgba(16,185,129,0.8)]">
               Quiero esto para mi negocio
             </Link>
           </div>
