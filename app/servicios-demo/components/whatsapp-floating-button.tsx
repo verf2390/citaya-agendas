@@ -13,7 +13,7 @@ export function WhatsAppFloatingButton() {
         </span>
 
         <Link
-          href={`https://wa.me/56961425029?text=${whatsappMessage}`}
+          href={`https://wa.me/56996966059?text=${whatsappMessage}`}
           target="_blank"
           rel="noreferrer"
           aria-label="Contactar por WhatsApp"
