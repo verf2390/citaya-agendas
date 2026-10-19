@@ -1,15 +1,24 @@
 import { RevealOnScroll } from "./reveal-on-scroll";
 
-const testimonials = [
-  "Ahora las reservas entran mucho más ordenadas y no se nos pasan consultas.",
-  "Dejamos de depender de responder todo al instante por WhatsApp.",
-  "La web por fin explica bien lo que hacemos y la gente llega más decidida.",
+const capabilities = [
+  {
+    title: "Agenda organizada",
+    description: "Revisa reservas, servicios y disponibilidad desde un mismo panel.",
+  },
+  {
+    title: "Reservas online",
+    description: "Ofrece a tus clientes un enlace para elegir un horario disponible.",
+  },
+  {
+    title: "Presencia digital conectada",
+    description: "Presenta tus servicios y dirige las consultas al canal adecuado.",
+  },
 ] as const;
 
 const indicators = [
-  "Menos tiempo coordinando manualmente",
-  "Más consultas con intención real",
-  "Mejor organización diaria",
+  "Horarios configurables",
+  "Enlaces de reserva",
+  "Servicios y clientes organizados",
 ] as const;
 
 export function SocialProofSection() {
@@ -18,19 +27,20 @@ export function SocialProofSection() {
       <div className="mx-auto w-full max-w-6xl">
         <RevealOnScroll className="max-w-3xl">
           <h2 className="text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">
-            Resultados que se notan en el día a día
+            Herramientas para ordenar tu atención
           </h2>
           <p className="mt-4 text-base leading-relaxed text-slate-400 sm:text-lg">
-            Cuando el proceso de contacto y agenda se ordena, se nota rápido: menos caos, más control y mejores
-            conversiones.
+            Conoce las funciones que puedes implementar para organizar reservas, comunicar tus servicios y gestionar
+            la atención a tus clientes.
           </p>
         </RevealOnScroll>
 
         <div className="mt-12 grid grid-cols-1 gap-5 sm:mt-14 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-7">
-          {testimonials.map((testimonial, index) => (
-            <RevealOnScroll key={testimonial} delayMs={index * 90}>
+          {capabilities.map((capability, index) => (
+            <RevealOnScroll key={capability.title} delayMs={index * 90}>
               <article className="rounded-3xl border border-cyan-400/30 bg-white/95 p-5 shadow-[0_28px_65px_-32px_rgba(6,182,212,0.55)] transition-all duration-300 hover:-translate-y-2 hover:border-cyan-300 hover:shadow-[0_48px_98px_-20px_rgba(34,211,238,0.68)] sm:p-6">
-                <p className="text-sm leading-relaxed text-slate-700 sm:text-base">“{testimonial}”</p>
+                <h3 className="text-base font-semibold text-slate-900">{capability.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-700 sm:text-base">{capability.description}</p>
               </article>
             </RevealOnScroll>
           ))}
