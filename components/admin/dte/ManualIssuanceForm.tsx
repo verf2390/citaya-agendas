@@ -825,13 +825,27 @@ export default function ManualIssuanceForm({
               </option>
             ))}
           </select>
+          {!savedDraft && !contextLocked ? (
+            <Link
+              href="/admin/customers?new=1&returnTo=/admin/facturacion"
+              className="text-xs font-black text-blue-700 underline"
+            >
+              Crear cliente
+            </Link>
+          ) : null}
           {selectedCustomer && !selectedCustomer.tax_profile ? (
             <Link
-              href={`/admin/customers?edit=${selectedCustomer.id}&returnTo=/admin/facturacion`}
+              href={`/admin/customers?edit=${encodeURIComponent(selectedCustomer.id)}&returnTo=/admin/facturacion`}
               className="text-xs font-black text-amber-700 underline"
             >
               Completar datos tributarios
             </Link>
+          ) : null}
+          {(!savedDraft && !contextLocked) ||
+          (selectedCustomer && !selectedCustomer.tax_profile) ? (
+            <span className="text-xs font-normal text-slate-500">
+              Al ir a Clientes, los cambios sin guardar de este formulario se perderán.
+            </span>
           ) : null}
         </label>
         <label className="grid gap-1.5 text-sm font-bold text-slate-700">
@@ -872,7 +886,7 @@ export default function ManualIssuanceForm({
               </p>
             </div>
             <Link
-              href={`/admin/customers?edit=${selectedCustomer.id}&returnTo=/admin/facturacion`}
+              href={`/admin/customers?edit=${encodeURIComponent(selectedCustomer.id)}&returnTo=/admin/facturacion`}
               className="shrink-0 text-sm font-black text-blue-700 underline"
             >
               Editar datos tributarios
