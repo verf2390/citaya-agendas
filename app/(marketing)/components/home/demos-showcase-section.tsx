@@ -14,7 +14,7 @@ export function DemosShowcaseSection() {
             Mira cómo se vería en tu negocio
           </h2>
           <p className="mt-4 text-base leading-relaxed text-slate-600 sm:text-lg">
-            Estos son ejemplos reales de páginas y sistemas que ya funcionan para distintos rubros.
+            Estas son demostraciones de páginas y sistemas. No representan casos de clientes ni resultados comerciales medidos.
           </p>
         </div>
 
@@ -28,24 +28,25 @@ export function DemosShowcaseSection() {
                   : "border border-slate-300 shadow-[0_24px_55px_-30px_rgba(15,23,42,0.5)]"
               } hover:-translate-y-3.5 hover:scale-[1.02] hover:border-cyan-500 hover:shadow-[0_52px_110px_-20px_rgba(8,145,178,0.7)]`}
             >
+              <p className="mb-3 inline-flex w-fit rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-800">Demostración</p>
               <h3 className="text-lg font-semibold text-slate-950">{demo.name}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600 sm:text-base">{demo.description}</p>
 
               <div className="mt-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Antes</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Situación de ejemplo</p>
                   <p className="mt-1 text-sm leading-relaxed text-slate-700">{demo.before}</p>
                 </div>
 
                 <div className="h-px w-full bg-slate-200" />
 
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Después</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Qué muestra la demo</p>
                   <p className="mt-1 text-sm leading-relaxed text-slate-700">{demo.after}</p>
                 </div>
               </div>
 
-              <p className="mt-4 text-sm font-semibold text-slate-900">Resultado: {demo.result}</p>
+              <p className="mt-4 text-sm font-semibold text-slate-900">Objetivo ilustrado: {demo.result}</p>
 
               <Link
                 href={demo.href}
