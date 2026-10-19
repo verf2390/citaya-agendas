@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { SectionHeading } from "./section-heading";
+import { whatsappHref } from "../../(marketing)/components/home/marketing-content";
 
 type FormData = {
   nombre: string;
@@ -22,9 +23,9 @@ const initialFormData: FormData = {
 };
 
 const continuitySteps = [
-  "Clientes pueden reservar 24/7",
-  "Confirmación automática (WhatsApp o email)",
-  "Evita perder horas respondiendo mensajes",
+  "Reservas online disponibles desde un enlace",
+  "Confirmación dentro del sistema de reservas",
+  "Servicios y horarios configurables",
 ] as const;
 
 export function LeadCaptureSection() {
@@ -50,11 +51,12 @@ export function LeadCaptureSection() {
             <SectionHeading
               eyebrow="Implementación guiada"
               title="¿Listo para llevarlo a tu negocio?"
-              description="Déjanos tus datos y te mostramos el camino más rápido para implementarlo."
+              description="Prueba un formulario de ejemplo o contáctanos directamente para evaluar una implementación."
             />
-            <p className="mt-3 text-sm font-semibold text-indigo-700">Sin compromiso. Te orientamos según tu caso 👇</p>
+            <p className="mt-3 text-sm font-semibold text-indigo-700">Esta demostración no registra ni envía los datos que escribas.</p>
+            <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">Consultar implementación real por WhatsApp</a>
             <p className="mt-4 rounded-2xl border border-indigo-100 bg-white p-4 text-sm leading-relaxed text-slate-600">
-              Planes desde $29.000 mensual según tamaño del negocio
+              CITAYA Agendas desde $14.990 + IVA al mes. Implementación de agenda $30.990 + IVA, pago único; condiciones y alcance a confirmar.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-slate-500">
               Este valor es referencial. La configuración final puede variar según servicios, volumen y nivel de
@@ -83,20 +85,20 @@ export function LeadCaptureSection() {
                     <path d="m8.5 12 2.3 2.3 4.7-4.8" />
                   </svg>
                 </div>
-                <h3 className="mt-4 text-lg font-semibold text-emerald-900">Lead recibido y en proceso</h3>
+                <h3 className="mt-4 text-lg font-semibold text-emerald-900">Simulación completada</h3>
                 <p className="mt-2 text-sm leading-relaxed text-emerald-800">
-                  Tu solicitud quedó registrada con confirmación automática. El equipo comercial la priorizará para
-                  coordinar visita técnica o cotización.
+                  Este es un formulario demostrativo: no hemos enviado ni almacenado tu solicitud.
                 </p>
                 <p className="mt-2 text-sm leading-relaxed text-emerald-800">
-                  Próximo paso: contacto inicial para definir fecha y asegurar continuidad del servicio.
+                  Para recibir una propuesta real, debes contactar a CITAYA mediante el enlace de WhatsApp.
                 </p>
+                <a href={whatsappHref} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-500">Solicitar propuesta real por WhatsApp</a>
                 <button
                   type="button"
                   onClick={() => setSubmitted(false)}
                   className="mt-5 inline-flex min-h-12 items-center justify-center rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
                 >
-                  Registrar otra solicitud
+                  Volver a probar
                 </button>
               </div>
             ) : (
@@ -149,12 +151,12 @@ export function LeadCaptureSection() {
                   type="submit"
                   className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_30px_66px_-16px_rgba(79,70,229,0.85)] transition-all duration-300 hover:-translate-y-2 hover:scale-[1.015] hover:from-indigo-500 hover:to-purple-500 hover:shadow-[0_40px_85px_-20px_rgba(79,70,229,0.9)]"
                 >
-                  Quiero una propuesta para mi negocio
+                  Simular envío (no se envían datos)
                 </button>
                 <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Resumen de cotización</p>
                   <p className="mt-2 text-sm text-slate-600">
-                    Completa los campos para visualizar una propuesta estimada con recomendaciones para tu operación.
+                    Este formulario solo muestra el flujo visual. No envía solicitudes ni calcula un presupuesto.
                   </p>
                 </div>
               </form>
