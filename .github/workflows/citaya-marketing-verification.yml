@@ -1,0 +1,48 @@
+name: CITAYA Marketing Verification
+
+on:
+  pull_request:
+    paths:
+      - "app/(marketing)/**"
+      - "app/servicios/**"
+      - "app/empresa/**"
+      - "app/planes/**"
+      - "app/demos/**"
+      - "app/servicios-demo/**"
+      - "app/inmo-demo/**"
+      - "app/tenants/[slug]/DemoQuoteCard.tsx"
+      - "lib/commercial/**"
+      - "tests/marketing-*.test.mjs"
+      - "tests/demo-commercial-copy.test.mjs"
+      - ".github/workflows/citaya-marketing-verification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Full regression suite
+        run: npm test
+      - name: Lint affected marketing files
+        run: |
+          npx eslint "app/(marketing)/components/home" "app/tenants/[slug]/DemoQuoteCard.tsx" "app/servicios" "app/servicios-demo" "app/inmo-demo" "lib/commercial" "tests/marketing-*.test.mjs" "tests/demo-commercial-copy.test.mjs"
+      - name: Production build with synthetic test environment
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: synthetic-service-role-key-000000000000000000000000000000000000000000
+          CITAYA_AI_ENABLED: "false"
+        run: npm run build
