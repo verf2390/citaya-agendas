@@ -12,7 +12,7 @@ export default function ServiciosDemoContactoPage() {
             Cuéntanos tu caso y te mostramos cómo implementarlo
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-            En esta página puedes dejar tus datos para recibir una propuesta guiada sin cambiar tu operación actual.
+            Este formulario es un ejemplo de interfaz: no envía ni almacena solicitudes. Para pedir una propuesta real, utiliza el contacto por WhatsApp.
           </p>
         </RevealOnScroll>
       </section>
