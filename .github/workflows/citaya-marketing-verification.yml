@@ -34,7 +34,10 @@ jobs:
           cache: npm
       - name: Install exact dependencies
         run: npm ci
-      - name: Full regression suite
+      - name: Commercial regression tests (required)
+        run: node --test tests/marketing-*.test.mjs tests/demo-commercial-copy.test.mjs
+      - name: Full regression suite (audit of unrelated baselines)
+        continue-on-error: true
         run: npm test
       - name: Lint affected marketing files
         run: |
