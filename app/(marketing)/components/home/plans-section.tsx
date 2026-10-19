@@ -52,40 +52,7 @@ const plans: Plan[] = [
     footnote: `Implementación: ${formatBookingPriceCLP(BOOKING_PRICES_CLP.implementationNet)} + IVA (pago único).`,
     message: "Hola, quisiera información sobre CITAYA Agendas Plan Profesional, DTE y lista de espera.",
   },
-  {
-    title: "Negocio profesional",
-    price: "Desde $250.000 a $600.000 CLP + IVA",
-    description:
-      "Para negocios que necesitan una página clara, profesional y enfocada en generar más consultas.",
-    benefits: [
-      "Página web profesional",
-      "WhatsApp integrado",
-      "Formularios",
-      "Diseño responsive",
-      "Estructura para vender",
-      "Opción de agenda online",
-    ],
-    cta: "Quiero esta opción",
-    highlighted: false,
-    footnote: "El valor depende del alcance y funcionalidades.",
-    message: "Hola Victor, quiero la opción Negocio profesional de Citaya.",
-  },
-  {
-    title: "Solución personalizada",
-    price: "Desde $990.000 CLP + IVA",
-    description:
-      "Para negocios que necesitan una solución más completa, con mayor personalización y mejor estructura para escalar.",
-    benefits: [
-      "Web premium personalizada",
-      "Automatizaciones básicas",
-      "SEO base",
-      "Integraciones según negocio",
-      "Estructura comercial más robusta",
-    ],
-    cta: "Quiero una propuesta",
-    highlighted: false,
-    message: "Hola Victor, quiero una propuesta personalizada de Citaya.",
-  },
+
 ];
 
 const supportPills = ["Agenda online real", "Web para servicios", "Ejemplo premium personalizable"] as const;
@@ -104,7 +71,7 @@ export function PlansSection() {
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-5 lg:mt-12 sm:grid-cols-2 xl:grid-cols-4 lg:items-stretch lg:gap-6">
+        <div className="mt-10 grid grid-cols-1 gap-5 lg:mt-12 md:grid-cols-2 lg:items-stretch lg:gap-6">
           {plans.map((plan) => {
             const whatsappHref = `${whatsappBase}?text=${encodeURIComponent(plan.message)}`;
             const cardClasses = plan.highlighted
@@ -150,6 +117,15 @@ export function PlansSection() {
               </article>
             );
           })}
+        </div>
+
+        <div className="mx-auto mt-6 max-w-3xl text-center">
+          <p className="text-sm leading-relaxed text-slate-600">
+            ¿Necesitas una página web, optimización o desarrollo a medida? Esos proyectos se cotizan de forma independiente.
+          </p>
+          <Link href="/servicios#planes-web" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 px-5 py-3 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-100">
+            Conocer planes de desarrollo web
+          </Link>
         </div>
 
         <p className="mx-auto mt-5 max-w-3xl text-center text-sm leading-relaxed text-slate-600">
