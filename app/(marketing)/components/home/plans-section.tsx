@@ -1,6 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import {
+  BOOKING_DEMO_TERMS,
+  BOOKING_EXCLUSIONS,
+  BOOKING_PRICES_CLP,
+  formatBookingPriceCLP,
+} from "@/lib/commercial/booking-prices";
 
 const whatsappBase = "https://wa.me/56961425029";
 
@@ -17,24 +23,38 @@ type Plan = {
 
 const plans: Plan[] = [
   {
-    title: "Empieza a ordenar",
-    price: "$14.990 / mes",
-    description:
-      "Ideal para negocios que hoy agendan por WhatsApp y pierden clientes por desorden o demora en responder.",
+    title: "CITAYA Agendas · Inicio",
+    price: `${formatBookingPriceCLP(BOOKING_PRICES_CLP.inicioMonthlyNet)} + IVA / mes`,
+    description: "Para negocios que quieren recibir reservas por internet y ordenar su agenda.",
     benefits: [
-      "Agenda online 24/7",
-      "Confirmación automática",
-      "Link de reserva",
-      "Configuración inicial",
-      "Soporte base",
+      "Agenda y reservas online",
+      "Configuración de servicios y horarios",
+      "Enlace para recibir reservas",
+      "Gestión de clientes y citas",
     ],
-    cta: "Consultar por este plan",
+    cta: "Consultar Plan Inicio",
     highlighted: true,
-    message: "Hola Victor, quiero consultar por el plan Empieza a ordenar de Citaya.",
+    footnote: `Implementación: ${formatBookingPriceCLP(BOOKING_PRICES_CLP.implementationNet)} + IVA (pago único).`,
+    message: "Hola, quisiera información sobre CITAYA Agendas Plan Inicio y coordinar una demo gratuita.",
+  },
+  {
+    title: "CITAYA Agendas · Profesional",
+    price: `${formatBookingPriceCLP(BOOKING_PRICES_CLP.profesionalMonthlyNet)} + IVA / mes`,
+    description: "Para negocios que necesitan funciones adicionales de gestión.",
+    benefits: [
+      "Agenda online y gestión de reservas",
+      "Lista de espera",
+      "DTE según habilitación y configuración tributaria",
+      "Funciones avanzadas según disponibilidad del negocio",
+    ],
+    cta: "Consultar Plan Profesional",
+    highlighted: false,
+    footnote: `Implementación: ${formatBookingPriceCLP(BOOKING_PRICES_CLP.implementationNet)} + IVA (pago único).`,
+    message: "Hola, quisiera información sobre CITAYA Agendas Plan Profesional, DTE y lista de espera.",
   },
   {
     title: "Negocio profesional",
-    price: "Desde $250.000 a $600.000 CLP",
+    price: "Desde $250.000 a $600.000 CLP + IVA",
     description:
       "Para negocios que necesitan una página clara, profesional y enfocada en generar más consultas.",
     benefits: [
@@ -52,7 +72,7 @@ const plans: Plan[] = [
   },
   {
     title: "Solución personalizada",
-    price: "Desde $990.000 CLP",
+    price: "Desde $990.000 CLP + IVA",
     description:
       "Para negocios que necesitan una solución más completa, con mayor personalización y mejor estructura para escalar.",
     benefits: [
@@ -84,7 +104,7 @@ export function PlansSection() {
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-5 lg:mt-12 lg:grid-cols-3 lg:items-stretch lg:gap-6">
+        <div className="mt-10 grid grid-cols-1 gap-5 lg:mt-12 sm:grid-cols-2 xl:grid-cols-4 lg:items-stretch lg:gap-6">
           {plans.map((plan) => {
             const whatsappHref = `${whatsappBase}?text=${encodeURIComponent(plan.message)}`;
             const cardClasses = plan.highlighted
@@ -131,6 +151,10 @@ export function PlansSection() {
             );
           })}
         </div>
+
+        <p className="mx-auto mt-5 max-w-3xl text-center text-sm leading-relaxed text-slate-600">
+          {BOOKING_DEMO_TERMS} {BOOKING_EXCLUSIONS} Los servicios web personalizados se cotizan por alcance.
+        </p>
 
         <div className="mx-auto mt-8 max-w-3xl text-center sm:mt-10">
           <p className="text-base leading-relaxed text-slate-700 sm:text-lg">
