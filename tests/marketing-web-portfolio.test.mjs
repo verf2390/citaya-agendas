@@ -36,6 +36,9 @@ test("CIT-134: offers declare exclusions and channel for real quotations", () =>
   assert.match(portfolio, /dominio, hosting/);
   assert.match(portfolio, /CITAYA Agendas, inteligencia artificial y/);
   assert.match(portfolio, /garantiza resultados de ventas/);
+  assert.match(portfolio, /Hasta 2 rondas de correcciones/);
+  assert.match(portfolio, /Hasta 3 rondas de correcciones/);
+  assert.doesNotMatch(portfolio, /una ronda de revisión|Hasta 2 rondas de revisión/);
   assert.match(portfolio, /href=\{whatsappHref\}/);
   assert.match(portfolio, /href="\/planes"/);
   assert.match(servicesPage, /<WebPortfolioSection \/>/);
