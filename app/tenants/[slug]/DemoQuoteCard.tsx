@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { BOOKING_DEMO_TERMS, BOOKING_EXCLUSIONS, BOOKING_PRICES_CLP } from "@/lib/commercial/booking-prices";
 
 const BUSINESS_OPTIONS = [
   "Barbería",
@@ -23,10 +24,6 @@ const BUSINESS_OPTIONS = [
   "Otro",
 ] as const;
 
-const BASE_MONTHLY = 29000;
-const IMPLEMENTATION_PRICE = 49900;
-const EXTRA_PER_PRO = 3000;
-const INCLUDED_PROS = 10;
 
 function formatClp(value: number) {
   return new Intl.NumberFormat("es-CL").format(value);
@@ -34,6 +31,7 @@ function formatClp(value: number) {
 
 export default function DemoQuoteCard() {
   const [businessType, setBusinessType] = useState<string>(BUSINESS_OPTIONS[0]);
+  const [selectedPlan, setSelectedPlan] = useState<"inicio" | "profesional">("inicio");
   const [professionalsInput, setProfessionalsInput] = useState<string>("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -45,14 +43,13 @@ export default function DemoQuoteCard() {
     return Math.floor(parsed);
   }, [professionalsInput]);
 
-  const monthlyPrice = useMemo(() => {
-    if (!professionals) return null;
-    if (professionals <= INCLUDED_PROS) return BASE_MONTHLY;
-    return BASE_MONTHLY + (professionals - INCLUDED_PROS) * EXTRA_PER_PRO;
-  }, [professionals]);
-
-  const needsLeadForm = Boolean(professionals && professionals > INCLUDED_PROS);
-  const hasValidQuote = Boolean(professionals && monthlyPrice !== null);
+  // El número de profesionales sirve para orientar una propuesta, no para cobrar
+  // automáticamente recargos no aprobados en el tarifario vigente.
+  const monthlyPrice = selectedPlan === "inicio"
+    ? BOOKING_PRICES_CLP.inicioMonthlyNet
+    : BOOKING_PRICES_CLP.profesionalMonthlyNet;
+  const needsLeadForm = Boolean(professionals && professionals > 10);
+  const hasValidQuote = Boolean(professionals);
 
   const whatsappHref = useMemo(() => {
     const lines = [
@@ -66,8 +63,10 @@ export default function DemoQuoteCard() {
 
     if (hasValidQuote) {
       lines.push("");
-      lines.push(`Implementación estimada: $${formatClp(IMPLEMENTATION_PRICE)} CLP`);
-      lines.push(`Mensualidad estimada: $${formatClp(monthlyPrice!)} CLP`);
+      lines.push(`Plan seleccionado: ${selectedPlan === "inicio" ? "Inicio" : "Profesional"}`);
+      lines.push(`Implementación: ${formatClp(BOOKING_PRICES_CLP.implementationNet)} CLP + IVA`);
+      lines.push(`Mensualidad: ${formatClp(monthlyPrice)} CLP + IVA`);
+      lines.push("Demo gratuita sin compromiso; duración a convenir.");
     }
 
     if (name.trim() || phone.trim() || email.trim()) {
@@ -80,7 +79,7 @@ export default function DemoQuoteCard() {
 
     const text = encodeURIComponent(lines.join("\n"));
     return `https://wa.me/56961425029?text=${text}`;
-  }, [businessType, professionals, hasValidQuote, monthlyPrice, name, phone, email]);
+  }, [businessType, professionals, selectedPlan, hasValidQuote, monthlyPrice, name, phone, email]);
 
   return (
     <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
@@ -95,9 +94,22 @@ export default function DemoQuoteCard() {
           </h2>
 
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-            Elige tu rubro y cuántos profesionales usarán la agenda. Cuando
-            ingreses la cantidad, te mostraremos un valor estimado.
+            Elige tu plan, rubro y cantidad de profesionales. Mostramos los precios
+            netos aprobados; el alcance se confirma antes de contratar.
           </p>
+
+          <label className="mt-6 block text-sm font-semibold text-slate-700" htmlFor="citaya-demo-plan">
+            Plan de CITAYA Agendas
+          </label>
+          <select
+            id="citaya-demo-plan"
+            value={selectedPlan}
+            onChange={(event) => setSelectedPlan(event.target.value as "inicio" | "profesional")}
+            className="mt-2 h-[52px] w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900"
+          >
+            <option value="inicio">Inicio · $14.990 + IVA / mes</option>
+            <option value="profesional">Profesional · $29.990 + IVA / mes</option>
+          </select>
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div>
@@ -134,10 +146,9 @@ export default function DemoQuoteCard() {
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-relaxed text-slate-600">
-            <b>Regla de precio:</b> hasta 10 profesionales pagas una mensualidad
-            fija de <b>$29.000</b>. Desde el profesional 11 se suman{" "}
-            <b>$3.000</b> por cada adicional. La implementación es de{" "}
-            <b>$49.900</b>.
+            <b>Tarifas de agenda:</b> Inicio <b>$14.990 + IVA/mes</b>, Profesional <b>$29.990 + IVA/mes</b>.
+            Implementación <b>$30.990 + IVA</b>, pago único. El Profesional contempla lista de espera y
+            DTE según habilitación y configuración. No se suman recargos automáticos por profesional sin cotización.
           </div>
         </div>
 
@@ -159,7 +170,7 @@ export default function DemoQuoteCard() {
                       Implementación
                     </div>
                     <div className="mt-1 text-2xl font-extrabold text-slate-900">
-                      ${formatClp(IMPLEMENTATION_PRICE)}
+                      ${formatClp(BOOKING_PRICES_CLP.implementationNet)} + IVA
                     </div>
                   </div>
 
@@ -168,7 +179,7 @@ export default function DemoQuoteCard() {
                       Mensualidad
                     </div>
                     <div className="mt-1 text-2xl font-extrabold text-slate-900">
-                      ${formatClp(monthlyPrice!)}
+                      ${formatClp(monthlyPrice)} + IVA
                     </div>
                   </div>
                 </div>
@@ -176,8 +187,8 @@ export default function DemoQuoteCard() {
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   {needsLeadForm ? (
                     <span>
-                      Tu equipo es más grande. Déjanos tus datos y te
-                      contactamos para ayudarte con la implementación.
+                      Para equipos con varios profesionales confirmamos el alcance de la
+                      implementación antes de contratar, sin aplicar recargos no acordados.
                     </span>
                   ) : (
                     <span>
@@ -194,14 +205,18 @@ export default function DemoQuoteCard() {
                   className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-4 text-sm font-extrabold text-white shadow-sm hover:opacity-90 active:scale-[0.99]"
                 >
                   {needsLeadForm
-                    ? "Quiero que me contacten"
-                    : "Cotizar por WhatsApp"}
+                    ? "Consultar alcance por WhatsApp"
+                    : "Consultar este plan por WhatsApp"}
                 </a>
               </>
             )}
           </div>
         </div>
       </div>
+
+      <p className="mt-4 text-xs leading-relaxed text-slate-600">
+        {BOOKING_DEMO_TERMS} {BOOKING_EXCLUSIONS}
+      </p>
 
       {needsLeadForm && (
         <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
