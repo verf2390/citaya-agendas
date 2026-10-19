@@ -1,5 +1,5 @@
 export const whatsappMessage = "Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.";
-export const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsappMessage)}`;
+export const whatsappHref = `https://wa.me/56996966059?text=${encodeURIComponent(whatsappMessage)}`;
 
 export const services = [
   {
