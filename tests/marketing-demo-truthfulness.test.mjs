@@ -20,6 +20,9 @@ test("simulated contact form never asserts that a real lead was received", () =>
   assert.match(demoForm, /no hemos enviado ni almacenado tu solicitud/);
   assert.match(demoForm, /Simular envío/);
   assert.match(demoForm, /whatsappHref/);
+  assert.match(demoForm, /\$14\.990 \+ IVA/);
+  assert.match(demoForm, /\$30\.990 \+ IVA/);
+  assert.doesNotMatch(demoForm, /Planes desde \$29\.000 mensual/);
   assert.doesNotMatch(demoForm, /Lead recibido y en proceso|Tu solicitud quedó registrada con confirmación automática|El equipo comercial la priorizará/);
   assert.match(demoContactPage, /no envía ni almacena solicitudes/);
 });
