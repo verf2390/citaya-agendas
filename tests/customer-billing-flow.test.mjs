@@ -47,6 +47,20 @@ test("customer edit flow only accepts a customer loaded for the current tenant",
   assert.equal(foreignWithCreateFlag.shouldOpen, false);
 });
 
+test("customer edit returns to billing with the edited customer selected", () => {
+  const flow = resolveCustomerUpsertFlow(
+    new URLSearchParams("edit=tenant-customer&returnTo=/admin/facturacion"),
+    customers,
+  );
+
+  assert.equal(flow.shouldOpen, true);
+  assert.equal(flow.editing?.id, "tenant-customer");
+  assert.equal(
+    buildCustomerReturnPath(flow.returnTo, flow.editing.id),
+    "/admin/facturacion?customerId=tenant-customer",
+  );
+});
+
 test("customer return rejects open redirects and preserves safe query strings", () => {
   const malicious = resolveCustomerUpsertFlow(
     new URLSearchParams("new=1&returnTo=https://evil.example/collect"),
@@ -79,11 +93,17 @@ test("billing links use the shared customer modal flow and select the returned c
     billingForm,
     /\/admin\/customers\?new=1&returnTo=\/admin\/facturacion/,
   );
+  assert.match(billingForm, /!savedDraft && !contextLocked/);
+  assert.match(billingForm, /Crear cliente/);
   assert.match(
     billingForm,
-    /\/admin\/customers\?edit=\$\{encodeURIComponent\(selectedCustomer\.id\)\}&returnTo=\/admin\/facturacion/,
+    /Al ir a Clientes, los cambios sin guardar de este formulario se perderán/,
   );
-  assert.match(billingForm, /"Completar datos"/);
+  const editLinks = billingForm.match(
+    /\/admin\/customers\?edit=\$\{encodeURIComponent\(selectedCustomer\.id\)\}&returnTo=\/admin\/facturacion/g,
+  );
+  assert.equal(editLinks?.length, 2, "both edit links must encode the selected customer id");
+  assert.match(billingForm, /Completar datos tributarios/);
   assert.doesNotMatch(billingForm, /<CustomerUpsertModal/);
   assert.match(customersPage, /<CustomerUpsertModal/);
   assert.match(customersPage, /resolveCustomerUpsertFlow/);
