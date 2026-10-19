@@ -24,7 +24,7 @@ const websites: readonly Offer[] = [
       "Hasta 5 secciones en una sola página",
       "Diseño adaptable a celulares",
       "WhatsApp y formulario con canal de recepción configurado",
-      "SEO técnico inicial y una ronda de revisión",
+      "SEO técnico inicial y hasta 2 rondas de correcciones",
     ],
   },
   {
@@ -36,7 +36,7 @@ const websites: readonly Offer[] = [
       "Hasta 5 páginas de contenido",
       "Diseño responsive, servicios y contacto",
       "SEO inicial y analítica básica según configuración",
-      "Hasta 2 rondas de revisión",
+      "Hasta 3 rondas de correcciones",
     ],
   },
   {
