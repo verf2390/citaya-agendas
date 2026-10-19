@@ -14,6 +14,8 @@ on:
       - "lib/commercial/**"
       - "tests/marketing-*.test.mjs"
       - "tests/demo-commercial-copy.test.mjs"
+      - "components/admin/dte/ManualIssuanceForm.tsx"
+      - "tests/customer-billing-flow.test.mjs"
       - ".github/workflows/citaya-marketing-verification.yml"
   workflow_dispatch:
 
@@ -36,12 +38,11 @@ jobs:
         run: npm ci
       - name: Commercial regression tests (required)
         run: node --test tests/marketing-*.test.mjs tests/demo-commercial-copy.test.mjs
-      - name: Full regression suite (audit of unrelated baselines)
-        continue-on-error: true
+      - name: Full regression suite (required)
         run: npm test
       - name: Lint affected marketing files
         run: |
-          npx eslint "app/(marketing)/components/home" "app/tenants/[slug]/DemoQuoteCard.tsx" "app/servicios" "app/servicios-demo" "app/inmo-demo" "lib/commercial" "tests/marketing-*.test.mjs" "tests/demo-commercial-copy.test.mjs"
+          npx eslint "app/(marketing)/components/home" "app/tenants/[slug]/DemoQuoteCard.tsx" "app/servicios" "app/servicios-demo" "app/inmo-demo" "lib/commercial" "tests/marketing-*.test.mjs" "tests/demo-commercial-copy.test.mjs" "components/admin/dte/ManualIssuanceForm.tsx" "tests/customer-billing-flow.test.mjs"
       - name: Production build with synthetic test environment
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
