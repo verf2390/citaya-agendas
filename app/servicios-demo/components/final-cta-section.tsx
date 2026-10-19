@@ -14,7 +14,7 @@ export function FinalCtaSection() {
         </p>
 
         <div className="mt-7 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap">
-          <Link href={`https://wa.me/56961425029?text=${whatsappMessage}`} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-emerald-950 shadow-[0_20px_45px_-20px_rgba(16,185,129,0.85)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-emerald-400">
+          <Link href={`https://wa.me/56996966059?text=${whatsappMessage}`} target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-emerald-950 shadow-[0_20px_45px_-20px_rgba(16,185,129,0.85)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.02] hover:bg-emerald-400">
             Pedir demo por WhatsApp
           </Link>
           <Link href="https://demo.citaya.online/" target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center rounded-xl border border-indigo-200/60 bg-white/10 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 hover:bg-white/20">
