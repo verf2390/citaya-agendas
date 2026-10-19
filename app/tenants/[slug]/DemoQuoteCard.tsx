@@ -78,7 +78,7 @@ export default function DemoQuoteCard() {
     }
 
     const text = encodeURIComponent(lines.join("\n"));
-    return `https://wa.me/56961425029?text=${text}`;
+    return `https://wa.me/56996966059?text=${text}`;
   }, [businessType, professionals, selectedPlan, hasValidQuote, monthlyPrice, name, phone, email]);
 
   return (
