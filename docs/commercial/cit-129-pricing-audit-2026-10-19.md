@@ -1,7 +1,23 @@
 # CIT-129 — Auditoría de precios y condiciones comerciales (2026-10-19)
 
-**Estado:** inventario de fuentes, NO tarifario aprobado.
-**Alcance:** documentación; no modifica precios, cotizaciones, reglas de negocio ni producción.
+**Estado:** tarifario de CITAYA Agendas confirmado por el responsable el 19-10-2026. Precios web aún en análisis y pendientes de aprobación.
+**Alcance:** documentación; conserva el registro histórico de precios discrepantes y su corrección aprobada; no modifica directamente ningún precio, cotización, regla de negocio ni producción.
+
+## Tarifa de CITAYA Agendas confirmada — 19 de octubre de 2026 (prevalece sobre precios históricos)
+
+| Concepto | Precio neto en CLP | Impuestos | Confirmación |
+| --- | ---: | --- | --- |
+| Plan Inicio (mensual) | $14.990 | Más IVA | Aprobado por responsable |
+| Plan Profesional (mensual) | $29.990 | Más IVA | Aprobado por responsable |
+| Implementación de agenda (única) | $30.990 | Más IVA | Aprobado por responsable |
+| Demo de la agenda | $0 | No aplica | Gratis y sin compromiso; duración variable acordada con cada prospecto |
+
+- El plan Profesional incluye funciones como **lista de espera (waitlist) y DTE**, sujetas a habilitación/configuración y a la disponibilidad real de la funcionalidad para el cliente. No afirmar certificaciones o activación DTE generalizadas sin evidencia operativa.
+- **IA y videos no se incluyen** en las mensualidades Inicio ni Profesional. Se cotizan aparte.
+- Todos los precios de servicios de CITAYA que se publiquen se indicarán **más IVA**.
+- No mantener una prueba comercial obligatoria de 7 días: la demo gratuita no tiene duración universal, depende del acuerdo comercial.
+- Las antiguas reglas del cotizador demo ($29.000 base, $49.900 implementación y $3.000 por profesional adicional desde el 11) **no forman parte de la nueva aprobación** y no deben seguir presentándose como tarifa actual. Antes de editar es necesario buscar dependencias y actualizar tests.
+- No se confirmaron límites de usuarios/profesionales por plan; no inventar inclusiones ilimitadas o sobreprecios. La cantidad de profesionales podrá usarse solo para orientar la propuesta, no para aplicar automáticamente un recargo no aprobado.
 
 ## Fuentes actuales en el repositorio
 
@@ -40,7 +56,7 @@
 ## Gate de cierre y publicación
 
 - [x] Inventario de precios y referencias en repo realizado.
-- [ ] Aprobación escrita del dueño del negocio para cada tarifa y su IVA.
+- [x] Tarifas mensuales y configuración de agenda aprobadas por el responsable; precios web personalizados aún pendientes.
 - [ ] Modificaciones de código en otra rama/PR, con pruebas.
 - [ ] Actualización del PDF/dossier una vez que el tarifario esté aprobado.
 - [ ] Verificación de web y demo en vista previa; revisión de aceptación.
