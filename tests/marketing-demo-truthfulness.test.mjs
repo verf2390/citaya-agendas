@@ -10,6 +10,7 @@ const demoContactPage = readFileSync("app/servicios-demo/contacto/page.tsx", "ut
 test("marketing demos are labeled as examples, not measured client success", () => {
   assert.match(demoShowcase, /No representan casos de clientes ni resultados comerciales medidos/);
   assert.match(demoShowcase, /Demostración/);
+  assert.doesNotMatch(demoShowcase, /Estos son ejemplos reales de páginas y sistemas/);
   assert.match(demoShowcase, /Situación de ejemplo/);
   assert.match(demoShowcase, /Objetivo ilustrado/);
   assert.doesNotMatch(demoData, /Más reservas y menos tiempo coordinando|Más claridad y más consultas útiles/);
