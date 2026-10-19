@@ -109,5 +109,7 @@ test("billing links use the shared customer modal flow and select the returned c
   assert.match(customersPage, /resolveCustomerUpsertFlow/);
   assert.match(customersPage, /if \(flowReturnTo\) router\.push\(flowReturnTo\)/);
   assert.match(billingPage, /params\.has\("customerId"\)/);
-  assert.match(billingForm, /setCustomerId\(requestedCustomer\.id\)/);
+  assert.match(billingForm, /params\.get\("customerId"\)/);
+  assert.match(billingForm, /loadedCustomers\.some\(\(item\) => item\.id === requestedCustomerId\)/);
+  assert.match(billingForm, /setCustomerId\(requestedCustomerId\)/);
 });
