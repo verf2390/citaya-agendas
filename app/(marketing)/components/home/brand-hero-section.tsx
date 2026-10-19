@@ -19,7 +19,7 @@ const particles = [
 ] as const;
 
 const whatsappMessage = "Hola Victor, quiero ver cómo funcionaría Citaya en mi negocio.";
-const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsappMessage)}`;
+const whatsappHref = `https://wa.me/56996966059?text=${encodeURIComponent(whatsappMessage)}`;
 
 export function BrandHeroSection() {
   return (
@@ -95,18 +95,19 @@ export function BrandHeroSection() {
               <div className="relative rounded-2xl border border-slate-700/85 bg-slate-950/80 p-4 sm:p-5">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Sistema Citaya</p>
-                  <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">En vivo</span>
+                  <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">Ejemplo visual</span>
                 </div>
                 <div className="mt-4 space-y-3">
                   <div className="rounded-xl border border-cyan-400/25 bg-cyan-400/8 px-3 py-2">
-                    <p className="text-[11px] text-slate-400">Captación automática</p>
-                    <p className="text-sm font-medium text-cyan-200">+18 nuevos contactos esta semana</p>
+                    <p className="text-[11px] text-slate-400">Consultas y reservas</p>
+                    <p className="text-sm font-medium text-cyan-200">Centraliza solicitudes de tus clientes</p>
                   </div>
                   <div className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2">
-                    <p className="text-[11px] text-slate-400">Agenda de hoy</p>
-                    <p className="text-sm text-slate-200">12 reservas confirmadas · 0 clientes perdidos</p>
+                    <p className="text-[11px] text-slate-400">Agenda de demostración</p>
+                    <p className="text-sm text-slate-200">Servicios, horarios y citas de ejemplo</p>
                   </div>
                 </div>
+                <p className="mt-3 text-xs leading-relaxed text-slate-400">Vista ilustrativa del producto. No representa métricas de clientes reales.</p>
               </div>
             </div>
           </div>

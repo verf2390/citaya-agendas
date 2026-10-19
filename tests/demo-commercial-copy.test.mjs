@@ -5,6 +5,8 @@ import test from "node:test";
 const demoLanding = readFileSync("app/tenants/[slug]/page.tsx", "utf8");
 const legacyDemoLanding = readFileSync("app/demo/[slug]/page.tsx", "utf8");
 const quoteCard = readFileSync("app/tenants/[slug]/DemoQuoteCard.tsx", "utf8");
+const approvedPrices = readFileSync("lib/commercial/booking-prices.ts", "utf8");
+const marketingPlans = readFileSync("app/(marketing)/components/home/plans-section.tsx", "utf8");
 const tenantLayout = readFileSync("app/tenants/[slug]/layout.tsx", "utf8");
 const bookingPage = readFileSync("app/reservar/page.tsx", "utf8");
 
@@ -29,10 +31,20 @@ test("public demo does not present unverified active clients or testimonials", (
   );
 });
 
-test("demo commercial price matches the current CVE implementation offer", () => {
-  assert.match(quoteCard, /const IMPLEMENTATION_PRICE = 49900;/);
-  assert.match(quoteCard, /<b>\$49\.900<\/b>/);
-  assert.doesNotMatch(quoteCard, /<b>\$49\.000<\/b>/);
+test("approved agenda prices match demo and marketing copy", () => {
+  assert.match(approvedPrices, /inicioMonthlyNet: 14990/);
+  assert.match(approvedPrices, /profesionalMonthlyNet: 29990/);
+  assert.match(approvedPrices, /implementationNet: 30990/);
+  assert.match(quoteCard, /BOOKING_PRICES_CLP\.implementationNet/);
+  assert.match(quoteCard, /value="inicio"/);
+  assert.match(quoteCard, /value="profesional"/);
+  assert.match(quoteCard, /\$14\.990 \+ IVA/);
+  assert.match(quoteCard, /\$29\.990 \+ IVA/);
+  assert.match(quoteCard, /\$30\.990 \+ IVA/);
+  assert.match(marketingPlans, /BOOKING_PRICES_CLP\.inicioMonthlyNet/);
+  assert.match(marketingPlans, /BOOKING_PRICES_CLP\.profesionalMonthlyNet/);
+  assert.doesNotMatch(quoteCard, /const BASE_MONTHLY = 29000|IMPLEMENTATION_PRICE = 49900|EXTRA_PER_PRO/);
+  assert.doesNotMatch(approvedPrices, /7 días|7 dias/);
 });
 
 test("demo copy distinguishes functional reservation flow from external communications", () => {

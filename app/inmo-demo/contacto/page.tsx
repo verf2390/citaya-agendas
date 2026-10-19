@@ -5,7 +5,7 @@ export default function ContactoPage() {
   return (
     <main className="bg-[#f4f4f2]">
       <InmoHero eyebrow="Concierge inmobiliario" title="Convierte tu catálogo inmobiliario en una experiencia premium" subtitle="Te mostramos cómo una web así puede presentar tus propiedades, ordenar tus contactos y elevar la percepción de tu marca." poster="/inmo-demo/properties/pexels-artbovich-8141956.jpg" heightClassName="min-h-[68vh]">
-        <div className="flex flex-col gap-3 sm:flex-row"><Link href="/inmo-demo/propiedades" className="btn-inmo-secondary border-white/45 bg-white/10 text-white">Ver propiedades</Link><a href="https://wa.me/56961425029" target="_blank" rel="noreferrer" className="btn-inmo-primary border-white/20 bg-white text-neutral-950 hover:bg-zinc-200">Hablar con asesor</a></div>
+        <div className="flex flex-col gap-3 sm:flex-row"><Link href="/inmo-demo/propiedades" className="btn-inmo-secondary border-white/45 bg-white/10 text-white">Ver propiedades</Link><a href="https://wa.me/56996966059" target="_blank" rel="noreferrer" className="btn-inmo-primary border-white/20 bg-white text-neutral-950 hover:bg-zinc-200">Hablar con asesor</a></div>
       </InmoHero>
 
       <section className="mx-auto w-full max-w-5xl px-4 py-14 sm:px-6 lg:px-8">

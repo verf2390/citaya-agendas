@@ -1,104 +1,63 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import {
+  BOOKING_DEMO_TERMS,
+  BOOKING_EXCLUSIONS,
+  BOOKING_PRICES_CLP,
+  formatBookingPriceCLP,
+} from "@/lib/commercial/booking-prices";
 
-const countdownTarget = new Date("2026-04-30T23:59:59-04:00").getTime();
-const whatsappBase = "https://wa.me/56961425029";
+const whatsappBase = "https://wa.me/56996966059";
 
 type Plan = {
   title: string;
   price: string;
-  subtitle?: string;
   description: string;
   benefits: string[];
   cta: string;
   message: string;
   footnote?: string;
-  note?: string;
   highlighted: boolean;
 };
 
 const plans: Plan[] = [
   {
-    title: "Empieza a ordenar",
-    price: "$14.990 / mes",
-    subtitle: "Implementación gratis por 1 mes",
-    description:
-      "Ideal para negocios que hoy agendan por WhatsApp y pierden clientes por desorden o demora en responder.",
+    title: "CITAYA Agendas · Inicio",
+    price: `${formatBookingPriceCLP(BOOKING_PRICES_CLP.inicioMonthlyNet)} + IVA / mes`,
+    description: "Para negocios que quieren recibir reservas por internet y ordenar su agenda.",
     benefits: [
-      "Agenda online 24/7",
-      "Confirmación automática",
-      "Link de reserva",
-      "Configuración inicial",
-      "Soporte base",
+      "Agenda y reservas online",
+      "Configuración de servicios y horarios",
+      "Enlace para recibir reservas",
+      "Gestión de clientes y citas",
     ],
-    cta: "Quiero esta promo",
+    cta: "Consultar Plan Inicio",
     highlighted: true,
-    note: "Oferta hasta el 30 de abril",
-    message: "Hola Victor, quiero tomar la promo Empieza a ordenar de Citaya.",
+    footnote: `Implementación: ${formatBookingPriceCLP(BOOKING_PRICES_CLP.implementationNet)} + IVA (pago único).`,
+    message: "Hola, quisiera información sobre CITAYA Agendas Plan Inicio y coordinar una demo gratuita.",
   },
   {
-    title: "Negocio profesional",
-    price: "Desde $250.000 a $600.000 CLP",
-    description:
-      "Para negocios que necesitan una página clara, profesional y enfocada en generar más consultas.",
+    title: "CITAYA Agendas · Profesional",
+    price: `${formatBookingPriceCLP(BOOKING_PRICES_CLP.profesionalMonthlyNet)} + IVA / mes`,
+    description: "Para negocios que necesitan funciones adicionales de gestión.",
     benefits: [
-      "Página web profesional",
-      "WhatsApp integrado",
-      "Formularios",
-      "Diseño responsive",
-      "Estructura para vender",
-      "Opción de agenda online",
+      "Agenda online y gestión de reservas",
+      "Lista de espera",
+      "DTE según habilitación y configuración tributaria",
+      "Funciones avanzadas según disponibilidad del negocio",
     ],
-    cta: "Quiero esta opción",
+    cta: "Consultar Plan Profesional",
     highlighted: false,
-    footnote: "El valor depende del alcance y funcionalidades.",
-    message: "Hola Victor, quiero la opción Negocio profesional de Citaya.",
+    footnote: `Implementación: ${formatBookingPriceCLP(BOOKING_PRICES_CLP.implementationNet)} + IVA (pago único).`,
+    message: "Hola, quisiera información sobre CITAYA Agendas Plan Profesional, DTE y lista de espera.",
   },
-  {
-    title: "Solución personalizada",
-    price: "Desde $990.000 CLP",
-    description:
-      "Para negocios que necesitan una solución más completa, con mayor personalización y mejor estructura para escalar.",
-    benefits: [
-      "Web premium personalizada",
-      "Automatizaciones básicas",
-      "SEO base",
-      "Integraciones según negocio",
-      "Estructura comercial más robusta",
-    ],
-    cta: "Quiero una propuesta",
-    highlighted: false,
-    message: "Hola Victor, quiero una propuesta personalizada de Citaya.",
-  },
+
 ];
 
 const supportPills = ["Agenda online real", "Web para servicios", "Ejemplo premium personalizable"] as const;
 
-function formatCountdown(ms: number) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-  return { days, hours, minutes };
-}
-
 export function PlansSection() {
-  const [remainingMs, setRemainingMs] = useState(() => Math.max(countdownTarget - Date.now(), 0));
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setRemainingMs(Math.max(countdownTarget - Date.now(), 0));
-    }, 60_000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const countdown = useMemo(() => formatCountdown(remainingMs), [remainingMs]);
-  const shouldShowCountdown = remainingMs > 0;
-
   return (
     <section className="bg-white px-4 pb-16 pt-10 sm:px-6 sm:pb-20 sm:pt-12 lg:px-10 lg:pb-24 lg:pt-14">
       <div className="mx-auto w-full max-w-6xl">
@@ -112,7 +71,7 @@ export function PlansSection() {
           </p>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-5 lg:mt-12 lg:grid-cols-3 lg:items-stretch lg:gap-6">
+        <div className="mt-10 grid grid-cols-1 gap-5 lg:mt-12 md:grid-cols-2 lg:items-stretch lg:gap-6">
           {plans.map((plan) => {
             const whatsappHref = `${whatsappBase}?text=${encodeURIComponent(plan.message)}`;
             const cardClasses = plan.highlighted
@@ -124,23 +83,12 @@ export function PlansSection() {
                 <div>
                   {plan.highlighted ? (
                     <span className="inline-flex rounded-full border border-cyan-300 bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-800">
-                      {plan.note}
+                      Plan de entrada
                     </span>
                   ) : null}
 
                   <h3 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">{plan.title}</h3>
                   <p className="mt-2 text-3xl font-extrabold leading-tight text-slate-950">{plan.price}</p>
-
-                  {plan.subtitle ? <p className="mt-2 text-sm font-medium text-cyan-700">{plan.subtitle}</p> : null}
-
-                  {plan.highlighted && shouldShowCountdown ? (
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white/90 px-3 py-2 text-xs font-medium text-slate-700">
-                      <span className="font-semibold text-slate-900">Termina en</span>
-                      <span>{countdown.days}d</span>
-                      <span>{countdown.hours}h</span>
-                      <span>{countdown.minutes}m</span>
-                    </div>
-                  ) : null}
 
                   <p className="mt-4 text-sm leading-relaxed text-slate-600 sm:text-base">{plan.description}</p>
                 </div>
@@ -170,6 +118,19 @@ export function PlansSection() {
             );
           })}
         </div>
+
+        <div className="mx-auto mt-6 max-w-3xl text-center">
+          <p className="text-sm leading-relaxed text-slate-600">
+            ¿Necesitas una página web, optimización o desarrollo a medida? Esos proyectos se cotizan de forma independiente.
+          </p>
+          <Link href="/servicios#planes-web" className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 px-5 py-3 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-100">
+            Conocer planes de desarrollo web
+          </Link>
+        </div>
+
+        <p className="mx-auto mt-5 max-w-3xl text-center text-sm leading-relaxed text-slate-600">
+          {BOOKING_DEMO_TERMS} {BOOKING_EXCLUSIONS} Los servicios web personalizados se cotizan por alcance.
+        </p>
 
         <div className="mx-auto mt-8 max-w-3xl text-center sm:mt-10">
           <p className="text-base leading-relaxed text-slate-700 sm:text-lg">

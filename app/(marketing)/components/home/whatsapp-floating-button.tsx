@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const whatsappMessage = "Hola Victor, quiero más información sobre Citaya para mi negocio.";
-const whatsappHref = `https://wa.me/56961425029?text=${encodeURIComponent(whatsappMessage)}`;
+const whatsappHref = `https://wa.me/56996966059?text=${encodeURIComponent(whatsappMessage)}`;
 
 export function WhatsAppFloatingButton() {
   return (

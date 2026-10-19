@@ -120,7 +120,7 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
                   Agendar visita
                 </a>
                 <a
-                  href="https://wa.me/56961425029"
+                  href="https://wa.me/56996966059"
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400"
