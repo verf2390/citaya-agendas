@@ -1,21 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
 
-const countdownTarget = new Date("2026-04-30T23:59:59-04:00").getTime();
 const whatsappBase = "https://wa.me/56961425029";
 
 type Plan = {
   title: string;
   price: string;
-  subtitle?: string;
   description: string;
   benefits: string[];
   cta: string;
   message: string;
   footnote?: string;
-  note?: string;
   highlighted: boolean;
 };
 
@@ -23,7 +19,6 @@ const plans: Plan[] = [
   {
     title: "Empieza a ordenar",
     price: "$14.990 / mes",
-    subtitle: "Implementación gratis por 1 mes",
     description:
       "Ideal para negocios que hoy agendan por WhatsApp y pierden clientes por desorden o demora en responder.",
     benefits: [
@@ -33,10 +28,9 @@ const plans: Plan[] = [
       "Configuración inicial",
       "Soporte base",
     ],
-    cta: "Quiero esta promo",
+    cta: "Consultar por este plan",
     highlighted: true,
-    note: "Oferta hasta el 30 de abril",
-    message: "Hola Victor, quiero tomar la promo Empieza a ordenar de Citaya.",
+    message: "Hola Victor, quiero consultar por el plan Empieza a ordenar de Citaya.",
   },
   {
     title: "Negocio profesional",
@@ -76,29 +70,7 @@ const plans: Plan[] = [
 
 const supportPills = ["Agenda online real", "Web para servicios", "Ejemplo premium personalizable"] as const;
 
-function formatCountdown(ms: number) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-
-  return { days, hours, minutes };
-}
-
 export function PlansSection() {
-  const [remainingMs, setRemainingMs] = useState(() => Math.max(countdownTarget - Date.now(), 0));
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setRemainingMs(Math.max(countdownTarget - Date.now(), 0));
-    }, 60_000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  const countdown = useMemo(() => formatCountdown(remainingMs), [remainingMs]);
-  const shouldShowCountdown = remainingMs > 0;
-
   return (
     <section className="bg-white px-4 pb-16 pt-10 sm:px-6 sm:pb-20 sm:pt-12 lg:px-10 lg:pb-24 lg:pt-14">
       <div className="mx-auto w-full max-w-6xl">
@@ -124,23 +96,12 @@ export function PlansSection() {
                 <div>
                   {plan.highlighted ? (
                     <span className="inline-flex rounded-full border border-cyan-300 bg-cyan-100 px-3 py-1 text-xs font-semibold text-cyan-800">
-                      {plan.note}
+                      Plan de entrada
                     </span>
                   ) : null}
 
                   <h3 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">{plan.title}</h3>
                   <p className="mt-2 text-3xl font-extrabold leading-tight text-slate-950">{plan.price}</p>
-
-                  {plan.subtitle ? <p className="mt-2 text-sm font-medium text-cyan-700">{plan.subtitle}</p> : null}
-
-                  {plan.highlighted && shouldShowCountdown ? (
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white/90 px-3 py-2 text-xs font-medium text-slate-700">
-                      <span className="font-semibold text-slate-900">Termina en</span>
-                      <span>{countdown.days}d</span>
-                      <span>{countdown.hours}h</span>
-                      <span>{countdown.minutes}m</span>
-                    </div>
-                  ) : null}
 
                   <p className="mt-4 text-sm leading-relaxed text-slate-600 sm:text-base">{plan.description}</p>
                 </div>
