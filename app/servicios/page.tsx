@@ -2,12 +2,14 @@ import { FinalCtaSection } from "../(marketing)/components/home/final-cta-sectio
 import { MarketingHeader } from "../(marketing)/components/home/marketing-header";
 import { ServicesGridSection } from "../(marketing)/components/home/services-grid-section";
 import { WhatsAppFloatingButton } from "../(marketing)/components/home/whatsapp-floating-button";
+import { WebPortfolioSection } from "../(marketing)/components/home/web-portfolio-section";
 
 export default function ServiciosPage() {
   return (
     <main className="overflow-x-hidden bg-white text-slate-900">
       <MarketingHeader />
       <ServicesGridSection />
+      <WebPortfolioSection />
       <FinalCtaSection />
       <WhatsAppFloatingButton />
     </main>
