@@ -731,7 +731,7 @@ export default function ManualIssuanceForm({
     setShowBoletaModal(false);
     if (dteType === 33) {
       const confirmed = window.confirm(
-        `CONFIRMAR EMISIÓN REAL DE FACTURA 33.\nTotal: ${clp(currentTotals.totalAmount)}.\nFecha de emisión prevista (Chile): ${chileIssueDate()}.\nLa fecha de la OC no cambia la fecha de emisión.\nEsta acción puede consumir folio y enviar al SII. ¿Confirmas?`,
+        `CONFIRMAR EMISIÓN REAL DE FACTURA 33.\nTotal: ${clp(currentTotals.totalAmount)}.\nFecha de emisión prevista (Chile): ${chileIssueDate()}.\nLa fecha de la OC no cambia la fecha de emisión.\nSi necesitabas una fecha anterior, cancela: CITAYA no retrofecha.\nEsta acción puede consumir folio y enviar al SII. ¿Confirmas?`,
       );
       if (!confirmed) return;
     }
@@ -815,6 +815,11 @@ export default function ManualIssuanceForm({
                 }),
               );
               setDteType(type);
+              if (type === 39) {
+                setUsePurchaseOrder(false);
+                setPurchaseOrderFolio("");
+                setPurchaseOrderDate("");
+              }
               markChanged();
             }}
             className={`rounded-xl border p-3 text-left ${
