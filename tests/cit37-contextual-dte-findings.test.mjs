@@ -336,7 +336,7 @@ function loadDraftRoute({ context, capturedDrafts }) {
     [
       resolve(repoRoot, "lib/dte/invoice-drafts.ts"),
       {
-        validateInvoiceDraftReferences: () => [],
+        validateInvoiceDraftReferences: (input) => input ?? [],
         validateInvoiceDraftLines: () => [
           {
             serviceId: null,
@@ -509,4 +509,28 @@ test("flujo manual standalone conserva sale_id nula", async () => {
   });
   assert.equal(response.status, 201);
   assert.equal(capturedDrafts[0].sale_id, null);
+});
+
+
+test("Factura 33 guarda y reabre OC estructurada sin mezclar la observación interna", async () => {
+  const capturedDrafts = [];
+  const route = loadDraftRoute({ context: null, capturedDrafts });
+  const oc = [{ documentType: "801", folio: "OC-QA-REOPEN", date: "2026-10-20" }];
+  const created = await postDraft(route, {
+    source: "manual",
+    operationalReason: "Entrega por dos jornadas",
+    documentReferences: oc,
+  });
+  assert.equal(created.status, 201);
+  assert.equal(capturedDrafts[0].tenant_id, "11111111-1111-4111-8111-111111111111");
+  assert.deepEqual(capturedDrafts[0].document_references, oc);
+  assert.equal(capturedDrafts[0].operational_reason, "Entrega por dos jornadas");
+
+  const reopened = await route.GET(
+    new Request("https://tenant.example/api/admin/invoice-drafts"),
+  );
+  assert.equal(reopened.status, 200);
+  const payload = await reopened.json();
+  assert.deepEqual(payload.drafts[0].document_references, oc);
+  assert.equal(payload.drafts[0].operational_reason, "Entrega por dos jornadas");
 });
