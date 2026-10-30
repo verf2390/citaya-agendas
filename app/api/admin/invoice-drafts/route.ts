@@ -11,6 +11,7 @@ import { checkManualBoleta39IssuanceReadiness } from "@/lib/dte/boleta39-manual-
 import {
   calculateDocumentDraftTotals,
   validateInvoiceDraftLines,
+  validateInvoiceDraftReferences,
 } from "@/lib/dte/invoice-drafts";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -74,7 +75,7 @@ async function loadDrafts(tenantId: string) {
   const draftsResult = await supabaseAdmin
     .from("dte_invoice_drafts")
     .select(
-      "id,customer_id,appointment_id,payment_intent_id,dte_type,source,status,version,issuer_preview,recipient_preview,issuer_snapshot,recipient_snapshot,net_amount,tax_amount,total_amount,review_reason,operational_reason,intent_id,locked_at,created_at,updated_at",
+      "id,customer_id,appointment_id,payment_intent_id,dte_type,source,status,version,issuer_preview,recipient_preview,issuer_snapshot,recipient_snapshot,net_amount,tax_amount,total_amount,review_reason,operational_reason,document_references,intent_id,locked_at,created_at,updated_at",
     )
     .eq("tenant_id", tenantId)
     .order("updated_at", { ascending: false })
@@ -135,6 +136,12 @@ export async function POST(req: Request) {
 
   let inputLines;
   let totals;
+  let documentReferences;
+  try {
+    documentReferences = validateInvoiceDraftReferences(body?.documentReferences, dteType as 33 | 39);
+  } catch {
+    return errorResponse(400, "Revisa la OC: documento 801, folio de hasta 18 caracteres y fecha real (AAAA-MM-DD).");
+  }
   try {
     inputLines = validateInvoiceDraftLines(body?.lines);
     totals = calculateDocumentDraftTotals(dteType as 33 | 39, inputLines);
@@ -335,6 +342,7 @@ export async function POST(req: Request) {
       total_amount: totals.totalAmount,
       payment_amount_snapshot: paymentAmount,
       review_reason: reviewReason,
+      document_references: documentReferences,
       operational_reason:
         operationalReason ||
         (source === "manual"
