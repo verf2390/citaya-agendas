@@ -1,3 +1,4 @@
+import { validateInvoiceDraftReferences } from "@/lib/dte/invoice-drafts";
 import { expectedProductionConfirmation } from "@/lib/dte/production/config";
 import { createServerProductionDteService } from "@/lib/dte/production/server";
 import { ProductionPreparationError } from "@/lib/dte/production/service";
@@ -714,6 +715,11 @@ export async function processClaimedDteItem(
       totalAmount: snapshotGrossAmount,
     });
     let references: Array<{ code: string; reason: string; documentType: string; folio: string; date: string }> | undefined;
+    // Manual invoice 33 uses ONLY the frozen, tenant-bound purchase-order
+    // references. Notes 56/61 retain their existing CodRef=3 correction flow.
+    if (dteType === 33 && !automatic) {
+      references = validateInvoiceDraftReferences(immutable.references ?? [], 33);
+    }
     if ([56, 61].includes(dteType)) {
       if (!intent.original_production_document_id || value(immutable, "referenceCode") !== "3") {
         throw new Error("DTE_REFERENCE_REQUIRED");
