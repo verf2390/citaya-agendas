@@ -106,6 +106,13 @@ test("net and MntBruto type 33 candidates require Acteco and pass every offline 
       exemptAmount: 0,
       taxAmount: 798,
       totalAmount: 5000,
+      references: [{
+        documentType: "801",
+        folio: "OC-QA-123",
+        date: "2026-07-20",
+        reason: "Orden de compra",
+        code: "",
+      }],
     };
     assert.throws(
       () => buildDteDocumentoXmlLab({
@@ -166,6 +173,14 @@ test("net and MntBruto type 33 candidates require Acteco and pass every offline 
     assert.equal(result.dteSignatures, "2/2");
     assert.equal(result.envelopeSignature, "valid");
     assert.match(dteText, /<Acteco>620900<\/Acteco>/);
+    // A synthetic OC must survive the complete offline XSD/CAF/TED/XML
+    // preparation and must not acquire CodRef=3 from credit/debit notes.
+    assert.match(dteText, /<TpoDocRef>801<\/TpoDocRef>/);
+    assert.match(dteText, /<FolioRef>OC-QA-123<\/FolioRef>/);
+    assert.match(dteText, /<FchRef>2026-07-20<\/FchRef>/);
+    assert.match(dteText, /<RazonRef>Orden de compra<\/RazonRef>/);
+    assert.doesNotMatch(dteText, /<CodRef>/);
+    assert.match(dteText, /<FchEmis>2026-07-29<\/FchEmis>/);
     for (const expected of ["<Folio>8</Folio>", "<MntNeto>4202</MntNeto>", "<IVA>798</IVA>", "<MntTotal>5000</MntTotal>"])
       assert.match(dteText, new RegExp(expected));
     for (const expected of ["<Folio>9</Folio>", "<MntBruto>1</MntBruto>", "<MntNeto>49950</MntNeto>", "<IVA>9490</IVA>", "<MntTotal>59440</MntTotal>", "<PrcItem>59440</PrcItem>", "<MontoItem>59440</MontoItem>"])
