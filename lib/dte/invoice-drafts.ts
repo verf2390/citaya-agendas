@@ -66,13 +66,13 @@ export function validateInvoiceDraftReferences(
     const documentType = String(ref.documentType ?? "").trim();
     const folio = typeof ref.folio === "string" ? ref.folio.trim() : "";
     const date = typeof ref.date === "string" ? ref.date.trim() : "";
-    const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(date);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
     const calendarDate = match
       ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
       : null;
     if (
       documentType !== "801" ||
-      !/^[A-Za-z0-9][A-Za-z0-9._\\/-]{0,17}$/.test(folio) ||
+      !/^[A-Za-z0-9][A-Za-z0-9._\/-]{0,17}$/.test(folio) ||
       !calendarDate || calendarDate.toISOString().slice(0, 10) !== date ||
       (ref.code !== undefined && ref.code !== "") ||
       (ref.reason !== undefined && ref.reason !== "Orden de compra")
