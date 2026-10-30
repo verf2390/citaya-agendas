@@ -44,8 +44,14 @@ jobs:
         run: |
           DTE_TEST_FILE=dte-invoice-oc-reference.test.ts npm run dte:test
           DTE_TEST_FILE=dte-invoice-drafts.test.ts npm run dte:test
+      - name: Install isolated XML schema and synthetic-signature validation tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxml2-utils xmlsec1
+      - name: Offline Factura 33 with OC 801 against DTE_v10 XSD
+        run: DTE_TEST_FILE=dte-production-xsd-regression.test.ts npm run dte:test
       - name: Lint CIT-143 billing and DTE files
-        run: npx eslint app/api/admin/invoice-drafts lib/dte/invoice-drafts.ts lib/dte/chile-issue-date.ts lib/dte/automation/worker.ts lib/dte/production/service.ts lib/dte/__tests__/dte-invoice-oc-reference.test.ts lib/dte/__tests__/dte-invoice-drafts.test.ts
+        run: npx eslint app/api/admin/invoice-drafts lib/dte/invoice-drafts.ts lib/dte/chile-issue-date.ts lib/dte/automation/worker.ts lib/dte/production/service.ts lib/dte/__tests__/dte-invoice-oc-reference.test.ts lib/dte/__tests__/dte-invoice-drafts.test.ts lib/dte/__tests__/dte-production-xsd-regression.test.ts
       - name: Lint affected marketing files
         run: |
           npx eslint "app/(marketing)/components/home" "app/tenants/[slug]/DemoQuoteCard.tsx" "app/servicios" "app/servicios-demo" "app/inmo-demo" "lib/commercial" "tests/marketing-*.test.mjs" "tests/demo-commercial-copy.test.mjs" "components/admin/dte/ManualIssuanceForm.tsx" "tests/customer-billing-flow.test.mjs"
