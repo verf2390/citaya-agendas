@@ -7,6 +7,7 @@ import { checkManualBoleta39IssuanceReadiness } from "@/lib/dte/boleta39-manual-
 import {
   calculateDocumentDraftTotals,
   validateInvoiceDraftLines,
+  validateInvoiceDraftReferences,
 } from "@/lib/dte/invoice-drafts";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -41,7 +42,7 @@ export async function PATCH(
 
   const currentResult = await supabaseAdmin
     .from("dte_invoice_drafts")
-    .select("id,customer_id,dte_type,status,version,payment_amount_snapshot")
+    .select("id,customer_id,dte_type,status,version,payment_amount_snapshot,document_references")
     .eq("tenant_id", auth.tenantId)
     .eq("id", id)
     .maybeSingle();
@@ -52,6 +53,15 @@ export async function PATCH(
   }
   if (Number(current.version) !== expectedVersion) {
     return responseError(409, "El borrador cambió; vuelve a cargarlo antes de guardar.");
+  }
+  let documentReferences;
+  try {
+    documentReferences = validateInvoiceDraftReferences(
+      body?.documentReferences === undefined ? current.document_references : body.documentReferences,
+      Number(current.dte_type) === 39 ? 39 : 33,
+    );
+  } catch {
+    return responseError(400, "Revisa la OC: documento 801, folio de hasta 18 caracteres y fecha real (AAAA-MM-DD).");
   }
   try {
     totals = calculateDocumentDraftTotals(
@@ -196,6 +206,7 @@ export async function PATCH(
       tax_amount: totals.taxAmount,
       total_amount: totals.totalAmount,
       review_reason: reviewReason,
+      document_references: documentReferences,
       version: expectedVersion + 1,
       updated_by: auth.userId,
       updated_at: new Date().toISOString(),
@@ -205,7 +216,7 @@ export async function PATCH(
     .eq("version", expectedVersion)
     .in("status", ["DRAFT", "REVIEW_REQUIRED", "VALIDATED"])
     .select(
-      "id,status,version,net_amount,tax_amount,total_amount,review_reason,updated_at",
+      "id,status,version,net_amount,tax_amount,total_amount,review_reason,document_references,updated_at",
     )
     .single();
   if (updateResult.error || !updateResult.data) {
