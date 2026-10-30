@@ -17,6 +17,7 @@ import {
   calculateInvoiceTotals,
   catalogGrossPriceToNet,
   InMemoryPaymentInvoiceCoordinator,
+  validateInvoiceDraftReferences,
 } from "../invoice-drafts";
 
 const issuer = {
@@ -166,6 +167,9 @@ test("mocked worker preparation consumes frozen issuer, recipient, lines and tot
   const frozenLines = [
     { name: "Servicio congelado", quantity: 1, unitPrice: 10_000 },
   ];
+  const frozenReferences = validateInvoiceDraftReferences(
+    [{ documentType: "801", folio: "OC-QA-001", date: "2026-07-20" }], 33,
+  );
   const draft = await service.createDraft(
     {
       tenantId,
@@ -175,6 +179,7 @@ test("mocked worker preparation consumes frozen issuer, recipient, lines and tot
       taxSnapshotAt: "2026-07-29T12:00:00.000Z",
       recipient,
       lines: frozenLines,
+      references: frozenReferences,
     },
     "mock-admin",
   );
@@ -189,12 +194,16 @@ test("mocked worker preparation consumes frozen issuer, recipient, lines and tot
   });
   recipient.legalName = "Receptor Maestro Modificado";
   frozenLines[0].name = "Línea maestra modificada";
+  frozenReferences[0].folio = "OC-MODIFICADA";
 
   await service.prepare(tenantId, draft.id, "mock-worker");
   assert.ok(generatedDocument);
   assert.equal(generatedDocument.issuerSnapshot?.legalName, "Emisor Congelado SpA");
   assert.equal(generatedDocument.recipient.legalName, "Receptor Congelado SpA");
   assert.equal(generatedDocument.lines[0].name, "Servicio congelado");
+  assert.equal(generatedDocument.references[0].documentType, "801");
+  assert.equal(generatedDocument.references[0].folio, "OC-QA-001");
+  assert.equal(generatedDocument.references[0].code, "");
   assert.deepEqual(
     {
       net: generatedDocument.netAmount,

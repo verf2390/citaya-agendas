@@ -6,6 +6,7 @@ import { AlertTriangle, FileCheck2, Plus, Save, Trash2, X } from "lucide-react";
 
 import { adminFetch } from "@/lib/api/adminFetch";
 import { calculateDocumentDraftTotals } from "@/lib/dte/invoice-drafts";
+import { chileIssueDate } from "@/lib/dte/chile-issue-date";
 
 type TaxProfile = {
   rut_normalized: string;
@@ -97,6 +98,13 @@ type DraftRecord = SavedDraft & {
   payment_intent_id: string | null;
   source: "manual" | "appointment" | "payment" | "automatic_payment";
   operational_reason?: string | null;
+  document_references?: Array<{
+    documentType: string;
+    folio: string;
+    date: string;
+    reason: string;
+    code: string;
+  }>;
   lines: Array<{
     id: string;
     service_id: string | null;
@@ -208,6 +216,10 @@ export default function ManualIssuanceForm({
   const [appointmentId, setAppointmentId] = useState("");
   const [paymentIntentId, setPaymentIntentId] = useState("");
   const [operationalReason, setOperationalReason] = useState("");
+  const [usePurchaseOrder, setUsePurchaseOrder] = useState(false);
+  const [purchaseOrderFolio, setPurchaseOrderFolio] = useState("");
+  const [purchaseOrderDate, setPurchaseOrderDate] = useState("");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lines, setLines] = useState<EditorLine[]>([newLine()]);
   const [savedDraft, setSavedDraft] = useState<SavedDraft | null>(null);
   const [availableDrafts, setAvailableDrafts] = useState<DraftRecord[]>([]);
@@ -284,6 +296,11 @@ export default function ManualIssuanceForm({
               setAppointmentId(target.appointment_id ?? "");
               setPaymentIntentId(target.payment_intent_id ?? "");
               setOperationalReason(target.operational_reason ?? "");
+              const oc = target.document_references?.find((ref) => ref.documentType === "801");
+              setUsePurchaseOrder(Boolean(oc));
+              setPurchaseOrderFolio(oc?.folio ?? "");
+              setPurchaseOrderDate(oc?.date ?? "");
+              setHasUnsavedChanges(false);
               setLines(
                 target.lines.map((line) => ({
                   key: line.id,
@@ -470,6 +487,11 @@ export default function ManualIssuanceForm({
     !selectedPayment || Number(selectedPayment.amount) === currentTotals.totalAmount;
   const contextualSeedReady =
     !contextLocked || (Boolean(appointmentId) && source === "appointment");
+  const purchaseOrderValid = !usePurchaseOrder || (
+    dteType === 33 &&
+    /^[A-Za-z0-9][A-Za-z0-9._/-]{0,17}$/.test(purchaseOrderFolio.trim()) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(purchaseOrderDate)
+  );
   const canSave =
     contextualSeedReady &&
     Boolean(customerId) &&
@@ -483,9 +505,11 @@ export default function ManualIssuanceForm({
         line.unitNetAmount > 0 &&
         line.discountPercent >= 0 &&
         line.discountPercent <= 100,
-    );
+    ) &&
+    purchaseOrderValid;
 
   const markChanged = () => {
+    setHasUnsavedChanges(true);
     setFeedback("");
     if (savedDraft) setSavedDraft({ ...savedDraft, status: "DRAFT" });
   };
@@ -495,6 +519,10 @@ export default function ManualIssuanceForm({
     if (!draft) {
       setSavedDraft(null);
       setLines([newLine()]);
+      setUsePurchaseOrder(false);
+      setPurchaseOrderFolio("");
+      setPurchaseOrderDate("");
+      setHasUnsavedChanges(false);
       return;
     }
     setContextLocked(false);
@@ -511,6 +539,11 @@ export default function ManualIssuanceForm({
     setAppointmentId(draft.appointment_id ?? "");
     setPaymentIntentId(draft.payment_intent_id ?? "");
     setOperationalReason(draft.operational_reason ?? "");
+    const oc = draft.document_references?.find((ref) => ref.documentType === "801");
+    setUsePurchaseOrder(Boolean(oc));
+    setPurchaseOrderFolio(oc?.folio ?? "");
+    setPurchaseOrderDate(oc?.date ?? "");
+    setHasUnsavedChanges(false);
     setLines(
       draft.lines.map((line) => ({
         key: line.id,
@@ -634,11 +667,14 @@ export default function ManualIssuanceForm({
       catalogUnitGrossAmount: line.catalogUnitGrossAmount,
       taxTreatment: line.taxTreatment,
     }));
+    const documentReferences = dteType === 33 && usePurchaseOrder
+      ? [{ documentType: "801", folio: purchaseOrderFolio.trim(), date: purchaseOrderDate }]
+      : [];
     const response = savedDraft
       ? await adminFetch(`/api/admin/invoice-drafts/${savedDraft.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ version: savedDraft.version, lines: bodyLines }),
+          body: JSON.stringify({ version: savedDraft.version, lines: bodyLines, documentReferences }),
         })
       : await adminFetch("/api/admin/invoice-drafts", {
           method: "POST",
@@ -650,6 +686,7 @@ export default function ManualIssuanceForm({
             appointmentId: appointmentId || null,
             paymentIntentId: paymentIntentId || null,
             operationalReason,
+            documentReferences,
             lines: bodyLines,
           }),
         });
@@ -663,6 +700,7 @@ export default function ManualIssuanceForm({
       ? { ...savedDraft, ...payload.draft }
       : payload.draft;
     setSavedDraft(nextDraft);
+    setHasUnsavedChanges(false);
     setAvailableDrafts((current) => {
       const existing = current.find((item) => item.id === nextDraft.id);
       if (!existing && payload.draft?.lines) {
@@ -682,6 +720,10 @@ export default function ManualIssuanceForm({
 
   const issue = async () => {
     if (!savedDraft || issuing) return;
+    if (hasUnsavedChanges) {
+      setFeedback("Guarda los cambios del borrador antes de confirmar una emisión real.");
+      return;
+    }
     if (dteType === 39 && !showBoletaModal) {
       setShowBoletaModal(true);
       return;
@@ -689,7 +731,7 @@ export default function ManualIssuanceForm({
     setShowBoletaModal(false);
     if (dteType === 33) {
       const confirmed = window.confirm(
-        `Se bloquearán ${lines.length} líneas por ${clp(currentTotals.totalAmount)} y se encolará una emisión real. ¿Continuar?`,
+        `CONFIRMAR EMISIÓN REAL DE FACTURA 33.\nTotal: ${clp(currentTotals.totalAmount)}.\nFecha de emisión prevista (Chile): ${chileIssueDate()}.\nLa fecha de la OC no cambia la fecha de emisión.\nSi necesitabas una fecha anterior, cancela: CITAYA no retrofecha.\nEsta acción puede consumir folio y enviar al SII. ¿Confirmas?`,
       );
       if (!confirmed) return;
     }
@@ -773,6 +815,11 @@ export default function ManualIssuanceForm({
                 }),
               );
               setDteType(type);
+              if (type === 39) {
+                setUsePurchaseOrder(false);
+                setPurchaseOrderFolio("");
+                setPurchaseOrderDate("");
+              }
               markChanged();
             }}
             className={`rounded-xl border p-3 text-left ${
@@ -1137,10 +1184,60 @@ export default function ManualIssuanceForm({
         </div>
       </div>
 
+      {dteType === 33 ? (
+        <fieldset className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+          <legend className="px-1 text-sm font-black text-slate-900">Referencias del documento (opcional)</legend>
+          <label className="flex items-center gap-2 text-sm font-bold">
+            <input
+              type="checkbox"
+              checked={usePurchaseOrder}
+              onChange={(event) => {
+                setUsePurchaseOrder(event.target.checked);
+                markChanged();
+              }}
+              className="h-4 w-4"
+            />
+            Referenciar una orden de compra en el XML de la factura
+          </label>
+          {usePurchaseOrder ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="grid gap-1 text-sm font-bold">
+                Tipo de documento
+                <input type="text" value="801 — Orden de compra" readOnly className="h-11 rounded-xl border border-slate-200 bg-slate-100 px-3" />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                Folio de la OC
+                <input
+                  type="text"
+                  value={purchaseOrderFolio}
+                  maxLength={18}
+                  onChange={(event) => { setPurchaseOrderFolio(event.target.value); markChanged(); }}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3"
+                  placeholder="Número de OC"
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                Fecha de la OC
+                <input
+                  type="date"
+                  value={purchaseOrderDate}
+                  onChange={(event) => { setPurchaseOrderDate(event.target.value); markChanged(); }}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3"
+                />
+              </label>
+            </div>
+          ) : null}
+          <p className="text-xs text-slate-600">
+            Esta referencia se incorporará al XML como TpoDocRef 801. No agrega CodRef ni altera FchEmis.
+            La fecha de emisión se determinará al confirmar la factura.
+          </p>
+        </fieldset>
+      ) : null}
+
       {source === "manual" ? (
         <label className="grid gap-1.5 text-sm font-bold">
           <span>
-            Referencia u observación{" "}
+            Observación interna{" "}
             <span className="font-medium text-slate-500">(opcional)</span>
           </span>
           <textarea
@@ -1152,10 +1249,10 @@ export default function ManualIssuanceForm({
             }}
             maxLength={500}
             className="min-h-20 rounded-xl border border-slate-200 p-3"
-            placeholder="Agrega una referencia interna o una descripción adicional de la venta."
+            placeholder="No sustituye las referencias estructuradas del XML."
           />
           <span className="text-xs font-medium text-slate-500">
-            Agrega una referencia interna o una descripción adicional de la venta.
+            No sustituye las referencias estructuradas del XML.
           </span>
         </label>
       ) : null}
@@ -1203,7 +1300,7 @@ export default function ManualIssuanceForm({
 
       <div className="sticky bottom-3 z-20 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:flex-wrap sm:items-center">
         <p className="w-full text-xs font-bold text-slate-600">
-          Guardar borrador → Revisar borrador → Confirmar emisión → Reserva atómica de un folio → Envío y conciliación SII
+          Guardar borrador → Confirmar emisión REAL → Reserva atómica de un folio → Envío y conciliación SII
         </p>
         <button
           type="button"
@@ -1218,7 +1315,7 @@ export default function ManualIssuanceForm({
           <button
             type="button"
             onClick={() => void issue()}
-            disabled={issuing || !paymentMatches}
+            disabled={issuing || !paymentMatches || hasUnsavedChanges}
             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-40 sm:w-auto"
           >
             <FileCheck2 className="h-4 w-4" />
@@ -1226,7 +1323,7 @@ export default function ManualIssuanceForm({
               ? "Encolando…"
               : dteType === 39
                 ? "Confirmar y emitir boleta"
-                : "Revisar y emitir factura"}
+                : "Confirmar emisión REAL de factura"}
           </button>
         ) : null}
         <button

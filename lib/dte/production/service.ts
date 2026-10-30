@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { chileIssueDate } from "../chile-issue-date";
 
 import { calculateDteTaxTotals } from "../certification/dte-tax-engine";
 import type { ImportedCaf } from "../certification/caf-secure-import";
@@ -354,7 +355,7 @@ export class ProductionDteService {
       taxSnapshotAt: input.taxSnapshotAt ?? new Date().toISOString(),
       businessOperationId: safeBusinessOperationId(input.businessOperationId),
       createdBy: actorId,
-      issueDate: new Date().toISOString().slice(0, 10),
+      issueDate: chileIssueDate(),
       netAmount: tax.netAmount,
       exemptAmount: tax.exemptAmount,
       taxAmount: tax.vatAmount,
