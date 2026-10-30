@@ -29,6 +29,66 @@ export type InvoiceDraftLineInput = {
   taxTreatment?: "affected" | "exempt";
 };
 
+/**
+ * Optional purchase-order reference for an electronic invoice (DTE 33).
+ * CodRef is deliberately empty: it belongs to credit/debit note corrections,
+ * not to a purchase order.
+ */
+export type InvoicePurchaseOrderReference = {
+  documentType: "801";
+  folio: string;
+  date: string;
+  reason: "Orden de compra";
+  code: "";
+};
+
+export function validateInvoiceDraftReferences(
+  input: unknown,
+  dteType: 33 | 39,
+): InvoicePurchaseOrderReference[] {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input) || input.length > 1) {
+    throw new Error("DTE_INVOICE_REFERENCES_INVALID");
+  }
+  if (dteType !== 33 && input.length) {
+    throw new Error("DTE_INVOICE_REFERENCES_NOT_ALLOWED");
+  }
+  return input.map((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new Error("DTE_INVOICE_REFERENCE_INVALID");
+    }
+    const ref = candidate as Record<string, unknown>;
+    if (Object.keys(ref).some((key) =>
+      !["documentType", "folio", "date", "reason", "code"].includes(key)
+    )) {
+      throw new Error("DTE_INVOICE_REFERENCE_FIELDS_INVALID");
+    }
+    const documentType = String(ref.documentType ?? "").trim();
+    const folio = typeof ref.folio === "string" ? ref.folio.trim() : "";
+    const date = typeof ref.date === "string" ? ref.date.trim() : "";
+    const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(date);
+    const calendarDate = match
+      ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+      : null;
+    if (
+      documentType !== "801" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._\\/-]{0,17}$/.test(folio) ||
+      !calendarDate || calendarDate.toISOString().slice(0, 10) !== date ||
+      (ref.code !== undefined && ref.code !== "") ||
+      (ref.reason !== undefined && ref.reason !== "Orden de compra")
+    ) {
+      throw new Error("DTE_INVOICE_REFERENCE_INVALID");
+    }
+    return {
+      documentType: "801" as const,
+      folio,
+      date,
+      reason: "Orden de compra" as const,
+      code: "" as const,
+    };
+  });
+}
+
 export type CalculatedInvoiceLine = InvoiceDraftLineInput & {
   position: number;
   discountBasisPoints: number;
