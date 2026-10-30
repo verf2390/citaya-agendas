@@ -2,6 +2,8 @@
 -- CIT-143: disposable PostgreSQL 17 fixture. Never point this at CITAYA production.
 begin;
 create role service_role nologin;
+create role anon nologin;
+create role authenticated nologin;
 create table public.dte_invoice_drafts (
   id uuid primary key,
   tenant_id uuid not null,
