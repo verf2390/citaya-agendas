@@ -336,6 +336,7 @@ function loadDraftRoute({ context, capturedDrafts }) {
     [
       resolve(repoRoot, "lib/dte/invoice-drafts.ts"),
       {
+        validateInvoiceDraftReferences: () => [],
         validateInvoiceDraftLines: () => [
           {
             serviceId: null,
