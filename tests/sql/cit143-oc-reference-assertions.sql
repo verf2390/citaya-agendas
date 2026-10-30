@@ -87,10 +87,14 @@ begin
 end $qa$;
 
 -- References are frozen at RPC creation time, not dynamically looked up in worker.
-select case when position(
-  '''references'', draft_row.document_references'
-  in pg_get_functiondef('public.finalize_dte_invoice_draft(uuid,uuid,integer,text,text)'::regprocedure)
-) > 0 then 'CIT143_RPC_SNAPSHOT_OK'
-else cast('MISSING_OC_REFERENCE_SNAPSHOT' as integer)::text end;
+do $snapshot$
+begin
+  if position(
+    'draft_row.document_references'
+    in pg_get_functiondef('public.finalize_dte_invoice_draft(uuid,uuid,integer,text,text)'::regprocedure)
+  ) = 0 then
+    raise exception 'CIT143_RPC_SNAPSHOT_MISSING';
+  end if;
+end $snapshot$;
 
 rollback;
