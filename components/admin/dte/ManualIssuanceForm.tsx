@@ -493,7 +493,6 @@ export default function ManualIssuanceForm({
     /^\d{4}-\d{2}-\d{2}$/.test(purchaseOrderDate)
   );
   const canSave =
-    purchaseOrderValid &&
     contextualSeedReady &&
     Boolean(customerId) &&
     lines.length > 0 &&
@@ -506,7 +505,8 @@ export default function ManualIssuanceForm({
         line.unitNetAmount > 0 &&
         line.discountPercent >= 0 &&
         line.discountPercent <= 100,
-    );
+    ) &&
+    purchaseOrderValid;
 
   const markChanged = () => {
     setHasUnsavedChanges(true);
