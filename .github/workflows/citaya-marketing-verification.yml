@@ -15,6 +15,8 @@ on:
       - "tests/marketing-*.test.mjs"
       - "tests/demo-commercial-copy.test.mjs"
       - "components/admin/dte/ManualIssuanceForm.tsx"
+      - "migrations/*cit143*"
+      - "tests/sql/cit143-oc-reference-assertions.sql"
       - "tests/customer-billing-flow.test.mjs"
       - ".github/workflows/citaya-marketing-verification.yml"
   workflow_dispatch:
@@ -62,3 +64,30 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: synthetic-service-role-key-000000000000000000000000000000000000000000
           CITAYA_AI_ENABLED: "false"
         run: npm run build
+
+  cit143-sql-migration:
+    name: OC 801 migration and tenant-scoped SQL checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ocqa
+          POSTGRES_PASSWORD: isolated-test-only
+          POSTGRES_DB: ocqa
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ocqa -d ocqa"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Apply pending migration to disposable PostgreSQL and run A/B checks
+        env:
+          PGPASSWORD: isolated-test-only
+        run: |
+          psql -h localhost -p 5432 -U ocqa -d ocqa -v ON_ERROR_STOP=1 -f tests/sql/cit143-oc-reference-assertions.sql
