@@ -89,18 +89,18 @@ test("campaign UI exposes simulation separately from real sending", () => {
 
   assert.match(
     uiSource,
-    /const sendCampaign = async \(simulation = false\)/,
+    /const sendCampaign = async \(simulation = false, testSend = false\)/,
   );
 
   assert.match(
     uiSource,
-    /if \(!simulation && !confirmed\)/,
+    /if \(!simulation && !testSend && !confirmed\)/,
     "simulation must not require real-send confirmation",
   );
 
   assert.match(
     uiSource,
-    /simulation,\s*mediaType,/,
+    /simulation,\s*testSend,\s*mediaType,/,
     "simulation flag must be sent to the server",
   );
 

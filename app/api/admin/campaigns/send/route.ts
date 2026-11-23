@@ -25,6 +25,7 @@ type CampaignPayload = {
   imageUrl?: string;
   campaignImageUrl?: string;
   simulation?: boolean;
+  testSend?: boolean;
 };
 
 type TenantBranding = {
@@ -675,6 +676,8 @@ export async function POST(req: Request) {
     if (!body || typeof body !== "object") return badRequest("JSON invalido");
 
     const simulation = body.simulation === true;
+    const testSend = body.testSend === true;
+    if (simulation && testSend) return badRequest("Elige simular o enviar una prueba.");
 
     const payload = {
       templateKey: String(body.templateKey ?? "").trim(),
@@ -722,6 +725,36 @@ export async function POST(req: Request) {
     const access = await requireTenantAdmin({ req, tenantId: tenant.id, tenantSlug });
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
+    let testRecipient: Recipient | null = null;
+    if (testSend) {
+      if (tenant.slug !== "demo" || access.operationalMode !== "demo" ||
+          access.authMode !== "tenant_members" || access.userId !== userData.user.id || paymentCampaign) {
+        return badRequest("El envío de prueba está disponible para campañas de correo del tenant demo.");
+      }
+
+      const email = userData.user.email?.trim().toLowerCase() ?? "";
+      if (!userData.user.email_confirmed_at || !isEmail(email)) {
+        return badRequest("La cuenta de administrador debe tener un correo confirmado.");
+      }
+
+      testRecipient = {
+        customerId: userData.user.id,
+        customerName: "Administrador",
+        customerEmail: email,
+        phone: "",
+        lastAppointmentAt: null,
+        totalAppointments: 0,
+        pendingAmount: 0,
+        paymentLink: "",
+        payment_link: "",
+        ctaUrl: "",
+        cta_url: "",
+        ctaLabel: "",
+        cta_label: "",
+        tags: [],
+      };
+    }
+
     if (!simulation) {
       try { await assertTenantCanSendCampaign(tenant.id, { allowDemoMarketing: !paymentCampaign }); }
       catch { return NextResponse.json({ ok: false, error: "Campañas no disponibles para este entorno" }, { status: 409 }); }
@@ -738,9 +771,11 @@ export async function POST(req: Request) {
     const webhookUrl = process.env.N8N_CAMPAIGN_WEBHOOK_URL;
 
     const recipientSegmentKey = paymentCampaign ? "pending_payment" : payload.segmentKey;
-    const allRecipients = paymentCampaign
-      ? await fetchPendingPaymentRecipients(tenant.id)
-      : await fetchRecipients(tenant.id, recipientSegmentKey);
+    const allRecipients = testRecipient
+      ? [testRecipient]
+      : paymentCampaign
+        ? await fetchPendingPaymentRecipients(tenant.id)
+        : await fetchRecipients(tenant.id, recipientSegmentKey);
     const {
       recipients: emailRecipients,
       skippedCount: emailSkippedCount,
@@ -889,7 +924,7 @@ export async function POST(req: Request) {
         contactEmail,
         contact_email: contactEmail,
       },
-      subject: payload.subject,
+      subject: testSend ? `[PRUEBA] ${payload.subject}` : payload.subject,
       headline: payload.headline,
       message: payload.message,
       ctaLabel,
@@ -910,6 +945,7 @@ export async function POST(req: Request) {
       recipients,
       metadata: {
         source: "admin_campaigns",
+        testSend,
         createdAt: new Date().toISOString(),
         mediaType: media.type,
         mediaUrl: media.url,
@@ -923,6 +959,7 @@ export async function POST(req: Request) {
       },
     };
 
+    const logRecipients = testSend ? [] : recipients;
     let n8nRes: Response;
     try {
       n8nRes = await fetch(webhookUrl, {
@@ -933,7 +970,7 @@ export async function POST(req: Request) {
     } catch (cause: unknown) {
       console.error("[api/admin/campaigns/send] n8n fetch error:", errorMessage(cause, "Error de conexión"));
       await Promise.all(
-        recipients.map((recipient) =>
+        logRecipients.map((recipient) =>
           logMessage(req, token, {
             tenantSlug: tenant.slug,
             type: "campaign",
@@ -957,7 +994,7 @@ export async function POST(req: Request) {
         detail,
       });
       await Promise.all(
-        recipients.map((recipient) =>
+        logRecipients.map((recipient) =>
           logMessage(req, token, {
             tenantSlug: tenant.slug,
             type: "campaign",
@@ -976,13 +1013,27 @@ export async function POST(req: Request) {
 
     const n8nJson = await n8nRes.json().catch(() => null);
     const n8nSentCount = Number(n8nJson?.sentCount);
+    if (testSend) {
+      if (n8nSentCount === 0) {
+        return NextResponse.json(
+          { ok: false, error: "El sistema de envíos informó que no envió el correo de prueba." },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        testSend: true,
+        message: "Prueba solicitada. Revisa la bandeja de entrada de tu correo de administrador.",
+      });
+    }
+
     const sentCount =
       Number.isFinite(n8nSentCount) && n8nSentCount >= 0
         ? Math.min(n8nSentCount, recipients.length)
         : recipients.length;
 
     await Promise.all(
-      recipients.map((recipient) =>
+      logRecipients.map((recipient) =>
         logMessage(req, token, {
           tenantSlug: tenant.slug,
           type: "campaign",

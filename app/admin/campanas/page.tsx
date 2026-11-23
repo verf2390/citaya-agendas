@@ -265,7 +265,7 @@ export default function AdminCampanasPage() {
   const [sending, setSending] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [sendState, setSendState] = useState<{
-    type: "success" | "simulation" | "setup" | "error";
+    type: "success" | "simulation" | "test" | "setup" | "error";
     text: string;
   } | null>(null);
   const [result, setResult] = useState<SendResult | null>(null);
@@ -578,7 +578,7 @@ export default function AdminCampanasPage() {
     }
   };
 
-  const sendCampaign = async (simulation = false) => {
+  const sendCampaign = async (simulation = false, testSend = false) => {
     if (sending || simulating) return;
 
     const cleanSubject = subject.trim();
@@ -601,7 +601,7 @@ export default function AdminCampanasPage() {
       return;
     }
 
-    if (!simulation && !confirmed) {
+    if (!simulation && !testSend && !confirmed) {
       const text = "Confirma el envío antes de continuar.";
       setSendState({ type: "error", text });
       toast({ title: "Confirmación requerida", description: text, variant: "destructive" });
@@ -633,6 +633,7 @@ export default function AdminCampanasPage() {
           ctaUrl: cleanCtaUrl,
           tenantSlug,
           simulation,
+          testSend,
           mediaType,
           mediaUrl: cleanMediaUrl,
           mediaFileName,
@@ -682,6 +683,13 @@ export default function AdminCampanasPage() {
           title: "Simulación lista",
           description: `${Number(json.recipientCount ?? 0)} destinatarios válidos. No se envió ningún mensaje.`,
         });
+        return;
+      }
+
+      if (json.testSend === true) {
+        const text = json.message ?? "Prueba solicitada a tu correo de administrador.";
+        setSendState({ type: "test", text });
+        toast({ title: "Prueba solicitada", description: text });
         return;
       }
 
@@ -1213,6 +1221,16 @@ export default function AdminCampanasPage() {
                     <RefreshCw className="h-4 w-4" />
                     {simulating ? "Simulando campaña..." : "Simular campaña"}
                   </button>
+                  {tenantSlug === "demo" && !pendingPaymentCampaign ? (
+                    <button
+                      type="button"
+                      onClick={() => void sendCampaign(false, true)}
+                      disabled={isSimulationDisabled || uploadingMedia}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Enviar prueba a mi correo
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => void sendCampaign(false)}
@@ -1248,7 +1266,7 @@ export default function AdminCampanasPage() {
                     className={`rounded-2xl border p-3 text-sm font-bold ${
                       sendState.type === "success"
                         ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                        : sendState.type === "simulation"
+                        : sendState.type === "simulation" || sendState.type === "test"
                           ? "border-blue-200 bg-blue-50 text-blue-800"
                           : sendState.type === "setup"
                             ? "border-amber-200 bg-amber-50 text-amber-900"
