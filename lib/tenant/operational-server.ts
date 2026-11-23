@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { canRunAppointmentOperationalEffects } from "@/lib/tenant/operational-mode.mjs";
+import { canRunAppointmentOperationalEffects, isSafeDemoAppointmentMode } from "@/lib/tenant/operational-mode.mjs";
 import type {
   TenantOperationalCapabilities,
   TenantOperationalMode,
@@ -27,6 +27,8 @@ export type TenantOperationalContext = {
   taxDocumentMode: TenantTaxDocumentMode;
   paymentsEnabled: boolean;
   dteEnabled: boolean;
+  externalCommunicationsEnabled: boolean;
+  campaignsEnabled: boolean;
   capabilities: TenantOperationalCapabilities;
 };
 
@@ -54,7 +56,7 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
       p_tenant_id: tenantId,
     }),
     supabaseAdmin.from("tenant_operational_features")
-      .select("tax_document_mode,payments_enabled,dte_enabled")
+      .select("tax_document_mode,payments_enabled,dte_enabled,external_communications_enabled,campaigns_enabled")
       .eq("tenant_id", tenantId)
       .maybeSingle(),
   ]);
@@ -83,6 +85,8 @@ export async function loadTenantOperationalContext(tenantId: string): Promise<Te
     taxDocumentMode,
     paymentsEnabled: featureResult.data.payments_enabled,
     dteEnabled: featureResult.data.dte_enabled,
+    externalCommunicationsEnabled: featureResult.data.external_communications_enabled === true,
+    campaignsEnabled: featureResult.data.campaigns_enabled === true,
     capabilities,
   };
 }
@@ -162,8 +166,21 @@ export async function assertTenantCanRunAppointmentOperationalEffects(tenantId: 
   return context;
 }
 
-export async function assertTenantCanSendCampaign(tenantId: string) {
-  return requireCapability(await loadTenantOperationalContext(tenantId), "sendCampaign", "TENANT_MODE_CAMPAIGN_BLOCKED");
+export async function assertTenantCanSendCampaign(
+  tenantId: string,
+  options?: { allowDemoMarketing?: boolean },
+) {
+  const context = await loadTenantOperationalContext(tenantId);
+  if (
+    options?.allowDemoMarketing === true &&
+    context.tenantSlug === "demo" &&
+    context.externalCommunicationsEnabled &&
+    context.campaignsEnabled &&
+    isSafeDemoAppointmentMode(context.capabilities)
+  ) {
+    return context;
+  }
+  return requireCapability(context, "sendCampaign", "TENANT_MODE_CAMPAIGN_BLOCKED");
 }
 
 export async function assertTenantCanRunDteWorker(

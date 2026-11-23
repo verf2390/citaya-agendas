@@ -20,7 +20,7 @@ test("campaign simulation is explicit and real sends remain operationally gated"
 
   assert.match(
     post,
-    /if \(!simulation\) \{[\s\S]*?assertTenantCanSendCampaign\(tenant\.id\)/,
+    /if \(!simulation\) \{[\s\S]*?assertTenantCanSendCampaign\(tenant\.id, \{ allowDemoMarketing: !paymentCampaign \}\)/,
   );
 });
 

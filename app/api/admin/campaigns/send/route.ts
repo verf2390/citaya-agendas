@@ -723,7 +723,7 @@ export async function POST(req: Request) {
     if (!access.ok) return NextResponse.json({ ok: false, error: access.error }, { status: access.status });
 
     if (!simulation) {
-      try { await assertTenantCanSendCampaign(tenant.id); }
+      try { await assertTenantCanSendCampaign(tenant.id, { allowDemoMarketing: !paymentCampaign }); }
       catch { return NextResponse.json({ ok: false, error: "Campañas no disponibles para este entorno" }, { status: 409 }); }
     }
 
