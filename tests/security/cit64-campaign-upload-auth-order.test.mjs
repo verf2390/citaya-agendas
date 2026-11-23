@@ -4,6 +4,7 @@ import { registerHooks } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import sharp from "sharp";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -137,6 +138,29 @@ for (const [kind, error] of [
     assert.equal(state.uploads.length, 0);
   });
 }
+
+test("campaign upload normalizes a valid PNG with text metadata and preserves its pixels", async () => {
+  const input = await sharp({
+    create: { width: 12, height: 8, channels: 4, background: { r: 23, g: 42, b: 88, alpha: 0.5 } },
+  }).png().withXmp('<x:xmpmeta xmlns:x="adobe:ns:meta/"><svg xmlns="http://www.w3.org/2000/svg"/></x:xmpmeta>').toBuffer();
+  assert.ok((await sharp(input).metadata()).xmp);
+  const response = await POST(request(new File([input], "banner.png", { type: "image/png" })));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  const stored = state.uploads[0].bytes;
+  assert.equal(body.size, stored.byteLength);
+  assert.equal(body.mimeType, "image/png");
+  assert.equal((await sharp(stored).metadata()).xmp, undefined);
+  assert.deepEqual(await sharp(stored).raw().toBuffer(), await sharp(input).raw().toBuffer());
+});
+
+test("campaign upload never stores a malformed PNG marked for normalization", async () => {
+  const damaged = Buffer.concat([Buffer.from(png), Buffer.from("<svg de ejemplo>")]);
+  const response = await POST(request(new File([damaged], "banner.png", { type: "image/png" })));
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /No se pudo leer la imagen PNG/);
+  assert.equal(state.uploads.length, 0);
+});
 
 test("CIT-64 upload Storage error returns generic message and logs only error name", async (t) => {
   const log = t.mock.method(console, "error", () => {});

@@ -84,6 +84,7 @@
     "next": "16.2.11",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "sharp": "0.34.5",
     "tailwind-merge": "^3.4.0",
     "transbank-sdk": "6.1.1",
     "xml-crypto": "^6.1.2"

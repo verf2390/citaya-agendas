@@ -15,8 +15,8 @@ test("fake MIME, invalid magic, oversized and active content are rejected", () =
   assert.equal(validateCampaignMedia({ bytes: png, declaredMime: "image/jpeg", originalName: "x.jpg" }).reason, "magic_mismatch");
   assert.equal(validateCampaignMedia({ bytes: Uint8Array.from([1,2,3]), declaredMime: "image/png", originalName: "x.png" }).reason, "magic_mismatch");
   assert.equal(validateCampaignMedia({ bytes: new Uint8Array(5 * 1024 * 1024 + 1).fill(1), declaredMime: "image/png", originalName: "x.png" }).reason, "too_large");
-  const active = Buffer.concat([Buffer.from(png), Buffer.from("<script>alert(1)</script>")]);
-  assert.equal(validateCampaignMedia({ bytes: active, declaredMime: "image/png", originalName: "x.png" }).reason, "active_content");
+  const active = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.from("<svg de ejemplo>")]);
+  assert.equal(validateCampaignMedia({ bytes: active, declaredMime: "image/jpeg", originalName: "x.jpg" }).reason, "active_content");
   assert.equal(validateCampaignMedia({ bytes: Buffer.from("<svg><script/></svg>"), declaredMime: "image/svg+xml", originalName: "x.svg" }).ok, false);
 });
 

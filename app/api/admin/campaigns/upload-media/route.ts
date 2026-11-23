@@ -2,12 +2,14 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import sharp from "sharp";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { validateCampaignMedia } from "@/lib/security/upload-validation.mjs";
 
 const BUCKET_NAME = process.env.SUPABASE_CAMPAIGN_ASSETS_BUCKET?.trim() || "campaign-assets";
 const ABSOLUTE_MAX_BYTES = 25 * 1024 * 1024;
+const MAX_PNG_PIXELS = 32_000_000;
 
 const VALIDATION_ERRORS: Record<string, string> = {
   empty: "El archivo está vacío.",
@@ -15,6 +17,7 @@ const VALIDATION_ERRORS: Record<string, string> = {
   mime_not_allowed: "Usa un archivo JPG, PNG, WebP, GIF, MP4 o WebM.",
   magic_mismatch: "El archivo no coincide con su formato. Ábrelo y expórtalo de nuevo desde tu editor.",
   extension_mismatch: "La extensión del archivo no coincide con su formato. Vuelve a exportarlo con la extensión correcta.",
+  invalid_png: "No se pudo leer la imagen PNG. Vuelve a exportarla desde tu editor.",
   active_content: "El archivo contiene código o texto incrustado incompatible. Vuelve a exportarlo desde tu editor.",
 };
 
@@ -32,19 +35,31 @@ export async function POST(req: Request) {
     if (file === null || typeof file === "string") return fail(400, "Selecciona un archivo para subir.");
     if (file.size === 0) return fail(400, VALIDATION_ERRORS.empty);
     if (file.size > ABSOLUTE_MAX_BYTES) return fail(400, VALIDATION_ERRORS.too_large);
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    let bytes: Buffer = Buffer.from(await file.arrayBuffer());
     const validation = validateCampaignMedia({
       bytes,
       declaredMime: file.type,
       originalName: file.name,
     });
-    if (!validation.ok) return fail(400, VALIDATION_ERRORS[validation.reason ?? ""] ?? "Archivo no permitido");
+    if (!validation.ok) return fail(400, VALIDATION_ERRORS[validation.reason] ?? "Archivo no permitido");
+
+    if (validation.normalizePng) {
+      try {
+        // Store only raster data produced by the decoder, without the original metadata.
+        bytes = await sharp(bytes, { failOn: "warning", limitInputPixels: MAX_PNG_PIXELS })
+          .png({ compressionLevel: 9 })
+          .toBuffer();
+      } catch {
+        return fail(400, VALIDATION_ERRORS.invalid_png);
+      }
+      if (bytes.byteLength > validation.maxBytes) return fail(400, VALIDATION_ERRORS.too_large);
+    }
 
     const serverName = `${randomUUID()}.${validation.extension}`;
     const storagePath = `campaigns/${access.tenantId}/drafts/${serverName}`;
     const { error: uploadError } = await supabaseAdmin.storage.from(BUCKET_NAME).upload(
       storagePath,
-      Buffer.from(bytes),
+      bytes,
       {
         cacheControl: "31536000",
         contentType: String(validation.mimeType),
