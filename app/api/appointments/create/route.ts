@@ -429,10 +429,10 @@ export async function POST(req: Request) {
     }
     const paymentRequired = commercialPolicy.paymentRequired;
     const manageToken = deriveManageToken(input.tenantId, key, pepper);
-    const rpcName = isAdminRequest
-      ? "create_admin_appointment"
-      : isDemoAppointment
-        ? "create_public_appointment"
+    const rpcName = isDemoAppointment
+      ? "create_public_appointment"
+      : isAdminRequest
+        ? "create_admin_appointment"
         : "create_public_appointment_with_legal_acceptance";
     const rpcInput: Record<string, unknown> = {
       p_tenant_id: input.tenantId,

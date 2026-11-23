@@ -20,7 +20,11 @@ test("[structural] safe demo uses the persisted RPC without productive legal or 
   assert.match(createRoute, /if \(!isAdminRequest\) \{\s*if \(!isDemoAppointment\) \{/);
   assert.match(
     createRoute,
-    /const rpcName = isAdminRequest\s*\? "create_admin_appointment"\s*:\s*isDemoAppointment\s*\? "create_public_appointment"\s*:\s*"create_public_appointment_with_legal_acceptance"/,
+    /const rpcName = isDemoAppointment\s*\? "create_public_appointment"\s*:\s*isAdminRequest\s*\? "create_admin_appointment"\s*:\s*"create_public_appointment_with_legal_acceptance"/,
+  );
+  assert.match(
+    createRoute,
+    /if \(isAdminRequest\) \{\s*const admin = await requireTenantAdmin\([\s\S]*?if \(!admin\.ok\) return publicError\(404\);[\s\S]*?const rpcName = isDemoAppointment/,
   );
   assert.match(createRoute, /if \(!isAdminRequest && !isDemoAppointment\) \{/);
   assert.match(createRoute, /persisted: true/);
