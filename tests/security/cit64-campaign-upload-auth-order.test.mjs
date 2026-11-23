@@ -118,16 +118,22 @@ test("CIT-64 upload awaits auth and ignores injected multipart tenantSlug for St
   });
 });
 
-for (const kind of ["missing", "empty", "oversized", "invalid"]) {
+for (const [kind, error] of [
+  ["missing", "Selecciona un archivo para subir."],
+  ["empty", "El archivo está vacío."],
+  ["oversized", "El archivo supera el límite de 5 MB para imágenes y GIF o 25 MB para videos."],
+  ["invalid", "El archivo no coincide con su formato. Ábrelo y expórtalo de nuevo desde tu editor."],
+  ["extension", "La extensión del archivo no coincide con su formato. Vuelve a exportarlo con la extensión correcta."],
+]) {
   test(`CIT-64 upload rejects ${kind} file only after auth and never uploads`, async () => {
     const file = kind === "missing" ? null : new File(
-      [kind === "oversized" ? new Uint8Array(25 * 1024 * 1024 + 1) : kind === "empty" ? "" : "invalid magic"],
-      "image.png", { type: "image/png" },
+      [kind === "oversized" ? new Uint8Array(25 * 1024 * 1024 + 1) : kind === "empty" ? "" : kind === "extension" ? png : "invalid magic"],
+      kind === "extension" ? "image.jpg" : "image.png", { type: "image/png" },
     );
     const response = await POST(request(file));
     assert.equal(response.status, 400);
-    assert.deepEqual(await response.json(), { ok: false, error: "Archivo no permitido" });
-    assert.deepEqual(state.events, ["auth:start", "auth:end", "multipart", ...(kind === "invalid" ? ["bytes"] : [])]);
+    assert.deepEqual(await response.json(), { ok: false, error });
+    assert.deepEqual(state.events, ["auth:start", "auth:end", "multipart", ...(["invalid", "extension"].includes(kind) ? ["bytes"] : [])]);
     assert.equal(state.uploads.length, 0);
   });
 }

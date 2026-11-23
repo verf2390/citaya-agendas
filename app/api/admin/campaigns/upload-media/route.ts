@@ -9,7 +9,16 @@ import { validateCampaignMedia } from "@/lib/security/upload-validation.mjs";
 const BUCKET_NAME = process.env.SUPABASE_CAMPAIGN_ASSETS_BUCKET?.trim() || "campaign-assets";
 const ABSOLUTE_MAX_BYTES = 25 * 1024 * 1024;
 
-function fail(status = 400, error = "Archivo no permitido") {
+const VALIDATION_ERRORS: Record<string, string> = {
+  empty: "El archivo está vacío.",
+  too_large: "El archivo supera el límite de 5 MB para imágenes y GIF o 25 MB para videos.",
+  mime_not_allowed: "Usa un archivo JPG, PNG, WebP, GIF, MP4 o WebM.",
+  magic_mismatch: "El archivo no coincide con su formato. Ábrelo y expórtalo de nuevo desde tu editor.",
+  extension_mismatch: "La extensión del archivo no coincide con su formato. Vuelve a exportarlo con la extensión correcta.",
+  active_content: "El archivo contiene código o texto incrustado incompatible. Vuelve a exportarlo desde tu editor.",
+};
+
+function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
@@ -20,16 +29,16 @@ export async function POST(req: Request) {
 
     const form = await req.formData();
     const file = form.get("file");
-    if (!(file instanceof File) || file.size === 0 || file.size > ABSOLUTE_MAX_BYTES) {
-      return fail();
-    }
+    if (file === null || typeof file === "string") return fail(400, "Selecciona un archivo para subir.");
+    if (file.size === 0) return fail(400, VALIDATION_ERRORS.empty);
+    if (file.size > ABSOLUTE_MAX_BYTES) return fail(400, VALIDATION_ERRORS.too_large);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const validation = validateCampaignMedia({
       bytes,
       declaredMime: file.type,
       originalName: file.name,
     });
-    if (!validation.ok) return fail();
+    if (!validation.ok) return fail(400, VALIDATION_ERRORS[validation.reason] ?? "Archivo no permitido");
 
     const serverName = `${randomUUID()}.${validation.extension}`;
     const storagePath = `campaigns/${access.tenantId}/drafts/${serverName}`;
