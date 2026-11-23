@@ -14,10 +14,11 @@ function getSubdomainSlugFromHost(host: string) {
 }
 
 export async function generateMetadata({
-  params,
+  params: routeParams,
 }: {
-  params: { slug?: string };
+  params: Promise<{ slug: string }>;
 }) {
+  const params = await routeParams;
   const supabase = supabaseServer;
 
   const h = await headers();

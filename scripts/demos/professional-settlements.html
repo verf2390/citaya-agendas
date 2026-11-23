@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="es-CL">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CITAYA · Cierre por profesional</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #173039;
+    --muted: #4d646a;
+    --accent: #176759;
+    --border: #dbe7e4;
+    --field: #59716e;
+    --page: #f3f7f6;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 Inter, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  header { background: white; border-bottom: 1px solid var(--border); }
+  .shell { width: min(1080px, 100% - 48px); margin: auto; }
+  .top, .spread { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .top { min-height: 70px; }
+  .top img { display: block; width: 130px; }
+  .note { color: var(--muted); font-size: .88rem; }
+  main { padding: 32px 0 48px; }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: clamp(1.8rem, 5vw, 2.65rem); letter-spacing: -.04em; }
+  h2 { font-size: 1.12rem; }
+  .lede { max-width: 59ch; color: var(--muted); margin-top: 4px; }
+  .panel { background: white; border: 1px solid var(--border); border-radius: 14px; padding: 19px; }
+  .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 21px; }
+  .field-group { display: flex; flex-wrap: wrap; column-gap: 12px; row-gap: 8px; margin-top: 11px; }
+  label { flex: 1; min-width: 125px; color: var(--muted); font-size: .88rem; }
+  input, select, button { font: inherit; }
+  input, select { width: 100%; color: var(--ink); background: white; border: 1px solid var(--field); border-radius: 7px; padding: 7px 9px; min-height: 39px; }
+  input { display: block; margin-top: 4px; }
+  button { cursor: pointer; border-radius: 7px; font-weight: 640; border: 1px solid var(--border); background: white; color: var(--ink); padding: 7px 12px; }
+  button.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  button:disabled { opacity: .56; cursor: default; }
+  :is(button, input, select):focus-visible { outline: 3px solid #3583ad; outline-offset: 2px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 16px 0; gap: 12px; }
+  .stat { min-width: 0; padding: 12px 17px; border-radius: 11px; background: #e1efeb; }
+  .stat dt { color: var(--muted); font-size: .83rem; }
+  .stat dd { margin: 2px 0 0; font-weight: 750; font-size: clamp(1.10rem, 3vw, 1.6rem); font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; text-align: left; margin-top: 10px; }
+  th, td { border-bottom: 1px solid var(--border); padding: 9px 8px; white-space: nowrap; }
+  th { color: var(--muted); font-size: .77rem; font-weight: 650; }
+  td { font-size: .91rem; }
+  td:first-child, th:first-child { padding-left: 0; }
+  td:last-child, th:last-child { padding-right: 0; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .report { margin-top: 12px; }
+  #status { min-height: 1.5em; margin-top: 9px; }
+  #status[data-error="true"] { color: #9d3430; }
+  details { margin-top: 11px; }
+  summary { color: var(--accent); cursor: pointer; font-weight: 620; }
+  .history { margin-top: 16px; }
+  .history select { width: auto; max-width: 100%; }
+  @media (max-width: 660px) {
+    .shell { width: calc(100% - 28px); }
+    .inputs { grid-template-columns: 1fr; }
+    .panel { padding: 14px; }
+    .stat { padding: 9px 8px; }
+    .spread { align-items: flex-start; flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="shell top">
+    <img src="{{LOGO}}" alt="CITAYA" width="130" height="38">
+    <span class="note">Demostración · Datos ficticios</span>
+  </div>
+</header>
+<main class="shell">
+  <h1>Cierre por profesional</h1>
+  <p class="lede">Configura los porcentajes, selecciona un periodo y revisa cuánto le corresponde a cada profesional por sus pagos verificados.</p>
+
+  <section class="inputs" aria-label="Configuración del cierre">
+    <div class="panel">
+      <h2>Periodo de cobro</h2>
+      <div class="field-group">
+        <label>Desde <input id="start" type="date" value="2026-11-16"></label>
+        <label>Hasta <input id="end" type="date" value="2026-11-22"></label>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Porcentaje del profesional</h2>
+      <div class="field-group">
+        <label>Paula · % <input id="paula-rate" type="number" min="0" max="100" step="0.01" value="60"></label>
+        <label>Camila · % <input id="camila-rate" type="number" min="0" max="100" step="0.01" value="50"></label>
+      </div>
+    </div>
+  </section>
+
+  <dl class="stats" aria-label="Totales del periodo" aria-live="polite">
+    <div class="stat"><dt>Total cobrado</dt><dd id="collected"></dd></div>
+    <div class="stat"><dt>Para profesionales</dt><dd id="professionals-total"></dd></div>
+    <div class="stat"><dt>Para el centro</dt><dd id="business-total"></dd></div>
+  </dl>
+
+  <section class="panel report" aria-labelledby="report-heading">
+    <div class="spread">
+      <div>
+        <h2 id="report-heading">Revisión del cierre</h2>
+        <p id="report-period" class="note"></p>
+      </div>
+      <button id="save" class="primary" type="button">Cerrar periodo</button>
+    </div>
+    <div class="table-wrap">
+      <table aria-label="Resumen por profesional">
+        <thead><tr><th scope="col">Profesional</th><th class="num" scope="col">Pagos</th><th class="num" scope="col">Cobrado</th><th class="num" scope="col">Porcentaje</th><th class="num" scope="col">Para profesional</th><th class="num" scope="col">Para el centro</th><th id="payment-heading" scope="col">Estado</th></tr></thead>
+        <tbody id="report-rows"></tbody>
+      </table>
+    </div>
+    <p id="status" class="note" role="status"></p>
+    <details>
+      <summary>Ver detalle de pagos</summary>
+      <div class="table-wrap">
+        <table aria-label="Detalle de pagos">
+          <thead><tr><th scope="col">Fecha</th><th scope="col">Profesional</th><th scope="col">Servicio</th><th class="num" scope="col">Monto</th><th scope="col">Estado</th></tr></thead>
+          <tbody id="payment-rows"></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel history spread" aria-labelledby="history-heading">
+    <div>
+      <h2 id="history-heading">Historial de cierres</h2>
+      <p class="note">Cada cierre conserva sus montos y porcentajes.</p>
+    </div>
+    <div>
+      <label for="history">Vista</label>
+      <select id="history"><option value="">Nuevo cierre</option></select>
+      <button id="reset" type="button">Reiniciar demo</button>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+{{CALCULATOR}}
+
+const payments = [
+  { id: "p1", professionalId: "paula", description: "Limpieza facial", amount: 45000, paidOn: "2026-11-17", status: "VERIFIED" },
+  { id: "p2", professionalId: "paula", description: "Tratamiento facial", amount: 55000, paidOn: "2026-11-19", status: "VERIFIED" },
+  { id: "p3", professionalId: "camila", description: "Tratamiento corporal", amount: 70000, paidOn: "2026-11-20", status: "VERIFIED" },
+  { id: "p4", professionalId: "camila", description: "Sesión de control", amount: 30000, paidOn: "2026-11-21", status: "VERIFIED" },
+  { id: "p5", professionalId: "paula", description: "Sesión facial", amount: 35000, paidOn: "2026-11-22", status: "PENDING" },
+  { id: "p6", professionalId: "camila", description: "Sesión de evaluación", amount: 20000, paidOn: "2026-11-22", status: "REFUNDED" },
+];
+const names = { paula: "Paula", camila: "Camila" };
+const statusLabels = { VERIFIED: "Verificado", PENDING: "Pendiente", REFUNDED: "Devuelto" };
+const money = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP" });
+const percent = new Intl.NumberFormat("es-CL", { style: "percent", maximumFractionDigits: 2 });
+const storageKey = "citaya-cierre-demo-v1";
+
+const field = (id) => document.getElementById(id);
+const start = field("start");
+const end = field("end");
+const rates = { paula: field("paula-rate"), camila: field("camila-rate") };
+const reportRows = field("report-rows");
+const paymentRows = field("payment-rows");
+const history = field("history");
+const save = field("save");
+const status = field("status");
+let closures = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(storageKey) || "[]");
+  if (Array.isArray(saved)) closures = saved;
+} catch {
+  // A browser that blocks local storage can still run the demo in this tab.
+}
+
+function persist() {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(closures));
+  } catch {
+    // In-memory history still works when local storage is unavailable.
+  }
+}
+
+function periodLabel(period) {
+  const formatDate = (value) => value.split("-").reverse().join("/");
+  return formatDate(period.start) + " al " + formatDate(period.end);
+}
+
+function addCell(row, text, numeric = false) {
+  const cell = row.insertCell();
+  if (numeric) cell.className = "num";
+  cell.textContent = text;
+  return cell;
+}
+
+function refreshHistory(selected = "") {
+  history.replaceChildren(new Option("Nuevo cierre", ""));
+  for (const closure of closures) {
+    history.add(new Option("Cierre " + closure.id + " · " + periodLabel(closure.period), String(closure.id)));
+  }
+  history.value = selected;
+}
+
+function computePreview() {
+  const percentages = new Map(
+    Object.entries(rates).map(([id, input]) => [id, input.validity.valid ? input.valueAsNumber : NaN]),
+  );
+  return previewPercentageSettlement({
+    payments,
+    percentages,
+    period: { start: start.value, end: end.value },
+    closedPaymentIds: closures.flatMap((closure) => closure.rows.map((row) => row.id)),
+  });
+}
+
+function render() {
+  const closure = closures.find((item) => String(item.id) === history.value);
+  for (const input of [start, end, ...Object.values(rates)]) input.disabled = Boolean(closure);
+  let report = closure;
+  let error = "";
+  try {
+    report ??= computePreview();
+  } catch (cause) {
+    error = cause.message;
+  }
+  const professionals = report?.professionals ?? [];
+  const totals = professionals.reduce((sum, item) => ({
+    collected: sum.collected + item.collected,
+    professional: sum.professional + item.professionalAmount,
+    business: sum.business + item.businessAmount,
+  }), { collected: 0, professional: 0, business: 0 });
+  field("collected").textContent = money.format(totals.collected);
+  field("professionals-total").textContent = money.format(totals.professional);
+  field("business-total").textContent = money.format(totals.business);
+  field("report-heading").textContent = closure ? "Cierre " + closure.id : "Revisión del cierre";
+  field("report-period").textContent = report ? periodLabel(report.period) + " · Base: monto bruto cobrado" : "";
+  save.hidden = Boolean(closure);
+  save.disabled = !report?.rows.length;
+  field("payment-heading").hidden = !closure;
+  status.dataset.error = String(Boolean(error));
+  status.textContent = error || (report?.rows.length ? "" : "No hay pagos verificables para cerrar en este periodo.");
+
+  reportRows.replaceChildren();
+  for (const item of professionals) {
+    const row = reportRows.insertRow();
+    addCell(row, names[item.professionalId]);
+    addCell(row, item.paymentCount, true);
+    addCell(row, money.format(item.collected), true);
+    addCell(row, percent.format(item.percentage / 100), true);
+    addCell(row, money.format(item.professionalAmount), true);
+    addCell(row, money.format(item.businessAmount), true);
+    if (closure) {
+      const paid = closure.paidProfessionalIds.includes(item.professionalId);
+      const cell = addCell(row, paid ? "Pagado" : "");
+      if (!paid) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Marcar pagado";
+        button.setAttribute("aria-label", "Marcar pagado a " + names[item.professionalId]);
+        button.addEventListener("click", () => {
+          if (closure.paidProfessionalIds.includes(item.professionalId)) return;
+          closure.paidProfessionalIds.push(item.professionalId);
+          persist();
+          render();
+        });
+        cell.append(button);
+      }
+    }
+  }
+
+  paymentRows.replaceChildren();
+  const alreadyClosed = new Set(closure ? [] : closures.flatMap((item) => item.rows.map((row) => row.id)));
+  const details = closure ? closure.rows : payments.filter((payment) => payment.paidOn >= start.value && payment.paidOn <= end.value);
+  for (const payment of details) {
+    const row = paymentRows.insertRow();
+    addCell(row, payment.paidOn.split("-").reverse().join("/"));
+    addCell(row, names[payment.professionalId]);
+    addCell(row, payment.description);
+    addCell(row, money.format(payment.amount), true);
+    const state = alreadyClosed.has(payment.id) ? "Ya liquidado" : statusLabels[payment.status];
+    addCell(row, state);
+  }
+}
+
+save.addEventListener("click", () => {
+  const result = computePreview();
+  if (!result.rows.length) return;
+  const closure = { ...result, id: closures.length + 1, paidProfessionalIds: [] };
+  closures.push(closure);
+  persist();
+  refreshHistory(String(closure.id));
+  render();
+});
+field("reset").addEventListener("click", () => {
+  closures = [];
+  start.value = "2026-11-16";
+  end.value = "2026-11-22";
+  rates.paula.value = "60";
+  rates.camila.value = "50";
+  persist();
+  refreshHistory();
+  render();
+});
+for (const input of [start, end, ...Object.values(rates)]) input.addEventListener("input", render);
+history.addEventListener("change", render);
+refreshHistory();
+render();
+</script>
+</body>
+</html>

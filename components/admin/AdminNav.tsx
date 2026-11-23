@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Megaphone,
   ReceiptText,
+  WalletCards,
   Scale,
   Settings,
   Sparkles,
@@ -24,6 +25,7 @@ import {
 import AdminLogoutButton from "@/components/admin/AdminLogoutButton";
 import AdminThemeToggle from "@/components/admin/AdminThemeToggle";
 import { StatusBadge } from "@/components/admin/admin-ui";
+import { adminFetch } from "@/lib/api/adminFetch";
 import { supabase } from "@/lib/supabaseClient";
 import { getTenantSlugFromHostname } from "@/lib/tenant";
 
@@ -34,6 +36,7 @@ const ITEMS = [
   { href: "/admin/agenda", label: "Agenda", icon: CalendarDays },
   { href: "/admin/customers", label: "Clientes", icon: Users },
   { href: "/admin/pagos", label: "Pagos", icon: CreditCard },
+  { href: "/admin/liquidaciones", label: "Liquidaciones", icon: WalletCards, demoSettlements: true },
   { href: "/admin/facturacion", label: "Facturación", icon: ReceiptText },
   { href: "/admin/servicios", label: "Servicios", icon: Wrench },
   { href: "/admin/waitlist", label: "Lista de espera", icon: Sparkles },
@@ -58,6 +61,7 @@ function initials(value: string) {
 
 export default function AdminNav() {
   const pathname = usePathname();
+  const [settlementsEnabled, setSettlementsEnabled] = useState(false);
   const [tenant, setTenant] = useState<TenantHeader | null>(null);
 
   useEffect(() => {
@@ -80,6 +84,16 @@ export default function AdminNav() {
     };
 
     void run();
+  }, []);
+
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_CITAYA_SETTLEMENTS_DEMO !== "true") return;
+    const controller = new AbortController();
+    void adminFetch("/api/admin/demo-liquidaciones", { method: "HEAD", signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) setSettlementsEnabled(result.ok);
+      });
+    return () => controller.abort();
   }, []);
 
   const businessName = tenant?.name || "Citaya Admin";
@@ -134,7 +148,8 @@ export default function AdminNav() {
             <div className="no-scrollbar flex w-full max-w-full gap-1 overflow-x-auto overscroll-x-contain pb-1 [-webkit-overflow-scrolling:touch] lg:grid lg:min-w-0 lg:gap-1.5 lg:overflow-visible lg:pb-0">
               {ITEMS.filter(
                 (item) =>
-                  !("tenantOnly" in item) || item.tenantOnly === tenant?.slug,
+                  (!("tenantOnly" in item) || item.tenantOnly === tenant?.slug) &&
+                  (!("demoSettlements" in item) || settlementsEnabled),
               ).map((item) => {
                 const active =
                   pathname === item.href ||

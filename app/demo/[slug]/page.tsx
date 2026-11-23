@@ -85,9 +85,9 @@ async function getDemoBySlug(slug: string) {
 export default async function DemoLandingPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
-  const slug = params.slug;
+  const { slug } = await params;
 
   const payload = await getDemoBySlug(slug);
   if (!payload) return notFound();

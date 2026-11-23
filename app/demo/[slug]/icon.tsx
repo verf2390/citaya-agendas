@@ -27,9 +27,10 @@ async function getDemoBrand(slug: string) {
 export default async function Icon({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
 }) {
-  const { color, name } = await getDemoBrand(params.slug);
+  const { slug } = await params;
+  const { color, name } = await getDemoBrand(slug);
 
   const letter = name.charAt(0).toUpperCase();
 

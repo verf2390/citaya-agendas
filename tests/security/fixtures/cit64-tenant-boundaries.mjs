@@ -26,6 +26,14 @@ export const privilegedRouteInventory = Object.freeze([
     rationale: "Membership is checked for the requested tenant and all appointment/payment reads use that tenant.",
   },
   {
+    route: "app/api/admin/demo-liquidaciones/route.ts",
+    boundary: "demo_tenant_admin",
+    status: "OK",
+    severity: "none",
+    markers: ["requireSettlementsDemoAdmin", "access.tenantId", "access.userId"],
+    rationale: "The isolated demo host and tenant membership are checked before data access. Private reads and simulation RPCs use the authenticated tenant, and the closure actor comes from the verified session.",
+  },
+  {
     route: "app/api/admin/ai/assistant/route.ts",
     boundary: "host_tenant_admin",
     status: "OK",
@@ -554,6 +562,7 @@ export const privilegedHelperInventory = Object.freeze([
   { file: "lib/dte/production/server.ts", status: "OK", severity: "none", boundary: "production_service", evidence: "Document relation lookup is reconciled against tenant/document/type/operation; CAF and available folios are tenant-scoped." },
   { file: "lib/legal/server.ts", status: "OK", severity: "none", boundary: "public_tenant_lookup", evidence: "Public legal bundle resolves an active tenant and scopes profiles, settings and legal documents to its id." },
   { file: "lib/security/request.ts", status: "OK", severity: "none", boundary: "rate_limit", evidence: "Service-role is restricted to the rate-limit RPC with an opaque caller-supplied key." },
+  { file: "lib/settlements/demo-access.ts", status: "OK", severity: "none", boundary: "demo_tenant_admin", evidence: "An explicit instance host and active demo tenant are required before delegating to tenant admin authentication. The operation requires demo tenant membership." },
   { file: "lib/supabaseAdmin.ts", status: "OK", severity: "none", boundary: "client_factory", evidence: "Lazy server-only service-role client factory; it exposes no route or resource operation by itself." },
   { file: "lib/supabaseServer.ts", status: "OK", severity: "none", boundary: "client_alias", evidence: "Explicit alias of supabaseAdmin; no query is performed in this file." },
   { file: "lib/tenant/operational-server.ts", status: "OK", severity: "none", boundary: "tenant_capability", evidence: "Operational lookups and intent/payment checks use the supplied tenant id; callers must provide an authorized/resource-derived tenant." },

@@ -3,13 +3,12 @@ import Link from "next/link";
 import { propiedadesInmo } from "../../data";
 
 type PropiedadDetallePageProps = {
-  params: {
-    slug: string;
-  };
+  params: Promise<{ slug: string }>;
 };
 
-export default function PropiedadDetallePage({ params }: PropiedadDetallePageProps) {
-  const propiedad = propiedadesInmo.find((item) => item.slug === params.slug);
+export default async function PropiedadDetallePage({ params }: PropiedadDetallePageProps) {
+  const { slug } = await params;
+  const propiedad = propiedadesInmo.find((item) => item.slug === slug);
 
   if (!propiedad) {
     return (
@@ -18,7 +17,7 @@ export default function PropiedadDetallePage({ params }: PropiedadDetallePagePro
           <p className="text-xs uppercase tracking-[0.25em] text-slate-500">inmo demo</p>
           <h1 className="mt-4 text-2xl font-semibold sm:text-3xl md:text-4xl">Propiedad no encontrada</h1>
           <p className="mt-4 max-w-2xl text-slate-600">
-            No encontramos una propiedad asociada al slug <span className="font-mono">{params.slug}</span>.
+            No encontramos una propiedad asociada al slug <span className="font-mono">{slug}</span>.
             Puedes volver al catálogo para seguir explorando oportunidades exclusivas.
           </p>
           <Link
