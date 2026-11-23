@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       declaredMime: file.type,
       originalName: file.name,
     });
-    if (!validation.ok) return fail(400, VALIDATION_ERRORS[validation.reason] ?? "Archivo no permitido");
+    if (!validation.ok) return fail(400, VALIDATION_ERRORS[validation.reason ?? ""] ?? "Archivo no permitido");
 
     const serverName = `${randomUUID()}.${validation.extension}`;
     const storagePath = `campaigns/${access.tenantId}/drafts/${serverName}`;
