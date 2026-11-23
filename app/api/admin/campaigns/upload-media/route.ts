@@ -6,6 +6,7 @@ import sharp from "sharp";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireHostTenantAdmin } from "@/lib/api/requireTenantAdmin";
 import { validateCampaignMedia } from "@/lib/security/upload-validation.mjs";
+import { getTenantPublicBaseUrl } from "@/lib/tenant";
 
 const BUCKET_NAME = process.env.SUPABASE_CAMPAIGN_ASSETS_BUCKET?.trim() || "campaign-assets";
 const ABSOLUTE_MAX_BYTES = 25 * 1024 * 1024;
@@ -29,6 +30,9 @@ export async function POST(req: Request) {
   try {
     const access = await requireHostTenantAdmin(req);
     if (!access.ok) return fail(access.status, access.status === 401 ? "Unauthorized" : "Forbidden");
+
+    const publicBaseUrl = getTenantPublicBaseUrl(access.tenantSlug);
+    if (!publicBaseUrl) return fail(500, "No se pudo generar una URL pública para el archivo.");
 
     const form = await req.formData();
     const file = form.get("file");
@@ -72,7 +76,7 @@ export async function POST(req: Request) {
     }
     const mediaUrl = new URL(
       `/api/media/campaigns/${access.tenantId}/${serverName}`,
-      req.url,
+      publicBaseUrl,
     ).toString();
     return NextResponse.json({
       ok: true,

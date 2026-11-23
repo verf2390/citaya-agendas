@@ -15,7 +15,7 @@ globalThis.__cit64CampaignUpload = {
   async requireHostTenantAdmin(req) {
     state.events.push("auth:start");
     await Promise.resolve();
-    assert.equal(new URL(req.url).hostname, "tenant-a.citaya.test");
+    assert.equal(req.headers.get("x-forwarded-host"), "tenant-a.citaya.test");
     state.events.push("auth:end");
     return state.access;
   },
@@ -45,6 +45,9 @@ registerHooks({
       "@/lib/api/requireTenantAdmin": "cit64-upload:auth",
     };
     if (mocks[specifier]) return { url: mocks[specifier], shortCircuit: true };
+    if (specifier === "@/lib/tenant") {
+      return nextResolve(pathToFileURL(resolve("lib/tenant.ts")).href, context);
+    }
     if (specifier.startsWith("@/")) {
       return { url: pathToFileURL(resolve(specifier.slice(2))).href, shortCircuit: true };
     }
@@ -65,7 +68,7 @@ const { POST } = await import(pathToFileURL(resolve("app/api/admin/campaigns/upl
 test.beforeEach(() => {
   state.events = [];
   state.uploads = [];
-  state.access = { ok: true, tenantId: TENANT_A };
+  state.access = { ok: true, tenantId: TENANT_A, tenantSlug: "tenant-a" };
   state.storageError = null;
 });
 
@@ -73,7 +76,11 @@ function request(file = new File([png], "image.png", { type: "image/png" }), ten
   const form = new FormData();
   if (file !== null) form.append("file", file);
   form.append("tenantSlug", tenantSlug);
-  const req = new Request("https://tenant-a.citaya.test/api/admin/campaigns/upload-media", { method: "POST", body: form });
+  const req = new Request("https://0.0.0.0:3000/api/admin/campaigns/upload-media", {
+    method: "POST",
+    headers: { "x-forwarded-host": "tenant-a.citaya.test" },
+    body: form,
+  });
   const parse = req.formData.bind(req);
   req.formData = async () => {
     state.events.push("multipart");
@@ -102,7 +109,13 @@ for (const status of [401, 403, 400, 500]) {
   });
 }
 
-test("CIT-64 upload awaits auth and ignores injected multipart tenantSlug for Storage and URL", async () => {
+test("CIT-64 upload uses the authorized tenant's public URL behind the reverse proxy", async (t) => {
+  const originalDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN;
+  process.env.NEXT_PUBLIC_BASE_DOMAIN = "citaya.test";
+  t.after(() => {
+    if (originalDomain === undefined) delete process.env.NEXT_PUBLIC_BASE_DOMAIN;
+    else process.env.NEXT_PUBLIC_BASE_DOMAIN = originalDomain;
+  });
   const response = await POST(request());
   const body = await response.json();
   assert.equal(response.status, 200);
